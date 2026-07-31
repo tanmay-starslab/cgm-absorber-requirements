@@ -1,0 +1,13 @@
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# logs / runtime
+data/*.log
+*.log
+/tmp/
+
+# large external data (regenerable; cutout lives outside the repo)
+*.hdf5
+data/sightlines/_tmp*
