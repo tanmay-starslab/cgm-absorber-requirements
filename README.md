@@ -87,7 +87,13 @@ python scripts/gen_cgm_sightlines.py one edge-on 100 90   # a single sightline
 ```bash
 python scripts/make_publication_figure.py edge_b100_a090   # -> figures/spectra_edge_b100_a090.{pdf,png}
 python scripts/make_publication_figure.py face_b050_a090 20000 40000 8 5   # explicit R_lo R_hi SN_hi SN_lo
+python scripts/make_publication_figure.py face_b050_a090 intrinsic   # also overlay the intrinsic (unconvolved) spectrum
 ```
+
+Each panel shows the **noisy mock observation** (thin faint step) and the **noiseless model at
+that column's resolution R** (thick colored curve). Adding `intrinsic` (or ticking the box in the
+GUI) overlays the **intrinsic, unconvolved** spectrum (faint grey) — the R-independent "truth" that
+sits behind all four columns, so you can see how much each R blurs away.
 
 **Validation figure:**
 ```bash
@@ -100,10 +106,10 @@ panel serve app/cgm_app.py --show --port 8050 \
   --allow-websocket-origin=127.0.0.1:8050 --allow-websocket-origin=localhost:8050
 ```
 Open `http://127.0.0.1:8050/cgm_app` (auto-forwarded by the VS Code tunnel). The R/S/N sliders,
-velocity window, and gallery selection re-render instantly; **Submit** loads an on-grid geometry
-from cache or casts a fresh Trident ray (~1 min the first time) and saves it into
-`data/sightlines/` + `grid_index.csv` so it becomes scrollable. **Download PDF/PNG** exports the
-exact publication figure at 240 dpi.
+velocity window, **show intrinsic (unconvolved) spectrum** checkbox, and gallery selection
+re-render instantly; **Submit** loads an on-grid geometry from cache or casts a fresh Trident ray
+(~1 min the first time) and saves it into `data/sightlines/` + `grid_index.csv` so it becomes
+scrollable. **Download PDF/PNG** exports the exact publication figure at 240 dpi.
 
 ## Trident details
 

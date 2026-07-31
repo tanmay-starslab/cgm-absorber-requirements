@@ -106,6 +106,7 @@ r_hi = pn.widgets.DiscreteSlider(name="R  —  columns 2 & 4", options=R_OPTS, v
 sn_hi = pn.widgets.IntSlider(name="S/N  —  columns 1 & 2", start=2, end=20, step=1, value=8)
 sn_lo = pn.widgets.IntSlider(name="S/N  —  columns 3 & 4", start=2, end=20, step=1, value=5)
 vwin = pn.widgets.IntSlider(name="velocity window  ± [km/s]", start=150, end=800, step=50, value=400)
+show_intrinsic = pn.widgets.Checkbox(name="show intrinsic (unconvolved) spectrum", value=False)
 reroll = pn.widgets.Button(name="↻ new noise draw", button_type="default", width=170)
 
 orient = pn.widgets.RadioButtonGroup(name="orientation", options=["face-on", "edge-on", "random"],
@@ -133,7 +134,8 @@ def _build(export=False):
     if export:
         CS.set_style(usetex=HAS_LATEX, base=15)
     fig, geom = build_figure(data, Rlo=r_lo.value, Rhi=r_hi.value, SNhi=sn_hi.value,
-                             SNlo=sn_lo.value, vwin=float(vwin.value), seed=STATE["seed"])
+                             SNlo=sn_lo.value, vwin=float(vwin.value), seed=STATE["seed"],
+                             show_intrinsic=show_intrinsic.value)
     if export:
         CS.set_style(usetex=False, base=13)
     return fig, geom
@@ -216,6 +218,7 @@ reroll.on_click(on_reroll)
 
 for w in (r_lo, r_hi, sn_hi, sn_lo, vwin):
     w.param.watch(lambda e: rerender(), "value_throttled")
+show_intrinsic.param.watch(lambda e: rerender(), "value")   # checkbox: fires on toggle
 
 
 # --------------------------------------------------------------------------- downloads
@@ -244,7 +247,7 @@ sidebar = [
                      "for later scrolling.</span>"),
     pn.layout.Divider(),
     h("### ◉ Instrument  (live)"),
-    r_lo, r_hi, sn_hi, sn_lo, vwin, reroll,
+    r_lo, r_hi, sn_hi, sn_lo, vwin, show_intrinsic, reroll,
     pn.layout.Divider(),
     h("### ◉ Gallery"),
     gallery, pn.Row(prev_btn, next_btn),

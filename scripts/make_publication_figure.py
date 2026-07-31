@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-import cgm_style as CS          # noqa: E402
-from degrade import degrade     # noqa: E402
+import cgm_style as CS              # noqa: E402
+from degrade import degrade, C_KMS  # noqa: E402
 
 DATA = ROOT / "data" / "sightlines"
 # columns in the order the user specified: (Rlo,SNhi),(Rhi,SNhi),(Rlo,SNlo),(Rhi,SNlo)
@@ -36,7 +36,7 @@ def _columns(Rlo, Rhi, SNhi, SNlo):
 
 
 def build_figure(data, Rlo=DEF_RLO, Rhi=DEF_RHI, SNhi=DEF_SNHI, SNlo=DEF_SNLO,
-                 vwin=VWIN, seed=0):
+                 vwin=VWIN, seed=0, show_intrinsic=False):
     cols = _columns(Rlo, Rhi, SNhi, SNlo)
     v_sys = float(data["v_sys"])
     geom = json.loads(str(data["geom"]))
@@ -46,6 +46,12 @@ def build_figure(data, Rlo=DEF_RLO, Rhi=DEF_RHI, SNhi=DEF_SNHI, SNlo=DEF_SNLO,
         tau = np.asarray(data[f"{key}_tau"], float)
         rest = float(data[f"{key}_rest"])
         col = CS.ION[key]["color"]
+        # intrinsic (unconvolved) spectrum on the native velocity grid — same behind all 4 columns
+        if show_intrinsic:
+            v_hi = C_KMS * (lam / rest - 1.0) - v_sys
+            f_hi = np.exp(-tau)
+            m_hi = (v_hi >= -vwin) & (v_hi <= vwin)
+            v_hi, f_hi = v_hi[m_hi], f_hi[m_hi]
         for c, (R, SN) in enumerate(cols):
             a = ax[r][c]
             v, flux, model = degrade(lam, tau, rest, R, SN, v_sys,
@@ -53,6 +59,8 @@ def build_figure(data, Rlo=DEF_RLO, Rhi=DEF_RHI, SNhi=DEF_SNHI, SNlo=DEF_SNLO,
             # noisy "observed" spectrum (thin step) + noiseless model (thick + fill)
             a.step(v, flux, where="mid", color=col, lw=0.9, alpha=0.5, zorder=2)
             a.fill_between(v, model, 1.0, where=(model < 1.0), color=col, alpha=0.22, lw=0, zorder=1)
+            if show_intrinsic:   # faint grey truth reference, behind the thick model
+                a.plot(v_hi, f_hi, color="0.45", lw=1.2, alpha=0.9, zorder=2.4)
             a.plot(v, model, color=col, lw=2.6, solid_joinstyle="round", zorder=3)
             a.axhline(1.0, color="0.55", ls="--", lw=1.0, zorder=1)
             a.axvline(0.0, color="0.4", ls=":", lw=1.1, zorder=1)
@@ -75,10 +83,14 @@ def build_figure(data, Rlo=DEF_RLO, Rhi=DEF_RHI, SNhi=DEF_SNHI, SNlo=DEF_SNLO,
 
 def main():
     CS.set_style()
-    which = sys.argv[1] if len(sys.argv) > 1 else "edge_b100_a090"
-    rr = [int(x) for x in sys.argv[2:6]] if len(sys.argv) >= 6 else [DEF_RLO, DEF_RHI, DEF_SNHI, DEF_SNLO]
+    argv = list(sys.argv[1:])
+    show_intrinsic = "intrinsic" in argv
+    if show_intrinsic:
+        argv.remove("intrinsic")
+    which = argv[0] if argv else "edge_b100_a090"
+    rr = [int(x) for x in argv[1:5]] if len(argv) >= 5 else [DEF_RLO, DEF_RHI, DEF_SNHI, DEF_SNLO]
     data = load_sightline(which)
-    fig, geom = build_figure(data, *rr)
+    fig, geom = build_figure(data, *rr, show_intrinsic=show_intrinsic)
     name = f"spectra_{Path(str(which)).stem.replace('cgm_sid488530_','')}"
     p = CS.save(fig, name)
     print(f"saved {p}  (orient={geom['orientation']} b={geom['b_kpc']:.0f} az={geom['azimuth_deg']:.0f} "
