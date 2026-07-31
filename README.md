@@ -61,10 +61,13 @@ cgm_qso_488530/
     degrade.py                  LSF(R) + noise(S/N per res-element); shared by figure and GUI
     make_publication_figure.py  the 3x4 figure (matplotlib, publication style, no title)
     validate_ovi.py             O VI column sanity-check vs OVI_CGM_compare radial profile
+    score_sightlines.py         rank sightlines by multi-component + unsaturated ("showcase")
+    demo_resolution_snr.py      pedagogical R / S-N / pixels-per-resolution-element explainer
     cgm_style.py                self-contained publication style + per-ion colours/labels
   data/
     sightlines/  cgm_sid488530_<geomid>.npz   high-res noiseless tau(lambda) per ion + geometry + v_sys
-    grid_index.csv                            catalog: geom_id, orientation, b, azimuth, logN, file
+    grid_index.csv                            catalog: geom_id, orientation, b, azimuth, logN, + showcase scores
+    showcase_ranking.csv                      sightlines ranked by showcase score (best demonstrators first)
   app/
     cgm_app.py                  Panel + Bokeh interactive GUI
   figures/                      exported 240-dpi PDF/PNG + GUI screenshots
@@ -80,8 +83,19 @@ All commands use the `trident` conda env
 export PYTHONPATH=$PWD/scripts HDF5_USE_FILE_LOCKING=FALSE MPLBACKEND=Agg
 python scripts/gen_cgm_sightlines.py validate     # ~30 sightlines (O VI sanity grid)
 python scripts/gen_cgm_sightlines.py full          # full grid (b×orient×azimuth + randoms)
+python scripts/gen_cgm_sightlines.py more          # +300 random LOS, b 65-195 kpc (unsaturated, multi-component)
 python scripts/gen_cgm_sightlines.py one edge-on 100 90   # a single sightline
 ```
+
+The dataset currently holds **471 sightlines**. To find the best demonstrators — sightlines with
+**multiple resolved, unsaturated velocity components** (where the effect of R and S/N is clearest;
+saturated black cores look identical at every R and S/N) — rank them:
+```bash
+python scripts/score_sightlines.py --render 6   # writes showcase_ranking.csv + renders top-6 figures
+```
+This scores each ion (component count + how far the cores are from saturation) on the R=40,000
+model, weights O VI most, and merges the scores into `grid_index.csv`. Good all-ion example:
+`edge_b100_a330` (O VI/H I/C III all detectable and unsaturated).
 
 **Publication figure** (one sightline):
 ```bash
@@ -107,7 +121,9 @@ panel serve app/cgm_app.py --show --port 8050 \
 ```
 Open `http://127.0.0.1:8050/cgm_app` (auto-forwarded by the VS Code tunnel). The R/S/N sliders,
 velocity window, **show intrinsic (unconvolved) spectrum** checkbox, and gallery selection
-re-render instantly; **Submit** loads an on-grid geometry from cache or casts a fresh Trident ray
+re-render instantly. The gallery is **sorted by showcase score** and **★-marks** the best
+demonstrators (★ = O VI multi-component & unsaturated); the **★ showcase only** checkbox filters
+to just those. **Submit** loads an on-grid geometry from cache or casts a fresh Trident ray
 (~1 min the first time) and saves it into `data/sightlines/` + `grid_index.csv` so it becomes
 scrollable. **Download PDF/PNG** exports the exact publication figure at 240 dpi.
 
