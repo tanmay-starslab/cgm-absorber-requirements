@@ -11,3 +11,8 @@ data/*.log
 # large external data (regenerable; cutout lives outside the repo)
 *.hdf5
 data/sightlines/_tmp*
+
+# delivery build artifacts (regenerable: export_web_data.py + build_delivery.py)
+delivery/_webdata.json
+delivery/CGM_Explorer.html
+delivery/_test_*.png

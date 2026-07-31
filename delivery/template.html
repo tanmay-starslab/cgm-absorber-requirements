@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CGM Mock-QSO Spectra · TNG50-1 sub-488530</title>
+<style>
+  :root{ --accent:#1D4E89; --ink:#1c2530; --muted:#6b7684; --line:#e2e6ea; --bg:#f6f8fa; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+        color:var(--ink); background:var(--bg); }
+  header{ background:var(--accent); color:#fff; padding:12px 20px; font-size:18px; font-weight:600;
+          letter-spacing:.2px; display:flex; align-items:center; gap:12px; }
+  header .sub{ font-weight:400; opacity:.85; font-size:14px; }
+  .wrap{ display:flex; gap:0; align-items:stretch; min-height:calc(100% - 48px); }
+  .side{ width:320px; flex:0 0 320px; background:#fff; border-right:1px solid var(--line);
+         padding:16px 16px 28px; overflow:auto; }
+  .main{ flex:1; padding:14px 16px 24px; min-width:0; }
+  h3{ color:var(--accent); font-size:13px; text-transform:uppercase; letter-spacing:.6px;
+      margin:18px 0 8px; }
+  h3:first-child{ margin-top:2px; }
+  .ctl{ margin:10px 0; }
+  .ctl label{ display:block; font-size:12.5px; color:var(--muted); margin-bottom:4px; }
+  .ctl .val{ color:var(--ink); font-weight:600; }
+  select,input[type=range]{ width:100%; }
+  select{ padding:6px; border:1px solid var(--line); border-radius:7px; background:#fff;
+          font-size:13px; color:var(--ink); }
+  input[type=range]{ accent-color:var(--accent); }
+  .row{ display:flex; gap:8px; }
+  .row>button{ flex:1; }
+  button{ border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:7px;
+          padding:8px 10px; font-size:13px; cursor:pointer; }
+  button:hover{ border-color:var(--accent); color:var(--accent); }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .check{ display:flex; align-items:center; gap:8px; font-size:13px; margin:8px 0; cursor:pointer; }
+  .divider{ height:1px; background:var(--line); margin:16px 0; }
+  #status{ font-size:13px; color:var(--ink); background:#fff; border:1px solid var(--line);
+           border-radius:9px; padding:9px 13px; margin-bottom:10px; }
+  #status b{ color:var(--accent); }
+  #plot{ width:100%; height:74vh; min-height:560px; background:#fff; border:1px solid var(--line);
+         border-radius:9px; }
+  .hint{ font-size:11.5px; color:var(--muted); margin-top:6px; line-height:1.35; }
+  @media (max-width:820px){ .wrap{ flex-direction:column; } .side{ width:100%; flex:none;
+           border-right:none; border-bottom:1px solid var(--line); } #plot{ height:70vh; } }
+</style>
+</head>
+<body>
+<header>CGM Mock-QSO Spectra <span class="sub">· TNG50-1 sub-488530 · O VI / Lyβ / C III</span></header>
+<div class="wrap">
+  <aside class="side">
+    <h3>Sightline</h3>
+    <div class="ctl">
+      <label class="check"><input type="checkbox" id="showcaseOnly"> ★ showcase only (multi-component, unsaturated)</label>
+      <select id="gallery" size="12"></select>
+      <div class="row" style="margin-top:8px;">
+        <button id="prev">◀ prev</button><button id="next">next ▶</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <h3>Instrument</h3>
+    <div class="ctl"><label>R — columns 1 &amp; 3: <span class="val" id="rloV">20000</span></label>
+      <select id="rlo"></select></div>
+    <div class="ctl"><label>R — columns 2 &amp; 4: <span class="val" id="rhiV">40000</span></label>
+      <select id="rhi"></select></div>
+    <div class="ctl"><label>S/N — columns 1 &amp; 2: <span class="val" id="snhiV">8</span></label>
+      <input type="range" id="snhi" min="2" max="20" step="1" value="8"></div>
+    <div class="ctl"><label>S/N — columns 3 &amp; 4: <span class="val" id="snloV">5</span></label>
+      <input type="range" id="snlo" min="2" max="20" step="1" value="5"></div>
+    <div class="ctl"><label>velocity window ± [km/s]: <span class="val" id="vwinV">400</span></label>
+      <input type="range" id="vwin" min="150" max="800" step="50" value="400"></div>
+    <label class="check"><input type="checkbox" id="intrinsic"> show intrinsic (unconvolved) spectrum</label>
+    <div class="row" style="margin-top:8px;">
+      <button id="reroll">↻ new noise</button><button id="dl" class="primary">⬇ PNG</button>
+    </div>
+    <div class="hint">R blurs the lines (Gaussian LSF, FWHM = c/R); S/N adds noise per resolution
+      element (5 pixels/element). All applied live to the pre-computed spectra — no internet or
+      install needed.</div>
+  </aside>
+  <main class="main">
+    <div id="status"></div>
+    <div id="plot"></div>
+  </main>
+</div>
+
+<script>__PLOTLY_JS__</script>
+<script>const DATA=__DATA_JSON__;</script>
+<script>
+const META = DATA.meta, SL = DATA.sightlines;
+const IONS = META.ions;                       // [{key,color,label}]
+const COLS = META.columns;                    // [[R,SN],...]
+const {vmin, dv, c_kms, pix_per_resel} = META;
+const R_OPTS = [20000,30000,40000,60000,80000,100000];
+let noiseBase = 0, current = SL[0];
+const fluxCache = {};                         // id -> {ion: Float32Array}
+
+// ---- decode + math (a faithful port of degrade.py) ----
+function b64ToFlux(b64){ const s=atob(b64); const n=s.length; const f=new Float32Array(n);
+  for(let i=0;i<n;i++) f[i]=s.charCodeAt(i)/255; return f; }
+function fluxOf(sl){ if(!fluxCache[sl.id]){ const o={};
+    for(const ion of IONS) o[ion.key]=b64ToFlux(sl.flux[ion.key]); fluxCache[sl.id]=o; } return fluxCache[sl.id]; }
+function gaussConv(arr,sigma){ if(sigma<1e-3) return arr;
+  const rad=Math.max(1,Math.ceil(sigma*4)), k=new Float64Array(2*rad+1); let sum=0;
+  for(let i=-rad;i<=rad;i++){ const w=Math.exp(-0.5*(i/sigma)*(i/sigma)); k[i+rad]=w; sum+=w; }
+  for(let i=0;i<k.length;i++) k[i]/=sum;
+  const n=arr.length, out=new Float64Array(n);
+  for(let i=0;i<n;i++){ let acc=0; for(let j=-rad;j<=rad;j++){ let idx=i+j;
+    if(idx<0) idx=0; else if(idx>=n) idx=n-1; acc+=arr[idx]*k[j+rad]; } out[i]=acc; }
+  return out; }
+function interpU(x,arr){ const t=(x-vmin)/dv; if(t<=0) return arr[0]; if(t>=arr.length-1) return arr[arr.length-1];
+  const i=Math.floor(t), fr=t-i; return arr[i]*(1-fr)+arr[i+1]*fr; }
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function degrade(fluxHi,R,snr,vwin,seed){
+  const lsf = R>0 ? gaussConv(fluxHi,(c_kms/R)/2.35482/dv) : fluxHi;
+  const dvResel = R>0 ? c_kms/R : dv*pix_per_resel, dvPix = dvResel/pix_per_resel;
+  const v=[],model=[]; for(let x=-vwin;x<=vwin+1e-6;x+=dvPix){ v.push(x); model.push(interpU(x,lsf)); }
+  const noisy=new Array(model.length);
+  if(snr>0){ const rng=mulberry32(seed>>>0), s=Math.sqrt(pix_per_resel)/snr;
+    for(let i=0;i<model.length;i++){ let y=model[i]+gauss(rng)*s; noisy[i]=y<0?0:y; } }
+  else for(let i=0;i<model.length;i++) noisy[i]=model[i];
+  return {v,model,noisy};
+}
+function hexRgba(h,a){ const n=parseInt(h.slice(1),16); return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`; }
+
+// ---- layout geometry (manual domains for a 3x4 grid) ----
+const LEFT=.058,RIGHT=.984,TOP=.915,BOT=.11,GX=.03,GY=.065;
+const W=(RIGHT-LEFT-3*GX)/4, H=(TOP-BOT-2*GY)/3;
+const xdom=c=>{const x0=LEFT+c*(W+GX);return [x0,x0+W];};
+const ydom=r=>{const y1=TOP-r*(H+GY);return [y1-H,y1];};
+
+function figure(){
+  const sl=current, fx=fluxOf(sl), vwin=+vwinEl.value;
+  const setup=[[+rloEl.value,+snhiEl.value],[+rhiEl.value,+snhiEl.value],
+               [+rloEl.value,+snloEl.value],[+rhiEl.value,+snloEl.value]];
+  const data=[], layout={ margin:{l:0,r:0,t:0,b:0}, paper_bgcolor:'#fff', plot_bgcolor:'#fff',
+    showlegend:false, font:{family:'Georgia,\"Times New Roman\",serif', size:13, color:'#1c2530'},
+    annotations:[], shapes:[] };
+  const showIntr=intrEl.checked;
+  const vgridN=fx[IONS[0].key].length;
+  for(let r=0;r<3;r++){ const ion=IONS[r], col=ion.color, fluxHi=fx[ion.key];
+    for(let c=0;c<4;c++){ const n=r*4+c+1, ax='x'+n, ay='y'+n; const [R,SN]=setup[c];
+      const res=degrade(fluxHi,R,SN,vwin,noiseBase+17*c+101*r);
+      // fill baseline (=1) then model with fill between
+      data.push({x:res.v,y:res.v.map(()=>1),xaxis:ax,yaxis:ay,mode:'lines',
+                 line:{width:0,color:col},hoverinfo:'skip'});
+      data.push({x:res.v,y:res.model,xaxis:ax,yaxis:ay,mode:'lines',fill:'tonexty',
+                 fillcolor:hexRgba(col,.15),line:{color:col,width:3},hovertemplate:'%{x:.0f} km/s<br>%{y:.2f}<extra></extra>'});
+      data.push({x:res.v,y:res.noisy,xaxis:ax,yaxis:ay,mode:'lines',
+                 line:{color:col,width:.8},opacity:.42,hoverinfo:'skip'});
+      if(showIntr){ const xi=[],yi=[]; for(let i=0;i<vgridN;i++){ const vv=vmin+i*dv;
+          if(vv>=-vwin&&vv<=vwin){ xi.push(vv); yi.push(fluxHi[i]); } }
+        data.push({x:xi,y:yi,xaxis:ax,yaxis:ay,mode:'lines',line:{color:'#6f7680',width:1.1},
+                   opacity:.9,hoverinfo:'skip'}); }
+      const [x0,x1]=xdom(c), [y0,y1]=ydom(r);
+      layout[ax==='x'+n?'xaxis'+n:'xaxis'+n]={ domain:[x0,x1], anchor:'y'+n, range:[-vwin,vwin],
+        zeroline:false, showline:true, mirror:true, linecolor:'#333', linewidth:1.2,
+        ticks:'inside', ticklen:6, tickwidth:1.1, tickcolor:'#333', dtick:200,
+        minor:{ticks:'inside',ticklen:3,tickwidth:.8,dtick:50,tickcolor:'#333'},
+        showticklabels:(r===2), tickfont:{size:11} };
+      layout['yaxis'+n]={ domain:[y0,y1], anchor:'x'+n, range:[-.08,1.32],
+        zeroline:false, showline:true, mirror:true, linecolor:'#333', linewidth:1.2,
+        ticks:'inside', ticklen:6, tickwidth:1.1, tickcolor:'#333', tickvals:[0,.5,1],
+        minor:{ticks:'inside',ticklen:3,tickwidth:.8,dtick:.25,tickcolor:'#333'},
+        showticklabels:(c===0), tickfont:{size:11} };
+      // dotted v=0 and dashed continuum
+      layout.shapes.push({type:'line',xref:ax,yref:ay,x0:0,x1:0,y0:-.08,y1:1.32,
+        line:{color:'#888',width:1,dash:'dot'}});
+      layout.shapes.push({type:'line',xref:ax,yref:ay,x0:-vwin,x1:vwin,y0:1,y1:1,
+        line:{color:'#aaa',width:1,dash:'dash'}});
+      if(r===0) layout.annotations.push({xref:'paper',yref:'paper',x:(x0+x1)/2,y:TOP+.018,
+        text:`<i>R</i> = ${R.toLocaleString()},  S/N = ${SN}`,showarrow:false,
+        font:{size:13.5},xanchor:'center',yanchor:'bottom'});
+      if(c===0) layout.annotations.push({xref:ax,yref:ay,x:-vwin*.9,y:.14,
+        text:ion.label,showarrow:false,font:{color:col,size:15},xanchor:'left',
+        bordercolor:col,borderwidth:1.3,borderpad:4,bgcolor:'#fff'});
+      if(r===2) layout.annotations.push({xref:'paper',yref:'paper',x:(x0+x1)/2,y:BOT-.052,
+        text:'<i>V</i><sub>LOS</sub> − <i>V</i><sub>sys</sub>  [km s⁻¹]',showarrow:false,
+        font:{size:13},xanchor:'center',yanchor:'top'});
+      if(c===0) layout.annotations.push({xref:'paper',yref:'paper',x:LEFT-.045,y:(y0+y1)/2,
+        text:'normalized flux',showarrow:false,textangle:-90,font:{size:13},
+        xanchor:'center',yanchor:'middle'});
+    }
+  }
+  Plotly.react('plot',data,layout,{displayModeBar:false,responsive:true});
+  status();
+}
+function status(){ const s=current, L=s.logN;
+  document.getElementById('status').innerHTML =
+    `<b>${s.id}</b> &nbsp;|&nbsp; ${s.orient}, b = <b>${s.b} kpc</b>, Φ = <b>${s.az}°</b>, `+
+    `<i>v</i><sub>sys</sub> = <b>${s.vsys>=0?'+':''}${s.vsys} km/s</b> &nbsp;|&nbsp; `+
+    `log <i>N</i>: O VI <b>${L.OVI}</b>, H I <b>${L.HILyb}</b>, C III <b>${L.CIII}</b>`; }
+
+// ---- gallery ----
+const galEl=document.getElementById('gallery'), scEl=document.getElementById('showcaseOnly');
+function labelOf(s){ const t={'face-on':'face','edge-on':'edge','random':'rand'}[s.orient]||s.orient;
+  const star=s.star===2?'★ ':s.star===1?'☆ ':''; return `${star}${t}  b=${s.b} kpc  Φ=${s.az}°`; }
+function fillGallery(){ const only=scEl.checked; galEl.innerHTML='';
+  SL.forEach((s,i)=>{ if(only&&s.star===0) return; const o=document.createElement('option');
+    o.value=i; o.textContent=labelOf(s); galEl.appendChild(o); });
+  if(galEl.options.length){ const idx=SL.indexOf(current);
+    galEl.value = [...galEl.options].some(o=>+o.value===idx)? idx : galEl.options[0].value;
+    current=SL[+galEl.value]; } }
+function stepGallery(d){ const opts=[...galEl.options]; if(!opts.length) return;
+  let i=opts.findIndex(o=>+o.value===SL.indexOf(current)); if(i<0)i=0;
+  i=(i+d+opts.length)%opts.length; galEl.value=opts[i].value; current=SL[+opts[i].value]; figure(); }
+
+// ---- wire controls ----
+const rloEl=document.getElementById('rlo'), rhiEl=document.getElementById('rhi');
+const snhiEl=document.getElementById('snhi'), snloEl=document.getElementById('snlo');
+const vwinEl=document.getElementById('vwin'), intrEl=document.getElementById('intrinsic');
+R_OPTS.forEach(v=>{ [rloEl,rhiEl].forEach(el=>{ const o=document.createElement('option');
+  o.value=v; o.textContent=v.toLocaleString(); el.appendChild(o); }); });
+rloEl.value=20000; rhiEl.value=40000;
+function sync(){ document.getElementById('rloV').textContent=(+rloEl.value).toLocaleString();
+  document.getElementById('rhiV').textContent=(+rhiEl.value).toLocaleString();
+  document.getElementById('snhiV').textContent=snhiEl.value;
+  document.getElementById('snloV').textContent=snloEl.value;
+  document.getElementById('vwinV').textContent=vwinEl.value; }
+[rloEl,rhiEl,snhiEl,snloEl,vwinEl].forEach(el=>el.addEventListener('input',()=>{ sync(); figure(); }));
+intrEl.addEventListener('change',figure);
+galEl.addEventListener('change',()=>{ current=SL[+galEl.value]; figure(); });
+scEl.addEventListener('change',()=>{ fillGallery(); figure(); });
+document.getElementById('prev').onclick=()=>stepGallery(-1);
+document.getElementById('next').onclick=()=>stepGallery(1);
+document.getElementById('reroll').onclick=()=>{ noiseBase=(noiseBase+1)%100000; figure(); };
+document.getElementById('dl').onclick=()=>Plotly.downloadImage('plot',
+  {format:'png',width:1900,height:1060,scale:2,filename:'cgm_'+current.id});
+
+// ---- start ----
+sync(); fillGallery(); figure();
+</script>
+</body>
+</html>

@@ -127,6 +127,19 @@ to just those. **Submit** loads an on-grid geometry from cache or casts a fresh 
 (~1 min the first time) and saves it into `data/sightlines/` + `grid_index.csv` so it becomes
 scrollable. **Download PDF/PNG** exports the exact publication figure at 240 dpi.
 
+## Standalone explorer (for sharing — no install)
+
+`delivery/` builds a **single self-contained `CGM_Explorer.html`** that runs the whole viewer in a
+web browser with **no Python, no server, no internet** — all 472 spectra are embedded and the R /
+S/N / intrinsic controls run client-side (a JavaScript port of `degrade()`). Ideal for handing to a
+collaborator who just double-clicks it on macOS/Windows.
+```bash
+python scripts/export_web_data.py     # -> delivery/_webdata.json (compact flux blob)
+python scripts/build_delivery.py      # inlines Plotly + data -> delivery/CGM_Explorer.html (~8 MB)
+```
+`delivery/README.txt` is the short non-technical guide bundled for the recipient;
+`delivery/CGM_Explorer_sub488530.zip` is the ready-to-send package (HTML + README).
+
 ## Trident details
 
 `trident.make_simple_ray` with endpoints in `code_length` (= ckpc/h); a custom
