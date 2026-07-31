@@ -114,7 +114,7 @@ def generate(grid, ds=None, skip_existing=False):
     for i, params in enumerate(grid):
         geom = G.make_sightline(**params)
         gid = G.geom_id(params["orientation"], params["b_kpc"], params["azimuth_deg"],
-                        params.get("inclination_deg"))
+                        params.get("inclination_deg"), params.get("seed"))
         ray = cast_ray(ds, geom, tmp)
         cols = ray_columns(tmp)
         rec = dict(geom_id=gid, v_sys=geom["v_sys_kms"], **{f"log{k}": cols[k] for k in LINES})
@@ -168,6 +168,21 @@ def full_grid():
     return g
 
 
+def more_grid(n=300):
+    """300 extra random-orientation sightlines through the CGM, impact 65-195 kpc (the detectable-
+    but-unsaturated regime), each with a unique seed -> unique geom_id. Random LOS through the
+    clumpy CGM is what naturally produces multiple, non-saturated velocity components, ideal for
+    seeing how R and S/N shape the spectra."""
+    g = []
+    rng = np.random.default_rng(20250730)
+    for _ in range(n):
+        b = float(rng.uniform(65, 195))
+        az = float(rng.uniform(0, 360))
+        g.append(dict(orientation="random", b_kpc=round(b, 1), azimuth_deg=round(az, 1),
+                      seed=int(rng.integers(1_000_000_000))))
+    return g
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "validate"
     if mode == "one":
@@ -175,8 +190,9 @@ def main():
         seed = int(sys.argv[5]) if len(sys.argv) > 5 else None
         rows = generate([dict(orientation=o, b_kpc=b, azimuth_deg=az, seed=seed)])
         append_index(rows); return
-    grid = validation_grid() if mode == "validate" else full_grid()
-    skip = (mode == "full")   # reuse the validation sightlines already on disk
+    grid = {"validate": validation_grid, "full": full_grid, "more": more_grid}.get(
+        mode, validation_grid)()
+    skip = mode in ("full", "more")   # reuse sightlines already on disk
     print(f"[{mode}] {len(grid)} sightlines; loading cutout...", flush=True)
     rows = generate(grid, skip_existing=skip)
     append_index(rows)

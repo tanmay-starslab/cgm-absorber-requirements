@@ -81,11 +81,13 @@ def make_sightline(orientation, b_kpc, azimuth_deg, seed=None, inclination_deg=N
         start_ckpch=(start_kpc * H).tolist(), end_ckpch=(end_kpc * H).tolist())
 
 
-def geom_id(orientation, b_kpc, azimuth_deg, inclination_deg=None):
+def geom_id(orientation, b_kpc, azimuth_deg, inclination_deg=None, seed=None):
     o = {"face-on": "face", "edge-on": "edge", "random": "rand"}.get(str(orientation).lower(),
                                                                      str(orientation)[:4])
     inc = "" if inclination_deg is None else f"_i{int(round(inclination_deg)):03d}"
-    return f"{o}_b{int(round(b_kpc)):03d}_a{int(round(azimuth_deg)):03d}{inc}"
+    # random sightlines depend on their seed (the LOS direction) -> encode it so ids stay unique
+    sd = f"_s{int(seed)}" if (o == "rand" and seed is not None) else ""
+    return f"{o}_b{int(round(b_kpc)):03d}_a{int(round(azimuth_deg)):03d}{inc}{sd}"
 
 
 if __name__ == "__main__":

@@ -38,6 +38,9 @@ CS.set_style(usetex=False, base=13)   # fast mathtext for the live pane; export 
 def read_index() -> pd.DataFrame:
     if INDEX.exists() and INDEX.stat().st_size > 0:
         df = pd.read_csv(INDEX)
+        if "showcase_score" in df.columns:      # best multi-component/unsaturated first
+            return df.sort_values("showcase_score", ascending=False,
+                                  na_position="last").reset_index(drop=True)
         order = {"face-on": 0, "edge-on": 1, "random": 2}
         df["_o"] = df.orientation.map(lambda o: order.get(o, 3))
         return df.sort_values(["_o", "b_kpc", "azimuth_deg"]).reset_index(drop=True)
@@ -46,11 +49,22 @@ def read_index() -> pd.DataFrame:
 
 def label_of(r) -> str:
     tag = {"face-on": "face", "edge-on": "edge", "random": "rand"}.get(r.orientation, r.orientation)
-    return f"{tag}   b={r.b_kpc:g} kpc   Φ={r.azimuth_deg:g}°"
+    star = ""
+    if bool(r.get("ovi_showcase", False)):
+        star = "★ "                               # O VI multi-component & unsaturated (best demo)
+    elif (r.get("n_showcase_ions", 0) or 0) >= 1:
+        star = "☆ "                               # some ion is showcase-quality
+    return f"{star}{tag}   b={r.b_kpc:g} kpc   Φ={r.azimuth_deg:g}°"
 
 
-def options_map(df) -> dict:
+def options_map(df, showcase_only=False) -> dict:
+    if showcase_only and "n_showcase_ions" in df.columns:
+        df = df[df.n_showcase_ions.fillna(0) >= 1]
     return {label_of(r): r.file for _, r in df.iterrows()}
+
+
+def current_options():
+    return options_map(read_index(), showcase_only.value)
 
 
 def load_npz(fname):
@@ -69,9 +83,7 @@ def _gen_mod():
 
 def ensure_sightline(orientation, b, az, seed=None):
     """Return (fname, generated?). Load from cache if present, else cast a Trident ray and save."""
-    gid = G.geom_id(orientation, b, az)
-    if orientation == "random" and seed is not None:
-        gid = f"{gid}_s{int(seed)}"
+    gid = G.geom_id(orientation, b, az, seed=seed)
     fname = f"cgm_sid488530_{gid}.npz"
     if (DATA / fname).exists():
         return fname, False
@@ -117,7 +129,9 @@ seed_input = pn.widgets.IntInput(name="random seed", value=1, start=0, end=10000
 submit = pn.widgets.Button(name="Submit  —  load / generate sightline",
                            button_type="primary", height=42)
 
-gallery = pn.widgets.Select(name="pre-generated sightlines", options=options_map(read_index()), size=8)
+showcase_only = pn.widgets.Checkbox(
+    name="★ showcase only  (multi-component, unsaturated)", value=False)
+gallery = pn.widgets.Select(name="pre-generated sightlines", options=current_options(), size=10)
 prev_btn = pn.widgets.Button(name="◀ prev", width=95)
 next_btn = pn.widgets.Button(name="next ▶", width=95)
 
@@ -192,8 +206,7 @@ def on_submit(ev):
         seed = int(seed_input.value) if o == "random" else None
         fname, generated = ensure_sightline(o, b, az, seed)
         if generated:
-            new_opts = options_map(read_index())
-            gallery.options = new_opts
+            gallery.options = current_options()
             if pn.state.notifications:
                 pn.state.notifications.success(f"Generated new sightline: {fname}", duration=4000)
         elif pn.state.notifications:
@@ -219,6 +232,14 @@ reroll.on_click(on_reroll)
 for w in (r_lo, r_hi, sn_hi, sn_lo, vwin):
     w.param.watch(lambda e: rerender(), "value_throttled")
 show_intrinsic.param.watch(lambda e: rerender(), "value")   # checkbox: fires on toggle
+
+
+def refresh_gallery(*_):
+    cur = gallery.value
+    gallery.options = current_options()
+    if cur in gallery.options.values():
+        gallery.value = cur
+showcase_only.param.watch(lambda e: refresh_gallery(), "value")
 
 
 # --------------------------------------------------------------------------- downloads
@@ -250,7 +271,7 @@ sidebar = [
     r_lo, r_hi, sn_hi, sn_lo, vwin, show_intrinsic, reroll,
     pn.layout.Divider(),
     h("### ◉ Gallery"),
-    gallery, pn.Row(prev_btn, next_btn),
+    showcase_only, gallery, pn.Row(prev_btn, next_btn),
 ]
 main = [
     pn.Row(status, sizing_mode="stretch_width"),
