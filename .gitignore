@@ -12,7 +12,9 @@ data/*.log
 *.hdf5
 data/sightlines/_tmp*
 
-# delivery build artifacts (regenerable: export_web_data.py + build_delivery.py)
+# delivery build artifacts (regenerable: export_web_data_wasm.py + build_delivery_wasm.py)
+delivery/_webdata_wasm.json
 delivery/_webdata.json
 delivery/CGM_Explorer.html
 delivery/_test_*.png
+delivery/_wasm_*.png

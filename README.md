@@ -127,18 +127,21 @@ to just those. **Submit** loads an on-grid geometry from cache or casts a fresh 
 (~1 min the first time) and saves it into `data/sightlines/` + `grid_index.csv` so it becomes
 scrollable. **Download PDF/PNG** exports the exact publication figure at 240 dpi.
 
-## Standalone explorer (for sharing — no install)
+## Standalone explorer (for sharing — one double-clickable file)
 
-`delivery/` builds a **single self-contained `CGM_Explorer.html`** that runs the whole viewer in a
-web browser with **no Python, no server, no internet** — all 472 spectra are embedded and the R /
-S/N / intrinsic controls run client-side (a JavaScript port of `degrade()`). Ideal for handing to a
-collaborator who just double-clicks it on macOS/Windows.
+`delivery/` builds a **single self-contained `CGM_Explorer.html`** that reproduces the whole viewer
+in a web browser — **pixel-identical to the live app**, because it runs the *actual* Python modules
+(`cgm_style`, `degrade`, `make_publication_figure`) in-browser via **Pyodide/WebAssembly**. All 472
+spectra (their τ arrays) are embedded, and the R / S/N / intrinsic controls re-run the real
+`build_figure()`. Ideal for handing to a collaborator who just double-clicks it on macOS/Windows.
 ```bash
-python scripts/export_web_data.py     # -> delivery/_webdata.json (compact flux blob)
-python scripts/build_delivery.py      # inlines Plotly + data -> delivery/CGM_Explorer.html (~8 MB)
+python scripts/export_web_data_wasm.py   # -> delivery/_webdata_wasm.json (τ arrays, float16)
+python scripts/build_delivery_wasm.py    # inlines the 3 modules + data -> delivery/CGM_Explorer.html (~13 MB)
 ```
-`delivery/README.txt` is the short non-technical guide bundled for the recipient;
-`delivery/CGM_Explorer_sub488530.zip` is the ready-to-send package (HTML + README).
+Needs internet the *first* time it is opened (it downloads the Pyodide runtime + numpy/matplotlib/
+astropy from a CDN, ~10 s); after that it runs locally, ~1 s per redraw. `delivery/README.txt` is
+the short non-technical guide bundled for the recipient; `delivery/CGM_Explorer_sub488530.zip` is
+the ready-to-send package (HTML + README).
 
 ## Trident details
 

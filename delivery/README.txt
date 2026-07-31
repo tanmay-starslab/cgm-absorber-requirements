@@ -11,10 +11,14 @@ HOW TO OPEN  (macOS)
 --------------------
 Double-click  CGM_Explorer.html  — it opens in your web browser.
 
-  * Nothing to install. No internet needed. Everything is inside the one file.
+  * Nothing to install.
+  * The FIRST time you open it, keep an internet connection: it downloads the
+    plotting engine (a few seconds). After that it runs locally on your computer.
+  * A short "Starting the viewer..." screen appears while it gets ready
+    (about 10-15 seconds the first time). Then the spectra show up.
+  * Each time you change a setting, the figure takes about a second to redraw.
   * If double-clicking shows raw code or downloads instead of opening, then
     right-click the file -> Open With -> Safari (or Chrome / Firefox).
-  * First load takes a couple of seconds (the file is ~8 MB).
 
 
 WHAT YOU'RE LOOKING AT
