@@ -4,7 +4,7 @@ CGM Mock-QSO Spectra Explorer  —  TNG50-1 galaxy sub-488530
 An interactive viewer for mock quasar absorption-line spectra through the
 circumgalactic medium (CGM) of a Milky-Way-mass galaxy from the TNG50
 cosmological simulation. It shows three UV lines — O VI, H I Lybeta, and
-C III — for 472 sightlines, and lets you vary the spectrograph settings live.
+C III — for 672 sightlines, and lets you vary the spectrograph settings live.
 
 
 HOW TO OPEN  (macOS)

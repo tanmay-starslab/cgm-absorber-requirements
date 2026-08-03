@@ -183,6 +183,20 @@ def more_grid(n=300):
     return g
 
 
+def inner_grid(n=200):
+    """200 random-orientation sightlines through the INNER CGM, impact < 50 kpc (5-49.9 kpc),
+    each with a unique seed. Small impact parameters sample the dense inner halo where absorption
+    is strong and often saturated. Distinct RNG seed so geom_ids don't collide with more_grid."""
+    g = []
+    rng = np.random.default_rng(20250804)
+    for _ in range(n):
+        b = float(rng.uniform(5, 49.9))
+        az = float(rng.uniform(0, 360))
+        g.append(dict(orientation="random", b_kpc=round(b, 1), azimuth_deg=round(az, 1),
+                      seed=int(rng.integers(1_000_000_000))))
+    return g
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "validate"
     if mode == "one":
@@ -190,9 +204,9 @@ def main():
         seed = int(sys.argv[5]) if len(sys.argv) > 5 else None
         rows = generate([dict(orientation=o, b_kpc=b, azimuth_deg=az, seed=seed)])
         append_index(rows); return
-    grid = {"validate": validation_grid, "full": full_grid, "more": more_grid}.get(
-        mode, validation_grid)()
-    skip = mode in ("full", "more")   # reuse sightlines already on disk
+    grid = {"validate": validation_grid, "full": full_grid, "more": more_grid,
+            "inner": inner_grid}.get(mode, validation_grid)()
+    skip = mode in ("full", "more", "inner")   # reuse sightlines already on disk
     print(f"[{mode}] {len(grid)} sightlines; loading cutout...", flush=True)
     rows = generate(grid, skip_existing=skip)
     append_index(rows)

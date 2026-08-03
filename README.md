@@ -84,10 +84,12 @@ export PYTHONPATH=$PWD/scripts HDF5_USE_FILE_LOCKING=FALSE MPLBACKEND=Agg
 python scripts/gen_cgm_sightlines.py validate     # ~30 sightlines (O VI sanity grid)
 python scripts/gen_cgm_sightlines.py full          # full grid (b×orient×azimuth + randoms)
 python scripts/gen_cgm_sightlines.py more          # +300 random LOS, b 65-195 kpc (unsaturated, multi-component)
+python scripts/gen_cgm_sightlines.py inner         # +200 random LOS, b < 50 kpc (dense inner CGM, often saturated)
 python scripts/gen_cgm_sightlines.py one edge-on 100 90   # a single sightline
 ```
 
-The dataset currently holds **471 sightlines**. To find the best demonstrators — sightlines with
+The dataset currently holds **672 sightlines** (incl. 200 inner-CGM random LOS at b < 50 kpc). To
+find the best demonstrators — sightlines with
 **multiple resolved, unsaturated velocity components** (where the effect of R and S/N is clearest;
 saturated black cores look identical at every R and S/N) — rank them:
 ```bash
