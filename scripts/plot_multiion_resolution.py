@@ -24,7 +24,9 @@ import cgm_style as CS                    # noqa: E402
 from degrade import degrade, C_KMS        # noqa: E402
 
 MULTI = ROOT / "data" / "multiion"
-R_COLS = [20000, 40000, 100000, None]     # None = intrinsic (R = infinity)
+R_COLS = [20000, 40000, 100000, None]     # None = intrinsic (R -> infinity)
+SKIP = {"HI1216"}                         # Lya is damped here -> uninformative black row
+VLO, VHI = -400.0, 0.0                    # velocity window actually shown
 
 PRETTY = {
     "OVI1032": r"O\,VI $\lambda$1032", "NV1239": r"N\,V $\lambda$1239",
@@ -44,12 +46,18 @@ def main():
     CS.set_style(base=13)
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     gid = args[0] if args else "rand_b012_a034_s536718143"
-    vwin = 400.0
-    if "--vwin" in sys.argv:
-        vwin = float(sys.argv[sys.argv.index("--vwin") + 1])
+    vlo, vhi = VLO, VHI
+    if "--vlo" in sys.argv:
+        vlo = float(sys.argv[sys.argv.index("--vlo") + 1])
+    if "--vhi" in sys.argv:
+        vhi = float(sys.argv[sys.argv.index("--vhi") + 1])
+    snr = None
+    if "--snr" in sys.argv:
+        snr = float(sys.argv[sys.argv.index("--snr") + 1])
+    vwin = max(abs(vlo), abs(vhi))                # degrade works on a symmetric window
 
     d = np.load(MULTI / f"multiion_{gid}.npz", allow_pickle=True)
-    lines = json.loads(str(d["lines"]))
+    lines = [l for l in json.loads(str(d["lines"])) if l["key"] not in SKIP]
     v_sys = float(d["v_sys"])
     geom = json.loads(str(d["geom"]))
 
@@ -77,24 +85,29 @@ def main():
         tau = np.asarray(d[f"{key}_tau"], float)
         v_i = C_KMS * (lam / rest - 1.0) - v_sys
         f_i = np.exp(-tau)
-        m = (v_i >= -vwin) & (v_i <= vwin)
+        m = (v_i >= vlo) & (v_i <= vhi)
         bth = b_thermal(L["A"], L["logT"])
         for c, R in enumerate(R_COLS):
             a = ax[r][c]
             a.plot(v_i[m], f_i[m], color="0.62", lw=1.0, zorder=2)        # truth reference
-            if R is None:
-                v, f = v_i[m], f_i[m]
+            if R is None:                       # intrinsic: the truth, always noiseless
+                v, f, noisy = v_i[m], f_i[m], None
             else:
-                vv, _, model = degrade(lam, tau, rest, R, None, v_sys, vwin=vwin)
-                v, f = vv, model
+                vv, nz, model = degrade(lam, tau, rest, R, snr, v_sys, vwin=vwin,
+                                        seed=17 * c + 101 * r)
+                mm = (vv >= vlo) & (vv <= vhi)
+                v, f = vv[mm], model[mm]
+                noisy = nz[mm] if snr else None
+            if noisy is not None:               # mock observation at this S/N
+                a.step(v, noisy, where="mid", color=col, lw=0.75, alpha=0.55, zorder=2.5)
             a.plot(v, f, color=col, lw=2.5, zorder=3)
             a.fill_between(v, f, 1.0, where=(f < 1.0), color=col, alpha=0.20, lw=0, zorder=1)
             a.axhline(1.0, color="0.6", ls="--", lw=0.9, zorder=0)
-            a.axvline(0.0, color="0.45", ls=":", lw=0.9, zorder=0)
-            a.set_xlim(-vwin, vwin); a.set_ylim(-0.08, 1.28)
+            a.set_xlim(vlo, vhi)
+            a.set_ylim(-0.08, 1.28) if snr is None else a.set_ylim(-0.14, 1.52)
             a.set_yticks([0, 0.5, 1.0])
             if r == 0:
-                head = (r"intrinsic  ($R=\infty$)" if R is None
+                head = (r"intrinsic  ($R\rightarrow\infty$)" if R is None
                         else rf"$R = {R:,}$   ($c/R = {C_KMS/R:.1f}$ km/s)")
                 a.set_title(head, fontsize=14, pad=9)
             if c == 0:
@@ -110,9 +123,11 @@ def main():
             if r == n - 1:
                 a.set_xlabel(r"$V_{\rm LOS}-V_{\rm sys}\ \ [\mathrm{km\,s^{-1}}]$", fontsize=12.5)
     fig.tight_layout(w_pad=0.5, h_pad=0.35)
-    p = CS.save(fig, f"multiion_resolution_{gid}")
+    tag = "" if snr is None else f"_snr{int(snr)}"
+    p = CS.save(fig, f"multiion_resolution_{gid}{tag}")
     print(f"saved {p}\n  sightline: {geom['orientation']} b={geom['b_kpc']:.0f} kpc "
-          f"Phi={geom['azimuth_deg']:.0f} deg  v_sys={v_sys:+.0f} km/s")
+          f"Phi={geom['azimuth_deg']:.0f} deg  v_sys={v_sys:+.0f} km/s  "
+          f"v-range [{vlo:.0f},{vhi:.0f}]  S/N={'noiseless' if snr is None else snr}")
     print(f"  rows (broad -> narrow): " + ", ".join(l['key'] for l in lines))
 
 
