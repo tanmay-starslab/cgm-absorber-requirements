@@ -43,7 +43,7 @@ def b_thermal(A, logT):
 
 
 def main():
-    CS.set_style(base=13)
+    CS.set_style(base=15)
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     gid = args[0] if args else "rand_b012_a034_s536718143"
     vlo, vhi = VLO, VHI
@@ -109,19 +109,21 @@ def main():
             if r == 0:
                 head = (r"intrinsic  ($R\rightarrow\infty$)" if R is None
                         else rf"$R = {R:,}$   ($c/R = {C_KMS/R:.1f}$ km/s)")
-                a.set_title(head, fontsize=14, pad=9)
+                a.set_title(head, fontsize=17, pad=10)
+            a.tick_params(labelsize=14)
+            # ion name, top-left of every panel
+            a.text(0.018, 0.90, PRETTY.get(key, key), transform=a.transAxes, color=col,
+                   fontsize=16, ha="left", va="center", fontweight="bold", zorder=10,
+                   bbox=dict(boxstyle="round,pad=0.30", fc="white", ec=col, lw=1.5))
+            # S/N, top-right, only where noise was actually added
+            if noisy is not None:
+                a.text(0.982, 0.90, rf"S/N $= {snr:g}$", transform=a.transAxes, color="0.15",
+                       fontsize=14, ha="right", va="center", zorder=10,
+                       bbox=dict(boxstyle="round,pad=0.26", fc="white", ec="0.5", lw=1.1))
             if c == 0:
-                a.set_ylabel("norm. flux", fontsize=11)
-                a.text(0.022, 0.60, PRETTY.get(key, key), transform=a.transAxes, color=col,
-                       fontsize=13.5, ha="left", va="center", fontweight="bold", zorder=10,
-                       bbox=dict(boxstyle="round,pad=0.28", fc="white", ec=col, lw=1.4))
-            if c == 3:   # annotate the intrinsic thermal width on the right
-                a.text(0.978, 0.60, rf"$b_{{\rm th}}\!\approx\!{bth:.1f}$ km/s",
-                       transform=a.transAxes, ha="right", va="center", fontsize=10.5,
-                       color="0.2", zorder=10,
-                       bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="0.75", lw=0.8))
+                a.set_ylabel("norm. flux", fontsize=16)
             if r == n - 1:
-                a.set_xlabel(r"$V_{\rm LOS}-V_{\rm sys}\ \ [\mathrm{km\,s^{-1}}]$", fontsize=12.5)
+                a.set_xlabel(r"$V_{\rm LOS}-V_{\rm sys}\ \ [\mathrm{km\,s^{-1}}]$", fontsize=17)
     fig.tight_layout(w_pad=0.5, h_pad=0.35)
     tag = "" if snr is None else f"_snr{int(snr)}"
     p = CS.save(fig, f"multiion_resolution_{gid}{tag}")
