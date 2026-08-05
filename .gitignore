@@ -18,3 +18,6 @@ delivery/_webdata.json
 delivery/CGM_Explorer.html
 delivery/_test_*.png
 delivery/_wasm_*.png
+
+# multi-ion ray products (regenerable: gen_multiion_sightline.py, ~large)
+data/multiion/*.npz
