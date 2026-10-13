@@ -5,6 +5,7 @@ What S/N and spectral resolving power does it take to **detect** a circumgalacti
 CGM transitions, with publication figures, a technical note and an interactive explainer.
 
 **Interactive explainer:** https://tanmay-starslab.github.io/cgm-absorber-requirements/ (source: `docs/index.html`)
+· **TNG50 sightline explorer:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/ (see [below](#tng50-sightline-explorer))
 
 ![Requirement matrix](figures/requirements_matrix.png)
 
@@ -46,7 +47,8 @@ absreq/        lines.py · profiles.py · detection.py · separation.py · theor
 scripts/       build_grids.py → grids/   make_figures.py → figures/   make_tables.py → paper/   export_web_data.py → docs/
 figures/       lsf_resolution, requirements_matrix, ions/<ion>_{instrument,absorber}_plane  (PDF + PNG)
 paper/         detectability_note.tex/.pdf
-docs/          interactive explainer (GitHub Pages)
+docs/          interactive explainer (GitHub Pages); docs/tng50/ TNG50 sightline explorer
+tngsight/ server/ deploy/ tng50/   TNG50 explorer: library, API server, deployment, original app
 tests/         analytic limits and thin-line agreement
 ```
 
@@ -61,6 +63,53 @@ python scripts/make_tables.py && (cd paper && pdflatex detectability_note.tex)
 python scripts/export_web_data.py
 ```
 
+## TNG50 sightline explorer
+
+A second page applies the same instrument question to simulated absorbers. It holds 672 quasar
+sightlines through the CGM of TNG50-1 subhalo 488530 at z = 0, in O VI 1032, H I Lyβ and C III 977.
+You can degrade them to any pair of (R, S/N) setups in the browser, and request new geometries
+(face-on, edge-on or random; impact parameter b ≤ 300 kpc; azimuth Φ). New geometries are cast with
+yt + Trident on demand. The velocity axis is V = c(λ/λ₀ − 1) + v_sys, which puts the galaxy at V = 0.
+The LSF is a Gaussian with FWHM = λ₀/R, with the kernel width set from the generation step
+dλ = 0.002 Å (not the median pixel step of the float32 grid), so the FWHM is exact. See
+[`tng50/README.md`, "Corrections (2026-10)"](tng50/README.md#corrections-2026-10-velocity-frame-and-dλ)
+for both fixes and for which committed figures and CSVs predate them.
+
+- **Page:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/ (source: `docs/tng50/`)
+- **API backend (HF Space):** `https://<user>-<space>.hf.space` (placeholder until the Space is deployed)
+- **Data:** private HF dataset `tanmay-starslab/tng50-sub488530-cgm` (slim cutout, slim ion table, library)
+
+```
+ GitHub Pages: docs/tng50/              HF Space (Docker): server.app            laptop
+ static page + library (.bin)           coordinator + fallback compute          ────────────────────
+ ───────────────────────────            ───────────────────────────────          serve.sh  127.0.0.1:8787
+ renders spectra natively in JS         job queue, SSE progress, figures         (local page backend)
+ POST /api/sightlines  ───────────────▶ canonicalize → library hit?  ◀─ lease ── worker.sh: pulls jobs
+ SSE /api/jobs/{id}/events ◀─────────── progress / done                ── result ▶ over HTTPS, computes
+ GET /api/sightline/{id}.bin ◀───────── npz → web binary                          on the slim cutout
+                                        HFSync ⇄ private HF dataset (generated/)
+```
+
+The page always loads the static library from its own `data/`, so it works with no backend. It
+probes `http://127.0.0.1:8787` and then the Space, and uses the first healthy one for generation and
+for publication figures (`POST /api/figure`).
+
+Run it locally (macOS setup with the work volume at `$WORK`, e.g. `WORK=/Volumes/cgm_work`):
+
+```bash
+pip install -r requirements-tng.txt     # plus trident (patched) and yt_astro_analysis: see deploy/hf_space/Dockerfile
+deploy/laptop/serve.sh                  # backend on 127.0.0.1:8787
+(cd docs && python3 -m http.server 8000)        # then open http://127.0.0.1:8000/tng50/
+```
+
+Layout: `tngsight/` (geometry, degrade, npz/web formats, generator), `server/` (FastAPI),
+`deploy/` (data build, HF Space, laptop scripts), `tng50/` (the original app and scripts, with
+history). Rebuild, deployment and worker commands are in
+[`docs/TNG50_OPERATIONS.md`](docs/TNG50_OPERATIONS.md).
+
+Credits: IllustrisTNG / TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), Trident (Hummels et
+al. 2017), yt (Turk et al. 2011).
+
 ## Caveats
 
 Gaussian LSF (the HST/COS LSF has broad wings, so COS-like numbers are optimistic); Doppler cores only;
@@ -69,4 +118,18 @@ constant continuum noise. Nominal instrument resolving powers are indicative.
 
 ## Licence
 
-MIT, © 2026 Tanmay Singh. The Trident line list is redistributed under its BSD-3 licence.
+Code: MIT, © 2026 Tanmay Singh ([`LICENSE`](LICENSE)). This covers all code here, including the
+TNG50 explorer (`tngsight/`, `server/`, `deploy/`, `tng50/`, `docs/tng50/`).
+
+Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full texts):
+
+- **Trident** (BSD-3, © Trident Development Team): the line list `absreq/data/trident_lines.txt` is
+  redistributed under its licence, and `deploy/hf_space/trident_doppler_only.patch` is derived from
+  Trident source and is BSD-3, not MIT.
+- **yt** (BSD-3, © yt Development Team): a dependency, not vendored.
+- **TNG50 data.** The TNG50-derived spectra and library (`docs/tng50/data/`, the npz library, the
+  private HF dataset) are not MIT. They are redistributed under the
+  [IllustrisTNG data policy](https://www.tng-project.org/data/), which asks you to cite
+  Nelson et al. 2019 (ComAC 6, 2; MNRAS 490, 3234) and Pillepich et al. 2019 (MNRAS 490, 3196).
+  Please also cite Trident (Hummels, Smith & Silvia 2017, ApJ 847, 59) and yt (Turk et al. 2011,
+  ApJS 192, 9).

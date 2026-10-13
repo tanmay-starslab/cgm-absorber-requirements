@@ -5,3 +5,20 @@ __pycache__/
 *.out
 .ipynb_checkpoints/
 .DS_Store
+.serena/
+.pytest_cache/
+# TNG50 explorer: local build outputs (data lives on /Volumes/cgm_work, never in the repo)
+space_build/
+scratch/
+*.ewah
+config.tri
+yt.toml
+# generated sightlines / cutouts / secrets, wherever TNG_LIBRARY_DIR etc. point
+# (add a `!path/to/fixture.npz` exception here if a fixture is ever needed)
+*.npz
+!grids/*.npz
+*.h5
+*.hdf5
+generated/
+.env
+.claude/

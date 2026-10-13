@@ -1,3 +1,7 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Detect &amp; Resolve: CGM Absorbers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
@@ -78,6 +82,7 @@ td.col-on{background:color-mix(in srgb,var(--accent) 9%,transparent)}
 <div class="wrap">
 <header>
   <span class="label">Interactive companion to <span class="mono">cgm-absorber-requirements</span></span>
+  <nav class="label" aria-label="Pages"><a href="./" aria-current="page" style="color:var(--ink);text-decoration:none">Detect &amp; resolve</a> · <a href="tng50/" style="color:var(--accent);text-decoration:none">TNG50 sightlines</a></nav>
   <h1>What does it take to detect an absorber, and to split it into components?</h1>
   <p class="lede">Every number here is computed from real atomic data (Trident line list, plus Morton 2003 and Verner et al. 1996 where Trident has no entry) and the same model as the paper figures: Doppler profiles, a Gaussian line-spread function, and matched-filter statistics with S/N quoted per resolution element.</p>
 </header>
@@ -146,7 +151,7 @@ td.col-on{background:color-mix(in srgb,var(--accent) 9%,transparent)}
   <div class="tablebox"><table id="tbl"></table></div>
 </section>
 
-<p class="foot">Model: Doppler cores (damping wings neglected), Gaussian LSF, constant continuum noise, 3 pixels per resolution element for the noise illustration. Fiducial b combines the thermal width at a representative temperature with 5 km/s of turbulence. Significances are expected (median) values. Source and paper-quality figures: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>.</p>
+<p class="foot">Model: Doppler cores (damping wings neglected), Gaussian LSF, constant continuum noise, 3 pixels per resolution element for the noise illustration. Fiducial b combines the thermal width at a representative temperature with 5 km/s of turbulence. Significances are expected (median) values. Source and paper-quality figures: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>. Companion page: <a href="tng50/">mock quasar sightlines through a TNG50 galaxy</a> (O VI, H I Ly&beta;, C III), degraded live to any resolution and S/N.</p>
 </div>
 
 <script>
