@@ -1,0 +1,7 @@
+# Transitions absent from the Trident line list (trident-project/trident, data/line_lists/lines.txt).
+# Values from Morton (2003, ApJS 149, 205) for UV lines and Verner, Verner & Ferland (1996) for O VII.
+#Ion        Wavelength [A]           gamma         f_value       source
+Mg II          2796.354000    2.625e+08    6.155e-01      Morton2003
+Mg II          2803.531000    2.595e+08    3.058e-01      Morton2003
+Si IV          1393.755000    8.800e+08    5.130e-01      Morton2003
+O VII            21.601900    3.320e+12    6.960e-01      Verner1996
