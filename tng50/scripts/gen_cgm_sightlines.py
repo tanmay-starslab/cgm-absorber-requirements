@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """Generate CGM mock-QSO sightlines + HIGH-RES NOISELESS spectra for sub-488530.
 
-Loads the TNG cutout ONCE, adds O VI / C III / H I ion fields, then for each sightline in a grid
-casts a Trident ray (±R200c, impact 50-150 kpc, chosen orientation/azimuth) and generates a fine,
-noiseless optical-depth spectrum for O VI 1032, H I Lyβ 1026, C III 977 with
-use_peculiar_velocity=True, use_doppler_redshift_only=True. Resolution (R) and S/N are applied
-LATER as post-processing (degrade.py), so these products are instrument-independent.
+Thin CLI over tngsight.generate.Generator: loads the cutout ONCE (tngsight.config.cutout_path(),
+the slim r-hsml<400 kpc file by default; yt index at config.index_path(), never next to the
+cutout), adds O VI / C III / H I ion fields, then for each sightline casts a Trident ray (±R200c)
+and makes a noiseless optical-depth spectrum for O VI 1032, H I Lyβ 1026, C III 977 at
+dλ = 0.002 Å with use_peculiar_velocity=True, use_doppler_redshift_only=True (trident fork).
+R and S/N are applied later (degrade.py), so these products are instrument-independent.
 
-Per sightline saved to data/sightlines/cgm_sid488530_<geomid>.npz:
-  <ion>_lambda, <ion>_tau (high-res, noiseless) for ion in {OVI,HILyb,CIII}; geometry; v_sys;
-  logN_<ion> (integrated ion column from the ray, for validation).
+Per sightline saved (tngsight.library.save_npz, the original key order/dtypes) to
+cgm_paths.generated_dir()/<geomid>.npz  (= <TNG_LIBRARY_DIR>/generated, the server's location):
+  <ion>_lambda, <ion>_tau, <ion>_rest for ion in {OVI,HILyb,CIII}; geom; v_sys; logN_<ion>.
+Index rows are appended to cgm_paths.out_dir()/grid_index.csv. Run from a directory holding
+config.tri (trident reads ./config.tri at import), e.g. /Volumes/cgm_work/run.
 
 Usage:
   python gen_cgm_sightlines.py validate      # ~30 sightlines for the O VI sanity check
   python gen_cgm_sightlines.py full          # the full ~200 grid
-  python gen_cgm_sightlines.py one <orient> <b> <az> [seed]   # a single sightline (GUI on-demand)
+  python gen_cgm_sightlines.py one <orient> <b> <az> [seed]   # a single sightline (seed required for random)
 """
 from __future__ import annotations
-import os, sys, json, itertools
+import os, sys
 from pathlib import Path
 import numpy as np
 
@@ -25,118 +28,72 @@ os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 os.environ.setdefault("MPLBACKEND", "Agg")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-import h5py                     # noqa: E402
-import yt                       # noqa: E402
-import trident                  # noqa: E402
-yt.set_log_level(50)
+import cgm_paths as P           # noqa: E402
 import cgm_geometry as G        # noqa: E402
+from tngsight import config as TC              # noqa: E402
+from tngsight.library import save_npz          # noqa: E402
 
 GAL = G.GAL
-DATA = ROOT / "data" / "sightlines"; DATA.mkdir(parents=True, exist_ok=True)
-INDEX = ROOT / "data" / "grid_index.csv"
-C_KMS = GAL["C_KMS"]
-LINES = GAL["lines"]            # OVI, HILyb, CIII: trident_line, field, rest_A, f, label
-VWIN_KMS = 1500.0               # ± velocity window per line
-DLAMBDA = 0.002                 # Å; ~0.6 km/s/pixel at ~1000 Å (high-res underlying spectrum)
-RAY_FIELDS = [("gas", "density"), ("gas", "temperature"), ("gas", "metallicity"),
-              ("gas", "H_number_density")] + [("gas", L["field"]) for L in LINES.values()]
-COL_CONST = 2.654e-15           # pi e^2/(m_e c) cgs, for reference (not used for column here)
+C_KMS = TC.C_KMS
+LINES = TC.LINES                # OVI, HILyb, CIII: trident_line, field, rest_A, f, label
+VWIN_KMS = TC.VWIN_GEN_KMS      # ± velocity window per line
+DLAMBDA = TC.DLAMBDA            # Å; ~0.6 km/s/pixel at ~1000 Å (high-res underlying spectrum)
 
 
-def load_ds():
-    ds = yt.load(GAL["cutout_hdf5"])
-    # alias GFM_Metallicity -> metallicity if needed
-    if ("gas", "metallicity") not in ds.derived_field_list:
-        def _Z(field, data):
-            return data["PartType0", "GFM_Metallicity"]
-        ds.add_field(("gas", "metallicity"), function=_Z, sampling_type="local",
-                     units="", force_override=True)
-    trident.add_ion_fields(ds, ions=[L["ion"] for L in LINES.values()], ftype="gas")
-    return ds
+def out_path(gid):
+    return P.generated_dir(create=True) / f"{gid}.npz"
 
 
-def cast_ray(ds, geom, tmp):
-    p0 = ds.arr(np.array(geom["start_ckpch"], float), "code_length")
-    p1 = ds.arr(np.array(geom["end_ckpch"], float), "code_length")
-    # Trident's LightRay mutates domain edges in place; hand it writable copies
-    ds.domain_left_edge = ds.domain_left_edge.copy()
-    ds.domain_right_edge = ds.domain_right_edge.copy()
-    if os.path.exists(tmp):
-        os.remove(tmp)
-    return trident.make_simple_ray(ds, start_position=p0, end_position=p1,
-                                   fields=RAY_FIELDS, ftype="gas", data_filename=tmp)
+def exists(gid):
+    try:
+        P.find_sightline(gid)
+        return True
+    except FileNotFoundError:
+        return False
 
 
-def ray_columns(tmp):
-    """Integrated ion column log10(N) = log10(sum n_ion * dl) from the ray HDF5."""
-    out = {}
-    with h5py.File(tmp, "r") as h:
-        grid = h["grid"]
-        dl = grid["dl"][()]                       # cm (Trident writes ray dl in cm)
-        for key, L in LINES.items():
-            fld = L["field"]
-            n = grid[fld][()] if fld in grid else np.zeros_like(dl)
-            N = float(np.sum(n * dl))
-            out[key] = np.log10(N) if N > 0 else -np.inf
-    return out
+def _progress(stage, frac, msg=""):
+    print(f"    {stage:<14s} {frac:4.0%} {msg}", flush=True)
 
 
-def make_line_spectrum(ray, key):
-    L = LINES[key]; rest = L["rest_A"]
-    lam_min = rest * (1 - VWIN_KMS / C_KMS); lam_max = rest * (1 + VWIN_KMS / C_KMS)
-    sg = trident.SpectrumGenerator(lambda_min=lam_min, lambda_max=lam_max, dlambda=DLAMBDA)
-    sg.make_spectrum(ray, lines=[L["trident_line"]], use_peculiar_velocity=True,
-                     use_doppler_redshift_only=True, ly_continuum=False, njobs=1)
-    lam = np.array(sg.lambda_field); tau = np.array(sg.tau_field)
-    return lam.astype(np.float32), tau.astype(np.float32)
-
-
-def generate(grid, ds=None, skip_existing=False):
-    close = ds is None
-    tmp = f"/tmp/_cgmray_{os.getpid()}.h5"
+def generate(grid, gen=None, skip_existing=False, verbose=False):
+    """Generate every geometry dict in `grid` (make_sightline kwargs). Returns index rows."""
     rows = []
-    # optionally prune already-generated sightlines BEFORE the (slow) cutout load
-    if skip_existing:
-        pruned = []
-        for params in grid:
-            gid = G.geom_id(params["orientation"], params["b_kpc"], params["azimuth_deg"],
-                            params.get("inclination_deg"))
-            if (DATA / f"cgm_sid488530_{gid}.npz").exists():
-                continue
-            pruned.append(params)
+    if skip_existing:   # prune BEFORE the (slow) cutout load; also matches legacy seedless rand_ names
+        def done(p):
+            ids = {G.geom_id(p["orientation"], p["b_kpc"], p["azimuth_deg"], p.get("inclination_deg"), sd)
+                   for sd in (p.get("seed"), None)}
+            return any(exists(g) for g in ids)
+        pruned = [p for p in grid if not done(p)]
         print(f"  skip_existing: {len(grid)-len(pruned)} already done, {len(pruned)} to generate",
               flush=True)
         grid = pruned
     if not grid:
         return rows
-    if ds is None:
-        ds = load_ds()
+    if gen is None:
+        from tngsight.generate import Generator
+        gen = Generator()
+        gen.load(progress=_progress if verbose else None)
     for i, params in enumerate(grid):
-        geom = G.make_sightline(**params)
         gid = G.geom_id(params["orientation"], params["b_kpc"], params["azimuth_deg"],
                         params.get("inclination_deg"), params.get("seed"))
-        ray = cast_ray(ds, geom, tmp)
-        cols = ray_columns(tmp)
-        rec = dict(geom_id=gid, v_sys=geom["v_sys_kms"], **{f"log{k}": cols[k] for k in LINES})
-        payload = dict(geom=json.dumps(geom), v_sys=geom["v_sys_kms"], **{f"logN_{k}": cols[k] for k in LINES})
-        for key in LINES:
-            lam, tau = make_line_spectrum(ray, key)
-            payload[f"{key}_lambda"] = lam; payload[f"{key}_tau"] = tau; payload[f"{key}_rest"] = LINES[key]["rest_A"]
-        np.savez_compressed(DATA / f"cgm_sid488530_{gid}.npz", **payload)
-        rec.update(orientation=params["orientation"], b_kpc=params["b_kpc"],
-                   azimuth_deg=params["azimuth_deg"], file=f"cgm_sid488530_{gid}.npz")
-        rows.append(rec)
-        print(f"  [{i+1}/{len(grid)}] {gid}  v_sys={geom['v_sys_kms']:+.0f}  "
+        geom = dict(orientation=params["orientation"], b_kpc=params["b_kpc"],
+                    azimuth_deg=params["azimuth_deg"], seed=params.get("seed"), id=gid)
+        pl = gen.generate(geom, progress=_progress if verbose else None)
+        fn = out_path(gid)
+        save_npz(fn, pl["geom"], pl["logN"], pl["tau"])
+        cols = pl["logN"]
+        rows.append(dict(geom_id=gid, v_sys=pl["v_sys"], **{f"log{k}": cols[k] for k in LINES},
+                         orientation=params["orientation"], b_kpc=params["b_kpc"],
+                         azimuth_deg=params["azimuth_deg"], file=fn.name))
+        print(f"  [{i+1}/{len(grid)}] {gid}  v_sys={pl['v_sys']:+.0f}  "
               f"logN: OVI={cols['OVI']:.2f} HILyb={cols['HILyb']:.2f} CIII={cols['CIII']:.2f}", flush=True)
-    if os.path.exists(tmp):
-        os.remove(tmp)
-    if close:
-        del ds
     return rows
 
 
 def append_index(rows):
     import pandas as pd
+    INDEX = P.out_dir() / "grid_index.csv"
     df = pd.DataFrame(rows)
     if INDEX.exists():
         old = pd.read_csv(INDEX)
@@ -202,7 +159,9 @@ def main():
     if mode == "one":
         o, b, az = sys.argv[2], float(sys.argv[3]), float(sys.argv[4])
         seed = int(sys.argv[5]) if len(sys.argv) > 5 else None
-        rows = generate([dict(orientation=o, b_kpc=b, azimuth_deg=az, seed=seed)])
+        c = G.canonicalize(o, b, az, seed)     # ValueError: random needs a seed, b <= B_MAX_KPC
+        rows = generate([dict(orientation=c["orientation"], b_kpc=c["b_kpc"],
+                              azimuth_deg=c["azimuth_deg"], seed=c["seed"])], verbose=True)
         append_index(rows); return
     grid = {"validate": validation_grid, "full": full_grid, "more": more_grid,
             "inner": inner_grid}.get(mode, validation_grid)()

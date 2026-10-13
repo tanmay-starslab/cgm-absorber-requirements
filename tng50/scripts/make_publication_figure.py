@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """3x4 publication figure for one CGM sightline: 3 rows (O VI 1032, H I Lyβ, C III 977) x 4
-columns (instrument setups). x-axis = V_LOS − V_sys. Thick vivid curves, major+minor ticks,
+columns (instrument setups). x-axis = V = c(λ/λ0−1) + v_sys (galaxy systemic at 0). Thick vivid curves, major+minor ticks,
 beautiful ion-line labels, x/y labels, NO title. Resolution R (Gaussian LSF) and S/N
 (per-resolution-element) are applied live from the stored high-res noiseless spectra.
 
-Usage: python make_publication_figure.py <geom_id | npz path> [Rlo Rhi SNhi SNlo]
+Usage: python make_publication_figure.py <geom_id | npz path> [Rlo Rhi SNhi SNlo] [intrinsic]
+Sightlines are looked up in cgm_paths.sightlines_dir() then generated_dir(); output goes to
+tngsight.config.figdir() (env TNG_FIGDIR). The server's version is tngsight.figure.build_figure.
 """
 from __future__ import annotations
 import sys, json
@@ -15,20 +17,16 @@ import matplotlib.pyplot as plt
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import cgm_style as CS              # noqa: E402
-from degrade import degrade, C_KMS  # noqa: E402
+from degrade import degrade, velocity_axis  # noqa: E402
 
-DATA = ROOT / "data" / "sightlines"
 # columns in the order the user specified: (Rlo,SNhi),(Rhi,SNhi),(Rlo,SNlo),(Rhi,SNlo)
 DEF_RLO, DEF_RHI, DEF_SNHI, DEF_SNLO = 20000, 40000, 8, 5
 VWIN = 400.0                    # km/s x-range
 
 
 def load_sightline(which):
-    p = Path(which)
-    if not p.exists():
-        p = DATA / (which if which.endswith(".npz") else f"cgm_sid488530_{which}.npz")
-    d = np.load(p, allow_pickle=True)
-    return d
+    import cgm_paths                 # lazy: build_figure alone also runs in the Pyodide bundle
+    return np.load(cgm_paths.find_sightline(which), allow_pickle=True)
 
 
 def _columns(Rlo, Rhi, SNhi, SNlo):
@@ -48,7 +46,7 @@ def build_figure(data, Rlo=DEF_RLO, Rhi=DEF_RHI, SNhi=DEF_SNHI, SNlo=DEF_SNLO,
         col = CS.ION[key]["color"]
         # intrinsic (unconvolved) spectrum on the native velocity grid — same behind all 4 columns
         if show_intrinsic:
-            v_hi = C_KMS * (lam / rest - 1.0) - v_sys
+            v_hi = velocity_axis(lam, rest, v_sys)
             f_hi = np.exp(-tau)
             m_hi = (v_hi >= -vwin) & (v_hi <= vwin)
             v_hi, f_hi = v_hi[m_hi], f_hi[m_hi]

@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """Self-contained publication style for the CGM spectra figures (no dependency on m61).
 Computer-Modern usetex serif (auto-detected), inward major+minor ticks on all sides, thick
-spines, framed legends, vivid thick per-ion colours. pdf+png export at high dpi."""
+spines, framed legends, vivid thick per-ion colours. pdf+png export at high dpi.
+Figures go to tngsight.config.figdir() (env TNG_FIGDIR, default <library>/figures)."""
 from __future__ import annotations
-import shutil
+import shutil, sys
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-FIGDIR = Path("<SCRATCH>/cgm_qso_488530/figures")
+try:
+    import tngsight  # noqa: F401
+except ImportError:                                   # plain script run: add the repo root
+    sys.path.insert(1, str(Path(__file__).resolve().parents[2]))
+from tngsight import config as _TC  # noqa: E402
+
+FIGDIR = _TC.figdir()
 
 # vivid, saturated, well-separated ion colours + LaTeX line labels
 ION = {

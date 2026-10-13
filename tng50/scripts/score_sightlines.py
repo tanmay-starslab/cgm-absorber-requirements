@@ -15,50 +15,35 @@ A per-sightline composite favours O VI (the ion whose R/S-N response is cleanest
 multi-ion richness. Writes the metrics back into grid_index.csv, a sorted showcase_ranking.csv,
 and (optionally) renders the top-N publication figures.
 
+The metrics are tngsight.scoring.ion_metrics (shared with the server), so they now use the fixed
+velocity frame and dlam = 0.002 A; scores can differ slightly from the committed tng50/data CSVs,
+which are the historical (pre-fix) values. Outputs go to cgm_paths.out_dir() (env TNG_LEGACY_OUT),
+never into the repo; the committed grid_index.csv is only read, as the base for the merge.
+
 Usage: python score_sightlines.py [--render N]
 """
 from __future__ import annotations
-import sys, json, glob
+import sys, json
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from scipy.signal import find_peaks
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from degrade import degrade                       # noqa: E402
+import cgm_paths as P                              # noqa: E402
 import cgm_style as CS                             # noqa: E402
+from tngsight.scoring import ion_metrics           # noqa: E402,F401  (n_comp/min_flux/depth/unsat/score/showcase)
 
-DATA = ROOT / "data" / "sightlines"
-INDEX = ROOT / "data" / "grid_index.csv"
-RANK = ROOT / "data" / "showcase_ranking.csv"
+INDEX = P.repo_data() / "grid_index.csv"           # committed catalog, read-only base for the merge
 VWIN = 400.0
 R_EVAL = 40000
 ION_W = {"OVI": 1.5, "CIII": 0.6, "HILyb": 0.35}   # O VI weighted most (cleanest R/S-N demo)
 
 
-def ion_metrics(lam, tau, rest, v_sys):
-    _, _, model = degrade(lam, tau, rest, R_EVAL, None, v_sys, vwin=VWIN)
-    d = 1.0 - model
-    # distinct components: >=20% deep, prominence >=0.12, >=~12 km/s apart (distance 8 px @1.5 km/s)
-    peaks, _ = find_peaks(d, height=0.20, prominence=0.12, distance=8)
-    n_comp = int(peaks.size)
-    min_flux = float(model.min())
-    depth = 1.0 - min_flux
-    absorbed = model < 0.85
-    n_abs = int(absorbed.sum())
-    frac_black = (float((model < 0.05).sum()) / n_abs) if n_abs else 0.0
-    unsat = 1.0 - frac_black
-    score = n_comp * unsat * min(depth, 0.9)
-    showcase = (n_comp >= 2) and (min_flux > 0.06) and (depth >= 0.35)
-    return dict(n_comp=n_comp, min_flux=min_flux, depth=depth, unsat=unsat,
-                score=float(score), showcase=bool(showcase))
-
-
 def score_file(fp):
     d = np.load(fp, allow_pickle=True)
     geom = json.loads(str(d["geom"])); v_sys = float(d["v_sys"])
-    rec = dict(file=Path(fp).name, geom_id=Path(fp).stem.replace("cgm_sid488530_", ""),
+    rec = dict(file=Path(fp).name, geom_id=P.gid_of(fp),
                orientation=geom["orientation"], b_kpc=float(geom["b_kpc"]),
                azimuth_deg=float(geom["azimuth_deg"]), v_sys=v_sys)
     comp = 0.0
@@ -82,7 +67,8 @@ def main():
     render_n = 0
     if "--render" in sys.argv:
         render_n = int(sys.argv[sys.argv.index("--render") + 1])
-    files = sorted(glob.glob(str(DATA / "*.npz")))
+    files = [str(f) for f in P.library_files()]
+    out = P.out_dir()
     print(f"scoring {len(files)} sightlines on the R={R_EVAL:,} model ...", flush=True)
     rows = [score_file(f) for f in files]
     df = pd.DataFrame(rows).sort_values("showcase_score", ascending=False).reset_index(drop=True)
@@ -94,9 +80,9 @@ def main():
     if INDEX.exists():
         idx = pd.read_csv(INDEX)
         idx = idx.drop(columns=[c for c in score_cols if c in idx.columns], errors="ignore")
-        idx = idx.merge(df[["file"] + score_cols], on="file", how="left")
-        idx.to_csv(INDEX, index=False)
-    df.to_csv(RANK, index=False)
+        idx = idx.merge(df[["geom_id"] + score_cols], on="geom_id", how="left")   # file names vary by library
+        idx.to_csv(out / "grid_index.csv", index=False)
+    df.to_csv(out / "showcase_ranking.csv", index=False)
 
     n_ovi = int(df.ovi_showcase.sum())
     n_multi = int((df.n_showcase_ions >= 1).sum())
@@ -108,16 +94,16 @@ def main():
         print(f"{r['rank']:>4} {r.geom_id:<26} {int(r.OVI_n_comp):>4} {r.OVI_min_flux:>6.2f} "
               f"{int(r.CIII_n_comp):>5} {int(r.HILyb_n_comp):>4} {r.showcase_score:>6.2f}  "
               f"{r.logN_OVI:.2f}/{r.logN_HILyb:.2f}/{r.logN_CIII:.2f}")
-    print(f"\nwrote {RANK}  and merged scores into {INDEX}")
+    print(f"\nwrote {out}/showcase_ranking.csv and {out}/grid_index.csv (scores merged into {INDEX})")
 
     if render_n > 0:
         import make_publication_figure as MPF
         CS.set_style()
         for _, r in df.head(render_n).iterrows():
-            data = np.load(DATA / r.file, allow_pickle=True)
+            data = np.load(P.find_sightline(r.geom_id), allow_pickle=True)
             fig, _ = MPF.build_figure(data)
             CS.save(fig, f"showcase_rank{int(r['rank']):02d}_{r.geom_id}")
-        print(f"rendered top {render_n} showcase figures -> figures/showcase_rank*.png")
+        print(f"rendered top {render_n} showcase figures -> {CS.FIGDIR}/showcase_rank*.png")
 
 
 if __name__ == "__main__":

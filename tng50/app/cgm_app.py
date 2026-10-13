@@ -3,31 +3,38 @@
 
 Two S/N sliders (2-20), two R selectors, orientation / impact / azimuth controls + Submit; a
 scrollable gallery of pre-generated sightlines; the on-screen 3x4 figure is the *publication*
-figure (make_publication_figure). Spectral resolution R (Gaussian LSF) and S/N (per resolution
-element) are applied LIVE from cached high-res noiseless spectra — instant. Only a NEW geometry
-triggers a Trident ray-cast, which is saved to data/sightlines/ + grid_index.csv and immediately
-becomes scrollable. Download the exact 240-dpi publication PDF/PNG.
+figure (make_publication_figure). Spectral resolution R (Gaussian LSF, dλ = 0.002 Å) and S/N (per
+resolution element) are applied LIVE from cached high-res noiseless spectra — instant, on the
+fixed velocity axis V = c(λ/λ0−1) + v_sys (galaxy systemic at 0). Only a NEW geometry triggers a
+Trident ray-cast (tngsight.generate.Generator on tngsight.config.cutout_path()); the result is saved
+to <TNG_LIBRARY_DIR>/generated/<id>.npz — never into the repo or the read-only originals — and
+immediately becomes scrollable. Download the exact 240-dpi publication PDF/PNG.
 
-Run:  panel serve app/cgm_app.py --show --autoreload  (or --port 8050)
+Run (from a directory holding config.tri, e.g. /Volumes/cgm_work/run, see tng50/README.md):
+  panel serve <repo>/tng50/app/cgm_app.py --address 127.0.0.1 --port 8050 \
+      --allow-websocket-origin=127.0.0.1:8050 --show
 """
 from __future__ import annotations
-import os, sys, io, json, shutil
+import sys, io, json, shutil
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import panel as pn
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import cgm_paths as P                # noqa: E402  (also puts the repo root on sys.path)
 import cgm_style as CS               # noqa: E402
 import cgm_geometry as G             # noqa: E402
 from make_publication_figure import build_figure  # noqa: E402
+from tngsight import config as TC                 # noqa: E402
+from tngsight.library import load_npz as load_payload, save_npz  # noqa: E402
 
-DATA = ROOT / "data" / "sightlines"
-INDEX = ROOT / "data" / "grid_index.csv"
+INDEX = P.repo_data() / "grid_index.csv"   # library catalog + showcase scores (read-only)
 HAS_LATEX = shutil.which("latex") is not None and shutil.which("dvipng") is not None
 ACCENT = "#1D4E89"
 
@@ -35,26 +42,58 @@ pn.extension(notifications=True, sizing_mode="stretch_width")
 CS.set_style(usetex=False, base=13)   # fast mathtext for the live pane; export re-styles to LaTeX
 
 # --------------------------------------------------------------------------- data access
+_SCORES = {}      # generated npz path -> (mtime, score record); scored once with tngsight.scoring
+
+
+def _generated_rows() -> list:
+    from tngsight.scoring import score_payload
+    rows = []
+    gd = P.generated_dir()
+    for f in sorted(gd.glob("*.npz")) if gd.is_dir() else []:
+        try:
+            mt = f.stat().st_mtime
+            if _SCORES.get(str(f), (None,))[0] != mt:
+                pl = load_payload(f)
+                g = pl["geom"]
+                _SCORES[str(f)] = (mt, dict(geom_id=pl["id"], orientation=g["orientation"],
+                                            b_kpc=float(g["b_kpc"]), azimuth_deg=float(g["azimuth_deg"]),
+                                            v_sys=pl["v_sys"], **score_payload(pl)))
+            rows.append(dict(_SCORES[str(f)][1], file=str(f), generated=True))
+        except Exception as e:             # noqa: BLE001  (a half-written or foreign file)
+            print(f"skipping {f.name}: {type(e).__name__}: {e}", flush=True)
+    return rows
+
+
 def read_index() -> pd.DataFrame:
-    if INDEX.exists() and INDEX.stat().st_size > 0:
-        df = pd.read_csv(INDEX)
-        if "showcase_score" in df.columns:      # best multi-component/unsaturated first
-            return df.sort_values("showcase_score", ascending=False,
-                                  na_position="last").reset_index(drop=True)
-        order = {"face-on": 0, "edge-on": 1, "random": 2}
-        df["_o"] = df.orientation.map(lambda o: order.get(o, 3))
-        return df.sort_values(["_o", "b_kpc", "azimuth_deg"]).reset_index(drop=True)
-    return pd.DataFrame(columns=["geom_id", "orientation", "b_kpc", "azimuth_deg", "file"])
+    """Library rows (committed grid_index.csv; files resolved in the sightlines dir) + generated rows."""
+    df = pd.read_csv(INDEX) if INDEX.exists() and INDEX.stat().st_size > 0 else pd.DataFrame()
+    if len(df):                                 # library files: <id>.npz or cgm_sid488530_<id>.npz
+        have = {P.gid_of(f): str(f) for f in P.sightlines_dir().glob("*.npz")}
+        df["file"] = [have.get(g) for g in df.geom_id]
+        df = df[df.file.notna()]
+    gen = pd.DataFrame(_generated_rows())
+    if len(gen):
+        gen = gen[~gen.geom_id.isin(df.geom_id)] if len(df) else gen
+        df = pd.concat([df, gen], ignore_index=True)
+    if not len(df):
+        return pd.DataFrame(columns=["geom_id", "orientation", "b_kpc", "azimuth_deg", "file"])
+    if "showcase_score" in df.columns:          # best multi-component/unsaturated first
+        return df.sort_values("showcase_score", ascending=False,
+                              na_position="last", kind="stable").reset_index(drop=True)
+    return df.reset_index(drop=True)
 
 
 def label_of(r) -> str:
     tag = {"face-on": "face", "edge-on": "edge", "random": "rand"}.get(r.orientation, r.orientation)
     star = ""
-    if bool(r.get("ovi_showcase", False)):
+    if r.get("ovi_showcase", False) in (True, 1):   # NaN (unscored) is not a star
         star = "★ "                               # O VI multi-component & unsaturated (best demo)
     elif (r.get("n_showcase_ions", 0) or 0) >= 1:
         star = "☆ "                               # some ion is showcase-quality
-    return f"{star}{tag}   b={r.b_kpc:g} kpc   Φ={r.azimuth_deg:g}°"
+    sd = str(r.geom_id).rsplit("_s", 1)[1] if "_s" in str(r.geom_id) else ""
+    seed = f"   seed {sd}" if sd else ""          # labels must be unique: same (b, Φ), other seed
+    new = "   • new" if r.get("generated", False) is True else ""
+    return f"{star}{tag}   b={r.b_kpc:g} kpc   Φ={r.azimuth_deg:g}°{seed}{new}"
 
 
 def options_map(df, showcase_only=False) -> dict:
@@ -68,47 +107,31 @@ def current_options():
 
 
 def load_npz(fname):
-    return np.load(DATA / fname, allow_pickle=True)
+    return np.load(fname, allow_pickle=True)
 
 
-# ------------------------------------------------------ on-demand ray generation (lazy, cached ds)
-_GEN = {"mod": None, "ds": None}
-
-def _gen_mod():
-    if _GEN["mod"] is None:
-        import importlib
-        _GEN["mod"] = importlib.import_module("gen_cgm_sightlines")
-    return _GEN["mod"]
+# ------------------------------------------------------ on-demand ray generation (lazy, warm Generator)
+_GEN = {"gen": None}
 
 
-def ensure_sightline(orientation, b, az, seed=None):
-    """Return (fname, generated?). Load from cache if present, else cast a Trident ray and save."""
-    gid = G.geom_id(orientation, b, az, seed=seed)
-    fname = f"cgm_sid488530_{gid}.npz"
-    if (DATA / fname).exists():
-        return fname, False
-    gm = _gen_mod()
-    if _GEN["ds"] is None:
-        _GEN["ds"] = gm.load_ds()                      # ~1 min, first off-grid request only
-    ds = _GEN["ds"]
-    geom = G.make_sightline(orientation, float(b), float(az), seed=seed)
-    tmp = f"/tmp/_cgmray_gui_{os.getpid()}.h5"
-    ray = gm.cast_ray(ds, geom, tmp)
-    cols = gm.ray_columns(tmp)
-    payload = dict(geom=json.dumps(geom), v_sys=geom["v_sys_kms"],
-                   **{f"logN_{k}": cols[k] for k in gm.LINES})
-    for key in gm.LINES:
-        lam, tau = gm.make_line_spectrum(ray, key)
-        payload[f"{key}_lambda"] = lam; payload[f"{key}_tau"] = tau
-        payload[f"{key}_rest"] = gm.LINES[key]["rest_A"]
-    np.savez_compressed(DATA / fname, **payload)
-    rec = dict(geom_id=gid, v_sys=geom["v_sys_kms"], orientation=str(orientation),
-               b_kpc=float(b), azimuth_deg=float(az), file=fname,
-               **{f"log{k}": cols[k] for k in gm.LINES})
-    gm.append_index([rec])
-    if os.path.exists(tmp):
-        os.remove(tmp)
-    return fname, True
+def _generator():
+    if _GEN["gen"] is None:
+        from tngsight.generate import Generator
+        _GEN["gen"] = Generator()
+    return _GEN["gen"]
+
+
+def ensure_sightline(orientation, b, az, seed=None, progress=None):
+    """Return (path, generated?). Load from the library/generated dir if present, else cast a ray."""
+    c = G.canonicalize(orientation, b, az, seed)       # ValueError on bad input (b range, seed)
+    try:
+        return str(P.find_sightline(c["id"])), False
+    except FileNotFoundError:
+        pass
+    pl = _generator().generate(c, progress=progress)   # first call loads the cutout (minutes)
+    out = P.generated_dir(create=True) / f"{c['id']}.npz"
+    save_npz(out, pl["geom"], pl["logN"], pl["tau"])
+    return str(out), True
 
 
 # --------------------------------------------------------------------------- widgets
@@ -123,9 +146,10 @@ reroll = pn.widgets.Button(name="↻ new noise draw", button_type="default", wid
 
 orient = pn.widgets.RadioButtonGroup(name="orientation", options=["face-on", "edge-on", "random"],
                                      value="edge-on", button_type="primary")
-b_slider = pn.widgets.EditableIntSlider(name="impact parameter  b [kpc]", start=20, end=160, step=5, value=100)
-az_slider = pn.widgets.EditableIntSlider(name="azimuth  Φ [deg]", start=0, end=360, step=15, value=90)
-seed_input = pn.widgets.IntInput(name="random seed", value=1, start=0, end=100000, width=140)
+b_slider = pn.widgets.EditableIntSlider(name="impact parameter  b [kpc]", start=0, end=int(TC.B_MAX_KPC),
+                                       step=5, value=100, fixed_start=0, fixed_end=int(TC.B_MAX_KPC))
+az_slider = pn.widgets.EditableIntSlider(name="azimuth  Φ [deg]", start=0, end=359, step=15, value=90)
+seed_input = pn.widgets.IntInput(name="random seed", value=1, start=0, end=2**32 - 1, width=160)
 submit = pn.widgets.Button(name="Submit  —  load / generate sightline",
                            button_type="primary", height=42)
 
@@ -135,7 +159,7 @@ gallery = pn.widgets.Select(name="pre-generated sightlines", options=current_opt
 prev_btn = pn.widgets.Button(name="◀ prev", width=95)
 next_btn = pn.widgets.Button(name="next ▶", width=95)
 
-mpl = pn.pane.Matplotlib(plt.figure(figsize=(1, 1)), dpi=96, tight=False, format="png",
+mpl = pn.pane.Matplotlib(Figure(figsize=(1, 1)), dpi=96, tight=False, format="png",
                          sizing_mode="stretch_width", min_height=560)
 status = pn.pane.Markdown("", styles={"font-size": "14px", "padding": "2px 6px"})
 
@@ -166,7 +190,7 @@ def rerender(*_):
     data = STATE["data"]
     lN = {k: float(data[f"logN_{k}"]) for k in CS.ION_ORDER}
     status.object = (
-        f"<b><code>{STATE['fname']}</code></b> &nbsp;|&nbsp; orientation <b>{geom['orientation']}</b>, "
+        f"<b><code>{P.gid_of(STATE['fname'])}</code></b> &nbsp;|&nbsp; orientation <b>{geom['orientation']}</b>, "
         f"b = <b>{geom['b_kpc']:.0f} kpc</b>, &Phi; = <b>{geom['azimuth_deg']:.0f}&deg;</b>, "
         f"<i>v</i><sub>sys</sub> = <b>{geom['v_sys_kms']:+.0f} km/s</b> &nbsp;|&nbsp; "
         f"log <i>N</i> [cm<sup>&minus;2</sup>]: O VI <b>{lN['OVI']:.2f}</b>, "
@@ -176,6 +200,7 @@ def rerender(*_):
 def load_file(fname):
     STATE["data"] = load_npz(fname)
     STATE["fname"] = fname
+    _sync_names()
     rerender()
 
 
@@ -204,11 +229,15 @@ def on_submit(ev):
         b = int(b_slider.value)
         az = int(az_slider.value)
         seed = int(seed_input.value) if o == "random" else None
-        fname, generated = ensure_sightline(o, b, az, seed)
+
+        def progress(stage, frac, msg=""):
+            status.object = f"**Generating** &nbsp; {stage} &nbsp; {frac:.0%} &nbsp; {msg}"
+        fname, generated = ensure_sightline(o, b, az, seed, progress=progress)
         if generated:
             gallery.options = current_options()
             if pn.state.notifications:
-                pn.state.notifications.success(f"Generated new sightline: {fname}", duration=4000)
+                pn.state.notifications.success(f"Generated new sightline: {P.gid_of(fname)}",
+                                               duration=4000)
         elif pn.state.notifications:
             pn.state.notifications.info("Loaded from cache (instant)", duration=2500)
         if fname in gallery.options.values():
@@ -243,6 +272,10 @@ showcase_only.param.watch(lambda e: refresh_gallery(), "value")
 
 
 # --------------------------------------------------------------------------- downloads
+def _fname(ext):
+    return f"cgm_spectra_488530_{P.gid_of(STATE['fname'] or 'none')}.{ext}"
+
+
 def _fig_bytes(fmt):
     fig, _ = _build(export=True)
     buf = io.BytesIO()
@@ -256,6 +289,10 @@ dl_pdf = pn.widgets.FileDownload(label="⬇ Download PDF (vector)", filename="cg
                                  callback=lambda: _fig_bytes("pdf"), button_type="success", width=230)
 
 
+def _sync_names(*_):
+    dl_png.filename, dl_pdf.filename = _fname("png"), _fname("pdf")
+
+
 # --------------------------------------------------------------------------- layout
 def h(txt):
     return pn.pane.Markdown(txt, styles={"margin-bottom": "-6px", "color": ACCENT})
@@ -264,8 +301,9 @@ sidebar = [
     h("### ◉ Sightline geometry"),
     orient, b_slider, az_slider, seed_input, submit,
     pn.pane.Markdown("<span style='font-size:11.5px;color:#888'>On-grid geometries load instantly; "
-                     "off-grid ones cast a fresh Trident ray (~1 min the first time) and are saved "
-                     "for later scrolling.</span>"),
+                     "off-grid ones cast a fresh Trident ray (the first one also loads the cutout, "
+                     "minutes from a USB disk) and are saved for later scrolling. b ≤ "
+                     f"{TC.B_MAX_KPC:g} kpc; Φ wraps at 360°.</span>"),
     pn.layout.Divider(),
     h("### ◉ Instrument  (live)"),
     r_lo, r_hi, sn_hi, sn_lo, vwin, show_intrinsic, reroll,
@@ -287,8 +325,10 @@ tmpl = pn.template.FastListTemplate(
 # initial sightline
 _idx = read_index()
 if len(_idx):
-    default = "cgm_sid488530_edge_b100_a090.npz"
-    f0 = default if (DATA / default).exists() else _idx.iloc[0].file
+    try:
+        f0 = str(P.find_sightline("edge_b100_a090"))
+    except FileNotFoundError:
+        f0 = _idx.iloc[0].file
     if f0 in gallery.options.values():
         gallery.value = f0
     load_file(f0)

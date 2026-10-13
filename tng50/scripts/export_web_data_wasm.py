@@ -3,22 +3,24 @@
 build_figure()/degrade() in the browser. We therefore ship the real inputs those functions need:
 per ion the (shared) wavelength grid once, and per (sightline, ion) the optical depth tau on that
 grid, trimmed to +-1000 km/s (covers vwin<=800 plus the LSF wings) and stored as float16.
-Writes delivery/_webdata_wasm.json.
+Reads the library at cgm_paths.sightlines_dir(); writes cgm_paths.out_dir()/delivery/_webdata_wasm.json
+(~18 MB, so never into the repo). The browser degrade() uses the explicit dλ = 0.002 Å, so the
+±1000 km/s trim no longer changes the H I Lyβ LSF width (it used median(diff(λ)) of the trimmed grid).
 """
 from __future__ import annotations
-import sys, json, base64, glob
+import sys, json, base64
 from pathlib import Path
 import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import cgm_paths as P                      # noqa: E402
 import cgm_style as CS                     # noqa: E402
+from tngsight.config import C_KMS          # noqa: E402
 
-DATA = ROOT / "data" / "sightlines"
-INDEX = ROOT / "data" / "grid_index.csv"
-OUT = ROOT / "delivery" / "_webdata_wasm.json"
-C_KMS = 299792.458
+INDEX = P.repo_data() / "grid_index.csv"
+OUT = P.out_dir() / "delivery" / "_webdata_wasm.json"
 VTRIM = 1000.0
 ION_LABEL = {"OVI": "O VI λ1032", "HILyb": "H I Lyβ", "CIII": "C III λ977"}
 
@@ -28,10 +30,10 @@ def main():
     scores = {}
     if INDEX.exists():
         for _, r in pd.read_csv(INDEX).iterrows():
-            scores[r["file"]] = r
+            scores[r["geom_id"]] = r          # by id: library files may be <id>.npz or cgm_sid488530_<id>.npz
 
     # canonical (trimmed) wavelength grid per ion, taken from the first sightline
-    files = sorted(glob.glob(str(DATA / "*.npz")))
+    files = sorted(str(f) for f in P.sightlines_dir().glob("*.npz"))
     d0 = np.load(files[0], allow_pickle=True)
     canon = {}
     ions_meta = []
@@ -50,7 +52,7 @@ def main():
     for fp in files:
         d = np.load(fp, allow_pickle=True)
         geom = json.loads(str(d["geom"])); vsys = float(d["v_sys"])
-        name = Path(fp).name; row = scores.get(name)
+        row = scores.get(P.gid_of(fp))
         star = 0
         if row is not None:
             if bool(row.get("ovi_showcase", False)):
@@ -65,7 +67,7 @@ def main():
             tc = np.clip(np.interp(lam, lamk, tauk), 0.0, 40.0).astype("<f2")
             tau_b[k] = base64.b64encode(tc.tobytes()).decode("ascii")
         sightlines.append(dict(
-            id=Path(fp).stem.replace("cgm_sid488530_", ""),
+            id=P.gid_of(fp),
             orient=geom["orientation"], b=round(float(geom["b_kpc"]), 1),
             az=round(float(geom["azimuth_deg"]), 1), vsys=round(vsys, 4),
             logN={k: round(float(d[f"logN_{k}"]), 2) for k in CS.ION_ORDER},

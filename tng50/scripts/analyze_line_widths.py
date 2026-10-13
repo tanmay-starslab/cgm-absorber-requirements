@@ -16,7 +16,7 @@ A component is "resolved" only if FWHM > c/R; a pair is "separable" only if dv >
 Usage: python analyze_line_widths.py [--figure]
 """
 from __future__ import annotations
-import sys, glob, json
+import sys, json
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -24,10 +24,11 @@ from scipy.signal import find_peaks, peak_widths
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import cgm_paths as P                        # noqa: E402
 import cgm_style as CS                       # noqa: E402
+from tngsight.config import DLAMBDA            # noqa: E402  (0.002 A library grid step)
 
-DATA = ROOT / "data" / "sightlines"
-OUT = ROOT / "data" / "line_widths.csv"
+OUT = P.out_dir(create=False) / "line_widths.csv"   # the committed tng50/data/line_widths.csv is the record
 C_KMS = 299792.458
 FWHM_TO_B = 1.0 / 1.66511                    # Gaussian: FWHM = 2 sqrt(ln2) b = 1.665 b
 TAU_MIN = 0.1                                # detectable component (~10% depth if unsaturated)
@@ -51,7 +52,8 @@ def b_thermal(ion, T=None):
 def measure(lam, tau, rest):
     """Return (fwhm_list, sep_list, peak_tau_list) in km/s from the intrinsic tau profile."""
     v = C_KMS * (lam / rest - 1.0)
-    dv = float(np.median(np.diff(v)))
+    # explicit grid step: median(diff) of the float32 lambda grid is quantized (O VI: -2.3%)
+    dv = C_KMS * DLAMBDA / rest
     pk, _ = find_peaks(tau, height=TAU_MIN, prominence=0.5 * TAU_MIN, distance=3)
     if pk.size == 0:
         return [], [], []
@@ -61,7 +63,7 @@ def measure(lam, tau, rest):
 
 
 def main():
-    files = sorted(glob.glob(str(DATA / "*.npz")))
+    files = sorted(str(f) for f in P.sightlines_dir().glob("*.npz"))
     rows = []
     for fp in files:
         d = np.load(fp, allow_pickle=True)
@@ -80,6 +82,7 @@ def main():
     df = pd.DataFrame(rows)
     n_sub = int(((df.kind == "fwhm") & (df.value < MIN_FWHM)).sum())
     df = df[~((df.kind == "fwhm") & (df.value < MIN_FWHM))].reset_index(drop=True)
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUT, index=False)
 
     print(f"measured {len(files)} sightlines -> {OUT}")

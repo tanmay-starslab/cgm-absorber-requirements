@@ -6,10 +6,11 @@ The OVI_CGM_compare profile logN_OVI(R_perp) is an azimuthally-averaged, face-pr
 column (rays along the projection axis). Our rays are full ±R200c chords at impact b, so at a given
 b they should bracket that averaged profile (with azimuthal scatter from disk/outflow structure).
 A match to ~0.1-0.2 dex confirms geometry, ion fields, and ray integration are all correct.
-Writes figures/validate_ovi_columns.{png,pdf} and prints a per-b comparison table.
+Writes <figdir>/validate_ovi_columns.{png,pdf} and prints a per-b comparison table.
+The reference profile is an external file: set TNG_OVI_REF=<path to tng_sanity.json>.
 """
 from __future__ import annotations
-import sys, json
+import os, sys, json
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -17,14 +18,16 @@ import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import cgm_paths as P   # noqa: E402
 import cgm_style as CS  # noqa: E402
 
-REF = Path("<SCRATCH>/OVI_CGM_compare/cache/tng_sanity.json")
-DATA = ROOT / "data" / "sightlines"
-INDEX = ROOT / "data" / "grid_index.csv"
+REF = Path(os.environ["TNG_OVI_REF"]) if os.environ.get("TNG_OVI_REF") else None
+INDEX = P.repo_data() / "grid_index.csv"
 
 
 def load_reference():
+    if REF is None or not REF.is_file():
+        sys.exit("set TNG_OVI_REF to the OVI_CGM_compare tng_sanity.json reference profile")
     d = json.load(open(REF))
     return np.asarray(d["radial_bins_kpc"], float), np.asarray(d["radial_logN_OVI"], float)
 

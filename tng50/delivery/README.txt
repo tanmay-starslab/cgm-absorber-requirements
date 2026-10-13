@@ -27,6 +27,8 @@ A grid of 3 rows x 4 columns:
   * Rows    = the three ions:  O VI 1032 (pink),  H I Lybeta (blue),  C III 977 (green).
   * Columns = four spectrograph setups (spectral resolution R and signal-to-noise S/N).
   * x-axis  = velocity relative to the galaxy (V_LOS - V_sys, in km/s); 0 = the galaxy.
+              (Copies built before October 2026 had this axis offset by up to ~250 km/s
+              and a slightly wrong line blur; rebuild with build_delivery_wasm.py.)
   * y-axis  = normalized flux (1 = no absorption; dips = gas absorbing the quasar light).
 
 In each panel: the thick colored curve is the true (noiseless) line at that resolution,

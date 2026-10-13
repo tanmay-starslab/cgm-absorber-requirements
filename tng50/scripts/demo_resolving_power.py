@@ -21,21 +21,21 @@ from scipy.signal import find_peaks
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import cgm_style as CS                        # noqa: E402
-from degrade import degrade, C_KMS            # noqa: E402
+import cgm_paths as P                                    # noqa: E402
+from degrade import degrade, velocity_axis, C_KMS            # noqa: E402
 
-DATA = ROOT / "data" / "sightlines"
 R_COLS = [20000, 40000, 100000, None]         # None = intrinsic (R = infinity)
 
 
 def load(gid):
-    return np.load(DATA / f"cgm_sid488530_{gid}.npz", allow_pickle=True)
+    return np.load(P.find_sightline(gid), allow_pickle=True)
 
 
 def intrinsic(d, ion):
     lam = np.asarray(d[f"{ion}_lambda"], float)
     tau = np.asarray(d[f"{ion}_tau"], float)
     rest = float(d[f"{ion}_rest"]); vsys = float(d["v_sys"])
-    v = C_KMS * (lam / rest - 1.0) - vsys
+    v = velocity_axis(lam, rest, vsys)          # same (fixed) frame as degrade()
     return v, np.exp(-tau), tau, lam, rest, vsys
 
 

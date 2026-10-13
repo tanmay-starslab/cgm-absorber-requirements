@@ -1,48 +1,35 @@
 #!/usr/bin/env python3
 """Post-process a high-res noiseless spectrum to a chosen spectral resolution R and S/N.
+Compatibility shim over `tngsight.degrade` (the single implementation shared with the server).
 
-R  -> Gaussian LSF with FWHM = lambda0/R (standard resolving power), applied to the transmission.
-S/N-> Gaussian noise defined PER RESOLUTION ELEMENT (PIX_PER_RESEL pixels/element):
-      per-pixel sigma = sqrt(PIX_PER_RESEL)/SNR, so averaging one element gives S/N = SNR.
-The output is sampled at PIX_PER_RESEL pixels per resolution element and on the velocity axis
-V = c(lambda/lambda0 - 1) - v_sys  (galaxy-systemic LOS velocity; +ve = redshifted vs systemic).
-Everything is instant (arithmetic on cached arrays), so it drives both the figure and the GUI.
+R  -> Gaussian LSF with FWHM = lambda0/R, applied to the transmission. The kernel width in pixels
+      uses the generation step dlam = 0.002 A (tngsight.config.DLAMBDA), not median(diff(lam)):
+      the float32 grid has quantised steps, which made the realised FWHM -0.7..+2.4 % off nominal.
+S/N-> Gaussian noise PER RESOLUTION ELEMENT: per-pixel sigma = sqrt(PIX_PER_RESEL)/SNR.
+Output is sampled at PIX_PER_RESEL pixels per element on V = c(lambda/lambda0 - 1) + v_sys
+(galaxy systemic at V=0). The original used "- v_sys", which put the galaxy near -2 v_sys,
+because Trident's line of sight is start-end = -n_los while the stored v_sys = SubhaloVel . n_los.
+Legacy signature kept: degrade(lam, tau, rest, R, snr, v_sys, pix_per_resel, seed, vwin[, dlam]).
 """
 from __future__ import annotations
+import sys
+from pathlib import Path
 import numpy as np
-from astropy.convolution import Gaussian1DKernel, convolve
 
-C_KMS = 299792.458
-PIX_PER_RESEL = 5
-FWHM_TO_SIGMA = 1.0 / 2.35482
+try:
+    import tngsight  # noqa: F401
+except ImportError:                                   # plain script run: add the repo root
+    sys.path.insert(1, str(Path(__file__).resolve().parents[2]))
+from tngsight import degrade as _D  # noqa: E402
+from tngsight.config import C_KMS, PIX_PER_RESEL, FWHM_TO_SIGMA, DLAMBDA, VSYS_SIGN  # noqa: E402,F401
+from tngsight.degrade import velocity_axis  # noqa: E402,F401
 
 
 def degrade(lam, tau, rest, R, snr, v_sys, pix_per_resel=PIX_PER_RESEL, seed=None,
-            vwin=None):
-    """Return (v, flux) at resolution R and S/N snr. lam,tau = high-res noiseless arrays."""
-    lam = np.asarray(lam, float); tau = np.asarray(tau, float)
-    flux_hi = np.exp(-tau)
-    dlam = float(np.median(np.diff(lam)))
-    # LSF convolution (FWHM = lambda0/R)
-    sigma_pix = (rest / R) * FWHM_TO_SIGMA / dlam
-    flux_lsf = convolve(flux_hi, Gaussian1DKernel(max(sigma_pix, 1e-3)),
-                        boundary="extend", normalize_kernel=True) if R and R > 0 else flux_hi
-    # resample to pix_per_resel pixels per resolution element
-    dv_resel = (C_KMS / R) if (R and R > 0) else float(np.median(np.abs(np.diff(
-        C_KMS * (lam / rest - 1)))) * pix_per_resel)
-    dv_pix = dv_resel / pix_per_resel
-    v_hi = C_KMS * (lam / rest - 1.0) - v_sys
-    vlo, vhi = (v_hi.min(), v_hi.max()) if vwin is None else (-vwin, vwin)
-    v = np.arange(vlo, vhi + dv_pix, dv_pix)
-    flux_model = np.interp(v, v_hi, flux_lsf, left=1.0, right=1.0)   # noiseless, resampled
-    # noise per resolution element: per-pixel sigma = sqrt(pix/element)/SNR
-    if snr and snr > 0:
-        rng = np.random.default_rng(seed)
-        sigma_pixel = np.sqrt(pix_per_resel) / float(snr)
-        flux_noisy = np.clip(flux_model + rng.normal(0.0, sigma_pixel, size=flux_model.shape), 0.0, None)
-    else:
-        flux_noisy = flux_model.copy()
-    return v, flux_noisy, np.clip(flux_model, 0.0, None)
+            vwin=None, dlam=DLAMBDA):
+    """Return (v, flux_noisy, flux_model) at resolution R and S/N snr (see tngsight.degrade)."""
+    return _D.degrade(lam, tau, rest, R, snr, v_sys, dlam=dlam, pix_per_resel=pix_per_resel,
+                      seed=seed, vwin=vwin)
 
 
 def resolution_element_kms(R):

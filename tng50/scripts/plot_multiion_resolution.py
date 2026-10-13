@@ -9,7 +9,7 @@ intrinsic profile, so what each R throws away is visible directly.
 Colour encodes the expected thermal width b = 0.1285 sqrt(T/A): warm colours = broad lines
 (insensitive to R), cool colours = narrow lines (need high R).
 
-Usage: python plot_multiion_resolution.py [geom_id] [--vwin 400]
+Usage: python plot_multiion_resolution.py [geom_id] [--vlo -400] [--vhi 100] [--snr S]
 """
 from __future__ import annotations
 import sys, json
@@ -21,12 +21,14 @@ from matplotlib import cm, colors
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import cgm_style as CS                    # noqa: E402
-from degrade import degrade, C_KMS        # noqa: E402
+import cgm_paths as P                     # noqa: E402
+from degrade import degrade, velocity_axis, C_KMS   # noqa: E402
 
-MULTI = ROOT / "data" / "multiion"
+MULTI = P.out_dir(create=False) / "multiion"   # written by gen_multiion_sightline.py
 R_COLS = [20000, 40000, 100000, None]     # None = intrinsic (R -> infinity)
 SKIP = {"HI1216"}                         # Lya is damped here -> uninformative black row
-VLO, VHI = -400.0, 0.0                    # velocity window actually shown
+VLO, VHI = -400.0, 100.0                  # velocity window actually shown; +100 because in the fixed
+                                          # (+v_sys) frame the low ions reach V~+45 km/s (tau>0.1)
 
 PRETTY = {
     "OVI1032": r"O\,VI $\lambda$1032", "NV1239": r"N\,V $\lambda$1239",
@@ -44,7 +46,9 @@ def b_thermal(A, logT):
 
 def main():
     CS.set_style(base=15)
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    argv = sys.argv[1:]
+    args = [a for i, a in enumerate(argv)                 # positional only: skip flags and their values
+            if not a.startswith("--") and not (i and argv[i - 1] in ("--vlo", "--vhi", "--snr"))]
     gid = args[0] if args else "rand_b012_a034_s536718143"
     vlo, vhi = VLO, VHI
     if "--vlo" in sys.argv:
@@ -83,7 +87,7 @@ def main():
         key, rest = L["key"], float(L["rest"])
         lam = np.asarray(d[f"{key}_lambda"], float)
         tau = np.asarray(d[f"{key}_tau"], float)
-        v_i = C_KMS * (lam / rest - 1.0) - v_sys
+        v_i = velocity_axis(lam, rest, v_sys)          # same (fixed) frame as degrade()
         f_i = np.exp(-tau)
         m = (v_i >= vlo) & (v_i <= vhi)
         bth = b_thermal(L["A"], L["logT"])
@@ -94,6 +98,7 @@ def main():
                 v, f, noisy = v_i[m], f_i[m], None
             else:
                 vv, nz, model = degrade(lam, tau, rest, R, snr, v_sys, vwin=vwin,
+                                        dlam=float(np.median(np.diff(lam))),   # constant-v grid, not 0.002 A
                                         seed=17 * c + 101 * r)
                 mm = (vv >= vlo) & (vv <= vhi)
                 v, f = vv[mm], model[mm]

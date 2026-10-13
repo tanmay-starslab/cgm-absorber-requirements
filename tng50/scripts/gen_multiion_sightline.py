@@ -8,10 +8,14 @@ ray as the existing 3-ion product -- we just add more transitions.
 Lines are ordered from the broadest (hot, light ion) to the narrowest (cool, heavy ion), since
 thermal width b = 0.1285 sqrt(T/A).
 
+Cutout/index paths come from tngsight.config (cutout_path(), index_path(); the yt index is never
+written next to the cutout). Needs an ion table with N, Si, Mg, Fe too (the full hm2012_ss_hr.h5),
+and cwd with config.tri. Writes cgm_paths.out_dir()/multiion/multiion_<gid>.npz.
+
 Usage: python gen_multiion_sightline.py [geom_id]
 """
 from __future__ import annotations
-import os, sys, json
+import os, sys, json, tempfile
 from pathlib import Path
 import numpy as np
 
@@ -24,10 +28,11 @@ import yt                        # noqa: E402
 import trident                   # noqa: E402
 yt.set_log_level(50)
 import cgm_geometry as G         # noqa: E402
+import cgm_paths as P            # noqa: E402
+from tngsight import config as TC   # noqa: E402
 
 GAL = G.GAL
-DATA = ROOT / "data" / "sightlines"
-OUTDIR = ROOT / "data" / "multiion"; OUTDIR.mkdir(parents=True, exist_ok=True)
+OUTDIR = P.out_dir(create=False) / "multiion"
 C_KMS = GAL["C_KMS"]
 VWIN_KMS = 1200.0
 DLAMBDA_KMS = 0.55               # target sampling in km/s (kept ~constant across wavelengths)
@@ -66,7 +71,8 @@ def line_info():
 
 
 def load_ds(ions):
-    ds = yt.load(GAL["cutout_hdf5"])
+    TC.index_path().parent.mkdir(parents=True, exist_ok=True)
+    ds = yt.load(str(TC.cutout_path()), index_filename=str(TC.index_path()))
     if ("gas", "metallicity") not in ds.derived_field_list:
         def _Z(field, data):
             return data["PartType0", "GFM_Metallicity"]
@@ -78,7 +84,7 @@ def load_ds(ions):
 
 def main():
     gid = sys.argv[1] if len(sys.argv) > 1 else "rand_b012_a034_s536718143"
-    src = DATA / f"cgm_sid488530_{gid}.npz"
+    src = P.find_sightline(gid)
     geom = json.loads(str(np.load(src, allow_pickle=True)["geom"]))
     v_sys = float(np.load(src, allow_pickle=True)["v_sys"])
     info = line_info()
@@ -91,9 +97,8 @@ def main():
     p1 = ds.arr(np.array(geom["end_ckpch"], float), "code_length")
     ds.domain_left_edge = ds.domain_left_edge.copy()
     ds.domain_right_edge = ds.domain_right_edge.copy()
-    tmp = f"/tmp/_cgmray_multi_{os.getpid()}.h5"
-    if os.path.exists(tmp):
-        os.remove(tmp)
+    fd, tmp = tempfile.mkstemp(suffix=".h5", prefix="_cgmray_multi_", dir=P.out_dir())
+    os.close(fd); os.remove(tmp)
     ray = trident.make_simple_ray(ds, start_position=p0, end_position=p1,
                                   fields=fields, ftype="gas", data_filename=tmp)
     print("  ray cast; generating spectra...", flush=True)
@@ -124,6 +129,7 @@ def main():
         payload[f"logN_{i['key']}"] = cols[i["key"]]
         print(f"    {i['name']:<13} logN={cols[i['key']]:6.2f}  tau_max={np.max(sg.tau_field):9.2f}",
               flush=True)
+    OUTDIR.mkdir(parents=True, exist_ok=True)
     out = OUTDIR / f"multiion_{gid}.npz"
     np.savez_compressed(out, **payload)
     if os.path.exists(tmp):

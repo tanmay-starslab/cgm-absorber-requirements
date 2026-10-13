@@ -19,8 +19,7 @@
   "Lhat": [0.04170790684964916, -0.8403492677980035, -0.5404383023228281],
   "xhat": [-0.9968862719846454, -0.07122981073705145, 0.03382417465245191],
   "yhat": [-0.0669194383925682, 0.5373447889146441, -0.8407034950513171],
-  "cutout_hdf5": "<CUTOUT_DIR>/cutout_ALLFIELDS_sphere_2p1Rvir_sub488530.hdf5",
-  "ion_table": "~/.trident/hm2012_ss_hr.h5",
+  "data_paths_note": "Cutout and ion-table locations are not stored here: see tngsight.config (env TNG_CUTOUT, TNG_ION_TABLE_DIR). The code reads the packaged copy tngsight/galaxy_488530.json.",
   "lines": {
     "OVI":  {"trident_line": "O VI 1032", "ion": "O VI", "field": "O_p5_number_density", "rest_A": 1031.912, "f": 0.1330, "label": "O\\,VI\\ \\lambda1032"},
     "HILyb":{"trident_line": "H I 1026",  "ion": "H I",   "field": "H_p0_number_density", "rest_A": 1025.7222, "f": 0.0791, "label": "H\\,I\\ Ly\\beta\\ \\lambda1026"},

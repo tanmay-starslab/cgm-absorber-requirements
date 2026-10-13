@@ -16,13 +16,13 @@ from matplotlib import gridspec
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import cgm_style as CS                                   # noqa: E402
-from degrade import degrade, C_KMS, PIX_PER_RESEL        # noqa: E402
+import cgm_paths as P                                    # noqa: E402
+from degrade import degrade, velocity_axis, C_KMS, PIX_PER_RESEL        # noqa: E402
 
-DATA = ROOT / "data" / "sightlines"
 
 
 def load(gid):
-    return np.load(DATA / f"cgm_sid488530_{gid}.npz", allow_pickle=True)
+    return np.load(P.find_sightline(gid), allow_pickle=True)
 
 
 def arrays(data, ion):
@@ -49,7 +49,7 @@ def main():
     data = load(gid)
     col = CS.ION[ion]["color"]; ionlab = CS.ION[ion]["label"]
     lam, tau, rest, vsys = arrays(data, ion)
-    v_hi = C_KMS * (lam / rest - 1.0) - vsys
+    v_hi = velocity_axis(lam, rest, vsys)       # same (fixed) frame as degrade()
     f_hi = np.exp(-tau)
     mtruth = (v_hi >= -vwin) & (v_hi <= vwin)
 
