@@ -1,0 +1,8 @@
+# Automatic Let's Encrypt certificate for {$HOST}. reverse_proxy appends the client address to
+# X-Forwarded-For, so the app's rightmost-hop rule (TRUSTED_HOPS=1) sees the real client.
+{$HOST} {
+	encode gzip
+	reverse_proxy app:7860 {
+		flush_interval -1
+	}
+}

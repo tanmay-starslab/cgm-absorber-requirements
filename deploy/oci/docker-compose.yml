@@ -1,0 +1,30 @@
+# TNG50 explorer backend on an always-on VM (Oracle Cloud Always Free A1, Ubuntu 24.04 aarch64).
+# The app image is the same one the HF Space uses (deploy/hf_space/Dockerfile); Caddy terminates TLS.
+#   HOST=<public-ip>.sslip.io docker compose up -d --build      (run in the assembled context dir)
+# Secrets live only on the VM in ./.env (HF_TOKEN, WORKER_TOKEN); see deploy/oci/README.md.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      NODE_NAME: oci-a1
+      TRUST_PROXY: "1"
+      TRUSTED_HOPS: "1"
+    volumes:
+      - tngdata:/data
+    expose: ["7860"]
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    depends_on: [app]
+    ports: ["80:80", "443:443"]
+    environment:
+      HOST: ${HOST:?set HOST, e.g. 1-2-3-4.sslip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+volumes:
+  tngdata:
+  caddydata:
