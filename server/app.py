@@ -1,0 +1,534 @@
+"""FastAPI coordinator for the TNG50 sightline explorer: catalog/sightline/figure API, a job queue
+with SSE progress, and a lease protocol for pull-based remote workers. Run with ONE process:
+`uvicorn server.app:app --workers 1` (yt is not thread-safe and the warm dataset, the job queue and
+the rate-limit buckets all live in this process's memory)."""
+from __future__ import annotations
+import asyncio
+import hashlib
+import hmac
+import inspect
+import json
+import logging
+import threading
+import time
+from collections import OrderedDict
+from contextlib import asynccontextmanager
+from typing import Literal, Optional
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sse_starlette.sse import EventSourceResponse
+
+from .jobs import DONE, ERROR, JOB_ID_RE, QUEUED, RUNNING, JobQueue, QueueFull, TooManySubscribers
+from .ratelimit import RateLimiter, client_ip
+from .settings import VERSION, Settings
+from .storage import ID_RE, HFSync, LibraryStore
+from .workers import LocalWorker, generator_kwargs, public_error
+
+import re
+
+log = logging.getLogger("tngsight.server")
+_JOB_RE = re.compile(JOB_ID_RE)
+_NAME_RE = r"^[A-Za-z0-9._-]{1,64}$"
+SEED_MAX = 2**32 - 1
+# /api/figure accepts only what the page can send (docs/tng50: CFG.R_opts, S/N sliders 2-20,
+# velocity window 150-800 step 50, noise seed 0-99999): a small key space keeps the render cache useful.
+R_OPTS = (20000, 30000, 40000, 60000, 80000, 100000)
+FIG_SEED_MAX = 99999
+LEASE_RE = r"^[0-9a-f]{32}$"
+
+
+# ------------------------------------------------------------------------------ request models
+class _M(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class GeometryReq(_M):
+    orientation: str = Field(min_length=1, max_length=16)
+    b_kpc: float = Field(ge=-1e4, le=1e4, allow_inf_nan=False)
+    azimuth_deg: float = Field(ge=-1e5, le=1e5, allow_inf_nan=False)
+    seed: Optional[int] = Field(default=None, ge=0, le=SEED_MAX)
+
+
+class FigureReq(_M):
+    id: str = Field(pattern=ID_RE.pattern, max_length=40)
+    R_lo: int = 20000
+    R_hi: int = 40000
+    sn_hi: int = Field(default=8, ge=2, le=20)
+    sn_lo: int = Field(default=5, ge=2, le=20)
+    vwin: Optional[int] = Field(default=None, ge=150, le=800, multiple_of=50)
+    intrinsic: bool = False
+    seed: Optional[int] = Field(default=None, ge=0, le=FIG_SEED_MAX)
+    fmt: Literal["png", "pdf"] = "png"
+
+    @field_validator("R_lo", "R_hi")
+    @classmethod
+    def _r_opt(cls, v):
+        if v not in R_OPTS:
+            raise ValueError(f"R must be one of {list(R_OPTS)}")
+        return v
+
+
+class LeaseReq(_M):
+    name: str = Field(pattern=_NAME_RE)
+
+
+class ProgressReq(_M):
+    stage: str = Field(max_length=40)
+    frac: float = Field(ge=0, le=1, allow_inf_nan=False)
+    msg: str = Field(default="", max_length=200)
+
+
+class FailReq(_M):
+    message: str = Field(max_length=500)
+
+
+# ------------------------------------------------------------------------------ ASGI middleware
+class BodyLimit:
+    """413 for request bodies over `limit` (worker result uploads get `big`)."""
+
+    def __init__(self, app, limit, big, big_prefix="/api/worker/result/"):
+        self.app, self.limit, self.big, self.big_prefix = app, limit, big, big_prefix
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        limit = self.big if scope["path"].startswith(self.big_prefix) else self.limit
+        cl = dict(scope.get("headers") or []).get(b"content-length")
+        if cl is not None and (not cl.isdigit() or int(cl) > limit):
+            return await _send_json(send, 413, {"detail": f"request body exceeds {limit} bytes"})
+        seen, started = 0, False
+
+        async def rcv():
+            nonlocal seen
+            msg = await receive()
+            if msg["type"] == "http.request":
+                seen += len(msg.get("body", b""))
+                if seen > limit:
+                    raise _TooLarge()
+            return msg
+
+        async def snd(msg):
+            nonlocal started
+            started = started or msg["type"] == "http.response.start"
+            await send(msg)
+        try:
+            await self.app(scope, rcv, snd)
+        except _TooLarge:
+            if not started:
+                await _send_json(send, 413, {"detail": f"request body exceeds {limit} bytes"})
+
+
+class _TooLarge(Exception):
+    pass
+
+
+async def _send_json(send, status, obj):
+    body = json.dumps(obj).encode()
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+    await send({"type": "http.response.body", "body": body})
+
+
+class PrivateNetwork:
+    """Chrome Private Network Access: answer CORS preflights with Allow-Private-Network: true."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] != "OPTIONS":
+            return await self.app(scope, receive, send)
+        hdrs = dict(scope.get("headers") or [])
+        if b"access-control-request-method" not in hdrs:
+            return await self.app(scope, receive, send)
+
+        async def snd(msg):
+            if msg["type"] == "http.response.start" and not any(
+                    k.lower() == b"access-control-allow-private-network" for k, _ in msg.get("headers", [])):
+                msg = dict(msg, headers=list(msg.get("headers", [])) +
+                           [(b"access-control-allow-private-network", b"true")])
+            await send(msg)
+        await self.app(scope, receive, snd)
+
+
+# ------------------------------------------------------------------------------ helpers
+def _sid(name: str, ext: str) -> str:
+    if not name.endswith(ext) or not ID_RE.match(name[: -len(ext)]):
+        raise HTTPException(422, f"invalid sightline id {name[:60]!r}")
+    return name[: -len(ext)]
+
+
+def _job_id(job_id: str) -> str:
+    if not _JOB_RE.match(job_id):
+        raise HTTPException(422, "invalid job id")
+    return job_id
+
+
+def _limited(retry_after: float, what: str):
+    s = max(1, int(retry_after + 0.999))
+    return JSONResponse({"detail": f"rate limit exceeded for {what}; retry in {s} s"}, 429,
+                        headers={"Retry-After": str(s)})
+
+
+def _default_renderer(payload, fmt, **kw):
+    from tngsight.figure import render_bytes
+    return render_bytes(payload, fmt=fmt, **kw)
+
+
+# ------------------------------------------------------------------------------ factory
+def create_app(settings: Settings | None = None, generator=None, figure_renderer=None, hf=None) -> FastAPI:
+    """`generator`: 'module:attr' spec or callable building a Generator (default settings.generator);
+    `figure_renderer(payload, fmt, **kw) -> bytes` (default tngsight.figure.render_bytes);
+    `hf`: an HFSync-like object (default built from HF_TOKEN/HF_DATASET)."""
+    S = settings or Settings.from_env()
+    if hf is None and S.hf_token and S.hf_dataset:
+        hf = HFSync(S.hf_token, S.hf_dataset, S.library_dir)
+    store = LibraryStore(S.library_dir, hf=hf)
+    jobq = JobQueue(lease_s=S.lease_s, max_attempts=S.max_attempts, cap=S.queue_cap,
+                    job_timeout_s=S.job_timeout_s, ttl_s=S.job_ttl_s, queue_ttl_s=S.queue_ttl_s,
+                    max_subs=S.max_subs_per_job)
+    limiter = RateLimiter({"sightlines": S.rl_sightlines, "figure": S.rl_figure,
+                           "figure_all": S.rl_figure_global})
+    render = figure_renderer or _default_renderer
+    fig_cache: OrderedDict = OrderedDict()
+    fig_lock = threading.Lock()
+    fig_pending = [0]                       # renders running or waiting on fig_lock
+    sse_open: dict = {}                     # client ip -> open event streams
+    sse_lock = threading.Lock()
+    local = LocalWorker(jobq, store, generator or S.generator, generator_kwargs(S), executor=S.local_executor,
+                        job_timeout_s=S.job_timeout_s) if S.local_worker else None
+
+    @asynccontextmanager
+    async def lifespan(app):
+        tasks = []
+
+        async def reaper():
+            no_worker_since = None
+            while True:
+                await asyncio.sleep(S.reap_every_s)
+                try:
+                    jobq.reap()
+                    now = time.time()
+                    if workers_available(now):
+                        no_worker_since = None
+                    elif no_worker_since is None:
+                        no_worker_since = now
+                    elif now - no_worker_since > S.no_worker_grace_s:
+                        jobq.expire_queued("no worker available; please try again later")
+                except Exception:
+                    log.exception("reaper")
+        tasks.append(asyncio.create_task(reaper()))
+
+        def pull():
+            if hf is not None and S.hf_startup_download and hf.download() is not None:
+                store.reload()
+            store.reconcile()
+            if hf is not None:            # re-upload anything generated that never reached the dataset
+                hf.sync_missing(store.gen_dir)
+        tasks.append(asyncio.create_task(asyncio.to_thread(pull)))
+
+        def preimport():                  # scipy (scoring) can take minutes to import from a cold disk;
+            try:                          # pay it at startup, not on the first generated sightline
+                import tngsight.scoring  # noqa: F401
+            except Exception as e:
+                log.warning("tngsight.scoring unavailable: %s", e)
+        tasks.append(asyncio.create_task(asyncio.to_thread(preimport)))
+        if local is not None:
+            local.start()
+        try:
+            yield
+        finally:
+            for t in tasks:
+                t.cancel()
+            if local is not None:
+                await local.stop()
+            if hf is not None:
+                hf.stop()
+
+    app = FastAPI(title="TNG50 sightline explorer", version=VERSION, lifespan=lifespan,
+                  docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
+    app.state.settings, app.state.store, app.state.jobs, app.state.local = S, store, jobq, local
+    app.state.limiter, app.state.fig_cache = limiter, fig_cache
+    app.add_middleware(BodyLimit, limit=S.max_body, big=S.max_result)
+    cors = dict(allow_origins=list(S.cors_origins), allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=["Content-Type", "Authorization"], max_age=600,
+                expose_headers=["ETag", "Retry-After", "Content-Disposition"])
+    if "allow_private_network" in inspect.signature(CORSMiddleware.__init__).parameters:
+        cors["allow_private_network"] = True       # starlette >= 0.4x: PNA-aware preflight
+    app.add_middleware(CORSMiddleware, **cors)
+    app.add_middleware(PrivateNetwork)
+
+    def ip(request: Request) -> str:
+        return client_ip(request, S.trust_proxy, S.trusted_hops)
+
+    def workers_available(now=None) -> bool:
+        """A worker can pick up new jobs: the local one is starting/warm/busy, or a remote worker
+        polled or reported within worker_seen_s (the same test /api/health uses for 'warm')."""
+        now = time.time() if now is None else now
+        if local is not None and local.state in ("starting", "warm", "busy"):
+            return True
+        return any(now - t < S.worker_seen_s for t in list(jobq.workers.values()))
+
+    def worker_auth(request: Request):
+        if not S.worker_token:
+            raise HTTPException(404, "worker protocol disabled (WORKER_TOKEN unset)")
+        h = request.headers.get("authorization", "")
+        tok = h[7:] if h[:7].lower() == "bearer " else ""
+        if not hmac.compare_digest(tok.encode(), S.worker_token.encode()):
+            raise HTTPException(401, "bad worker token", headers={"WWW-Authenticate": "Bearer"})
+
+    # -------------------------------------------------------------------------- public API
+    @app.get("/api/health")
+    def health():
+        now = time.time()
+        remote = [{"name": n, "last_seen": round(t, 1)} for n, t in sorted(jobq.workers.items())
+                  if now - t < 3600]
+        lib_n, gen_n = store.sizes()
+        loc = local.status() if local is not None else {"state": "disabled"}
+        warm = loc["state"] in ("warm", "busy") or any(now - w["last_seen"] < S.worker_seen_s for w in remote)
+        d = {"status": "ok", "version": VERSION, "warm": warm, "workers": {"local": loc, "remote": remote},
+             "queue": jobq.counts(), "library_size": lib_n, "generated_size": gen_n, "node": S.node_name}
+        if hf is not None:
+            d["hf"] = hf.status()
+        return d
+
+    @app.get("/api/catalog")
+    def catalog(request: Request):
+        body, etag = store.catalog_doc()
+        hdr = {"ETag": etag, "Cache-Control": "max-age=60"}
+        if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
+            return Response(status_code=304, headers=hdr)
+        return Response(body, media_type="application/json", headers=hdr)
+
+    @app.get("/api/sightline/{name}")
+    def sightline(name: str):
+        if name.endswith(".bin"):
+            sid = _sid(name, ".bin")
+            blob = store.bin_bytes(sid)
+            if blob is None:
+                raise HTTPException(404, f"unknown sightline {sid}")
+            return Response(blob, media_type="application/octet-stream",
+                            headers={"Cache-Control": "public, max-age=86400"})
+        sid = _sid(name, ".npz")
+        p = store.npz_path(sid)
+        if p is None:
+            raise HTTPException(404, f"unknown sightline {sid}")
+        return Response(p.read_bytes(), media_type="application/octet-stream",
+                        headers={"Content-Disposition": f'attachment; filename="cgm_sid488530_{sid}.npz"'})
+
+    def _canon(req: GeometryReq) -> dict:
+        from tngsight.geometry import canonicalize
+        try:
+            return canonicalize(req.orientation, req.b_kpc, req.azimuth_deg, req.seed)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    @app.post("/api/geometry")
+    def geometry(req: GeometryReq):
+        from tngsight.geometry import make_sightline
+        c = _canon(req)
+        g = make_sightline(c["orientation"], c["b_kpc"], c["azimuth_deg"], seed=c["seed"])
+        return {**c, "geom": json.loads(json.dumps(g, default=lambda x: x.tolist())),
+                "exists": store.has(c["id"])}
+
+    @app.post("/api/sightlines")
+    def submit(req: GeometryReq, request: Request):
+        c = _canon(req)
+        e = store.entry(c["id"])
+        if e is not None:
+            return {"id": c["id"], "status": "ready", "entry": e}
+        jid = jobq.inflight.get(c["id"])
+        if jid is None:                       # only new work is rate-limited / capped
+            if not S.generation_possible:
+                raise HTTPException(503, "generation disabled on this node (no local or remote workers)")
+            if not workers_available():
+                return JSONResponse({"detail": "no worker available right now"}, 503, headers={"Retry-After": "60"})
+            wait = limiter.check("sightlines", ip(request))
+            if wait:
+                return _limited(wait, "new sightlines")
+        try:
+            job, created = jobq.submit(c)
+        except QueueFull as e:
+            if jid is None:
+                limiter.refund("sightlines", ip(request))      # refused: don't charge the caller
+            return JSONResponse({"detail": str(e)}, 503, headers={"Retry-After": "60"})
+        if jid is None and not created:       # raced into an existing job: not new work after all
+            limiter.refund("sightlines", ip(request))
+        snap = jobq.snapshot(job.job_id)
+        return JSONResponse({"id": c["id"], "job_id": job.job_id, "status": snap["status"],
+                             "position": snap["position"]}, 202)
+
+    @app.get("/api/jobs/{job_id}")
+    def job(job_id: str):
+        snap = jobq.snapshot(_job_id(job_id))
+        if snap is None:
+            raise HTTPException(404, "unknown job")
+        return snap
+
+    @app.get("/api/jobs/{job_id}/events")
+    async def job_events(job_id: str, request: Request):
+        _job_id(job_id)
+        if jobq.get(job_id) is None:
+            raise HTTPException(404, "unknown job")
+        who = ip(request)
+        if sse_open.get(who, 0) >= S.max_sse_per_client:
+            return _limited(15, "event streams")
+        if jobq.subscribers(job_id) >= S.max_subs_per_job:
+            return _limited(15, "event streams on this job")
+
+        async def stream():
+            # count + subscribe inside the generator, so the finally below always undoes them
+            with sse_lock:
+                sse_open[who] = sse_open.get(who, 0) + 1
+            q = None
+            try:
+                try:
+                    q = jobq.subscribe(job_id)
+                except TooManySubscribers:          # lost a race for the last slot: just close
+                    return                          # (not an "error" event: the job itself is fine)
+                s = jobq.snapshot(job_id)
+                if s["status"] == DONE:
+                    yield {"event": "done", "data": json.dumps({"id": s["id"], "entry": s["entry"]})}
+                    return
+                if s["status"] == ERROR:
+                    yield {"event": "error", "data": json.dumps({"message": s["error"]})}
+                    return
+                if s["status"] == QUEUED:
+                    yield {"event": "queued", "data": json.dumps({"position": s["position"]})}
+                elif s["status"] == RUNNING:
+                    yield {"event": "progress", "data": json.dumps({k: s[k] for k in ("stage", "frac", "msg")})}
+                while True:
+                    ev, data = await q.get()
+                    yield {"event": ev, "data": json.dumps(data)}
+                    if ev in ("done", "error"):
+                        return
+            finally:
+                if q is not None:
+                    jobq.unsubscribe(job_id, q)
+                release(who)
+        return EventSourceResponse(stream(), ping=S.heartbeat_s,
+                                   headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    def release(who):
+        with sse_lock:
+            n = sse_open.get(who, 0) - 1
+            if n > 0:
+                sse_open[who] = n
+            else:
+                sse_open.pop(who, None)
+
+    @app.post("/api/figure")
+    async def figure(req: FigureReq, request: Request):
+        wait = limiter.check("figure", ip(request))
+        if wait:
+            return _limited(wait, "figures")
+        params = req.model_dump()
+        key = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()
+        if store.npz_path(req.id) is None:
+            raise HTTPException(404, f"unknown sightline {req.id}")
+        blob = fig_cache.get(key)
+        if blob is None:
+            if fig_pending[0] >= S.figure_max_pending:      # renders are serialized: don't pile up
+                return JSONResponse({"detail": "figure renderer busy; try again shortly"}, 503,
+                                    headers={"Retry-After": "10"})
+            wait = limiter.check("figure_all", "*")
+            if wait:
+                return _limited(wait, "figures (all users)")
+            kw = {k: params[k] for k in ("R_lo", "R_hi", "sn_hi", "sn_lo", "intrinsic")}
+            kw.update({k: params[k] for k in ("vwin", "seed") if params[k] is not None})
+
+            def work():
+                with fig_lock:                 # matplotlib is not thread-safe
+                    return render(store.load_payload(req.id), req.fmt, dpi=S.figure_dpi, **kw)
+            fig_pending[0] += 1
+            try:
+                blob = await asyncio.to_thread(work)
+            except Exception as e:
+                log.exception("figure %s failed", req.id)
+                raise HTTPException(500, f"figure rendering failed: {e.__class__.__name__}")
+            finally:
+                fig_pending[0] -= 1
+            fig_cache[key] = blob
+            while len(fig_cache) > S.figure_cache:
+                fig_cache.popitem(last=False)
+        else:
+            fig_cache.move_to_end(key)
+        media = "image/png" if req.fmt == "png" else "application/pdf"
+        fn = f"tng50_{req.id}_R{req.R_lo}-{req.R_hi}_sn{req.sn_hi:g}-{req.sn_lo:g}.{req.fmt}"
+        return Response(blob, media_type=media, headers={"Content-Disposition": f'attachment; filename="{fn}"'})
+
+    # -------------------------------------------------------------------------- worker protocol
+    @app.post("/api/worker/lease", dependencies=[Depends(worker_auth)])
+    async def lease(req: LeaseReq, wait: float | None = None):
+        jobq.touch_worker(req.name)
+        t = S.lease_poll_s if wait is None else max(0.0, min(float(wait), S.lease_poll_s))
+        j = await jobq.lease_wait(req.name, timeout=t)
+        jobq.touch_worker(req.name)
+        if j is None:
+            return Response(status_code=204)
+        # `lease`: this lease's token; progress/fail must present it (a stale worker whose lease was
+        # reassigned gets 409 instead of extending or failing the new holder's lease).
+        return {"job_id": j.job_id, "geom": j.geom, "lease_s": int(S.lease_s), "attempt": j.attempts,
+                "lease": j.lease_token}
+
+    @app.post("/api/worker/progress/{job_id}", dependencies=[Depends(worker_auth)])
+    def worker_progress(job_id: str, req: ProgressReq, lease: str = Query(pattern=LEASE_RE)):
+        j = jobq.get(_job_id(job_id))
+        if j is None:
+            raise HTTPException(404, "unknown job")
+        if not jobq.progress(job_id, req.stage, req.frac, req.msg, token=lease):
+            raise HTTPException(409, f"job is {j.status}, not running under this lease")
+        if j.worker:
+            jobq.touch_worker(j.worker)
+        return {"ok": True, "lease_s": int(S.lease_s)}
+
+    @app.post("/api/worker/result/{job_id}", dependencies=[Depends(worker_auth)])
+    async def worker_result(job_id: str, request: Request):
+        # No lease check: the first valid result wins, even from a worker whose lease was reassigned.
+        j = jobq.get(_job_id(job_id))
+        if j is None:
+            raise HTTPException(404, "unknown job")
+        if j.status in (DONE, ERROR):
+            raise HTTPException(409, f"job already {j.status}")
+        blob = await request.body()
+        try:
+            payload = await asyncio.to_thread(store.validate_result, blob, j.geom, S.max_result)
+        except ValueError as e:
+            raise HTTPException(422, f"invalid result: {e}")
+        if not jobq.claim(job_id):            # finished/claimed meanwhile: persist nothing
+            raise HTTPException(409, f"job already {j.status if j.status in (DONE, ERROR) else 'finishing'}")
+        try:
+            entry = await asyncio.to_thread(store.add_generated, payload)
+        except BaseException:
+            jobq.unclaim(job_id)
+            raise
+        if j.worker:
+            jobq.touch_worker(j.worker)
+        if not jobq.complete(job_id, entry):
+            raise HTTPException(409, "job finished concurrently")
+        return {"ok": True, "id": j.id, "entry": entry}
+
+    @app.post("/api/worker/fail/{job_id}", dependencies=[Depends(worker_auth)])
+    def worker_fail(job_id: str, req: FailReq, lease: str = Query(pattern=LEASE_RE)):
+        j = jobq.get(_job_id(job_id))
+        if j is None:
+            raise HTTPException(404, "unknown job")
+        worker = j.worker
+        new = jobq.fail(job_id, public_error(req.message), token=lease)
+        if new is None:
+            raise HTTPException(409, f"job is {j.status}, not running under this lease")
+        log.warning("worker %s failed job %s: %s", worker, job_id, req.message)   # full text: log only
+        return {"ok": True, "status": new}
+
+    return app
+
+
+def __getattr__(name):
+    """`uvicorn server.app:app` builds the app from env on first access (importing stays side-effect free)."""
+    if name == "app":
+        globals()["app"] = a = create_app()
+        return a
+    raise AttributeError(name)
