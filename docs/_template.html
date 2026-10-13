@@ -1,0 +1,571 @@
+<title>Detect &amp; Resolve: CGM Absorbers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<style>
+/* Layout: one reading column; a control strip that stays in reach on wide screens; each concept is a figure + caption pair. */
+:root{
+  --bg:#f4f6f9; --panel:#ffffff; --ink:#0f151c; --ink2:#4b5563; --muted:#7b8592; --rule:#d6dce4; --grid:#e3e8ee;
+  --accent:#1c5cab; --accent-ink:#ffffff; --truth:#1c5cab; --fit:#d4572a; --intr:#0f151c; --noise:#5b6573;
+  --good:#0c8a3e; --warn:#b26b00; --bad:#b4232a;
+  --display:"Newsreader","Iowan Old Style",Georgia,serif;
+  --body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0f1318; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#7d8896; --rule:#28303a; --grid:#222a33;
+  --accent:#6da7ec; --accent-ink:#0b1016; --truth:#6da7ec; --fit:#f08f62; --intr:#e9eef4; --noise:#9aa5b2;
+  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0f1318; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#7d8896; --rule:#28303a; --grid:#222a33;
+  --accent:#6da7ec; --accent-ink:#0b1016; --truth:#6da7ec; --fit:#f08f62; --intr:#e9eef4; --noise:#9aa5b2;
+  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:18px;padding-block:28px 64px;display:flex;flex-direction:column;gap:30px}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,4.4vw,42px);line-height:1.08;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-weight:600;font-size:clamp(21px,2.6vw,26px);line-height:1.15;margin:0;text-wrap:balance}
+p{margin:0;max-width:72ch} .lede{color:var(--ink2);font-size:16px}
+.mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.label{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:500}
+header{display:flex;flex-direction:column;gap:10px}
+.ions{display:flex;flex-wrap:wrap;gap:14px 18px}
+.ions .grp{display:flex;flex-direction:column;gap:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--rule);background:var(--panel);color:var(--ink);border-radius:6px;padding:5px 9px;font:500 13.5px var(--body);cursor:pointer;white-space:nowrap}
+.chip small{font-family:var(--mono);color:var(--ink2);font-size:11.5px;margin-left:3px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip[aria-pressed="true"] small{color:var(--accent-ink);opacity:.85}
+.chip:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.controls{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 18px;z-index:5}
+@media (min-width:900px){.controls{position:sticky;top:env(safe-area-inset-top,0px)}}
+.ctl{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ctl .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ctl output{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.presets{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.btn{border:1px solid var(--rule);background:var(--panel);color:var(--ink);border-radius:6px;padding:5px 10px;font:500 13px var(--body);cursor:pointer}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+section{display:flex;flex-direction:column;gap:12px}
+.fig{background:var(--panel);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+.fig canvas{display:block;width:100%}
+.figbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--rule)}
+.stages{display:flex;flex-wrap:wrap;gap:6px}
+.readouts{display:flex;flex-wrap:wrap;gap:6px 20px;padding:10px 14px;border-top:1px solid var(--rule);font-size:13.5px}
+.readouts div{display:flex;gap:6px;align-items:baseline} .readouts b{font-weight:500;color:var(--ink2)}
+.cap{padding:10px 14px 14px;color:var(--ink2);font-size:14px;border-top:1px solid var(--rule);min-height:3.2em}
+.cap strong{color:var(--ink);font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600;border:1px solid currentColor}
+.pill.good{color:var(--good)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.maps{display:grid;grid-template-columns:1fr 1fr;gap:14px} @media (max-width:760px){.maps{grid-template-columns:1fr}}
+.maps .fig{position:relative}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:5px 8px;font:12px var(--mono);color:var(--ink);white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+.tablebox{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid)}
+th:first-child,td:first-child{text-align:left}
+thead th{font-weight:500;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);background:var(--panel)}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--grid)} tbody tr.on{box-shadow:inset 3px 0 0 var(--accent)}
+td .a{font-family:var(--mono);font-variant-numeric:tabular-nums} td .d{font-family:var(--mono);color:var(--ink2);font-size:12px;margin-left:6px}
+td.col-on{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.eq{font-family:var(--display);font-size:17px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:10px 14px;overflow-x:auto;white-space:nowrap}
+.foot{color:var(--muted);font-size:13px}
+.foot a{color:var(--accent)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <span class="label">Interactive companion to <span class="mono">cgm-absorber-requirements</span></span>
+  <h1>What does it take to detect an absorber, and to split it into components?</h1>
+  <p class="lede">Every number here is computed from real atomic data (Trident line list, plus Morton 2003 and Verner et al. 1996 where Trident has no entry) and the same model as the paper figures: Doppler profiles, a Gaussian line-spread function, and matched-filter statistics with S/N quoted per resolution element.</p>
+</header>
+
+<div class="ions" id="ions"></div>
+
+<div class="controls" id="controls">
+  <div class="ctl"><div class="row"><label for="cR" class="label">Resolving power R</label><output id="oR"></output></div><input id="cR" type="range" min="3" max="5" step="0.005"></div>
+  <div class="ctl"><div class="row"><label for="cS" class="label">S/N per res. element</label><output id="oS"></output></div><input id="cS" type="range" min="0.4771" max="2" step="0.005"></div>
+  <div class="ctl"><div class="row"><label for="cN" class="label">log N (per component)</label><output id="oN"></output></div><input id="cN" type="range" step="0.01"></div>
+  <div class="ctl"><div class="row"><label for="cB" class="label">Doppler b</label><output id="oB"></output></div><input id="cB" type="range" step="0.005"></div>
+  <div class="ctl"><div class="row"><label for="cV" class="label">Separation Δv</label><output id="oV"></output></div><input id="cV" type="range" step="0.005"></div>
+  <div class="presets"><span class="label">R presets</span>
+    <button class="btn" data-r="2000">COS G140L · 2,000</button><button class="btn" data-r="17000">COS G130M · 17,000</button>
+    <button class="btn" data-r="45800">STIS E140M · 45,800</button><button class="btn" data-r="72000">HIRES/UVES · 72,000</button>
+    <button class="btn" id="reset">Reset to ion defaults</button></div>
+</div>
+
+<section>
+  <h2>1 · From gas to spectrum</h2>
+  <p>A cloud imprints an optical depth τ(v) on the background light. The spectrograph blurs the absorbed flux with its line-spread function (LSF) of width c/R, then samples it with noise. Play the sequence, or step through it.</p>
+  <div class="fig">
+    <div class="figbar"><div class="stages" id="stages">
+      <button class="btn" data-s="0">① Optical depth</button><button class="btn" data-s="1">② Absorbed flux</button>
+      <button class="btn" data-s="2">③ Blur by the LSF</button><button class="btn" data-s="3">④ Sample with noise</button></div>
+      <div style="display:flex;gap:6px"><button class="btn primary" id="play1">▶ Play</button><button class="btn" id="reroll1" title="New noise realisation">New noise</button></div></div>
+    <canvas id="cv1" height="300" aria-label="Absorption profile through the observing chain"></canvas>
+    <div class="readouts" id="ro1"></div>
+    <p class="cap" id="cap1"></p>
+  </div>
+</section>
+
+<section>
+  <h2>2 · Two components, one blurred trough</h2>
+  <p>Two components separated by Δv blend when Δv is comparable to the effective width, FWHM<sub>eff</sub> = [(c/R)² + (1.665 b)²]<sup>1/2</sup>. The dip between them vanishes below the Sparrow separation Δv<sub>S</sub> = 0.85 FWHM<sub>eff</sub>. A fit can still tell two from one if the noise is low enough. The orange dashed curve is the best single-component impostor, refit live; the lower strip shows what it cannot reproduce, against the noise per pixel.</p>
+  <div class="fig">
+    <div class="figbar"><div class="stages">
+      <button class="btn primary" id="sweepR">▶ Sweep R</button><button class="btn" id="sweepV">▶ Sweep Δv</button>
+      <button class="btn" id="noise2" aria-pressed="false">Show noise</button></div>
+      <span id="verdict"></span></div>
+    <canvas id="cv2" height="360" aria-label="Two-component profile with the best single-component fit and residuals"></canvas>
+    <div class="readouts" id="ro2"></div>
+    <p class="cap" id="cap2"></p>
+  </div>
+</section>
+
+<section>
+  <h2>3 · Requirement maps for the selected ion</h2>
+  <p>Left: the weakest single absorber detectable at 3σ, for the current b. Right: the smallest separation at which two equal components (current log N, fiducial b) are resolved at 3σ. Click a map to move the spectrograph there; the ring marks the current setting and the dotted lines mark existing instruments.</p>
+  <div class="maps">
+    <div class="fig"><canvas id="m1" height="330" aria-label="Map of minimum detectable column density over resolving power and S/N"></canvas><div class="tip" id="t1" hidden></div><p class="cap" id="mc1"></p></div>
+    <div class="fig"><canvas id="m2" height="330" aria-label="Map of minimum resolvable separation over resolving power and S/N"></canvas><div class="tip" id="t2" hidden></div><p class="cap" id="mc2"></p></div>
+  </div>
+</section>
+
+<section>
+  <h2>4 · One law for every ion</h2>
+  <p>For optically thin components the problem collapses to a single curve. Measure the separation in units of FWHM<sub>eff</sub> and the noise through S<sub>det</sub>, the significance with which the whole blend is detected. Equal pairs follow Δv<sub>min</sub> ≈ 1.98 FWHM<sub>eff</sub> S<sub>det</sub><sup>−1/4</sup>, so halving the separation costs 16× in S/N. The dot is your current setting.</p>
+  <div class="fig"><canvas id="cv4" height="320" aria-label="Universal resolution curves with the current setting"></canvas><p class="cap" id="cap4"></p></div>
+  <div class="eq">ρ = S<sub>res</sub>/S<sub>det</sub> ≈ (√6 / 384)(Δv/σ<sub>eff</sub>)<sup>4</sup> (equal pair) &nbsp;·&nbsp; ≈ q(1−q)|1−2q|(Δv/σ<sub>eff</sub>)<sup>3</sup>/(4√3) (unequal) &nbsp;·&nbsp; σ<sub>eff</sub><sup>2</sup> = b²/2 + σ<sub>LSF</sub><sup>2</sup></div>
+</section>
+
+<section>
+  <h2>5 · All twelve transitions at the current S/N</h2>
+  <p>Each cell gives the minimum detectable log N for one component at the fiducial b, then (smaller) the minimum resolvable Δv in km/s for two equal components each at τ<sub>0</sub> = 1. Click a row to switch ion.</p>
+  <div class="tablebox"><table id="tbl"></table></div>
+</section>
+
+<p class="foot">Model: Doppler cores (damping wings neglected), Gaussian LSF, constant continuum noise, 3 pixels per resolution element for the noise illustration. Fiducial b combines the thermal width at a representative temperature with 5 km/s of turbulence. Significances are expected (median) values. Source and paper-quality figures: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>.</p>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const C = 299792.458, FW2SIG = 1 / 2.3548200450309493, LN10 = Math.LN10;
+const INSTR = [["G140L", 2000], ["G130M", 17000], ["E140M", 45800], ["HIRES", 72000]];
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = s => document.querySelector(s);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = (x, d = 0) => Number.isFinite(x) ? x.toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d}) : "—";
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+
+/* ---------------- physics ---------------- */
+function tau0(ion, logN, b) { return 1.4975e-15 * Math.pow(10, logN) * ion.f * ion.lam / b; }
+function fft(re, im, inv) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = 2 * Math.PI / len * (inv ? 1 : -1), wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) { let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) { const a = i + k, b = a + len / 2;
+        const tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr; } } }
+  if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+function vgrid(span, b, R) {
+  const sig = C / R * FW2SIG; let step = Math.min(b / 5, sig / 3, 1);
+  const half = span / 2 + 6 * b + 7 * sig + 15;
+  let n = Math.pow(2, Math.ceil(Math.log2(2 * half / step)));
+  if (n > 4096) { n = 4096; step = 2 * half / n; }
+  const v = new Float64Array(n); for (let i = 0; i < n; i++) v[i] = (i - n / 2) * step;
+  const T = new Float64Array(n);
+  for (let i = 0; i < n; i++) { const f = (i <= n / 2 ? i : i - n) / (n * step); T[i] = Math.exp(-2 * Math.PI * Math.PI * sig * sig * f * f); }
+  return {v, step, T, n, sig, fwhm: C / R};
+}
+function tauOf(g, ion, comps) {
+  const t = new Float64Array(g.n);
+  for (const [lN, b, vc] of comps) { const t0 = tau0(ion, lN, b);
+    for (let i = 0; i < g.n; i++) { const x = (g.v[i] - vc) / b; if (x * x < 60) t[i] += t0 * Math.exp(-x * x); } }
+  return t;
+}
+function convolve(g, D) {
+  const re = Float64Array.from(D), im = new Float64Array(g.n);
+  fft(re, im, false); for (let i = 0; i < g.n; i++) { re[i] *= g.T[i]; im[i] *= g.T[i]; } fft(re, im, true);
+  return re;
+}
+function observed(g, ion, comps) {          // returns {tau, Fint, F}
+  const tau = tauOf(g, ion, comps), D = new Float64Array(g.n);
+  for (let i = 0; i < g.n; i++) D[i] = 1 - Math.exp(-tau[i]);
+  const Dc = convolve(g, D), F = new Float64Array(g.n), Fint = new Float64Array(g.n);
+  for (let i = 0; i < g.n; i++) { F[i] = 1 - Dc[i]; Fint[i] = 1 - D[i]; }
+  return {tau, Fint, F};
+}
+function sdetK(g, F) { let s = 0; for (let i = 0; i < g.n; i++) s += (1 - F[i]) ** 2; return Math.sqrt(s * g.step / g.fwhm); }
+function nelderMead(f, x0, scale, iters) {
+  const n = x0.length; let P = [x0.slice()];
+  for (let i = 0; i < n; i++) { const p = x0.slice(); p[i] += scale[i]; P.push(p); }
+  let Y = P.map(f);
+  for (let it = 0; it < iters; it++) {
+    const ord = Y.map((y, i) => i).sort((a, b) => Y[a] - Y[b]); P = ord.map(i => P[i]); Y = ord.map(i => Y[i]);
+    if (Math.abs(Y[n] - Y[0]) <= 1e-12 * (Math.abs(Y[0]) + 1e-30) && it > 20) break;
+    const c = new Array(n).fill(0); for (let i = 0; i < n; i++) for (let k = 0; k < n; k++) c[k] += P[i][k] / n;
+    const pt = (t) => c.map((ck, k) => ck + t * (P[n][k] - ck));
+    const r = pt(-1), yr = f(r);
+    if (yr < Y[0]) { const e = pt(-2), ye = f(e); if (ye < yr) { P[n] = e; Y[n] = ye; } else { P[n] = r; Y[n] = yr; } }
+    else if (yr < Y[n - 1]) { P[n] = r; Y[n] = yr; }
+    else { const k = pt(yr < Y[n] ? -0.5 : 0.5), yk = f(k);
+      if (yk < Math.min(yr, Y[n])) { P[n] = k; Y[n] = yk; }
+      else for (let i = 1; i <= n; i++) { P[i] = P[i].map((x, j) => P[0][j] + 0.5 * (x - P[0][j])); Y[i] = f(P[i]); } }
+  }
+  const i0 = Y.indexOf(Math.min(...Y)); return {x: P[i0], y: Y[i0]};
+}
+let warm = null;
+function separation(ion, lN, b, dv, R, iters = 160) {
+  const g = vgrid(dv, b, R), truth = observed(g, ion, [[lN, b, -dv / 2], [lN, b, dv / 2]]);
+  const obj = (x) => { const m = observed(g, ion, [[x[0], Math.exp(clamp(x[1], -3, 8)), x[2]]]).F;
+    let s = 0; for (let i = 0; i < g.n; i++) s += (truth.F[i] - m[i]) ** 2; return s * g.step / g.fwhm; };
+  const starts = [[lN + Math.log10(2), Math.log(Math.sqrt(b * b + dv * dv / 2)), 0], [lN, Math.log(b), dv / 2]];
+  if (warm) starts.push(warm.slice());
+  let best = {y: Infinity};
+  for (const s of starts) { const r = nelderMead(obj, s, [0.15, 0.2, Math.max(2, dv / 6)], iters); if (r.y < best.y) best = r; }
+  warm = best.x;
+  const fit = observed(g, ion, [[best.x[0], Math.exp(clamp(best.x[1], -3, 8)), best.x[2]]]);
+  return {g, truth, fit, G: best.y, par: best.x, Kblend: sdetK(g, truth.F)};
+}
+
+/* ---------------- grids from the paper pipeline ---------------- */
+const lerp = (a, b, t) => a + (b - a) * t;
+function frac(arr, x) {             // fractional index of x in increasing arr (clamped)
+  if (x <= arr[0]) return 0; const n = arr.length; if (x >= arr[n - 1]) return n - 1;
+  let i = 0; while (arr[i + 1] < x) i++; return i + (x - arr[i]) / (arr[i + 1] - arr[i]);
+}
+function prep(ion) {
+  if (ion._p) return ion._p;
+  const d = ion.det, s = ion.sep;
+  ion._p = {lb: d.b.map(Math.log10), lRd: d.R.map(Math.log10), lRs: s.R.map(Math.log10), ldv: s.dv.map(Math.log10)};
+  return ion._p;
+}
+function detColumn(ion, b, R) {     // log10 K along log N at (b, R), bilinear in (log b, log R)
+  const d = ion.det, p = prep(ion), [nN, nb, nR] = d.shape;
+  const fb = frac(p.lb, Math.log10(b)), fr = frac(p.lRd, Math.log10(R));
+  const b0 = Math.min(Math.floor(fb), nb - 2), r0 = Math.min(Math.floor(fr), nR - 2), tb = fb - b0, tr = fr - r0;
+  const col = new Float64Array(nN);
+  for (let i = 0; i < nN; i++) { const at = (j, k) => d.logK[(i * nb + j) * nR + k];
+    col[i] = lerp(lerp(at(b0, r0), at(b0, r0 + 1), tr), lerp(at(b0 + 1, r0), at(b0 + 1, r0 + 1), tr), tb); }
+  return col;
+}
+function logNmin(ion, col, snr) {
+  const t = Math.log10(3 / snr), L = ion.det.logN, n = col.length;
+  if (t < col[0]) return -Infinity; if (t > col[n - 1]) return Infinity;
+  let i = 0; while (col[i + 1] < t) i++; return L[i] + (t - col[i]) / (col[i + 1] - col[i]) * (L[i + 1] - L[i]);
+}
+function sepColumn(ion, lN, R) {    // log10 G along dv at (log N, R)
+  const s = ion.sep, p = prep(ion), [nN, nd, nR] = s.shape;
+  const fn = frac(s.logN, lN), fr = frac(p.lRs, Math.log10(R));
+  const n0 = Math.min(Math.floor(fn), nN - 2), r0 = Math.min(Math.floor(fr), nR - 2), tn = fn - n0, tr = fr - r0;
+  const col = new Float64Array(nd);
+  for (let j = 0; j < nd; j++) { const at = (i, k) => s.logG[(i * nd + j) * nR + k];
+    col[j] = lerp(lerp(at(n0, r0), at(n0, r0 + 1), tr), lerp(at(n0 + 1, r0), at(n0 + 1, r0 + 1), tr), tn); }
+  return col;
+}
+function dvmin(ion, col, snr) {
+  const t = 2 * Math.log10(3 / snr), L = prep(ion).ldv;
+  let j = -1; for (let i = 0; i < col.length; i++) if (col[i] >= t) { j = i; break; }
+  if (j < 0) return Infinity; if (j === 0) return ion.sep.dv[0];
+  return Math.pow(10, L[j - 1] + (t - col[j - 1]) / (col[j] - col[j - 1]) * (L[j] - L[j - 1]));
+}
+const sparrow = (R, b) => 2 * Math.sqrt(b * b / 2 + (C / R * FW2SIG) ** 2);
+const fwhmEff = (R, b) => Math.sqrt((C / R) ** 2 + (1.6651 * b) ** 2);
+
+/* ---------------- state & controls ---------------- */
+const ions = DATA.ions;
+const S = {i: ions.findIndex(o => o.ion === "O VI"), R: 17000, snr: 10, logN: 0, b: 0, dv: 30, seed: 7};
+const ion = () => ions[S.i];
+function defaults() { const o = ion(); S.logN = +o.logN_tau1.toFixed(2); S.b = o.b_fid; S.dv = Math.max(o.sep.dv[0] * 2, Math.round(1.6 * fwhmEff(S.R, o.b_fid))); warm = null; }
+function buildIonChips() {
+  const groups = {}; ions.forEach((o, i) => (groups[o.phase] ||= []).push(i));
+  const names = {neutral: "Neutral", low: "Low ions", intermediate: "Intermediate", high: "High ions", "X-ray": "X-ray"};
+  $("#ions").innerHTML = Object.entries(groups).map(([ph, idx]) => `<div class="grp"><span class="label">${names[ph] || ph}</span><div class="chips">${
+    idx.map(i => { const o = ions[i]; return `<button class="chip" id="ion-${o.key}" data-i="${i}" aria-pressed="${i === S.i}">${o.ion}<small>λ${o.label}</small></button>`; }).join("")}</div></div>`).join("");
+  $("#ions").querySelectorAll(".chip").forEach(b => b.onclick = () => selectIon(+b.dataset.i));
+}
+function selectIon(i) { S.i = i; defaults(); $("#ions").querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", +b.dataset.i === i)); syncControls(); update(true); }
+function syncControls() {
+  const o = ion();
+  $("#cN").min = o.sep.logN[0]; $("#cN").max = o.sep.logN[o.sep.logN.length - 1];
+  $("#cB").min = Math.log10(o.det.b[0]); $("#cB").max = Math.log10(o.det.b[o.det.b.length - 1]);
+  $("#cV").min = Math.log10(o.sep.dv[0]); $("#cV").max = Math.log10(300);
+  $("#cR").value = Math.log10(S.R); $("#cS").value = Math.log10(S.snr); $("#cN").value = S.logN; $("#cB").value = Math.log10(S.b); $("#cV").value = Math.log10(S.dv);
+  writeOutputs();
+}
+function writeOutputs() {
+  $("#oR").textContent = fmt(S.R); $("#oS").textContent = fmt(S.snr, S.snr < 10 ? 1 : 0);
+  $("#oN").textContent = S.logN.toFixed(2); $("#oB").textContent = S.b.toFixed(1) + " km/s"; $("#oV").textContent = S.dv.toFixed(1) + " km/s";
+}
+[["#cR", v => S.R = Math.pow(10, v)], ["#cS", v => S.snr = Math.pow(10, v)], ["#cN", v => S.logN = v], ["#cB", v => S.b = Math.pow(10, v)], ["#cV", v => S.dv = Math.pow(10, v)]]
+  .forEach(([id, set]) => $(id).addEventListener("input", e => { set(+e.target.value); writeOutputs(); update(); }));
+document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { S.R = +b.dataset.r; syncControls(); update(); });
+$("#reset").onclick = () => { defaults(); syncControls(); update(true); };
+
+/* ---------------- canvas helpers ---------------- */
+function setup(cv) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = +cv.getAttribute("height");
+  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + "px"; }
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, w, h); return {ctx, w, h};
+}
+function frame(ctx, box, o) {        // box {x,y,w,h}; o {xr,yr,xlog,ylog,xticks,yticks,xlabel,ylabel,xfmt,yfmt}
+  const X = v => box.x + (o.xlog ? (Math.log10(v) - Math.log10(o.xr[0])) / (Math.log10(o.xr[1]) - Math.log10(o.xr[0])) : (v - o.xr[0]) / (o.xr[1] - o.xr[0])) * box.w;
+  const Y = v => box.y + box.h - (o.ylog ? (Math.log10(v) - Math.log10(o.yr[0])) / (Math.log10(o.yr[1]) - Math.log10(o.yr[0])) : (v - o.yr[0]) / (o.yr[1] - o.yr[0])) * box.h;
+  ctx.font = `11px ${css("--mono")}`; ctx.fillStyle = css("--ink2"); ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1;
+  for (const t of o.yticks || []) { const y = Y(t); ctx.beginPath(); ctx.moveTo(box.x, y); ctx.lineTo(box.x + box.w, y); ctx.stroke();
+    ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillText((o.yfmt || String)(t), box.x - 6, y); }
+  for (const t of o.xticks || []) { const x = X(t); ctx.beginPath(); ctx.moveTo(x, box.y); ctx.lineTo(x, box.y + box.h); ctx.stroke();
+    ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText((o.xfmt || String)(t), x, box.y + box.h + 5); }
+  ctx.strokeStyle = css("--rule"); ctx.strokeRect(box.x, box.y, box.w, box.h);
+  ctx.font = `12px ${css("--body")}`; ctx.fillStyle = css("--ink2");
+  if (o.xlabel) { ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.fillText(o.xlabel, box.x + box.w / 2, box.y + box.h + 34); }
+  if (o.ylabel) { ctx.save(); ctx.translate(box.x - 44, box.y + box.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = "center"; ctx.fillText(o.ylabel, 0, 0); ctx.restore(); }
+  return {X, Y};
+}
+function line(ctx, xs, ys, X, Y, color, width, dash, upto) {
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash || []); ctx.beginPath();
+  let first = true; for (let i = 0; i < xs.length; i++) { if (upto !== undefined && xs[i] > upto) break;
+    const x = X(xs[i]), y = Y(ys[i]); if (!Number.isFinite(y)) { first = true; continue; } first ? ctx.moveTo(x, y) : ctx.lineTo(x, y); first = false; }
+  ctx.stroke(); ctx.restore();
+}
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function gauss(r) { return Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r()); }
+function interpArr(xs, ys, x) { const f = frac(xs, x), i = Math.min(Math.floor(f), xs.length - 2); return lerp(ys[i], ys[i + 1], f - i); }
+
+/* ---------------- section 1: from gas to spectrum ---------------- */
+let stage1 = 3, anim1 = null;
+function draw1() {
+  const o = ion(), {ctx, w, h} = setup($("#cv1"));
+  const g = vgrid(0, S.b, S.R), pr = observed(g, o, [[S.logN, S.b, 0]]);
+  const span = Math.max(4 * S.b + 3 * g.fwhm, 60), xr = [-span, span];
+  const box = {x: 58, y: 16, w: w - 74, h: h - 64};
+  const {X, Y} = frame(ctx, box, {xr, yr: [-0.05, 1.12], yticks: [0, 0.25, 0.5, 0.75, 1], yfmt: t => t.toFixed(2),
+    xticks: niceTicks(-span, span), xlabel: "velocity [km/s]", ylabel: "normalized flux"});
+  const v = g.v, t0 = tau0(o, S.logN, S.b), st = stage1;
+  const a0 = clamp(1 - Math.abs(st - 0), 0, 1), a1 = clamp(st, 0, 1), a2 = clamp(st - 1, 0, 1), a3 = clamp(st - 2, 0, 1);
+  if (a0 > 0) {   // optical depth on its own scale (right axis)
+    const tmax = Math.max(t0, 1) * 1.1; ctx.globalAlpha = a0;
+    const tY = t => box.y + box.h - t / tmax * box.h * 0.95;
+    ctx.fillStyle = css("--truth"); ctx.globalAlpha = a0 * 0.18; ctx.beginPath(); ctx.moveTo(X(xr[0]), tY(0));
+    for (let i = 0; i < g.n; i++) if (v[i] >= xr[0] && v[i] <= xr[1]) ctx.lineTo(X(v[i]), tY(pr.tau[i])); ctx.lineTo(X(xr[1]), tY(0)); ctx.fill();
+    ctx.globalAlpha = a0; line(ctx, v, Array.from(pr.tau), X, tY, css("--truth"), 2);
+    ctx.fillStyle = css("--ink"); ctx.font = `12px ${css("--mono")}`; ctx.textAlign = "left"; ctx.fillText(`τ₀ = ${t0 < 100 ? t0.toFixed(2) : t0.toExponential(1)}  (right-hand scale, 0–${tmax.toFixed(1)})`, box.x + 8, box.y + 14);
+    ctx.globalAlpha = 1;
+  }
+  if (a1 > 0) { ctx.globalAlpha = a1 * (st >= 2 ? 0.55 : 1); line(ctx, v, Array.from(pr.Fint), X, Y, css("--intr"), 1.5, st >= 2 ? [5, 4] : []); ctx.globalAlpha = 1; }
+  if (a2 > 0) {   // LSF slides across, tracing the observed profile
+    const reveal = st >= 3 ? xr[1] : lerp(xr[0], xr[1], clamp(a2 * 1.02, 0, 1)), sig = g.sig;
+    if (st < 3) { const ks = [], kv = []; for (let x = -4 * sig; x <= 4 * sig; x += sig / 20) { kv.push(reveal + x); ks.push(1 - 0.32 * Math.exp(-0.5 * (x / sig) ** 2)); }
+      ctx.fillStyle = css("--fit"); ctx.globalAlpha = 0.16; ctx.beginPath(); ctx.moveTo(X(kv[0]), Y(1));
+      kv.forEach((x, i) => ctx.lineTo(X(x), Y(ks[i]))); ctx.lineTo(X(kv[kv.length - 1]), Y(1)); ctx.fill(); ctx.globalAlpha = 1;
+      line(ctx, kv, ks, X, Y, css("--fit"), 1.2);
+      ctx.fillStyle = css("--fit"); ctx.font = `11px ${css("--mono")}`; ctx.textAlign = "center"; ctx.fillText(`LSF, FWHM ${fmt(g.fwhm, 1)} km/s`, X(reveal), Y(0.64) );
+    }
+    line(ctx, v, Array.from(pr.F), X, Y, css("--truth"), 2.2, [], reveal);
+  }
+  if (a3 > 0) {   // pixels with noise: 3 pixels per resolution element, sigma_pix = sqrt(3)/(S/N)
+    const r = rng(S.seed), pix = g.fwhm / 3, sp = Math.sqrt(3) / S.snr; ctx.globalAlpha = a3;
+    ctx.fillStyle = css("--noise");
+    for (let x = xr[0] + pix / 2; x < xr[1]; x += pix) { const y = interpArr(v, pr.F, x) + sp * gauss(r);
+      ctx.fillRect(X(x) - 1.6, Y(y) - 1.6, 3.2, 3.2); }
+    ctx.globalAlpha = 1;
+  }
+  const K = sdetK(g, pr.F), Sd = S.snr * K, W = (() => { let s = 0; for (let i = 0; i < g.n; i++) s += 1 - pr.Fint[i]; return s * g.step / C * o.lam * 1000; })();
+  $("#ro1").innerHTML = [["τ₀", t0 < 100 ? t0.toFixed(2) : t0.toExponential(1)], ["W<sub>λ</sub>", fmt(W, 1) + " mÅ"], ["FWHM<sub>LSF</sub>", fmt(g.fwhm, 1) + " km/s"],
+    ["FWHM<sub>eff</sub>", fmt(fwhmEff(S.R, S.b), 1) + " km/s"], ["S<sub>det</sub>", fmt(Sd, 1) + "σ"]].map(([k, v]) => `<div><b>${k}</b><span class="num">${v}</span></div>`).join("") +
+    ` <div>${Sd >= 3 ? '<span class="pill good">detected at ≥3σ</span>' : '<span class="pill bad">below 3σ</span>'}</div>`;
+  const caps = [
+    `<strong>Optical depth.</strong> ${o.ion} λ${o.label} with f = ${o.f}, log N = ${S.logN.toFixed(2)} and b = ${S.b.toFixed(1)} km/s gives a Doppler core τ(v) = τ₀ exp(−v²/b²) with τ₀ = ${t0.toFixed(2)}${t0 > 1 ? ", so the line centre is saturated" : ""}.`,
+    `<strong>Absorbed flux</strong> e<sup>−τ</sup>. The intrinsic equivalent width is ${fmt(W, 1)} mÅ${t0 > 1.5 ? "; past τ₀ ≈ 1 it grows only logarithmically with N (flat part of the curve of growth)" : "; it still grows in proportion to N"}.`,
+    `<strong>The LSF slides across the line</strong> and replaces every point by a weighted average over ${fmt(g.fwhm, 1)} km/s (FWHM = c/R). ${g.fwhm > 1.665 * S.b ? "The instrument is wider than the line, so the trough gets shallower and wider while its area is conserved." : "The line is already resolved, so its shape barely changes."}`,
+    `<strong>Sampling and noise.</strong> At S/N = ${fmt(S.snr, 0)} per resolution element the matched filter detects this line at ${fmt(Sd, 1)}σ. The minimum detectable column here is log N = ${(() => { const m = logNmin(o, detColumn(o, S.b, S.R), S.snr); return Number.isFinite(m) ? m.toFixed(2) : (m > 0 ? "above the grid" : "below the grid"); })()}.`];
+  $("#cap1").innerHTML = caps[Math.min(3, Math.round(st - 0.49) < 0 ? 0 : Math.floor(st + 0.001))];
+  document.querySelectorAll("#stages [data-s]").forEach(b => b.setAttribute("aria-pressed", Math.floor(st + 0.001) === +b.dataset.s));
+}
+function niceTicks(a, b) { const span = b - a, raw = span / 6, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+  const st = (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p, out = []; for (let t = Math.ceil(a / st) * st; t <= b + 1e-9; t += st) out.push(Math.round(t)); return out; }
+function play1() {
+  if (anim1) cancelAnimationFrame(anim1);
+  if (reduced) { stage1 = 3; draw1(); return; }
+  const t0 = performance.now(), dur = 9000;
+  const step = now => { const u = (now - t0) / dur; stage1 = Math.min(3, u * 3.3); draw1(); if (u < 0.92) anim1 = requestAnimationFrame(step); else { stage1 = 3; draw1(); anim1 = null; } };
+  anim1 = requestAnimationFrame(step);
+}
+$("#play1").onclick = play1;
+$("#reroll1").onclick = () => { S.seed = (S.seed * 7919 + 13) % 100003; draw1(); draw2(); };
+document.querySelectorAll("#stages [data-s]").forEach(b => b.onclick = () => { if (anim1) cancelAnimationFrame(anim1); anim1 = null; stage1 = +b.dataset.s + (b.dataset.s === "2" ? 0.999 : 0); draw1(); });
+
+/* ---------------- section 2: two components ---------------- */
+let sep2 = null, noise2 = false, anim2 = null;
+function compute2(iters) { sep2 = separation(ion(), S.logN, S.b, S.dv, S.R, iters); }
+function draw2() {
+  if (!sep2) compute2();
+  const o = ion(), {ctx, w, h} = setup($("#cv2")), {g, truth, fit} = sep2;
+  const span = Math.max(S.dv / 2 + 4 * S.b + 2.5 * g.fwhm, 60), xr = [-span, span];
+  const top = {x: 58, y: 14, w: w - 74, h: h * 0.62 - 20}, bot = {x: 58, y: h * 0.62 + 12, w: w - 74, h: h * 0.38 - 58};
+  const A = frame(ctx, top, {xr, yr: [-0.05, 1.12], yticks: [0, 0.5, 1], yfmt: t => t.toFixed(1), xticks: [], ylabel: "flux"});
+  const v = g.v;
+  ctx.globalAlpha = 0.35; line(ctx, v, Array.from(truth.Fint), A.X, A.Y, css("--intr"), 1.2, [3, 3]); ctx.globalAlpha = 1;
+  if (noise2) { const r = rng(S.seed + 1), pix = g.fwhm / 3, sp = Math.sqrt(3) / S.snr; ctx.fillStyle = css("--noise");
+    for (let x = xr[0] + pix / 2; x < xr[1]; x += pix) { const y = interpArr(v, truth.F, x) + sp * gauss(r); ctx.fillRect(A.X(x) - 1.5, A.Y(y) - 1.5, 3, 3); } }
+  line(ctx, v, Array.from(truth.F), A.X, A.Y, css("--truth"), 2.2);
+  line(ctx, v, Array.from(fit.F), A.X, A.Y, css("--fit"), 1.8, [7, 4]);
+  for (const s of [-1, 1]) { ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(A.X(s * S.dv / 2), A.Y(1.04)); ctx.lineTo(A.X(s * S.dv / 2), A.Y(1.1)); ctx.stroke(); }
+  ctx.font = `12px ${css("--body")}`; ctx.textAlign = "left"; ctx.fillStyle = css("--truth"); ctx.fillText("two components (truth, observed)", top.x + 8, top.y + 14);
+  ctx.fillStyle = css("--fit"); ctx.fillText("best single component", top.x + 8, top.y + 30);
+  ctx.fillStyle = css("--ink2"); ctx.fillText("dashed grey: intrinsic", top.x + 8, top.y + 46);
+  // residuals vs per-pixel noise
+  const sp = Math.sqrt(3) / S.snr, res = Array.from(truth.F).map((f, i) => f - fit.F[i]);
+  let rmax = 0; for (let i = 0; i < g.n; i++) if (v[i] > xr[0] && v[i] < xr[1]) rmax = Math.max(rmax, Math.abs(res[i]));
+  const yl = Math.max(rmax * 1.3, sp * 0.15, 1e-4);
+  const B = frame(ctx, bot, {xr, yr: [-yl, yl], yticks: [-yl / 1.3, 0, yl / 1.3].map(x => +x.toPrecision(1)), yfmt: t => t === 0 ? "0" : t.toExponential(0).replace("e-", "e−"),
+    xticks: niceTicks(-span, span), xlabel: "velocity [km/s]", ylabel: "residual"});
+  ctx.fillStyle = css("--noise"); ctx.globalAlpha = 0.12;
+  const bandTop = B.Y(Math.min(sp, yl)), bandBot = B.Y(-Math.min(sp, yl)); ctx.fillRect(bot.x, bandTop, bot.w, bandBot - bandTop); ctx.globalAlpha = 1;
+  line(ctx, v, res, B.X, B.Y, css("--fit"), 1.6);
+  ctx.font = `11px ${css("--mono")}`; ctx.fillStyle = css("--ink2"); ctx.textAlign = "right";
+  ctx.fillText(sp < yl ? "shaded: ±1σ noise per pixel" : `±1σ noise per pixel = ±${sp.toFixed(3)} (off scale)`, bot.x + bot.w - 6, bot.y + 12);
+  const Sres = S.snr * Math.sqrt(Math.max(sep2.G, 0)), Sd = S.snr * sep2.Kblend, fe = fwhmEff(S.R, S.b), vs = sparrow(S.R, S.b);
+  const dip = S.dv > vs, resolved = Sres >= 3;
+  $("#verdict").innerHTML = resolved ? (dip ? '<span class="pill good">resolved: visible dip</span>' : '<span class="pill warn">resolved statistically, no dip</span>') : '<span class="pill bad">not resolved at 3σ</span>';
+  $("#ro2").innerHTML = [["Δv", S.dv.toFixed(1) + " km/s"], ["FWHM<sub>eff</sub>", fe.toFixed(1) + " km/s"], ["Δv<sub>S</sub> (Sparrow)", vs.toFixed(1) + " km/s"],
+    ["Δv/FWHM<sub>eff</sub>", (S.dv / fe).toFixed(2)], ["S<sub>det</sub> blend", fmt(Sd, 1) + "σ"], ["S<sub>res</sub>", fmt(Sres, 1) + "σ"]].map(([k, v]) => `<div><b>${k}</b><span class="num">${v}</span></div>`).join("");
+  const dmin = dvmin(o, sepColumn(o, S.logN, S.R), S.snr);
+  $("#cap2").innerHTML = `The best single component has log N = ${sep2.par[0].toFixed(2)}, b = ${Math.exp(sep2.par[1]).toFixed(1)} km/s. Its misfit is worth Δχ² = ${fmt(Sres * Sres, 1)} at S/N = ${fmt(S.snr)}, so the pair is ${resolved ? "" : "<strong>not</strong> "}resolved at 3σ. ` +
+    (Math.abs(S.b - o.b_fid) < 0.05 ? `From the precomputed grid, the smallest separation resolvable here is <strong>${Number.isFinite(dmin) ? dmin.toFixed(1) + " km/s" : "beyond 300 km/s"}</strong>.` : `Set b back to ${o.b_fid.toFixed(1)} km/s to compare with the precomputed grid.`) +
+    (Sd * 0.5 < 3 ? " Each component on its own is below 3σ, so no separation can be resolved until the components are detected." : "");
+  draw4();
+}
+function sweep2(kind) {
+  if (anim2) { cancelAnimationFrame(anim2); anim2 = null; $("#sweepR").textContent = "▶ Sweep R"; $("#sweepV").textContent = "▶ Sweep Δv"; return; }
+  const btn = kind === "R" ? $("#sweepR") : $("#sweepV"); btn.textContent = "■ Stop";
+  const lo = kind === "R" ? 3 : Math.log10(ion().sep.dv[0] * 1.5), hi = kind === "R" ? 5 : Math.log10(Math.min(300, 3 * fwhmEff(S.R, S.b)));
+  const t0 = performance.now(), dur = reduced ? 1 : 7000;
+  const stepf = now => { const u = Math.min(1, (now - t0) / dur), x = lerp(lo, hi, 0.5 - 0.5 * Math.cos(Math.PI * u));
+    if (kind === "R") S.R = Math.pow(10, x); else S.dv = Math.pow(10, x);
+    syncControls(); compute2(70); draw2(); drawMaps(); drawTable();
+    if (u < 1) anim2 = requestAnimationFrame(stepf); else { anim2 = null; btn.textContent = kind === "R" ? "▶ Sweep R" : "▶ Sweep Δv"; compute2(); draw2(); } };
+  anim2 = requestAnimationFrame(stepf);
+}
+$("#sweepR").onclick = () => sweep2("R"); $("#sweepV").onclick = () => sweep2("V");
+$("#noise2").onclick = e => { noise2 = !noise2; e.target.setAttribute("aria-pressed", noise2); draw2(); };
+
+/* ---------------- section 3: maps ---------------- */
+const BLUES = ["#eaf2fd", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"];
+const ORANGES = ["#fdeee4", "#fbd9c5", "#f6b594", "#f08f62", "#e36a37", "#bf4f21", "#933a16", "#66270d"];
+const hex = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+function ramp(cols, t) { t = clamp(t, 0, 1) * (cols.length - 1); const i = Math.min(Math.floor(t), cols.length - 2), a = hex(cols[i]), b = hex(cols[i + 1]), u = t - i; return a.map((x, k) => Math.round(lerp(x, b[k], u))); }
+const MAPBOX = cv => ({x: 52, y: 14, w: cv.clientWidth - 112, h: +cv.getAttribute("height") - 62});
+function drawMap(cv, kind) {
+  const o = ion(), {ctx, w, h} = setup(cv), box = MAPBOX(cv), nx = 110, ny = 70;
+  const img = ctx.createImageData(nx, ny), vals = [];
+  let lo, hi, cols, label;
+  if (kind === "det") { lo = o.det.logN[0]; hi = o.det.logN[o.det.logN.length - 1]; cols = BLUES; label = "min log N (3σ)"; }
+  else { lo = Math.log10(o.sep.dv[0]); hi = Math.log10(300); cols = BLUES; label = "Δv_min [km/s] (3σ)"; }
+  for (let ix = 0; ix < nx; ix++) {
+    const R = Math.pow(10, 3 + 2 * (ix + 0.5) / nx);
+    const col = kind === "det" ? detColumn(o, S.b, R) : sepColumn(o, S.logN, R);
+    for (let iy = 0; iy < ny; iy++) {
+      const snr = Math.pow(10, Math.log10(3) + (2 - Math.log10(3)) * (1 - (iy + 0.5) / ny));
+      let v = kind === "det" ? logNmin(o, col, snr) : Math.log10(dvmin(o, col, snr));
+      const k = 4 * (iy * nx + ix); let rgb;
+      if (!Number.isFinite(v)) rgb = v > 0 ? [185, 184, 178] : hex(cols[0]);
+      else rgb = ramp(cols, (v - lo) / (hi - lo));
+      img.data[k] = rgb[0]; img.data[k + 1] = rgb[1]; img.data[k + 2] = rgb[2]; img.data[k + 3] = 255;
+    }
+  }
+  const off = document.createElement("canvas"); off.width = nx; off.height = ny; off.getContext("2d").putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(off, box.x, box.y, box.w, box.h);
+  const F = frame(ctx, box, {xr: [1e3, 1e5], yr: [3, 100], xlog: true, ylog: true, xticks: [1e3, 3e3, 1e4, 3e4, 1e5], yticks: [3, 5, 10, 20, 50, 100],
+    xfmt: t => t >= 1e4 ? (t / 1e3) + "k" : fmt(t), xlabel: "resolving power R", ylabel: "S/N per res. element"});
+  ctx.setLineDash([2, 3]); ctx.strokeStyle = css("--ink"); ctx.globalAlpha = 0.6;
+  for (const [n, R] of INSTR) { const x = F.X(R); ctx.beginPath(); ctx.moveTo(x, box.y); ctx.lineTo(x, box.y + box.h); ctx.stroke(); }
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  const cx = F.X(S.R), cy = F.Y(clamp(S.snr, 3, 100));
+  ctx.lineWidth = 3; ctx.strokeStyle = "#ffffff"; ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke();
+  ctx.lineWidth = 1.6; ctx.strokeStyle = "#0f151c"; ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke();
+  // colour bar
+  const bx = box.x + box.w + 14, bw = 10;
+  for (let i = 0; i < box.h; i++) { const c = ramp(cols, 1 - i / box.h); ctx.fillStyle = `rgb(${c})`; ctx.fillRect(bx, box.y + i, bw, 1.2); }
+  ctx.strokeStyle = css("--rule"); ctx.strokeRect(bx, box.y, bw, box.h);
+  ctx.font = `10.5px ${css("--mono")}`; ctx.fillStyle = css("--ink2"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  const ticks = kind === "det" ? niceTicksF(lo, hi) : [2, 5, 10, 20, 50, 100, 200].filter(t => Math.log10(t) >= lo && Math.log10(t) <= hi);
+  for (const t of ticks) { const tv = kind === "det" ? t : Math.log10(t); const y = box.y + box.h * (1 - (tv - lo) / (hi - lo)); ctx.fillText(kind === "det" ? t.toFixed(1) : String(t), bx + bw + 4, y); }
+  cv._F = F; cv._box = box;
+  const here = kind === "det" ? logNmin(o, detColumn(o, S.b, S.R), S.snr) : dvmin(o, sepColumn(o, S.logN, S.R), S.snr);
+  const capEl = kind === "det" ? $("#mc1") : $("#mc2");
+  capEl.innerHTML = kind === "det"
+    ? `<strong>${o.ion} λ${o.label}, b = ${S.b.toFixed(1)} km/s.</strong> At the ring: log N<sub>min</sub> = <span class="num">${Number.isFinite(here) ? here.toFixed(2) : (here > 0 ? "&gt; " + hi.toFixed(1) : "&lt; " + lo.toFixed(1))}</span>. Grey: above the computed range.`
+    : `<strong>Two components, log N = ${S.logN.toFixed(2)} each, b = ${o.b_fid.toFixed(1)} km/s.</strong> At the ring: Δv<sub>min</sub> = <span class="num">${Number.isFinite(here) ? here.toFixed(1) + " km/s" : "&gt; 300 km/s"}</span> (Sparrow ${sparrow(S.R, o.b_fid).toFixed(1)}). Grey: not resolved below 300 km/s.`;
+}
+function niceTicksF(a, b) { const out = []; for (let t = Math.ceil(a * 2) / 2; t <= b + 1e-9; t += 0.5) out.push(t); return out; }
+function drawMaps() { drawMap($("#m1"), "det"); drawMap($("#m2"), "sep"); }
+for (const [id, tid, kind] of [["#m1", "#t1", "det"], ["#m2", "#t2", "sep"]]) {
+  const cv = $(id), tip = $(tid);
+  const pick = e => { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, b = cv._box;
+    if (!b || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return null;
+    return {x, y, R: Math.pow(10, 3 + 2 * (x - b.x) / b.w), snr: Math.pow(10, Math.log10(3) + (2 - Math.log10(3)) * (1 - (y - b.y) / b.h))}; };
+  cv.addEventListener("mousemove", e => { const p = pick(e); if (!p) { tip.hidden = true; return; } const o = ion();
+    const v = kind === "det" ? logNmin(o, detColumn(o, S.b, p.R), p.snr) : dvmin(o, sepColumn(o, S.logN, p.R), p.snr);
+    tip.textContent = `R ${fmt(p.R)} · S/N ${p.snr.toFixed(1)} → ` + (kind === "det" ? `log N ${Number.isFinite(v) ? v.toFixed(2) : "out of range"}` : `Δv ${Number.isFinite(v) ? v.toFixed(1) + " km/s" : "> 300"}`);
+    tip.hidden = false; tip.style.left = Math.min(p.x + 12, cv.clientWidth - tip.offsetWidth - 4) + "px"; tip.style.top = (p.y + 12) + "px"; });
+  cv.addEventListener("mouseleave", () => tip.hidden = true);
+  cv.addEventListener("click", e => { const p = pick(e); if (!p) return; S.R = p.R; S.snr = p.snr; syncControls(); update(); });
+}
+
+/* ---------------- section 4: universal law ---------------- */
+let dot4 = null;
+function draw4() {
+  const {ctx, w, h} = setup($("#cv4")), box = {x: 58, y: 14, w: w - 80, h: h - 62}, th = DATA.theory;
+  const F = frame(ctx, box, {xr: [3, 1000], yr: [0.2, 3.2], xlog: true, ylog: true, xticks: [3, 10, 30, 100, 300, 1000], yticks: [0.2, 0.3, 0.5, 1, 2, 3],
+    xlabel: "detection significance of the whole blend, S_det", ylabel: "Δv_min / FWHM_eff (3σ)"});
+  const cols = [css("--truth"), css("--fit"), "#1baf7a"];
+  ctx.setLineDash([2, 3]); ctx.strokeStyle = css("--ink2");
+  for (const y of [1, 0.8493]) { ctx.beginPath(); ctx.moveTo(box.x, F.Y(y)); ctx.lineTo(box.x + box.w, F.Y(y)); ctx.stroke(); }
+  ctx.setLineDash([]); ctx.font = `11px ${css("--body")}`; ctx.fillStyle = css("--ink2"); ctx.textAlign = "right";
+  ctx.fillText("Δv = FWHM_eff", box.x + box.w - 6, F.Y(1) - 5); ctx.fillText("Sparrow limit", box.x + box.w - 6, F.Y(0.8493) + 13);
+  Object.entries(th.curves).forEach(([k, ys], i) => { line(ctx, th.S, ys.map(y => y === null ? NaN : y), F.X, F.Y, cols[i], 2);
+    ctx.fillStyle = cols[i]; ctx.textAlign = "left"; ctx.font = `12px ${css("--mono")}`; ctx.fillText(`W₁:W₂ = ${k}`, box.x + box.w - 120, box.y + 16 + 16 * i); });
+  if (!sep2) return;
+  const Sd = S.snr * sep2.Kblend, y = S.dv / fwhmEff(S.R, S.b), target = {x: clamp(Sd, 3, 1000), y: clamp(y, 0.2, 3.2)};
+  dot4 = dot4 ? {x: target.x, y: target.y} : target;
+  const px = F.X(dot4.x), py = F.Y(dot4.y);
+  ctx.fillStyle = css("--ink"); ctx.beginPath(); ctx.arc(px, py, 6, 0, 7); ctx.fill(); ctx.strokeStyle = css("--panel"); ctx.lineWidth = 2; ctx.stroke();
+  const need = interpArr(th.S, th.curves["1:1"].map(v => v === null ? 99 : v), clamp(Sd, 3, 1000));
+  $("#cap4").innerHTML = `Current setting: S<sub>det</sub> = ${fmt(Sd, 1)}, Δv = ${y.toFixed(2)} FWHM<sub>eff</sub>. ${Sd < 6 ? "The blend is too weak for each component to be detected on its own, so no separation is resolvable." : `The thin-line law says separations above ${need.toFixed(2)} FWHM<sub>eff</sub> (${(need * fwhmEff(S.R, S.b)).toFixed(1)} km/s) are resolvable here.`} ${tau0(ion(), S.logN, S.b) > 2 ? "These components are saturated (τ₀ > 2), so the full calculation in section 2 needs a larger separation than this optically thin curve." : ""}`;
+}
+
+/* ---------------- section 5: table ---------------- */
+const TR = [2000, 5000, 10000, 17000, 45800, 100000];
+function drawTable() {
+  const near = TR.reduce((a, r, i) => Math.abs(Math.log(r / S.R)) < Math.abs(Math.log(TR[a] / S.R)) ? i : a, 0);
+  let h = `<thead><tr><th>Transition</th><th>f</th><th>b<sub>fid</sub></th>${TR.map((r, i) => `<th class="${i === near ? "col-on" : ""}">R = ${fmt(r)}</th>`).join("")}</tr></thead><tbody>`;
+  ions.forEach((o, i) => {
+    h += `<tr data-i="${i}" class="${i === S.i ? "on" : ""}"><td>${o.ion} λ${o.label}</td><td class="num">${o.f}</td><td class="num">${o.b_fid.toFixed(1)}</td>` +
+      TR.map((R, k) => { const n = logNmin(o, detColumn(o, o.b_fid, R), S.snr), d = dvmin(o, sepColumn(o, o.logN_tau1, R), S.snr);
+        return `<td class="${k === near ? "col-on" : ""}"><span class="a">${Number.isFinite(n) ? n.toFixed(1) : (n > 0 ? "&gt;" : "&lt;")}</span><span class="d">${Number.isFinite(d) ? d.toFixed(0) : "–"}</span></td>`; }).join("") + "</tr>";
+  });
+  $("#tbl").innerHTML = h + "</tbody>";
+  $("#tbl").querySelectorAll("tbody tr").forEach(r => r.onclick = () => selectIon(+r.dataset.i));
+}
+
+/* ---------------- orchestration ---------------- */
+let pending = false;
+function update(full) {
+  if (pending) return; pending = true;
+  requestAnimationFrame(() => { pending = false; if (!anim1) draw1(); else draw1(); compute2(full ? 220 : 120); draw2(); drawMaps(); drawTable(); });
+}
+buildIonChips(); defaults(); syncControls();
+stage1 = 3; update(true);
+window.addEventListener("resize", () => update());
+new MutationObserver(() => update()).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => update());
+</script>
