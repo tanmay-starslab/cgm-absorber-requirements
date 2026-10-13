@@ -1,7 +1,19 @@
-# Automatic Let's Encrypt certificate for {$HOST}. reverse_proxy appends the client address to
-# X-Forwarded-For, so the app's rightmost-hop rule (TRUSTED_HOPS=1) sees the real client.
+# Automatic Let's Encrypt certificate for {$HOST} (needs TCP 80 and 443 open in the OCI security list).
+# reverse_proxy replaces an untrusted incoming X-Forwarded-For with the peer address, so the app's
+# rightmost-hop rule (TRUSTED_HOPS=1) gets the real client and cannot be spoofed.
 {$HOST} {
-	encode gzip
+	# compress static/JSON only: the default matcher covers text/*, which would include the
+	# text/event-stream job progress feed and could hold events back.
+	encode {
+		gzip
+		match {
+			header Content-Type application/json*
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type *javascript*
+			header Content-Type image/svg+xml*
+		}
+	}
 	reverse_proxy app:7860 {
 		flush_interval -1
 	}

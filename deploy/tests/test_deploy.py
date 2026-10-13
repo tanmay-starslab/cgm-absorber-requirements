@@ -240,7 +240,7 @@ def test_push_space_assemble_only(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     top = sorted(p.name for p in b.iterdir())
     assert top == sorted(["Dockerfile", "README.md", "requirements-tng.txt", "start.sh",
-                          "trident_doppler_only.patch", "tngsight", "server"])
+                          "trident_doppler_only.patch", "THIRD_PARTY_LICENSES", "tngsight", "server"])
     assert not list(b.rglob("__pycache__")) and (b / "tngsight/galaxy_488530.json").is_file()
 
 

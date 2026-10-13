@@ -2,6 +2,8 @@
 # (/Volumes/cgm_work/envs/trident, CPython 3.11). Resolves to manylinux wheels on linux/py3.11 with
 # glibc >= 2.28 (scipy 1.17.1 / h5py 3.16.0 ship only manylinux_2_27/2_28 wheels, yt / ewah_bool_utils
 # manylinux_2_24/2_28): fine on python:3.11-slim-bookworm, NOT on a manylinux2014 (glibc 2.17) target.
+# That is linux x86_64. On linux aarch64 (OCI A1): yt, ewah_bool_utils, yt_astro_analysis build from
+# sdist (gcc, g++; libgomp1 at runtime; see the Dockerfile's wheel stage); all other pins have aarch64 wheels.
 # Transitive deps are not pinned here; freeze a constraints file from a built image for exact rebuilds.
 # Not listed (installed separately, see deploy/hf_space/Dockerfile):
 #   trident 1.4.2 = upstream @ 3f69ad7e1927aae8101caa587869d3d68a31c544 + deploy/hf_space/trident_doppler_only.patch
