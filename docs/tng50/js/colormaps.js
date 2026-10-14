@@ -1,20 +1,27 @@
-// Colour maps for the 3D viewer: 33 evenly spaced sRGB stops of matplotlib 3.9 viridis, magma, inferno, cividis and
-// gray (viridis/magma/inferno: van der Walt & Smith, CC0; cividis: Nuñez, Anderton & Renslow 2018), linearly
-// interpolated to a 256-entry LUT. Pure module (no DOM): lut(name) -> Uint8Array(256*4) RGBA.
+// Colour maps for the 3D viewer (Phase-2b design §5.2): 33 sRGB stops of every LUT in docs/tng50/data/luts/luts.json,
+// each "iirrggbb" (entry index 0..255, then the colour of that entry), linearly interpolated back to 256 entries
+// (tests/js/colormaps.mjs: within ±1 of luts.json; the stops are placed where the maps bend).
+// tng_dusk and tng_ice are our own OKLab maps; magma, inferno, viridis (CC0, van der Walt & Smith) and cividis
+// (Nuñez, Anderton & Renslow 2018) come from matplotlib 3.9; grey is linear. The STOPS block is written by
+// `python docs/tng50/data/luts/make_luts.py --js docs/tng50/js/colormaps.js`. Pure module (no DOM).
 export const STOPS = {
-  viridis: "440154470d6048186a482374472d7b4537814240863e49893b528b375b8d33638d2f6b8e2c728e297a8e26828e23898e21918c1f988b1fa08822a78528ae8032b67a3fbc734ec36b5ec96270cf5784d44b98d83eaddc30c2df23d8e219ece51bfde725",
-  magma: "0000040303120a0822130d341d114729115a36106b440f7651127c5d177f6a1c81762181832681902a819c2e7faa337db73779c43c75d0416fdc4869e75263ef5d5ef56b5cf9795dfc8961fd9869fea772feb67cfec488fed395fde2a3fcf0b2fcfdbf",
-  inferno: "0000040403120b0724150b37210c4a2f0a5b3d09654a0c6b57106e64156e71196e7d1e6d8a226a972766a32c61b0315bbc3754c73e4cd24644db503be45a31eb6628f1731df68013f98e09fb9d07fcac11fbbc21f9cb35f5db4cf2ea69f3f68afcffa4",
-  cividis: "00224e00285b002e6a0533711a386f273e6e32436d3b496c434e6c4b546c535a6d5a5f6e61656f686a716f70737676767d7c788482798c8878938e789b9476a39a74aba072b4a76fbcae6cc4b468cdbb63d5c25edec958e7d150f0d846f9e03afee838",
-  grey: "000000080808101010181818202020282828303030383838404040484848505050585858606060686868707070787878808080888888909090989898a0a0a0a8a8a8b0b0b0b8b8b8c0c0c0c8c8c8d0d0d0d8d8d8e0e0e0e8e8e8f0f0f0f8f8f8ffffff"
+  tng_dusk: "0001041f070307280f080a33160f0e3c1d161146241e144f2b26175833311a623b3c1d6c434720764b53237f576c2782607e2a8169912d7d73a532767db8386d86c83f628fd7485494de4e4b9ae45849a1ea6347a7ef6d45aef57844b5fa8344bdff9046c6ffa256d0ffb469d6ffbe73ddffc87de4ffd289ebffdc95f4fee9abfffef7c9",
+  tng_ice: "000005140a000c1f1400142a1e001c35290025412f002b483600314f3c00375643003e5e50004a6c570051745e00597b650061816d0069887500728e7d007b958500859c8d008ea2950098a89d00a1aea500abb4ad00b5b9b111babbb834c1bec04fc8c2c966d0c7d37edacdda8de0d2e29de7d7eaadeeddf2bdf5e4fdd1ffeeffdafff1",
+  magma: "000000040703030f0d07061c140e0b2b1d19103f262512553036106b3a4710784254137d4b621980526d1d815a7922826184268169912b81709c2e7f77a8327d7eb3367a85bf3a778ecd407198dc4869a0e75263a8ef5d5eaff4695cb6f8765cbcfa815fc3fc8e64ccfe9f6dd5feb078dbfebb81e2fec88ceffde0a1f7fceeb0fffcfdbf",
+  inferno: "00000004070302100e09061f16120a321c1b0c4123260c512d38096233420a683a4d0d6c4057106e4661136e4c6a176e52741a6e5d85216b638f2469699827666fa22b6275ab2f5e81bd38538ccc424897da4e3ca1e55c30acef6c23b7f67e14c2fa9207c9fc9f07d2fcb014d9fbbe23e1f8cd37ecf3e35af5f2f27dfbf6fa96fffcffa4",
+  viridis: "004401540a47106314481d6f1b4826772346307e2e433e85344045883a3e4c8a4339558c4c355f8d5531688e5e2d718e6729798e7126828e7a228b8d841f948c8b1e9b8a931fa2879a23a983a22ab07faa35b779b344bf70bc56c667c66ccd5acc7ad151d289d548d898d83edfaadc32e6bddf26edd0e11cf4e2e418fdf8e621fffde725",
+  cividis: "0000224e0a002a5f14003070170132711d14367023203a6f29293f6e2f31436d3538476c3b3e4b6c41444f6c4c4f576c57595e6e5d5e636f646568706b6b6d72727172747d7a7a7888848279918d88789b969077a5a09875afaaa073b7b3a670bfbbad6dc7c3b369cfccba64dbd9c55ce7e6d051ededd54af9fbe138fcfee434fffee838",
+  grey: "00000000070707070f0f0f0f171717171f1f1f1f272727272f2f2f2f373737373f3f3f3f474747474f4f4f4f575757575f5f5f5f676767676f6f6f6f777777777f7f7f7f878787878f8f8f8f979797979f9f9f9fa7a7a7a7afafafafb7b7b7b7bfbfbfbfc7c7c7c7cfcfcfcfd7d7d7d7dfdfdfdfe7e7e7e7efefefeff7f7f7f7ffffffff"
 };
-export const NAMES = Object.keys(STOPS);
-export function lut(name, n = 256) {
-  const hex = STOPS[name] || STOPS.viridis, m = hex.length / 6, out = new Uint8Array(n * 4);
-  const c = (i, j) => parseInt(hex.substr(6 * i + 2 * j, 2), 16);
-  for (let k = 0; k < n; k++) {
-    const x = k / (n - 1) * (m - 1), i = Math.min(m - 2, Math.floor(x)), f = x - i;
-    for (let j = 0; j < 3; j++) out[4 * k + j] = Math.round(c(i, j) * (1 - f) + c(i + 1, j) * f);
+export const NAMES = ["tng_dusk", "tng_ice", "magma", "inferno", "viridis", "cividis", "grey"];
+export function lut(name, n = 256) {      // -> Uint8Array(n*4) RGBA
+  const hex = STOPS[name] || STOPS.tng_dusk, m = hex.length / 8, out = new Uint8Array(n * 4);
+  const c = (i, j) => parseInt(hex.substr(8 * i + 2 * j, 2), 16);     // j = 0: entry index, 1..3: R, G, B
+  for (let k = 0, i = 0; k < n; k++) {
+    const x = k / (n - 1) * 255;
+    while (i < m - 2 && c(i + 1, 0) < x) i++;
+    const a = c(i, 0), b = c(i + 1, 0), f = b > a ? (x - a) / (b - a) : 0;
+    for (let j = 1; j <= 3; j++) out[4 * k + j - 1] = Math.round(c(i, j) * (1 - f) + c(i + 1, j) * f);
     out[4 * k + 3] = 255;
   }
   return out;
