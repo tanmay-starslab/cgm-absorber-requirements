@@ -50,7 +50,9 @@ MAX_ASSISTANT_TEXT = 6000       # assistant text: a 1024-token reply is ~4-5 k c
 MAX_RESULT = 8000               # tool_result content
 MAX_INPUT_DEPTH = 8             # nesting of a tool_use input (the deepest tool schema needs 3)
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-_PASS_TYPES = ("text", "tool_use", "thinking", "redacted_thinking")   # response blocks forwarded verbatim
+_PASS_TYPES = ("text", "tool_use", "thinking", "redacted_thinking")   # response block types forwarded
+_BLOCK_KEYS = {"text": ("type", "text"), "tool_use": ("type", "id", "name", "input"),
+               "thinking": ("type", "thinking", "signature"), "redacted_thinking": ("type", "data")}
 
 
 class ChatError(ValueError):
@@ -335,6 +337,9 @@ def make_router(settings, transport=None, clock=time.time) -> APIRouter:
             if not isinstance(content, list) or any(not isinstance(b, dict) or b.get("type") not in _PASS_TYPES
                                                     for b in content):
                 raise ValueError("unsupported content block")
+            # forward only the keys the request validator accepts back: the API adds response-only fields
+            # (e.g. "caller" on tool_use) that would make the next turn's round trip fail with a 422
+            content = [{k: b[k] for k in _BLOCK_KEYS[b["type"]] if k in b} for b in content]
             u = r.get("usage") or {}
             usage = {"input_tokens": u.get("input_tokens"), "output_tokens": u.get("output_tokens")}
             day["tokens"] += sum(x for x in usage.values() if isinstance(x, int) and not isinstance(x, bool)
