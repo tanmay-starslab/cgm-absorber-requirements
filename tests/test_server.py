@@ -780,6 +780,14 @@ def test_hfsync_never_drops_and_resumes(libdir):
     wait_for(lambda: hf3.status()["disabled"], timeout=10)
     assert hf3.pending() == 1 and "secret" not in hf3.status()["last_error"] and not ro.commits
     hf3.stop()
+    # hf_xet reports the same 403 as a bare RuntimeError carrying only a message
+    xet = FakeHfApi(fail=[RuntimeError("Network error: HTTP status client error (403 Forbidden), "
+                                       "domain: https://huggingface.co/api/datasets/user/ds/xet-write-token/main")])
+    hf4 = HFSync("tok", "user/ds", libdir, api=xet, base_delay=0.01, batch_s=0)
+    hf4.upload(f, "generated/face_b001_a001.npz")
+    wait_for(lambda: hf4.status()["disabled"], timeout=10)
+    assert hf4.pending() == 1 and not xet.commits
+    hf4.stop()
 
 
 def test_hfsync_sync_missing(libdir):

@@ -210,7 +210,12 @@ def _atomic_write(path: Path, data: bytes):
 
 
 def _http_status(e):
-    return getattr(getattr(e, "response", None), "status_code", None)
+    code = getattr(getattr(e, "response", None), "status_code", None)
+    if code is None:
+        # hf_xet raises a bare RuntimeError: "... HTTP status client error (403 Forbidden) ..."
+        m = re.search(r"\b(401|403) (?:Unauthorized|Forbidden)\b", str(e))
+        code = int(m.group(1)) if m else None
+    return code
 
 
 def _err_label(what, e) -> str:
