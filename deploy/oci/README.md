@@ -15,12 +15,20 @@ and `push_oci.sh` (assemble, copy, start).
 
 1. **Create the instance.** Go to *Compute → Instances → Create*.
    - Image: **Canonical Ubuntu 24.04** (aarch64).
-   - Shape: **VM.Standard.A1.Flex** with **4 OCPU / 24 GB**.
-   - Public IPv4: yes. Prefer a *reserved* public IP, because the hostname is derived from the IP.
+   - Shape: *Change shape → Ampere* → **VM.Standard.A1.Flex**; expand the row and set **2 OCPU / 12 GB**
+     (the Always Free A1 allowance as of 2026; it was 4 OCPU / 24 GB before). 1 OCPU / 6 GB also works.
+   - "Out of capacity for shape VM.Standard.A1.Flex": go back to *Placement* and try another
+     availability domain (AD 1 worked in Phoenix when AD 3 was full), or retry later.
+   - Networking: *Create new virtual cloud network* + *Create new public subnet*. The "Automatically
+     assign public IPv4 address" switch stays greyed out while the subnet is still to be created; create
+     the instance anyway, then attach one: *Instance → Networking → Attached VNICs → (VNIC) → IP
+     administration → ⋮ Edit → Ephemeral public IP*. An ephemeral IP survives stop/start but not
+     termination, and the hostname is derived from the IP.
+   - The cost estimate lists the boot volume at list price; it is inside the 200 GB Always Free storage.
    - SSH key: upload the public half of `~/.ssh/tng50_oci`. Create the pair first with
      `ssh-keygen -t ed25519 -f ~/.ssh/tng50_oci`.
-2. **Open ports 80 and 443.** Go to *Networking → Virtual Cloud Networks → (your VCN) → Subnet →
-   Security List → Add Ingress Rules*. Add two rules, both with source `0.0.0.0/0`, protocol TCP,
+2. **Open ports 80 and 443.** From the instance: *Networking → (subnet link) → Security → Default
+   Security List → Security rules → Add Ingress Rules*. Add two rules, both with source `0.0.0.0/0`, protocol TCP,
    destination ports `80` and `443`. By default only port 22 is open. Without these two rules the
    certificate challenge fails, and changing the VM's iptables does not help.
 
