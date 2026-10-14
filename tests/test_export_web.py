@@ -1,7 +1,9 @@
-"""scripts/export_tng50_web.py (design-2 §7.6, §7.9): p0/p1 from the npz geom, components + volume copies,
-has_components, custom ids only with --include-generated, page config keys, js copy. Output always into tmp."""
+"""scripts/export_tng50_web.py (design-2 §7.6, §7.9; design-2b §6.4, §6.5): p0/p1 from the npz geom, components copy,
+has_components, custom ids only with --include-generated, page config keys, js copy, and the Phase-2b viz manifest:
+only manifest_v2.json is copied, CFG.viz shape, invalid/missing manifest -> viz null, --viz-local (refused for
+docs/tng50), vol/vol_url gone, --prune removes data/vol. Output always into tmp."""
 from __future__ import annotations
-import hashlib, importlib.util, json, struct, sys
+import gzip, hashlib, importlib.util, json, struct, sys
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +16,10 @@ EXP = importlib.util.module_from_spec(spec); spec.loader.exec_module(EXP)
 GAL = json.loads((ROOT / "tngsight" / "galaxy_488530.json").read_text())
 CENTER, H = np.asarray(GAL["center_kpc"]), GAL["TNG_H"]
 LIB = Path("/Volumes/cgm_work/data/library")
+VIZ_CFG = {"manifest_url": "data/viz/manifest_v2.json",
+           "base": "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/",
+           "fallback_base": None, "dataset": "tanmay-starslab/tng50-sub488530-viz"}  # design-2b §5.10; no local cubes
+
 
 
 def _page_config(out: Path) -> dict:
@@ -64,7 +70,7 @@ def _run(lib, out, *extra):
 
 def test_fake_library_export(fake_lib, tmp_path, capsys):
     out = tmp_path / "site"
-    assert _run(fake_lib, out, "--vol-dir", str(tmp_path / "novol")) == 0
+    assert _run(fake_lib, out, "--viz-dir", str(tmp_path / "noviz")) == 0
     cat = json.loads((out / "data" / "catalog.json").read_text())
     ids = {e["id"]: e for e in cat["entries"]}
     assert set(ids) == {"edge_b100_a090", "face_b050_a000"}          # generated + custom only with --include-generated
@@ -74,7 +80,8 @@ def test_fake_library_export(fake_lib, tmp_path, capsys):
     assert e["has_components"] is True and ids["face_b050_a000"]["has_components"] is False
     assert (out / "data" / "components.json").read_bytes() == (fake_lib / "components.json").read_bytes()
     cfg = _page_config(out)
-    assert cfg["vol"] is None and cfg["vol_url"] == "data/vol/" and cfg["components_url"] == "data/components.json"
+    assert cfg["viz"] is None and "vol" not in cfg and "vol_url" not in cfg
+    assert cfg["components_url"] == "data/components.json"
     assert cfg["three"] == "0.169.0" and cfg["chat"] == {"enabled": False, "webllm": "0.2.85", "model": "Qwen2.5-1.5B-Instruct-q4f16_1-MLC"}
     assert cfg["custom"] == {"r_max_kpc": 395, "l_min_kpc": 20, "l_max_kpc": 800}
     assert set(cfg["frame"]) == {"Lhat", "xhat", "yhat", "R200c_kpc"} and cfg["frame"]["Lhat"] == GAL["Lhat"]
@@ -82,12 +89,17 @@ def test_fake_library_export(fake_lib, tmp_path, capsys):
     assert {"viewer3d.js", "picker.js", "search.js"} <= set(js)
     for name in js:
         assert (out / "js" / name).read_bytes() == (ROOT / "docs" / "tng50" / "js" / name).read_bytes()
-    assert not (out / "data" / "vol").exists()
+    assert not (out / "data" / "vol").exists() and not (out / "data" / "viz").exists()
+    luts = ROOT / "docs" / "tng50" / "data" / "luts" / "luts.json"       # U_view's file; copied when --out is elsewhere
+    if luts.is_file():
+        assert (out / "data" / "luts" / "luts.json").read_bytes() == luts.read_bytes()
+    else:
+        assert not (out / "data" / "luts").exists()
 
 
 def test_include_generated_and_custom(fake_lib, tmp_path):
     out = tmp_path / "site"
-    assert _run(fake_lib, out, "--include-generated", "--chat", "--vol-dir", str(tmp_path / "novol")) == 0
+    assert _run(fake_lib, out, "--include-generated", "--chat", "--viz-dir", str(tmp_path / "noviz")) == 0
     ids = {e["id"]: e for e in json.loads((out / "data" / "catalog.json").read_text())["entries"]}
     assert set(ids) == {"edge_b100_a090", "face_b050_a000", "rand_b075_a000_s12345", "cust_35277e0469"}
     assert ids["cust_35277e0469"]["p0"] == [-100.0, 0.0, 0.0]                     # catalogue p0/p1 kept as is
@@ -109,26 +121,152 @@ def test_id_regex_matches_server():
     assert EXP.ID_RE.pattern == getattr(SERVER_RE, "pattern", SERVER_RE)
 
 
-def test_volume_copy_and_sha_check(fake_lib, tmp_path):
-    V = pytest.importorskip("tngsight.volume")
-    vol = tmp_path / "vol"
-    n = 16
-    i, j, k = np.meshgrid(*(np.arange(n),) * 3, indexing="ij")
-    vals = 10.0 ** (-5 + 3 * ((i + 2 * j + 3 * k) % 17) / 16)
-    entry = V.write_field(vol, "nH", vals, np.ones(vals.shape, bool))
-    V.write_manifest(vol, {"nH": entry}, {"n": n})
+# ------------------------------------------------------------------------------------------- viz (design-2b §6.4)
+def _cube(viz: Path, rel_dir: str, stem: str, raw: bytes, ext: str, rng) -> dict:
+    """A CUBE entry (§3.3) with fake WebP parts and a real gz, files written under viz/."""
+    sha = hashlib.sha256(raw).hexdigest()
+    paths, sizes, shas = [], [], []
+    for p in range(4):
+        rel = f"{rel_dir}/{stem}.{sha[:12]}.p{p}.webp"
+        b = b"RIFF" + rng.bytes(60)
+        (viz / rel).parent.mkdir(parents=True, exist_ok=True)
+        (viz / rel).write_bytes(b)
+        paths.append(rel); sizes.append(len(b)); shas.append(hashlib.sha256(b).hexdigest())
+    gz = gzip.compress(raw, 9, mtime=0)
+    rel = f"{rel_dir}/{stem}.{sha[:12]}.{ext}"
+    (viz / rel).write_bytes(gz)
+    return {"vmin": -8.6, "vmax": 0.5, "raw_bytes": len(raw), "raw_sha256": sha,
+            "webp": {"paths": paths, "bytes": sizes, "sha256": shas},
+            "gz": {"path": rel, "bytes": len(gz), "sha256": hashlib.sha256(gz).hexdigest()},
+            "stats": {"frac_empty": 0.5, "p01": -8.0, "p50": -4.0, "p99": -1.0, "max": 0.4},
+            "deposit": {"n_elements": 10, "n_straddling": 1, "lost_fraction": 0.01, "seconds": 0.1, "workers": 1}}
+
+
+@pytest.fixture()
+def viz_dir(tmp_path):
+    """A small manifest_v2-shaped viz dir: 2 gas cubes, 1 star cube, a fragment manifest and junk that must not ship."""
+    rng = np.random.default_rng(7)
+    viz = tmp_path / "viz"
+    viz.mkdir()
+    gas = {"nH": {"kind": "density", "vmin": -8.6, "vmax": 0.5,
+                  "cubes": {"L0": _cube(viz, "gas/L0", "nH", rng.bytes(4096), "u8.gz", rng),
+                            "L1": _cube(viz, "gas/L1", "nH", rng.bytes(4096), "u8.gz", rng)}}}
+    stars = {"levels": ["S1"], "cubes": {"S1": _cube(viz, "stars/S1", "gri", rng.bytes(4 * 4096), "rgba.gz", rng)}}
+    man = {"schema": "tng50-viz/2", "created": "2026-10-14T12:00:00Z", "gas": {"levels": ["L0", "L1"], "fields": gas},
+           "stars": stars}
+    (viz / "manifest_v2.json").write_text(json.dumps(man, indent=1))
+    (viz / "gas" / "manifest_gas.json").write_text("{}")
+    (viz / ".DS_Store").write_bytes(b"x")
+    return viz
+
+
+def _fake_validate(man, base_dir=None):
+    """Stand-in for tngsight.vizpack.validate_manifest_v2 (schema + per-file size/sha with base_dir)."""
+    if man.get("schema") != "tng50-viz/2":
+        raise ValueError("schema")
+    if base_dir is not None:
+        for rel in EXP.manifest_files(man):
+            if not (Path(base_dir) / rel).is_file():
+                raise ValueError(f"{rel} missing")
+        for c in [c for f in man["gas"]["fields"].values() for c in f["cubes"].values()] + list(man["stars"]["cubes"].values()):
+            for rel, n, sha in [(p, b, h) for p, b, h in zip(c["webp"]["paths"], c["webp"]["bytes"], c["webp"]["sha256"])] \
+                    + [(c["gz"]["path"], c["gz"]["bytes"], c["gz"]["sha256"])]:
+                b = (Path(base_dir) / rel).read_bytes()
+                if len(b) != n or hashlib.sha256(b).hexdigest() != sha:
+                    raise ValueError(f"{rel} sha256")
+
+
+@pytest.fixture()
+def fake_vizpack(monkeypatch):
+    monkeypatch.setattr(EXP, "_validate_manifest_v2", _fake_validate)
+
+
+def test_viz_manifest_only_copy_and_cfg(fake_lib, viz_dir, tmp_path, fake_vizpack):
     out = tmp_path / "site"
-    assert _run(fake_lib, out, "--vol-dir", str(vol)) == 0
-    man = json.loads((out / "data" / "vol" / "manifest.json").read_text())
-    for res, name in man["fields"]["nH"]["files"].items():
-        assert hashlib.sha256((out / "data" / "vol" / name).read_bytes()).hexdigest() == man["fields"]["nH"]["sha256"][res]
-    assert _page_config(out)["vol"] == {"keys": ["nH"], "grids": ["8", "16"]}
-    # a corrupted file is refused: no copy, vol null
-    name = man["fields"]["nH"]["files"]["16"]
-    (vol / name).write_bytes(b"\x1f\x8b corrupted")
+    (out / "data" / "vol").mkdir(parents=True)
+    (out / "data" / "vol" / "nH.u8.gz").write_bytes(b"old phase-2 volume")
+    assert _run(fake_lib, out, "--viz-dir", str(viz_dir)) == 0
+    cfg = _page_config(out)
+    assert cfg["viz"] == VIZ_CFG
+    assert "vol" not in cfg and "vol_url" not in cfg
+    assert (out / "data" / "viz" / "manifest_v2.json").read_bytes() == (viz_dir / "manifest_v2.json").read_bytes()
+    shipped = sorted(p.relative_to(out / "data" / "viz").as_posix() for p in (out / "data" / "viz").rglob("*") if p.is_file())
+    assert shipped == ["manifest_v2.json"]                                  # no cube ever lands in the page tree
+    assert (out / "data" / "vol").is_dir()                                  # only --prune deletes data/vol
+    mtime = (out / "data" / "viz" / "manifest_v2.json").stat().st_mtime_ns
+    assert _run(fake_lib, out, "--viz-dir", str(viz_dir), "--prune") == 0   # unchanged manifest -> not rewritten
+    assert (out / "data" / "viz" / "manifest_v2.json").stat().st_mtime_ns == mtime
+    assert not (out / "data" / "vol").exists()
+
+
+def test_viz_base_override(fake_lib, viz_dir, tmp_path, fake_vizpack):
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(viz_dir), "--viz-base", "http://127.0.0.1:8881/viz/") == 0
+    assert _page_config(out)["viz"]["base"] == "http://127.0.0.1:8881/viz/"
+    with pytest.raises(SystemExit):
+        _run(fake_lib, out, "--viz-dir", str(viz_dir), "--viz-base", "https://example.org/no-slash")
+    with pytest.raises(SystemExit):
+        _run(fake_lib, out, "--viz-dir", str(viz_dir), "--viz-base", "javascript:alert(1)/")
+
+
+@pytest.mark.parametrize("damage", ["not json {", "[]", '{"schema": "tng50-viz/1"}'])
+def test_viz_invalid_manifest_gives_null(fake_lib, viz_dir, tmp_path, fake_vizpack, damage, capsys):
+    (viz_dir / "manifest_v2.json").write_text(damage)
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(viz_dir)) == 0
+    assert _page_config(out)["viz"] is None
+    assert not (out / "data" / "viz").exists()
+    assert "viz: null" in capsys.readouterr().out
+
+
+def test_viz_without_vizpack_gives_null(fake_lib, viz_dir, tmp_path, monkeypatch):
+    def no_vizpack(man, base_dir=None):
+        raise ImportError("No module named 'tngsight.vizpack'")
+    monkeypatch.setattr(EXP, "_validate_manifest_v2", no_vizpack)
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(viz_dir)) == 0
+    assert _page_config(out)["viz"] is None
+
+
+def test_viz_real_validator_rejects_garbage(fake_lib, viz_dir, tmp_path):
+    pytest.importorskip("tngsight.vizpack")
+    (viz_dir / "manifest_v2.json").write_text('{"schema": "tng50-viz/2"}')
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(viz_dir)) == 0
+    assert _page_config(out)["viz"] is None
+
+
+def test_viz_local_copies_cubes(fake_lib, viz_dir, tmp_path, fake_vizpack):
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(viz_dir), "--viz-local") == 0
+    cfg = _page_config(out)
+    assert cfg["viz"] == dict(VIZ_CFG, base="data/viz/", fallback_base="data/viz/")
+    man = json.loads((viz_dir / "manifest_v2.json").read_text())
+    files = EXP.manifest_files(man)
+    assert len(files) == 15                                                 # 3 cubes x (4 WebP + gz)
+    for rel in files:
+        assert (out / "data" / "viz" / rel).read_bytes() == (viz_dir / rel).read_bytes()
+    assert not (out / "data" / "viz" / "gas" / "manifest_gas.json").exists()
+    assert not (out / "data" / "viz" / ".DS_Store").exists()
+    # a corrupted cube is caught by the base_dir check -> viz null
+    (viz_dir / files[0]).write_bytes(b"RIFF corrupted")
     out2 = tmp_path / "site2"
-    assert _run(fake_lib, out2, "--vol-dir", str(vol)) == 0
-    assert _page_config(out2)["vol"] is None and not (out2 / "data" / "vol").exists()
+    assert _run(fake_lib, out2, "--viz-dir", str(viz_dir), "--viz-local") == 0
+    assert _page_config(out2)["viz"] is None
+
+
+def test_viz_local_refused_for_docs(fake_lib, viz_dir, fake_vizpack, capsys):
+    with pytest.raises(SystemExit) as ei:
+        EXP.main(["--library", str(fake_lib), "--out", str(ROOT / "docs" / "tng50"), "--local-url", "",
+                  "--viz-dir", str(viz_dir), "--viz-local"])
+    assert ei.value.code == 2 and "refused" in capsys.readouterr().err
+
+
+def test_repo_has_no_phase2_volumes():
+    """design-2b §6.4: docs/tng50/data/vol is gone and ignored; cube subdirs of data/viz are ignored."""
+    assert not (ROOT / "docs" / "tng50" / "data" / "vol").exists()
+    ign = (ROOT / ".gitignore").read_text().splitlines()
+    assert "docs/tng50/data/vol/" in ign and "docs/tng50/data/viz/*/" in ign
 
 
 @pytest.mark.skipif(not (LIB / "catalog.json").is_file(), reason="real library not present")
@@ -136,7 +274,7 @@ def test_real_library_p0_p1(tmp_path):
     from tngsight.library import load_npz
     ids = ["face_b050_a090", "edge_b100_a090", "edge_b050_a000", "rand_b052_a069", "rand_b031_a334_s175141482"]
     out = tmp_path / "site"
-    assert _run(LIB, out, "--ids", ",".join(ids), "--vol-dir", str(tmp_path / "novol"), "--components", str(tmp_path / "none.json")) == 0
+    assert _run(LIB, out, "--ids", ",".join(ids), "--viz-dir", str(tmp_path / "noviz"), "--components", str(tmp_path / "none.json")) == 0
     ents = {e["id"]: e for e in json.loads((out / "data" / "catalog.json").read_text())["entries"]}
     assert set(ents) == set(ids)
     for sid in ids:

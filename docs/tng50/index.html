@@ -31,14 +31,20 @@
 :root[data-theme="dark"]{ --ion-OVI:#f2679a; --ion-HILyb:#79aef0; --ion-CIII:#3cc6b5 }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;margin:0}
-.wrap{max-width:1280px;margin:0 auto;padding-inline:18px;padding-block:28px 64px;display:flex;flex-direction:column;gap:26px}
+.wrap{max-width:none;margin:0 auto;padding-inline:clamp(16px,2.5vw,40px);padding-block:28px 64px;display:flex;flex-direction:column;gap:26px}
 h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,4.4vw,42px);line-height:1.08;margin:0;text-wrap:balance}
 h2{font-family:var(--display);font-weight:600;font-size:clamp(21px,2.6vw,26px);line-height:1.15;margin:0;text-wrap:balance}
-p{margin:0;max-width:72ch} .lede{color:var(--ink2);font-size:16px}
+p{margin:0;max-width:72ch} .lede{color:var(--ink2);font-size:16px} .lede,.cap,.hint{max-width:72ch}
 a{color:var(--accent)}
 .mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .label{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:500}
 header{display:flex;flex-direction:column;gap:10px}
+/* tune4: on wide screens the title and the lede share a row, so more of the 3D stage is above the fold at 1920×1080 */
+/* fix-ui V6: the lede column is at most its measure (72ch, or 38 % of the row) at the right edge and the title takes the rest, so no dead band
+   opens between them at 1920 px */
+@media (min-width:1280px){header{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,min(72ch,38%));column-gap:clamp(24px,3vw,56px);row-gap:8px;align-items:end}
+  header>.label,header>.navrow,header>.banner{grid-column:1/-1} header .lede{font-size:15px}
+  .wrap{padding-block-start:20px;gap:20px}}
 .navrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
 .navrow a{color:var(--accent);text-decoration:none} .navrow a[aria-current="page"]{color:var(--ink)}
 .navrow .sp{flex:1}
@@ -71,8 +77,14 @@ section{display:flex;flex-direction:column;gap:12px}
 .foot{color:var(--muted);font-size:13px}
 .foot a{color:var(--accent)}
 .app{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
-@media (min-width:980px){.app{grid-template-columns:320px minmax(0,1fr)}}
-@media (min-width:1200px){.app{grid-template-columns:350px minmax(0,1fr)}}
+@media (min-width:980px){.app{grid-template-columns:minmax(320px,360px) minmax(0,1fr)}}
+/* 3D tab (Phase-2b §5.9): the stage spans the full content width; the sidebar cards follow below it */
+.app[data-tab="3d"]{grid-template-columns:minmax(0,1fr)}
+/* fix-ui FE-13: the stage comes first on the 3D tab by moving the sidebar after it in the DOM (showTab), not by CSS order,
+   so the Tab order follows the visual order */
+.app[data-tab="3d"] .side{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
+/* tune2: on wide screens the 3D tab puts Gallery and New sightline side by side and Find below them at full width */
+@media (min-width:980px){.app[data-tab="3d"] .side{grid-template-columns:repeat(2,minmax(0,1fr))}.app[data-tab="3d"] #find-root{grid-column:1/-1}}
 .side{display:flex;flex-direction:column;gap:18px;min-width:0}
 .card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:9px;min-width:0}
 .card h2{font-size:19px}
@@ -104,7 +116,8 @@ details summary{cursor:pointer;color:var(--ink2);font-size:13px}
 .banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border:1px solid var(--warn);border-left-width:4px;border-radius:8px;padding:8px 12px;background:var(--panel);font-size:13.5px}
 .banner[hidden],.controls[hidden]{display:none}
 .banner b{font-family:var(--mono);font-weight:500;overflow-wrap:anywhere}
-.about{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 26px}
+.about{columns:290px;column-gap:26px}
+.about p{break-inside:avoid;margin:0 0 12px}
 .about p{font-size:14.5px;color:var(--ink2)} .about strong{color:var(--ink)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 /* phase 2: tabs, 3D panel, picker, Find */
@@ -114,7 +127,7 @@ details summary{cursor:pointer;color:var(--ink2);font-size:13px}
 .tabs [role=tab]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 [role=tabpanel][hidden]{display:none}
 .pk{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-top:1px solid var(--rule)}
-.pk-xyz{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.pk-xyz{display:grid;grid-template-columns:repeat(3,minmax(0,9em));gap:6px}   /* fix-ui V7: 4-digit kpc values, not 600 px fields */
 .pk-in{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--ink2)}
 .pk .readouts{border:0;padding:0}
 .findres{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:340px;overflow:auto}
@@ -124,7 +137,9 @@ details summary{cursor:pointer;color:var(--ink2);font-size:13px}
 #find-root h2 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #find-root h2 button::after{content:"▸";margin-left:auto;font-size:14px;color:var(--ink2)}
 #find-root h2 button[aria-expanded=true]::after{content:"▾"}
-@media (max-width:720px){.tabs [role=tab]{flex:1}}
+@media (max-width:720px){.tabs [role=tab]{flex:1}
+  /* fix-ui V9: on phones the 3D tab drops the lede, so more of the stage is above the fold */
+  .wrap:has(#app[data-tab="3d"]) header .lede{display:none}}
 </style>
 
 <div class="wrap">
@@ -152,7 +167,7 @@ details summary{cursor:pointer;color:var(--ink2);font-size:13px}
   </div>
 </div>
 
-<div class="app">
+<div class="app" id="app" data-tab="spectra">
 <aside class="side">
   <section class="card" aria-labelledby="h-gal">
     <h2 id="h-gal">Gallery</h2>
@@ -211,7 +226,7 @@ details summary{cursor:pointer;color:var(--ink2);font-size:13px}
   </div>
   <div role="tabpanel" id="panel-3d" aria-labelledby="tab-3d" tabindex="-1" hidden>
   <div class="fig" style="border-top-left-radius:0">
-    <div class="figbar"><div class="status" id="v3d-status" aria-live="polite">Gas around the galaxy in 3D: drag to orbit, scroll or pinch to zoom, click a line to select its sightline, or pick a new ray.</div></div>
+    <div class="figbar"><div class="status" id="v3d-status" aria-live="polite">Gas and stars around the galaxy in 3D: drag to orbit, scroll or pinch to zoom, click a line to select its sightline, or pick a new ray. Shift+F or the button on the stage goes fullscreen.</div></div>
     <div id="v3d-root"><p class="msg" style="padding:14px">loading the 3D view…</p></div>
     <div id="picker-root"></div>
   </div>
@@ -226,7 +241,7 @@ details summary{cursor:pointer;color:var(--ink2);font-size:13px}
     <p><strong>Higher R</strong> narrows the line-spread function and splits blended velocity components. <strong>Lower S/N</strong> buries weak components in the noise. The intrinsic overlay shows the spectrum before any instrument.</p>
     <p id="aboutgal"><strong>Galaxy:</strong> TNG50-1 subhalo 488530, a central Milky-Way-mass disc galaxy at z = 0. Sightlines are labelled by orientation (face-on, edge-on or random), impact parameter b and azimuth Φ from the projected major axis.</p>
     <p><strong>Noise</strong> is drawn in the browser, so it matches the publication figure only statistically; the model curves match the Python pipeline to 10<sup>−6</sup>. “Publication figure” renders the matplotlib version on the server.</p>
-    <p><strong>3D</strong> shows the gas in the 800 kpc box around the galaxy as a log<sub>10</sub> volume (n<sub>H</sub>, temperature, metallicity, or the O VI, H I and C III densities), with the R<sub>200c</sub> sphere, the disc ring and its normal L. Each line is a sightline: click one to open its spectra. The default window brings out the circumgalactic gas; <em>Dense gas</em> shows only the top 1 dex, which picks out the disc. <em>Pick ray</em> places two endpoints on the plane facing you (or type them in kpc) and generates that ray on the sightline server.</p>
+    <p><strong>3D</strong> shows every gas cell and star particle of the simulation deposited into nested cubes (±400, ±100 and ±25 kpc, 256<sup>3</sup> each; the finest is ≈ 0.2 kpc, the scale of the disc). The default <em>integral</em> view sums the gas along each line of sight into a column density (or an n<sub>H</sub>-weighted mean temperature or metallicity) and adds the stars as a true-colour g, r, i composite (Lupton et al. 2004 asinh stretch); <em>volume</em> mode renders the gas with a transfer function instead. Each line is a sightline: click one to open its spectra. <em>Pick ray</em> places two endpoints on the plane facing you (or type them in kpc) and generates that ray on the sightline server. The cubes are downloaded from a public Hugging Face dataset only when you open this tab.</p>
     <p><strong>Find</strong> searches the fitted Voigt components of every sightline: for example two O VI components 50–150 km/s apart, a column-density or Doppler-b range, or an impact-parameter range. Results are ranked and open like gallery entries.</p>
     <p><strong>Ask</strong> is an optional chat that drives the page through the same tools (search, select, instrument, 3D, new sightlines). The local model runs entirely in your browser after a one-off ~1 GB download from cdn.jsdelivr.net, raw.githubusercontent.com and huggingface.co. The Claude backend, when this site's server offers it, sends your messages and the tool results through that server to Anthropic; on a server set with <code>?api=</code> they go to that server instead. Numbers in an answer that do not appear in a tool result are marked unverified.</p>
   </div>
@@ -329,7 +344,7 @@ const TNG = (() => {
 </script>
 
 <script>
-const DATA = {"version":2,"catalog_url":"data/catalog.json","bin_dir":"data/s/","n_static":672,"backends":["http://127.0.0.1:8787","https://137-131-52-19.sslip.io"],"galaxy":{"sim":"TNG50-1","snapshot":99,"redshift":0.0,"subhalo_id":488530,"central":true,"R200c_kpc":246.35226737104722,"M200c_Msun":1595140665388.19,"Mstar_Msun":111400000000.0,"SFR_Msun_yr":7.076},"lines":{"OVI":{"label":"O VI λ1032","color":"#D81E5B","rest_A":1031.912,"ion":"O VI","dlam_lsf":0.002},"HILyb":{"label":"H I Lyβ","color":"#1D4E89","rest_A":1025.7222,"ion":"H I","dlam_lsf":0.002},"CIII":{"label":"C III λ977","color":"#1B998B","rest_A":977.02,"ion":"C III","dlam_lsf":0.002}},"R_opts":[20000,30000,40000,60000,80000,100000],"defaults":{"id":"edge_b100_a090","R_lo":20000,"R_hi":40000,"sn_hi":8,"sn_lo":5,"vwin":400,"seed":0,"intrinsic":false},"frame":{"Lhat":[0.04170790684964916,-0.8403492677980035,-0.5404383023228281],"xhat":[-0.9968862719846454,-0.07122981073705145,0.03382417465245191],"yhat":[-0.0669194383925682,0.5373447889146441,-0.8407034950513171],"R200c_kpc":246.35226737104722},"vol":{"keys":["nH","T","Z","OVI","HI","CIII"],"grids":["128","256"]},"vol_url":"data/vol/","components_url":"data/components.json","js_base":"js/","three":"0.169.0","chat":{"enabled":true,"webllm":"0.2.85","model":"Qwen2.5-1.5B-Instruct-q4f16_1-MLC"},"custom":{"r_max_kpc":395,"l_min_kpc":20,"l_max_kpc":800}};
+const DATA = {"version":2,"catalog_url":"data/catalog.json","bin_dir":"data/s/","n_static":672,"backends":["http://127.0.0.1:8787","https://137-131-52-19.sslip.io"],"galaxy":{"sim":"TNG50-1","snapshot":99,"redshift":0.0,"subhalo_id":488530,"central":true,"R200c_kpc":246.35226737104722,"M200c_Msun":1595140665388.19,"Mstar_Msun":111400000000.0,"SFR_Msun_yr":7.076},"lines":{"OVI":{"label":"O VI λ1032","color":"#D81E5B","rest_A":1031.912,"ion":"O VI","dlam_lsf":0.002},"HILyb":{"label":"H I Lyβ","color":"#1D4E89","rest_A":1025.7222,"ion":"H I","dlam_lsf":0.002},"CIII":{"label":"C III λ977","color":"#1B998B","rest_A":977.02,"ion":"C III","dlam_lsf":0.002}},"R_opts":[20000,30000,40000,60000,80000,100000],"defaults":{"id":"edge_b100_a090","R_lo":20000,"R_hi":40000,"sn_hi":8,"sn_lo":5,"vwin":400,"seed":0,"intrinsic":false},"frame":{"Lhat":[0.04170790684964916,-0.8403492677980035,-0.5404383023228281],"xhat":[-0.9968862719846454,-0.07122981073705145,0.03382417465245191],"yhat":[-0.0669194383925682,0.5373447889146441,-0.8407034950513171],"R200c_kpc":246.35226737104722},"viz":{"manifest_url":"data/viz/manifest_v2.json","base":"https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/","fallback_base":null,"dataset":"tanmay-starslab/tng50-sub488530-viz"},"components_url":"data/components.json","js_base":"js/","three":"0.169.0","chat":{"enabled":true,"webllm":"0.2.85","model":"Qwen2.5-1.5B-Instruct-q4f16_1-MLC"},"custom":{"r_max_kpc":395,"l_min_kpc":20,"l_max_kpc":800}};
 /* ---------------- config (injected by scripts/export_tng50_web.py; defaults let the bare template run) ---------------- */
 const CFG = Object.assign({
   version: 1, catalog_url: "data/catalog.json", bin_dir: "data/s/",
@@ -338,7 +353,9 @@ const CFG = Object.assign({
   lines: {OVI: {label: "O VI λ1032", rest_A: 1031.912}, HILyb: {label: "H I Lyβ", rest_A: 1025.7222}, CIII: {label: "C III λ977", rest_A: 977.02}},
   defaults: {id: "edge_b100_a090", R_lo: 20000, R_hi: 40000, sn_hi: 8, sn_lo: 5, vwin: 400, seed: 0, intrinsic: false},
   R_opts: [20000, 30000, 40000, 60000, 80000, 100000],
-  vol_url: "data/vol/", components_url: "data/components.json", three: "0.169.0", js_base: "js/",
+  viz: {manifest_url: "data/viz/manifest_v2.json", base: "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/",
+        fallback_base: "data/viz/", dataset: "tanmay-starslab/tng50-sub488530-viz"},
+  components_url: "data/components.json", three: "0.169.0", js_base: "js/",
   chat: {enabled: false}, custom: {r_max_kpc: 395, l_min_kpc: 20, l_max_kpc: 800},
   frame: {Lhat: [0.04170790684964916, -0.8403492677980035, -0.5404383023228281], xhat: [-0.9968862719846454, -0.07122981073705145, 0.03382417465245191],
     yhat: [-0.0669194383925682, 0.5373447889146441, -0.8407034950513171], R200c_kpc: 246.35226737104722}
@@ -418,13 +435,18 @@ function label(e) { const star = e.star ? "★" : nShow(e) >= 1 ? "☆" : " ";
   const ln = KEYS.map(k => Number.isFinite(e.logN?.[k]) ? e.logN[k].toFixed(1) : "—").join("/");
   if (isCust(e)) return `◆ new b=${fb(e.b_kpc)} θ=${Math.round(+e.angle_to_normal_deg)}° L=${Math.round(+e.length_kpc)} ${ln}`;   // "new" first: the row is clipped at the right
   return `${star} ${tagOf(e.orientation)} b=${fb(e.b_kpc).padStart(3)} Φ=${fb(e.azimuth_deg).padStart(3)}° ${ln}${e.source === "generated" ? " new" : ""}`; }
+/* keep the selected row in view with whole rows at the top (no half-clipped first row); tune2 */
+function snapGallery() { requestAnimationFrame(() => { const g = $("#gallery"), o = g && g.options && g.selectedIndex >= 0 ? g.options[g.selectedIndex] : null; if (!o || !g.clientHeight) return;
+  const rh = o.offsetHeight; if (!rh) return; let top = g.scrollTop; const oy = o.offsetTop - (g.options[0]?.offsetTop || 0);
+  if (oy < top || oy + rh > top + g.clientHeight) top = oy - (g.clientHeight - rh) / 2;
+  g.scrollTop = Math.max(0, Math.round(top / rh) * rh); }); }
 function renderGallery() {
   const q = S.filter.trim().toLowerCase();
   VISIBLE = sorted().filter(e => (!S.showcase || nShow(e) >= 1) && (!q || e.id.toLowerCase().includes(q)));
   const g = $("#gallery"); g.textContent = "";
   for (const e of VISIBLE) { const o = document.createElement("option"); o.value = e.id; o.textContent = label(e);
     o.title = `${e.id} · ${e.orientation}, b = ${e.b_kpc} kpc, Φ = ${e.azimuth_deg}°${e.seed != null ? ", seed " + e.seed : ""}${e.rank ? ", rank " + e.rank : ""}`; g.appendChild(o); }
-  if (S.id && VISIBLE.some(e => e.id === S.id)) g.value = S.id;
+  if (S.id && VISIBLE.some(e => e.id === S.id)) { g.value = S.id; snapGallery(); }
   $("#galcount").textContent = `${VISIBLE.length} of ${CAT.size} sightlines shown`;
   if (CATV !== catEmitted) { catEmitted = CATV; emit("tng:catalog", {n: CAT.size}); }
 }
@@ -454,7 +476,7 @@ let loadTok = 0;
 async function select(id, auto = false, source = "gallery") {
   if (!CAT.has(id)) return; if (!auto || id === pendingId) pendingId = null; const changed = S.id !== id; S.id = id; const tok = ++loadTok;
   if (changed) emit("tng:select", {id, source}); if (S.comps) loadComps(id);
-  const g = $("#gallery"); if ([...g.options].some(o => o.value === id)) g.value = id;
+  const g = $("#gallery"); if ([...g.options].some(o => o.value === id)) { g.value = id; snapGallery(); }
   syncGeom(CAT.get(id)); writeHash(); status();
   try { await getSight(id); } catch (x) { if (tok === loadTok) { $("#statusline").innerHTML = `<span class="msg bad">Could not load <b>${esc(id)}</b>: ${esc(x.message)}</span>`; drawEmpty(); } return; }
   if (tok !== loadTok) return; update();
@@ -589,10 +611,24 @@ const normUrl = s => String(s || "").trim().replace(/\/+$/, "");
 function candidates() { const out = [];
   const q = new URLSearchParams(location.search).get("api"); if (q) out.push(...q.split(","));
   const ls = store.get("tngsight.api"); if (ls) out.push(...ls.split(","));
-  out.push(...(CFG.backends || []));
+  /* tune2: this build's loopback backends are probed only from a loopback page (a public page cannot reach them, and
+     each failed probe logs a CORS error); explicit ?api= or stored URLs are always probed */
+  const loopPage = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === "file:";
+  out.push(...(CFG.backends || []).filter(u => loopPage || !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(u)));
   return [...new Set(out.map(normUrl).filter(u => /^https?:\/\/[^\s/]+/.test(u)))]; }
+/* tune3: a build's own server answers CORS only for the origins in its allow-list (server/settings.py DEFAULT_CORS, mirrored
+   here unless the config carries api_origins). From any other page origin (a local static server on another port, a
+   preview host) a CORS request is refused and the browser logs an error that JS cannot silence, so such a probe is sent
+   as an opaque no-cors request instead: it shows only whether the server is reachable, and logs nothing when it is.
+   Same-origin servers and explicit ?api= / stored URLs always get the full probe. */
+const API_ORIGINS = new Set(CFG.api_origins || ["https://tanmay-starslab.github.io", "http://localhost:8000", "http://127.0.0.1:8000"]);
+function corsOk(url) { try { if (new URL(url).origin === location.origin || API_ORIGINS.has(location.origin)) return true; } catch { return false; }
+  const ex = [new URLSearchParams(location.search).get("api"), store.get("tngsight.api")].filter(Boolean).flatMap(s => s.split(",")).map(normUrl);
+  return ex.includes(normUrl(url)); }
 async function probe(url, ms = 8000) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms), t0 = performance.now();
-  try { const r = await fetch(url + "/api/health", {signal: ac.signal, cache: "no-store"}); if (!r.ok) throw new Error("HTTP " + r.status);
+  try { if (!corsOk(url)) { await fetch(url + "/api/health", {signal: ac.signal, cache: "no-store", mode: "no-cors"});
+      return {url, err: `reachable, but its CORS allow-list does not include ${location.origin}`}; }
+    const r = await fetch(url + "/api/health", {signal: ac.signal, cache: "no-store"}); if (!r.ok) throw new Error("HTTP " + r.status);
     const h = await r.json(); if (!h || h.status !== "ok") throw new Error("not ok"); return {url, h, ms: performance.now() - t0};
   } catch (x) { return {url, err: x.name === "AbortError" ? "timeout" : (x.message || "unreachable")}; } finally { clearTimeout(t); } }
 let probing = null, probeGen = 0, probedOnce = false, retryN = 0, retryT = null;
@@ -635,7 +671,10 @@ $("#apisave").onclick = () => { const u = normUrl($("#apiurl").value); if (u && 
   store.set("tngsight.api", u || null); banner(); discover(8000, true); };
 $("#apiclear").onclick = () => { $("#apiurl").value = ""; store.set("tngsight.api", null); banner(); discover(8000, true); };
 $("#apiurl").value = store.get("tngsight.api") || ""; banner();
-setInterval(() => discover(), 60000);
+/* tune2: re-probe every 60 s while a server is up; after failures back off 60 s → 2 → 4 → … ≤ 15 min, and skip hidden tabs */
+let idleN = 0;
+(function reprobe() { setTimeout(async () => { if (!document.hidden) { await discover(); idleN = API ? 0 : idleN + 1; } reprobe(); },
+  API ? 60000 : Math.min(900000, 60000 * 2 ** idleN)); })();
 
 /* ---------------- geometry form, submit, job tracking ---------------- */
 const orient = () => (document.querySelector('input[name="orient"]:checked') || {}).value;
@@ -767,22 +806,39 @@ $("#comps").addEventListener("change", ev => { S.comps = ev.target.checked; if (
 const TABS = ["spectra", "3d"], modUrl = f => new URL(CFG.js_base + f, location.href).href;
 function showTab(t, focus) { if (!TABS.includes(t)) return; const prev = S.tab; S.tab = t;
   for (const k of TABS) { const on = k === t, b = $("#tab-" + k); b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1; $("#panel-" + k).hidden = !on; }
+  $("#app").dataset.tab = t; placeSide(t); snapGallery();
   $("#controls").hidden = t !== "spectra"; if (focus) $("#tab-" + t).focus();
   writeHash(); if (t === "3d") open3d().catch(() => {}); else update();
   if (prev !== t) emit("tng:tab", {tab: t}); }
 for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", () => showTab(k));
   b.addEventListener("keydown", ev => { const i = TABS.indexOf(S.tab), n = {ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1}[ev.key];
     if (n == null) return; ev.preventDefault(); showTab(TABS[(n + TABS.length) % TABS.length], true); }); }
+/* fix-ui FE-13: on the 3D tab the sidebar follows the main section in the DOM (moving the sidebar, never .main, so the
+   focused tab button keeps focus; a focused control inside the sidebar gets its focus back) */
+function placeSide(t) { const app = $("#app"), side = app.querySelector(":scope > .side"), main = app.querySelector(":scope > .main"); if (!side || !main) return;
+  const want3d = t === "3d"; if (want3d === (main.nextElementSibling === side)) return;
+  const a = document.activeElement; if (want3d) main.after(side); else app.insertBefore(side, main);
+  if (a && side.contains(a) && document.activeElement !== a) a.focus({preventScroll: true}); }
 let V3P = null;
-function volBase() {   // dev flag ?vol=<dir with manifest.json> (same origin only); else the exported config
-  const q = new URLSearchParams(location.search).get("vol");
-  if (q) { try { const u = new URL(q.replace(/\/?$/, "/"), location.href); if (u.origin === location.origin) return u.href; } catch {} }
-  return CFG.vol === null ? null : CFG.vol_url; }
+function vizCfg() {   // CFG.viz (null -> "3D data not published"); dev override ?viz=<base> for the page origin, huggingface.co or a local port
+  if (!CFG.viz) return null;
+  const q = new URLSearchParams(location.search).get("viz");
+  if (q) { try { const u = new URL(q.replace(/\/?$/, "/"), location.href);
+    const ok = u.origin === location.origin || u.origin === "https://huggingface.co" || /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(u.origin);
+    if (ok) return {...CFG.viz, base: u.href, fallback_base: null, manifest_override: u.href + "manifest_v2.json"}; } catch {} }
+  return {...CFG.viz}; }
 function open3d() {    // lazy: viewer3d.js + picker.js (and through them three.js + volumes) only on the first 3D open
   if (V3P) return V3P;
   V3P = (async () => { try { const [V, P] = await Promise.all([import(modUrl("viewer3d.js")), import(modUrl("picker.js"))]);
-      $("#v3d-root").textContent = ""; const v = await V.mount($("#v3d-root"), window.tngApp, {volBase: volBase()});
+      $("#v3d-root").textContent = ""; const v = await V.mount($("#v3d-root"), window.tngApp, {viz: vizCfg()});
       if (!v.webgl2) $("#v3d-status").textContent = "The interactive 3D view is not available here (see the note below). Type a ray's endpoints in the form below to generate it.";
+      else { const cap = $("#v3d-status");   // tune3: the caption says when the stars layer is off (phones)
+        /* fix-ui V9: touch screens get touch instructions (no Shift+F, no scroll wheel) */
+        if (matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches)
+          cap.textContent = "Gas and stars around the galaxy in 3D: drag to orbit, pinch to zoom, tap a line to select its sightline, or pick a new ray. The Fullscreen button on the stage fills the screen.";
+        const full = cap.textContent;
+        v.hooks.starsChanged = on => { cap.textContent = on || !v.manifest?.stars ? full : full.replace(/^Gas and stars around the galaxy in 3D/, "Gas around the galaxy in 3D (stars are off: switch on \u201cstars\u201d under the stage)"); };
+        v.hooks.starsChanged(v.stars); }
       window.tngPicker = P.attachPicker(v.webgl2 ? v : null, $("#picker-root"), window.tngApp); window.tngViewer3d = v; return v;   // tngViewer3d/tngPicker: debugging + tests
     } catch (x) { $("#v3d-root").innerHTML = `<p class="msg bad" style="padding:14px">The 3D view failed to load: ${esc(x.message)}</p>`; V3P = null; throw x; } })();
   return V3P; }
@@ -827,9 +883,9 @@ window.tngApp = {
   components, componentsIndex, showTab: t => showTab(t),
   async show3d({species, preset} = {}) { showTab("3d"); let v; try { v = await open3d(); } catch (x) { return {ok: false, webgl2: false, message: x.message}; }
     if (!v.webgl2) return {ok: false, webgl2: false, species: null, preset: null, message: v.message};
-    if (species && !(await v.setSpecies(species))) return {ok: false, webgl2: true, species: v.species, preset: preset || null, message: v.loadError && v.loadError.key === species ? `the ${species} volume could not be loaded: ${v.loadError.message}` : v.wanted !== species ? "superseded by a later 3D request" : `the ${species} volume is not available`};
-    if (preset && !v.setPreset(preset)) return {ok: false, webgl2: true, species: v.species, preset, message: v.presetError || "select a sightline first"};
-    return {ok: true, webgl2: true, species: v.species, preset: preset || null}; }
+    if (species && !(await v.setSpecies(species))) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: v.loadError && v.loadError.key === species ? `the ${species} volume could not be loaded: ${v.loadError.message}` : v.wanted !== species ? "superseded by a later 3D request" : `the ${species} volume is not available`};
+    if (preset && !v.setPreset(preset)) return {ok: false, webgl2: true, species: v.species, preset, mode: v.mode, message: v.presetError || "select a sightline first"};
+    return {ok: true, webgl2: true, species: v.species, preset: preset || null, mode: v.mode}; }
 };
 
 /* ---------------- orchestration ---------------- */
@@ -841,7 +897,7 @@ new MutationObserver(() => update()).observe(document.documentElement, {attribut
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => update());
 let rzT = null; addEventListener("resize", () => { clearTimeout(rzT); rzT = setTimeout(update, 60); });
 (async function init() {
-  readHash(); const hashId = S.id; syncControls(); seedState(); setGeoEnabled(); S.id = null; if (S.tab === "3d") { S.tab = "spectra"; showTab("3d"); }
+  readHash(); const hashId = S.id; syncControls(); seedState(); setGeoEnabled(); S.id = null; $("#app").dataset.tab = "spectra"; if (S.tab === "3d") { S.tab = "spectra"; showTab("3d"); }
   const g = CFG.galaxy || {}; if (g.R200c_kpc) $("#aboutgal").innerHTML = `<strong>Galaxy:</strong> ${esc(g.sim || "TNG50-1")} subhalo ${esc(g.subhalo_id)} at z = ${esc(g.redshift ?? 0)}: a central disc galaxy with R<sub>200c</sub> = ${fmt(+g.R200c_kpc)} kpc` +
     (g.M200c_Msun ? `, M<sub>200c</sub> = ${(+g.M200c_Msun / 1e12).toFixed(2)}×10<sup>12</sup> M<sub>☉</sub>` : "") + (g.Mstar_Msun ? `, M<sub>★</sub> = ${(+g.Mstar_Msun / 1e11).toFixed(2)}×10<sup>11</sup> M<sub>☉</sub>` : "") +
     `. Sightlines are labelled by orientation (face-on, edge-on or random), impact parameter b and azimuth Φ from the projected major axis.`;
