@@ -1,6 +1,6 @@
 // Runs every Node test in tests/js (each *.mjs except this file) and exits non-zero if any fails.
 // Usage (Node >= 20, from the repository root): PYTHON=<python with numpy + tngsight deps> node tests/js/run_all.mjs [name-filter]
-// ($PYTHON, default "python", builds the parity references for degrade_parity, picker_math and volume_decode.)
+// ($PYTHON, default "python", builds the parity references for degrade_parity, picker_math and viz_decode.)
 // The Python suite (python -m pytest tests) does not run these; the JS/Python parity and the chat_tools.json sync
 // checks live here. page_smoke.mjs needs docs/tng50/index.html (re-export with scripts/export_tng50_web.py first).
 import {readdirSync} from "node:fs";

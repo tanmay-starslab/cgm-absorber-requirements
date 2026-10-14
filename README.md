@@ -57,7 +57,7 @@ tests/         analytic limits and thin-line agreement
 ```bash
 pip install -r requirements.txt          # LaTeX with txfonts + dvipng needed for the figures
 python -m pytest tests
-PYTHON=$(which python) node tests/js/run_all.mjs   # JS tests (explorer page, picker, search, chat)
+PYTHON=$(which python) node tests/js/run_all.mjs   # JS tests (explorer page, 3D data decode, LUTs, LOD, picker, search, chat)
 python scripts/build_grids.py            # ~1-2 min per ion on 2 cores
 python scripts/make_figures.py
 python scripts/make_tables.py && (cd paper && pdflatex detectability_note.tex)
@@ -79,6 +79,8 @@ for both fixes and for which committed figures and CSVs predate them.
 - **Page:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/ (source: `docs/tng50/`)
 - **API backend (HF Space):** `https://<user>-<space>.hf.space` (placeholder until the Space is deployed)
 - **Data:** private HF dataset `tanmay-starslab/tng50-sub488530-cgm` (slim cutout, slim ion table, library)
+- **3D cubes:** public HF dataset [`tanmay-starslab/tng50-sub488530-viz`](https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz)
+  (derived visualisation cubes only; see "3D tab, Phase 2b" below)
 
 ```
  GitHub Pages: docs/tng50/              HF Space (Docker): server.app            laptop
@@ -105,11 +107,9 @@ deploy/laptop/serve.sh                  # backend on 127.0.0.1:8787
 
 Phase 2 adds, in the same page:
 
-- **3D tab.** Ray-marched gas volumes (n_H, T, Z, n(O VI), n(H I), n(C III)) on a 256³ grid over a
-  ±400 kpc box around the galaxy, SPH-deposited from the slim cutout with the same ion table as the
-  spectra (`tngsight/volume.py`, `deploy/data/build_volumes.py`; 128³ first, 256³ on desktop). three.js
-  0.169.0 loads from jsdelivr only when the tab is first opened; it needs WebGL2. Face-on/edge-on presets
-  use the disk frame. Clicking a line selects that sightline in both tabs.
+- **3D tab** (rebuilt in Phase 2b, below). three.js 0.169.0 loads from jsdelivr only when the tab is first
+  opened, and it needs WebGL2. The face-on and edge-on presets use the disk frame. Clicking a line selects that
+  sightline in both tabs.
 - **Ray picking.** Pick two points in 3D, or type them in the six numeric fields (|p| ≤ 395 kpc,
   length 20–800 kpc, quantised to 0.1 kpc). `POST /api/sightlines/custom` casts the ray (id
   `cust_<sha1[:10]>`) through the same queue and SSE progress, and the spectrum opens when it is done.
@@ -127,13 +127,42 @@ Phase 2 adds, in the same page:
   backend sends the conversation to Anthropic through our server, which is stateless and logs no message
   content. Answers whose numbers do not come from a tool result get an "unverified" badge.
 
+Phase 2b rebuilds the 3D tab around **deposited cubes**, in the style of Scott Lucchini's viewer (technique only;
+none of his code is used):
+
+- **Gas.** Every raw gas cell of the slim cutout is deposited with its own cubic-spline kernel onto three nested
+  256³ cubes in the disk frame: L0 ±400 kpc (3.125 kpc voxels), L1 ±100 kpc (0.78 kpc) and L2 ±25 kpc
+  (0.195 kpc, which resolves the disk). The deposit is a conservative pure-numpy scatter (`tngsight/deposit.py`),
+  and the smoothing length is the same h Trident used for the spectra. The fields are n_H, n(O VI), n(H I),
+  n(C III) and the mass-weighted T and Z (`tngsight/volume.py`, `deploy/data/build_volumes.py`).
+- **Stars.** The g, r, i luminosities of all non-wind star particles (GFM_StellarPhotometrics) are deposited onto
+  S0/S1/S2 cubes with the same boxes (`tngsight/stars.py`, `deploy/data/build_stars.py`). The page shows them as
+  a Lupton et al. (2004) asinh colour composite of the g, r, i light, screen-blended over the gas. The validated
+  reference stretch is the one in `manifest_v2.json` → `stars.display`; any extra display adjustments the viewer
+  applies change only what is drawn, not the cubes.
+- **Rendering.** The default view is a column-density map from any angle: each screen ray integrates the
+  linear density with exact trilinear interpolation, using the finest loaded level at every sample. A transfer-
+  function volume mode is the alternative. Every field is log10-encoded to uint8 over its full range, so the
+  dense disk is no longer clipped. There are no grid or box lines by default. The 3D stage spans the full page
+  width and has a Fullscreen mode.
+- **Hosting.** The cubes (WebP lossless z-slice atlases, plus a gzip fallback, all with content-hashed names)
+  live on the public dataset `tanmay-starslab/tng50-sub488530-viz`, which serves anonymous CORS requests. Git
+  keeps only `docs/tng50/data/viz/manifest_v2.json` (the pinned version) and the LUTs. The page fetches the
+  WebP parts of the levels the view needs (about 3–7 MB per gas cube, 4–9 MB per star level; the dataset card
+  has the exact table) and verifies each decoded cube with SHA-256. If the WebP decode does not match, it falls
+  back to the gzip file; a local `--viz-local` build also retries `data/viz/`. If huggingface.co is unreachable, the stage says so, and the spectra, ray picking and everything
+  else keep working.
+- The Phase-2 volumes (`docs/tng50/data/vol/`) were removed. Build and upload commands are in
+  [`docs/TNG50_OPERATIONS.md`](docs/TNG50_OPERATIONS.md) §1b.
+
 Layout: `tngsight/` (geometry, degrade, npz/web formats, generator), `server/` (FastAPI),
 `deploy/` (data build, HF Space, laptop scripts), `tng50/` (the original app and scripts, with
 history). Rebuild, deployment and worker commands are in
 [`docs/TNG50_OPERATIONS.md`](docs/TNG50_OPERATIONS.md).
 
 Credits: IllustrisTNG / TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), Trident (Hummels et
-al. 2017), yt (Turk et al. 2011).
+al. 2017), yt (Turk et al. 2011). The star composite follows Lupton et al. (2004). The 3D viewer's approach
+(deposited cubes and column-integral rendering) was inspired by Scott Lucchini's TNG viewer.
 
 ## Caveats
 
@@ -155,8 +184,8 @@ Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full t
 - **three.js** (MIT), **WebLLM** (Apache-2.0) and the **Qwen2.5-1.5B-Instruct** weights (Apache-2.0)
   are loaded from their CDNs by the browser and are not vendored. pygad (GPL-2+) was only run
   out-of-tree to validate the fitter. None of its code is in this repository.
-- **TNG50 data.** The TNG50-derived spectra and library (`docs/tng50/data/`, the npz library, the
-  private HF dataset) are not MIT. They are redistributed under the
+- **TNG50 data.** The TNG50-derived spectra, library and 3D cubes (`docs/tng50/data/`, the npz library, the
+  private HF dataset and the public viz dataset `tanmay-starslab/tng50-sub488530-viz`) are not MIT. They are redistributed under the
   [IllustrisTNG data policy](https://www.tng-project.org/data/), which asks you to cite
   Nelson et al. 2019 (ComAC 6, 2; MNRAS 490, 3234) and Pillepich et al. 2019 (MNRAS 490, 3196).
   Please also cite Trident (Hummels, Smith & Silvia 2017, ApJ 847, 59) and yt (Turk et al. 2011,

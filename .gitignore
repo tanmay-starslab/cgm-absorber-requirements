@@ -22,3 +22,7 @@ yt.toml
 generated/
 .env
 .claude/
+# Phase-2b 3D cubes: hosted on the public HF dataset tanmay-starslab/tng50-sub488530-viz, never in git.
+# Only docs/tng50/data/viz/manifest_v2.json is tracked; the Phase-2 volumes are gone (design-2b §6.4).
+docs/tng50/data/vol/
+docs/tng50/data/viz/*/

@@ -2,8 +2,8 @@
 """Build the static TNG50 sightline explorer under docs/tng50/ from the sightline library.
 
     python scripts/export_tng50_web.py [--library DIR] [--out DIR] [--space-url URL] [--local-url URL]
-                                       [--include-generated] [--prune] [--components FILE] [--vol-dir DIR]
-                                       [--chat] [--ids a,b,...]
+                                       [--include-generated] [--prune] [--components FILE] [--viz-dir DIR]
+                                       [--viz-base URL] [--viz-local] [--chat] [--ids a,b,...]
 
 Reads <library>/catalog.json and <library>/web/<id>.bin (or generated/<id>.bin), as written by
 deploy/data/build_library.py and the server; writes
@@ -11,8 +11,13 @@ deploy/data/build_library.py and the server; writes
   <out>/data/s/<id>.bin        byte copies of the web binaries
   <out>/index.html             docs/tng50/_template.html with a small config injected at /*__DATA__*/null
   <out>/data/components.json   byte copy of --components (default <library>/components.json), if present
-  <out>/data/vol/              manifest.json + the files it lists, from --vol-dir (default <library>/vol), sha256-checked
+  <out>/data/viz/manifest_v2.json  byte copy of <viz-dir>/manifest_v2.json (default <library>/viz), validated with
+                               tngsight.vizpack; the cubes themselves are NOT copied: the page fetches them from the
+                               public HF dataset (CFG.viz.base), falling back to data/viz/ (design-2b §5.10, §6.4)
+  <out>/data/luts/luts.json    copy of docs/tng50/data/luts/luts.json (only when --out is not docs/tng50)
   <out>/js/*.js                the page's lazy modules (copied from docs/tng50/js when --out is elsewhere)
+--viz-local also copies every cube into <out>/data/viz/ and points CFG.viz.base there (refused for docs/tng50:
+big cubes never go into git). --prune also deletes <out>/data/vol/ (the Phase-2 volumes).
 Every exported entry carries p0/p1 (ray start/end, physical kpc from the galaxy centre, box axes, 0.01 kpc), read
 from the npz `geom` member when the catalogue lacks them, and has_components. Custom (cust_) ids are exported only
 with --include-generated.
@@ -21,7 +26,7 @@ variable; without one (or with the literal placeholder "TNG_SPACE_URL") it is le
 backend list and a warning is printed: the published page is then library-only for every visitor who
 is not running the laptop server."""
 from __future__ import annotations
-import argparse, hashlib, json, os, re, shutil, struct, sys
+import argparse, json, os, re, shutil, struct, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +44,11 @@ NPZ_PREFIX = "cgm_sid488530_"
 THREE_VERSION = "0.169.0"
 WEBLLM = {"webllm": "0.2.85", "model": "Qwen2.5-1.5B-Instruct-q4f16_1-MLC"}
 CUSTOM = {"r_max_kpc": 395, "l_min_kpc": 20, "l_max_kpc": 800}
-VOL_KEYS = ("nH", "T", "Z", "OVI", "HI", "CIII")
+VIZ_DATASET = "tanmay-starslab/tng50-sub488530-viz"
+VIZ_BASE = f"https://huggingface.co/datasets/{VIZ_DATASET}/resolve/main/"
+VIZ_FALLBACK = "data/viz/"
+VIZ_MANIFEST = "data/viz/manifest_v2.json"
+DOCS_OUT = ROOT / "docs" / "tng50"
 
 
 def galaxy_frame() -> dict:
@@ -89,36 +98,52 @@ def copy_if_changed(src: Path, dst: Path) -> bool:
     return True
 
 
-def export_volumes(vol_dir: Path, out_vol: Path) -> tuple[dict | None, str]:
-    """Validate <vol_dir>/manifest.json (tngsight.volume.validate_manifest when importable) and every listed file's
-    sha256, then copy them to out_vol. -> (page-config summary or None, message)."""
-    man_p = vol_dir / "manifest.json"
+def _validate_manifest_v2(man: dict, base_dir: Path | None = None) -> None:
+    """tngsight.vizpack.validate_manifest_v2 (CORE, design-2b §3.2). ImportError if vizpack is missing."""
+    from tngsight import vizpack
+    vizpack.validate_manifest_v2(man, base_dir=base_dir)
+
+
+def manifest_files(man: dict) -> list[str]:
+    """Every cube file path (4 WebP parts + gz per cube) listed in a manifest_v2 dict, in manifest order."""
+    out = []
+    cubes = [c for f in (man.get("gas") or {}).get("fields", {}).values() for c in (f.get("cubes") or {}).values()]
+    cubes += list(((man.get("stars") or {}).get("cubes") or {}).values())
+    for c in cubes:
+        out += list(c["webp"]["paths"]) + [c["gz"]["path"]]
+    return out
+
+
+def export_viz(viz_dir: Path, out: Path, base: str = VIZ_BASE, local: bool = False) -> tuple[dict | None, str]:
+    """Validate <viz_dir>/manifest_v2.json and copy it (only it, unless `local`) to <out>/data/viz/.
+    -> (CFG.viz or None, message). Any problem -> None: the 3D tab then says the data is not published."""
+    man_p = viz_dir / "manifest_v2.json"
     if not man_p.is_file():
-        return None, f"no volumes at {vol_dir} (3D tab will say 'volumes not published')"
-    man = json.loads(man_p.read_text())
+        return None, f"no viz manifest at {man_p} (3D tab will say '3D data not published')"
     try:
-        from tngsight.volume import validate_manifest
-        validate_manifest(man)
-    except ImportError:
-        if man.get("version") != 1 or not isinstance(man.get("fields"), dict) or not isinstance(man.get("grids"), dict):
-            return None, f"{man_p}: unexpected manifest format"
-    except ValueError as exc:
-        return None, f"{man_p}: {exc}"
-    files = []
-    for key, f in man["fields"].items():
-        for res, name in f["files"].items():
-            p = vol_dir / name
-            if not p.is_file():
-                return None, f"{p} listed in the manifest is missing"
-            want = (f.get("sha256") or {}).get(res)
-            if want and hashlib.sha256(p.read_bytes()).hexdigest() != want:
-                return None, f"{p}: sha256 does not match the manifest"
-            files.append(p)
-    n = sum(copy_if_changed(p, out_vol / p.name) for p in files) + copy_if_changed(man_p, out_vol / "manifest.json")
-    total = sum(p.stat().st_size for p in files)
-    keys = [k for k in VOL_KEYS if k in man["fields"]] + [k for k in man["fields"] if k not in VOL_KEYS]
-    return {"keys": keys, "grids": sorted(man["grids"], key=int)}, \
-        f"volumes: {len(keys)} fields, {len(files)} files, {total / 1e6:.1f} MB ({n} written) -> {out_vol}"
+        man = json.loads(man_p.read_text())
+        if not isinstance(man, dict):
+            raise ValueError("not a JSON object")
+        _validate_manifest_v2(man, viz_dir if local else None)
+    except ImportError as exc:
+        return None, f"{man_p}: cannot validate, tngsight.vizpack not importable ({exc}); viz: null"
+    except (ValueError, KeyError, TypeError) as exc:
+        return None, f"{man_p}: invalid manifest_v2 ({exc}); viz: null"
+    out_viz = out / "data" / "viz"
+    w = copy_if_changed(man_p, out_viz / "manifest_v2.json")
+    msg = f"viz: manifest_v2 ({'written' if w else 'unchanged'}) -> {out_viz / 'manifest_v2.json'}"
+    if local:
+        files = manifest_files(man)
+        n = sum(copy_if_changed(viz_dir / rel, out_viz / rel) for rel in files)
+        total = sum((viz_dir / rel).stat().st_size for rel in files)
+        msg += f"; --viz-local: {len(files)} cube files, {total / 1e6:.1f} MB ({n} written)"
+        base = VIZ_FALLBACK
+    else:
+        msg += f"; cubes from {base}"
+    # fallback_base only where cubes really sit under <out>/data/viz/ (--viz-local): elsewhere (docs/tng50 on Pages, which
+    # git-ignores data/viz/*/) every fallback request would be a guaranteed 404 before the "host unreachable" message
+    fallback = VIZ_FALLBACK if local else None
+    return {"manifest_url": VIZ_MANIFEST, "base": base, "fallback_base": fallback, "dataset": VIZ_DATASET}, msg
 
 
 def default_library() -> Path:
@@ -151,7 +176,7 @@ def find_bin(lib: Path, sid: str) -> Path | None:
     return None
 
 
-def page_config(cat: dict, backends: list, default_id: str | None, n: int, vol: dict | None = None,
+def page_config(cat: dict, backends: list, default_id: str | None, n: int, viz: dict | None = None,
                 chat: bool = False) -> dict:
     gal = {k: cat.get("galaxy", {}).get(k) for k in GAL_PUBLIC if k in cat.get("galaxy", {})}
     lines = {k: {"label": LABELS[k], "color": COLORS[k], "rest_A": cat.get("lines", {}).get(k, {}).get("rest_A"),
@@ -161,7 +186,7 @@ def page_config(cat: dict, backends: list, default_id: str | None, n: int, vol: 
             "galaxy": gal, "lines": lines, "R_opts": R_OPTS,
             "defaults": {"id": default_id, "R_lo": 20000, "R_hi": 40000, "sn_hi": 8, "sn_lo": 5, "vwin": 400, "seed": 0,
                          "intrinsic": False},
-            "frame": galaxy_frame(), "vol": vol, "vol_url": "data/vol/", "components_url": "data/components.json",
+            "frame": galaxy_frame(), "viz": viz, "components_url": "data/components.json",
             "js_base": "js/", "three": THREE_VERSION, "chat": dict(enabled=bool(chat), **WEBLLM), "custom": dict(CUSTOM)}
 
 
@@ -194,7 +219,10 @@ def main(argv=None) -> int:
     ap.add_argument("--prune", action="store_true", help="delete <out>/data/s/*.bin not in the exported catalogue")
     ap.add_argument("--default-id", default="edge_b100_a090", help="sightline shown first (if exported)")
     ap.add_argument("--components", type=Path, default=None, help="components catalogue (default <library>/components.json)")
-    ap.add_argument("--vol-dir", type=Path, default=None, help="3D volumes dir with manifest.json (default <library>/vol)")
+    ap.add_argument("--viz-dir", type=Path, default=None, help="3D cubes dir with manifest_v2.json (default <library>/viz)")
+    ap.add_argument("--viz-base", default=VIZ_BASE, help=f"where the page fetches the cubes (default {VIZ_BASE})")
+    ap.add_argument("--viz-local", action="store_true",
+                    help="also copy every cube into <out>/data/viz/ and load them from there (refused for docs/tng50)")
     ap.add_argument("--chat", action="store_true", help="enable the chat ('Ask') button in the page config")
     ap.add_argument("--ids", default="", help="export only these comma-separated ids (testing)")
     a = ap.parse_args(argv)
@@ -202,6 +230,10 @@ def main(argv=None) -> int:
         backends, public = resolve_backends(a.local_url, a.space_url)
     except ValueError as exc:
         ap.error(str(exc))
+    if a.viz_local and a.out.resolve() == DOCS_OUT.resolve():
+        ap.error("--viz-local is refused for docs/tng50: the cubes are hosted on Hugging Face, never committed")
+    if not a.viz_base.endswith("/") or re.match(r"^[a-z]+:", a.viz_base) and not URL_RE.match(a.viz_base):
+        ap.error(f"--viz-base must be an http(s) URL or a relative path, ending in '/', got {a.viz_base!r}")
     lib = a.library or default_library()
     cat_path = lib / "catalog.json"
     if not cat_path.is_file():
@@ -248,6 +280,8 @@ def main(argv=None) -> int:
         for p in sdir.glob("*.bin"):
             if p.stem not in ids:
                 p.unlink()
+        if (a.out / "data" / "vol").is_dir():
+            shutil.rmtree(a.out / "data" / "vol")             # the Phase-2 volumes (replaced by data/viz, design-2b §6.4)
     out_cat = {"version": cat.get("version", 1), "galaxy": cat.get("galaxy", {}), "lines": cat.get("lines", {}), "entries": keep}
     (a.out / "data" / "catalog.json").write_text(json.dumps(out_cat, separators=(",", ":"), allow_nan=False))
     msgs = []
@@ -257,8 +291,12 @@ def main(argv=None) -> int:
                     f"({'written' if w else 'unchanged'}) -> {a.out / 'data' / 'components.json'}")
     else:
         msgs.append(f"no components catalogue at {comp_path}; has_components false everywhere")
-    vol, vmsg = export_volumes(a.vol_dir or lib / "vol", a.out / "data" / "vol")
+    viz, vmsg = export_viz(a.viz_dir or lib / "viz", a.out, base=a.viz_base, local=a.viz_local)
     msgs.append(vmsg)
+    luts_src, luts_dst = DOCS_OUT / "data" / "luts" / "luts.json", a.out / "data" / "luts" / "luts.json"
+    if luts_src.is_file() and luts_src.resolve() != luts_dst.resolve():
+        w = copy_if_changed(luts_src, luts_dst)
+        msgs.append(f"luts: {'written' if w else 'unchanged'} -> {luts_dst}")
     js_src, js_dst = ROOT / "docs" / "tng50" / "js", a.out / "js"
     if js_src.resolve() != js_dst.resolve() and js_src.is_dir():
         n_js = sum(copy_if_changed(p, js_dst / p.name) for p in sorted(js_src.glob("*.js")))
@@ -267,7 +305,7 @@ def main(argv=None) -> int:
     tpl = a.template.read_text(encoding="utf-8")
     if tpl.count(MARK) != 1:
         sys.exit(f"{a.template}: expected exactly one {MARK}")
-    data = json.dumps(page_config(out_cat, backends, default_id, len(keep), vol=vol, chat=a.chat),
+    data = json.dumps(page_config(out_cat, backends, default_id, len(keep), viz=viz, chat=a.chat),
                       separators=(",", ":"), ensure_ascii=False)
     data = data.replace("</", "<\\/")
     (a.out / "index.html").write_text(tpl.replace(MARK, data), encoding="utf-8")

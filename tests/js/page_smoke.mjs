@@ -11,7 +11,13 @@ import {join} from "node:path";
 
 const [dir, api] = process.argv.slice(2);
 if (!dir) { console.error("usage: page_smoke.mjs <docs/tng50 dir> [backend URL]"); process.exit(2); }
-const html = readFileSync(join(dir, existsSync(join(dir, "index.html")) ? "index.html" : "_template.html"), "utf8");
+// The exported index.html is used once it comes from the Phase-2b template (it then names manifest_v2); an older export
+// falls back to _template.html (the bare template runs on its own defaults) and says so. TNG_SMOKE_FILE forces a file.
+const pickFile = () => { if (process.env.TNG_SMOKE_FILE) return process.env.TNG_SMOKE_FILE;
+  const ix = join(dir, "index.html"); if (existsSync(ix) && readFileSync(ix, "utf8").includes("manifest_v2")) return "index.html";
+  if (existsSync(ix)) console.log("note: index.html predates the Phase-2b template (re-export it); testing _template.html"); return "_template.html"; };
+const PAGE_FILE = pickFile(), html = readFileSync(join(dir, PAGE_FILE), "utf8");
+console.log("page file: " + PAGE_FILE);
 const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)].filter(m => !/type="importmap"/.test(m[1])).map(m => m[2]);
 const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]));
 const PAGE = "http://127.0.0.1:8000/tng50/";
@@ -33,6 +39,7 @@ class El {
   get options() { return this.children; } get firstChild() { return this._fc ||= new El("i"); }
   getAttribute(k) { return this.attrs[k] ?? null; } setAttribute(k, v) { this.attrs[k] = String(v); }
   querySelectorAll(s) { return (this._qsa ||= {})[s] ||= Array.from({length: 5}, () => new El("span")); }
+  querySelector() { return null; }   // placeSide() (FE-13) looks up .side/.main; null makes it a no-op in this stub
   closest() { return null; } getContext() { return ctx; } getBoundingClientRect() { return {left: 0, top: 0}; } click() {} focus() {}
   insertAdjacentHTML(w, h) { this.innerHTML += h; }
   toBlob(cb) { cb({size: 1}); }
@@ -83,7 +90,7 @@ const ban = elById("apibanner");
 check(api && !(CFG.backends || []).map(u => u.replace(/\/+$/, "")).includes(api.replace(/\/+$/, "")) ? !ban.hidden && elById("apibanner_t").innerHTML.includes(new URL(api).host) : ban.hidden,
   `override banner ${ban.hidden ? "hidden" : "shown: " + elById("apibanner_t").innerHTML.replace(/<[^>]+>/g, "")}`);
 // ---- phase 2: structure, bridge, lazy loading ----
-const P2_IDS = ["tabs", "tab-spectra", "tab-3d", "panel-spectra", "panel-3d", "v3d-root", "picker-root", "find-root", "find-toggle", "find-body", "chat-root", "chat-open", "comps"];
+const P2_IDS = ["tabs", "tab-spectra", "tab-3d", "panel-spectra", "panel-3d", "v3d-root", "picker-root", "find-root", "find-toggle", "find-body", "chat-root", "chat-open", "comps", "app"];
 check(P2_IDS.every(i => ids.has(i)), "tablist / panels / mount ids present: " + P2_IDS.filter(i => !ids.has(i)).map(i => "missing #" + i).join(" "));
 check(/role="tablist" id="tabs"/.test(html) && /role="tab" id="tab-3d" aria-controls="panel-3d"/.test(html) && /role="tabpanel" id="panel-3d"/.test(html), "WAI-ARIA tab roles + aria-controls");
 check(/<script type="importmap">\{"imports":\{"three":"https:\/\/cdn\.jsdelivr\.net\/npm\/three@0\.169\.0\/build\/three\.module\.min\.js"/.test(html) &&
@@ -94,8 +101,12 @@ check(/<script type="importmap">\{"imports":\{"three":"https:\/\/cdn\.jsdelivr\.
 const app = globalThis.tngApp, API_FNS = ["getState", "entries", "entry", "select", "setInstrument", "submitGeometry", "submitCustom", "components", "componentsIndex", "showTab", "show3d"];
 check(app && app.version === 2 && API_FNS.every(f => typeof app[f] === "function") && Object.isFrozen(app.config), "window.tngApp v2 bridge: " + API_FNS.filter(f => typeof app?.[f] !== "function").join(" "));
 check(events.some(e => e.type === "tng:ready" && e.detail.version === 2) && events.some(e => e.type === "tng:catalog" && e.detail.n >= 3), "tng:ready and tng:catalog dispatched");
-const p2 = seen.filter(u => /\/data\/vol\/|components\.json|cdn\.jsdelivr|\/api\/components|\/js\/(viewer3d|picker|search|chat)/.test(u));
-check(p2.length === 0, `initial load fetched no Phase-2 asset (${seen.length} requests${p2.length ? "; offending: " + p2.join(", ") : ""})`);
+const p2 = seen.filter(u => /\/data\/vol\/|\/data\/viz\/|huggingface\.co|hf\.co\/|components\.json|cdn\.jsdelivr|\/api\/components|\/js\/(viewer3d|vizdata|vizload|raymarch|colormaps|picker|search|chat)/.test(u));
+check(p2.length === 0, `initial load fetched no Phase-2/2b asset: no huggingface.co, data/viz/, jsdelivr or js/viewer3d.js (${seen.length} requests${p2.length ? "; offending: " + p2.join(", ") : ""})`);
+{ const V = CFG.viz;   // Phase-2b §5.10 config contract
+  check(V && V.manifest_url === "data/viz/manifest_v2.json" && /^https:\/\/huggingface\.co\/datasets\/[\w-]+\/[\w.-]+\/resolve\/main\/$/.test(V.base) &&
+    (V.fallback_base === null || typeof V.fallback_base === "string") && typeof V.dataset === "string" && !("vol" in CFG) && !("vol_url" in CFG) && !/CFG\.vol\b|vol_url/.test(html),
+    `CFG.viz present (${V ? V.base : "null"}); CFG.vol / vol_url gone`); }
 const ents = app.entries(), withP = ents.filter(e => Array.isArray(e.p0) && Array.isArray(e.p1)).length;
 console.log(`     entries ${ents.length}, with p0/p1 ${withP}, has_components ${ents.filter(e => e.has_components).length}`);
 { const st0 = app.getState(), e0 = app.entry(st0.id); check(e0 && e0.id === st0.id && app.entry("cust_0000000000") === null && st0.tab === "spectra", `getState/entry: ${st0.id}, tab ${st0.tab}`); }
@@ -115,6 +126,9 @@ console.log(`     entries ${ents.length}, with p0/p1 ${withP}, has_components ${
   app.setInstrument({sn_hi: 8, vwin: 400}); }
 const s0 = ctxCalls.stroke; elById("vwin").value = "200"; elById("vwin").fire("input"); await sleep(50);
 check(ctxCalls.stroke > s0 && location.hash.includes("v=200"), "velocity window slider redraws and updates hash");
+{ const a0 = elById("app").dataset.tab; app.showTab("3d"); const a1 = elById("app").dataset.tab; app.showTab("spectra"); const a2 = elById("app").dataset.tab; await sleep(50);
+  check(a0 === "spectra" && a1 === "3d" && a2 === "spectra" && /data-tab="spectra"/.test(html) && /\.app\[data-tab="3d"\]\{grid-template-columns:minmax\(0,1fr\)\}/.test(html),
+    `.app[data-tab] follows the tab: ${a0} → ${a1} → ${a2}`); }
 const before = S.id, want = opts[(opts.indexOf(before) + 1) % opts.length]; elById("next").fire("click"); await sleep(400);
 check(S.id === want && st().includes(`<b>${want}</b>`), `next ▶ moves selection ${before} → ${S.id} (wraps)`);
 elById("filter").value = "rand"; elById("filter").fire("input");

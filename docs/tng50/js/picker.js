@@ -86,12 +86,17 @@ export function attachPicker(viewer, root, app) {
   function writeInputs() { for (const w of ["p0", "p1"]) ["x", "y", "z"].forEach((a, i) => { fld(w, a).value = P[w] ? f1(P[w][i]) : ""; }); }
   function readInputs() { const g = w => { const v = ["x", "y", "z"].map(a => fld(w, a).value.trim()); return v.some(s => s === "") ? null : v.map(Number); };
     P.p0 = g("p0"); P.p1 = g("p1"); }
+  /* final: a sequence token, so a slower refresh (it awaits customId) that started for an older input state cannot finish
+     after a newer one and overwrite its readout and message; the stale call still returns its own validation result */
+  let refreshSeq = 0;
   async function refresh(announce) {
+    const seq = ++refreshSeq;
     const v = P.p0 && P.p1 ? validate(P.p0, P.p1, Lhat) : null, m = v && v.metrics, rows = [];
     if (m) { rows.push(["L", `${m.length.toFixed(1)} kpc`], ["b", `${m.b.toFixed(1)} kpc`]);
       if (Math.abs(m.b_segment - m.b) > 0.05) rows.push(["b (segment)", `${m.b_segment.toFixed(1)} kpc`]);
       rows.push(["θ to disk normal", `${m.angle_deg.toFixed(1)}°`]); }
     let id = null; if (v && v.ok) { try { id = await customId(v.p0, v.p1); } catch { id = null; } rows.push(["id", id || "—"]); }
+    if (seq !== refreshSeq) return v;
     read.textContent = ""; for (const [k, val] of rows) read.appendChild(h("div", {}, h("b", {text: k}), h("span", {class: "num", text: val})));
     const online = !!api();
     bSub.disabled = !(v && v.ok) || !online || !!(app.getState().job);
@@ -123,6 +128,14 @@ export function attachPicker(viewer, root, app) {
     G.cone = new T.Mesh(new T.ConeGeometry(6, 18, 16), new T.MeshBasicMaterial({color: 0xf08f2a, depthTest: false, transparent: true}));
     G.cone.visible = false; G.group.add(G.cone);
     for (const o of [G.disc, G.ring, G.h0, G.h1, G.line, G.cone]) o.renderOrder = 10;
+    /* fix-ui FE-14: handles, cone and dashes keep a constant screen size (kpc per CSS px at each object's distance), so
+       they do not fill the stage in the ±25 kpc close views */
+    const kpcPerPx = (cam, p) => { const h = viewer.canvas.clientHeight || 600; return 2 * cam.position.distanceTo(p) * Math.tan(cam.fov * Math.PI / 360) / h; };
+    const fix = (o, px) => { o.onBeforeRender = (r, sc, cam) => { o.scale.setScalar(Math.max(1e-3, px * kpcPerPx(cam, o.position) / 10)); o.updateMatrixWorld(true); }; };
+    fix(G.h0, 7); fix(G.h1, 7); for (const o of [G.h0, G.h1, G.cone, G.line]) o.frustumCulled = false;
+    G.cone.onBeforeRender = (r, sc, cam) => { if (!P.p0 || !P.p1) return; const k = kpcPerPx(cam, new T.Vector3(...P.p1)), d = new T.Vector3(...sub(P.p1, P.p0)).normalize();
+      G.cone.scale.setScalar(Math.max(1e-3, 0.8 * k)); G.cone.position.set(...P.p1).addScaledVector(d, -9 * 0.8 * k); G.cone.updateMatrixWorld(true); };
+    G.line.onBeforeRender = (r, sc, cam) => { const k = kpcPerPx(cam, viewer.controls.target); G.line.material.dashSize = 9 * k; G.line.material.gapSize = 6 * k; };
   }
   function draw() { if (!T) return;
     const V = p => new T.Vector3(p[0], p[1], p[2]);
