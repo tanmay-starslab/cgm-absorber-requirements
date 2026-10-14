@@ -1,0 +1,55 @@
+# TNG50 explorer backend on an always-on VM (Oracle Cloud Always Free A1, Ubuntu 24.04 aarch64).
+# The app image is the same one the HF Space uses (deploy/hf_space/Dockerfile, built natively on the
+# VM, so no buildx/--platform); Caddy terminates TLS for $HOST.
+#   docker compose up -d --build      (run in ~/tng50, the context assembled by push_oci.sh)
+# ./.env (VM only, mode 600) holds HF_TOKEN, WORKER_TOKEN, HF_DATASET, CORS_ORIGINS and HOST; compose
+# reads HOST from it for interpolation, so logs/ps/restart/down work without exporting anything.
+# `docker compose config` and `docker inspect` print the tokens in clear. See deploy/oci/README.md.
+x-logging: &logging
+  driver: json-file
+  options: {max-size: 20m, max-file: "5"}
+services:
+  # A fresh named volume is root:root; the app runs as uid 1000. Non-recursive chown is enough:
+  # everything below /data is created by the app. Also repairs a volume created before this existed.
+  init-data:
+    image: busybox:1.36
+    command: ["chown", "1000:1000", "/data"]
+    volumes:
+      - tngdata:/data
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      init-data: {condition: service_completed_successfully}
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      NODE_NAME: oci-a1
+      TRUST_PROXY: "1"
+      TRUSTED_HOPS: "1"
+    volumes:
+      - tngdata:/data
+    expose: ["7860"]
+    # reports status only (outside swarm Docker does not restart unhealthy containers); the long
+    # start period covers the first dataset download, which runs before uvicorn starts.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15m
+    logging: *logging
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    depends_on: [app]          # not service_healthy: that would hold ACME back until the download ends
+    ports: ["80:80", "443:443"]
+    environment:
+      HOST: ${HOST:?set HOST in .env, e.g. HOST=1-2-3-4.sslip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+    logging: *logging
+volumes:
+  tngdata:
+  caddydata:

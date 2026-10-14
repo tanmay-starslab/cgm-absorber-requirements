@@ -1,0 +1,187 @@
+Doppler-only redshift option for Trident (https://github.com/trident-project/trident).
+Derived from Trident, Copyright (c) 2016-2017, Trident Development Team; BSD 3-Clause License
+(full text in THIRD_PARTY_LICENSES). This patch is distributed under the same BSD-3 terms.
+
+diff --git a/trident/absorption_spectrum/absorption_spectrum.py b/trident/absorption_spectrum/absorption_spectrum.py
+index c00e149..ab0d0d9 100644
+--- a/trident/absorption_spectrum/absorption_spectrum.py
++++ b/trident/absorption_spectrum/absorption_spectrum.py
+@@ -341,6 +341,7 @@ class AbsorptionSpectrum(object):
+     def make_spectrum(self, input_object, output_file=None,
+                       line_list_file=None, output_absorbers_file=None,
+                       use_peculiar_velocity=True,
++                      use_doppler_redshift_only=False,
+                       store_observables=False,
+                       subgrid_resolution=10, observing_redshift=0.,
+                       min_tau=1e-3, njobs="auto"):
+@@ -379,6 +380,12 @@ class AbsorptionSpectrum(object):
+            generation.
+            Default: True
+ 
++          :use_doppler_redshift_only: optional, bool
++
++              if True, shift lines using only the Doppler redshift field instead
++              of the combined cosmological + Doppler effective redshift.
++              Default: False
++
+         :store_observables: optional, bool
+ 
+            if True, stores observable properties of each cell along the line of
+@@ -445,12 +452,12 @@ class AbsorptionSpectrum(object):
+         field_units = {('gas', 'dl'): "cm",
+                        ('gas', 'redshift'): "",
+                        ('gas', 'temperature'): "K"}
+-        if use_peculiar_velocity:
++        if use_peculiar_velocity and not use_doppler_redshift_only:
+             input_fields.append(('gas', 'velocity_los'))
+             input_fields.append(('gas', 'redshift_eff'))
+             field_units[('gas', 'velocity_los')] = "cm/s"
+             field_units[('redshift_eff')] = ""
+-        if observing_redshift != 0.:
++        if use_peculiar_velocity and (observing_redshift != 0. or use_doppler_redshift_only):
+             input_fields.append(('gas', 'redshift_dopp'))
+             field_units[('gas', 'redshift_dopp')] = ""
+         for feature in self.line_list + self.continuum_list:
+@@ -490,11 +497,13 @@ class AbsorptionSpectrum(object):
+ 
+         mylog.info("Creating spectrum")
+         self._add_lines_to_spectrum(field_data, use_peculiar_velocity,
++                        use_doppler_redshift_only,
+                                     output_absorbers_file,store_observables,
+                                     subgrid_resolution=subgrid_resolution,
+                                     observing_redshift=observing_redshift,
+                                     min_tau=min_tau, njobs=njobs)
+         self._add_continua_to_spectrum(field_data, use_peculiar_velocity,
++                           use_doppler_redshift_only,
+                                        observing_redshift=observing_redshift,
+                                        min_tau=min_tau)
+ 
+@@ -542,6 +551,7 @@ class AbsorptionSpectrum(object):
+         return np.sqrt(flux*self.snr)/self.snr
+ 
+     def _apply_observing_redshift(self, field_data, use_peculiar_velocity,
++                                 use_doppler_redshift_only,
+                                  observing_redshift):
+         """
+         Change the redshifts of individual absorbers to account for the
+@@ -558,7 +568,10 @@ class AbsorptionSpectrum(object):
+             # This is already assumed in the generation of the LightRay
+             redshift = field_data[('gas', 'redshift')]
+             if use_peculiar_velocity:
+-                redshift_eff = field_data[('gas', 'redshift_eff')]
++                if use_doppler_redshift_only:
++                    redshift_eff = field_data[('gas', 'redshift_dopp')]
++                else:
++                    redshift_eff = field_data[('gas', 'redshift_eff')]
+         else:
+             # The intermediate redshift that is seen by an observer
+             # at a redshift other than z=0 is z12, where z1 is the
+@@ -567,13 +580,18 @@ class AbsorptionSpectrum(object):
+             # 1 + z12 = (1 + z2) / (1 + z1)
+             redshift = ((1 + field_data[('gas', 'redshift')]) / \
+                         (1 + observing_redshift)) - 1.
+-            # Combining cosmological redshift and doppler redshift
+-            # into an effective redshift is found in Peacock's
+-            # Cosmological Physics eqn 3.75:
+-            # 1 + z_eff = (1 + z_cosmo) * (1 + z_doppler)
+             if use_peculiar_velocity:
+-                redshift_eff = ((1 + redshift) * \
+-                                (1 + field_data[('gas', 'redshift_dopp')])) - 1.
++                if use_doppler_redshift_only:
++                    # Apply only the Doppler shift in the observer frame.
++                    redshift_eff = ((1 + field_data[('gas', 'redshift_dopp')]) / \
++                                    (1 + observing_redshift)) - 1.
++                else:
++                    # Combining cosmological redshift and doppler redshift
++                    # into an effective redshift is found in Peacock's
++                    # Cosmological Physics eqn 3.75:
++                    # 1 + z_eff = (1 + z_cosmo) * (1 + z_doppler)
++                    redshift_eff = ((1 + redshift) * \
++                                    (1 + field_data[('gas', 'redshift_dopp')])) - 1.
+ 
+         if not use_peculiar_velocity:
+             redshift_eff = redshift
+@@ -581,6 +599,7 @@ class AbsorptionSpectrum(object):
+         return redshift, redshift_eff
+ 
+     def _add_continua_to_spectrum(self, field_data, use_peculiar_velocity,
++                                  use_doppler_redshift_only,
+                                   observing_redshift=0., min_tau=1e-3):
+         """
+         Add continuum features to the spectrum.  Continuua are recorded as
+@@ -603,7 +622,9 @@ class AbsorptionSpectrum(object):
+         # Change the redshifts of continuum sources to account for the
+         # redshift at which the observer sits
+         redshift, redshift_eff = self._apply_observing_redshift(field_data,
+-                                 use_peculiar_velocity, observing_redshift)
++                                 use_peculiar_velocity,
++                                 use_doppler_redshift_only,
++                                 observing_redshift)
+ 
+         # min_tau is the minimum optical depth value that warrants
+         # accounting for an absorber.  for a single absorber, noticeable
+@@ -681,6 +702,7 @@ class AbsorptionSpectrum(object):
+             pbar.finish()
+ 
+     def _add_lines_to_spectrum(self, field_data, use_peculiar_velocity,
++                               use_doppler_redshift_only,
+                                output_absorbers_file, store_observables,
+                                subgrid_resolution=10, observing_redshift=0.,
+                                njobs=-1, min_tau=1e-3):
+@@ -703,7 +725,9 @@ class AbsorptionSpectrum(object):
+         # Change the redshifts of individual absorbers to account for the
+         # redshift at which the observer sits
+         redshift, redshift_eff = self._apply_observing_redshift(field_data,
+-                                 use_peculiar_velocity, observing_redshift)
++                                 use_peculiar_velocity,
++                                 use_doppler_redshift_only,
++                                 observing_redshift)
+ 
+         # step through each ionic transition (e.g. HI, HII, MgII) specified
+         # and deposit the lines into the spectrum
+diff --git a/trident/data/line_lists/lines.txt b/trident/data/line_lists/lines.txt
+index 3e3b171..332b5d7 100644
+--- a/trident/data/line_lists/lines.txt
++++ b/trident/data/line_lists/lines.txt
+@@ -117,6 +117,8 @@ Ne VIII         780.324000    5.500000e+08    5.020000e-02
+ Ne VIII         770.409000    5.720000e+08    1.020000e-01                
+ Na IX           694.150000    6.230000e+08    4.500000e-02                
+ Na IX           681.720000    6.600000e+08    9.190000e-02                
++Mg II          2796.352000    2.612000e+08    6.123000e-01	Mg II 2796          
++Mg II          2803.531000    2.592000e+08    3.054000e-01 	Mg II 2804
+ Mg II          1240.394700    1.520000e+06    3.510000e-04                
+ Mg II          1239.925300    1.350000e+06    6.210000e-04                
+ Mg X            624.941000    6.950000e+08    4.070000e-02                
+diff --git a/trident/spectrum_generator.py b/trident/spectrum_generator.py
+index 90a9e6a..204b776 100644
+--- a/trident/spectrum_generator.py
++++ b/trident/spectrum_generator.py
+@@ -245,6 +245,7 @@ class SpectrumGenerator(AbsorptionSpectrum):
+                       output_file=None,
+                       output_absorbers_file=None,
+                       use_peculiar_velocity=True,
++                      use_doppler_redshift_only=False,
+                       observing_redshift=0.0,
+                       ly_continuum=True,
+                       store_observables=False,
+@@ -297,6 +298,12 @@ class SpectrumGenerator(AbsorptionSpectrum):
+             in shifting lines in the final spectrum.
+             Default: True
+ 
++        :use_doppler_redshift_only: optional, bool
++
++            If True, shift lines using only the Doppler redshift field and
++            skip the usual cosmological + Doppler combination.
++            Default: False
++
+         :observing_redshift: optional, float
+ 
+             This is the value of the redshift at which the observer of this
+@@ -425,6 +432,7 @@ class SpectrumGenerator(AbsorptionSpectrum):
+                                          line_list_file=None,
+                                          output_absorbers_file=output_absorbers_file,
+                                          use_peculiar_velocity=use_peculiar_velocity,
++                                         use_doppler_redshift_only=use_doppler_redshift_only,
+                                          observing_redshift=observing_redshift,
+                                          store_observables=store_observables,
+                                          min_tau=min_tau, njobs=njobs)

@@ -1,0 +1,73 @@
+{
+  "sim": "TNG50-1",
+  "snapshot": 99,
+  "redshift": 0.0,
+  "subhalo_id": 488530,
+  "central": true,
+  "TNG_H": 0.6774,
+  "box_ckpch": 35000.0,
+  "C_KMS": 299792.458,
+  "CM_PER_KPC": 3.0856775814913673e+21,
+  "center_ckpch": [
+    28238.388671875,
+    19726.826171875,
+    4721.00830078125
+  ],
+  "center_kpc": [
+    41686.448184233835,
+    29121.34632418069,
+    6969.309123117804
+  ],
+  "R200c_kpc": 246.35226737104722,
+  "M200c_Msun": 1595140665388.19,
+  "Mstar_Msun": 111400000000.0,
+  "SFR_Msun_yr": 7.076,
+  "SubhaloVel_kms": [
+    85.6135,
+    -84.1245,
+    44.9702
+  ],
+  "disk_frame_source": "OVI_CGM_compare cold-gas angular momentum (tng_orientation.json)",
+  "Lhat": [
+    0.04170790684964916,
+    -0.8403492677980035,
+    -0.5404383023228281
+  ],
+  "xhat": [
+    -0.9968862719846454,
+    -0.07122981073705145,
+    0.03382417465245191
+  ],
+  "yhat": [
+    -0.0669194383925682,
+    0.5373447889146441,
+    -0.8407034950513171
+  ],
+  "lines": {
+    "OVI": {
+      "trident_line": "O VI 1032",
+      "ion": "O VI",
+      "field": "O_p5_number_density",
+      "rest_A": 1031.912,
+      "f": 0.133,
+      "label": "O\\,VI\\ \\lambda1032"
+    },
+    "HILyb": {
+      "trident_line": "H I 1026",
+      "ion": "H I",
+      "field": "H_p0_number_density",
+      "rest_A": 1025.7222,
+      "f": 0.0791,
+      "label": "H\\,I\\ Ly\\beta\\ \\lambda1026"
+    },
+    "CIII": {
+      "trident_line": "C III 977",
+      "ion": "C III",
+      "field": "C_p2_number_density",
+      "rest_A": 977.02,
+      "f": 0.7586,
+      "label": "C\\,III\\ \\lambda977"
+    }
+  },
+  "notes": "v_sys = SubhaloVel . los (galaxy systemic LOS velocity). Ray endpoints in ckpc/h (code_length) = kpc * TNG_H. Spectra generated at z~0 with use_peculiar_velocity=True, use_doppler_redshift_only=True."
+}
