@@ -3,6 +3,9 @@ them with a local Generator, upload the npz. No inbound port or tunnel needed.
 
     python -m server.remote_worker --coordinator https://<space>.hf.space --token $WORKER_TOKEN [--name laptop]
 
+The worker announces caps ["endpoints", "fit"] (custom rays + fitted components); a Phase-1
+coordinator that rejects the field gets a capability-less lease instead.
+
 Needs the same data as the server (TNG_CUTOUT, TNG_ION_TABLE_DIR, TNG_INDEX_FILE) and cwd with
 config.tri if the Generator imports trident there.
 """

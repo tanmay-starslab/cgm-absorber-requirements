@@ -10,6 +10,17 @@ from dataclasses import dataclass, field
 
 QUEUED, RUNNING, DONE, ERROR = "queued", "running", "done", "error"
 JOB_ID_RE = r"^[0-9a-f]{32}$"
+ORIENTATION, ENDPOINTS = "orientation", "endpoints"   # job kinds
+CAPS = ("endpoints", "fit")                          # worker capabilities (Phase-1 workers send none)
+
+
+def job_kind(geom: dict) -> str:
+    return ENDPOINTS if geom.get("kind") == ENDPOINTS else ORIENTATION
+
+
+def can_run(kind: str, caps) -> bool:
+    """A worker without the "endpoints" capability only runs orientation jobs."""
+    return kind != ENDPOINTS or ENDPOINTS in (caps or ())
 
 
 class QueueFull(Exception):
@@ -22,8 +33,9 @@ class TooManySubscribers(Exception):
 
 @dataclass
 class Job:
-    id: str                       # sightline id (canonical geom_id)
-    geom: dict                    # canonicalize() output
+    id: str                       # sightline id (canonical geom_id or cust_ id)
+    geom: dict                    # canonicalize() / canonicalize_endpoints() output
+    kind: str = ORIENTATION       # "orientation" | "endpoints"
     job_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     status: str = QUEUED
     stage: str = "queued"
@@ -31,6 +43,7 @@ class Job:
     msg: str = ""
     error: str | None = None
     entry: dict | None = None
+    components: dict | None = None
     attempts: int = 0
     worker: str | None = None
     lease_token: str | None = None # per-lease secret; progress/fail must present the current one
@@ -41,9 +54,10 @@ class Job:
     finished: float = 0.0
 
     def public(self, position=None) -> dict:
-        return {"job_id": self.job_id, "id": self.id, "status": self.status, "stage": self.stage,
-                "frac": round(float(self.frac), 4), "msg": self.msg, "position": position,
-                "error": self.error, "entry": self.entry, "attempts": self.attempts}
+        return {"job_id": self.job_id, "id": self.id, "kind": self.kind, "status": self.status,
+                "stage": self.stage, "frac": round(float(self.frac), 4), "msg": self.msg, "position": position,
+                "error": self.error, "entry": self.entry, "components": self.components,
+                "attempts": self.attempts}
 
 
 class JobQueue:
@@ -55,7 +69,7 @@ class JobQueue:
         self.jobs: dict[str, Job] = {}
         self.inflight: dict[str, str] = {}     # sightline id -> job_id (queued/running)
         self.order: list[str] = []             # queued job_ids, FIFO
-        self.workers: dict[str, float] = {}    # remote worker name -> last_seen (epoch)
+        self.workers: dict[str, tuple] = {}    # remote worker name -> (last_seen epoch, caps tuple)
         self._subs: dict[str, list] = {}       # job_id -> [(loop, asyncio.Queue)]
         self._waiters: list = []               # (loop, asyncio.Event) of lease long-polls
         self._lock = threading.RLock()
@@ -69,7 +83,7 @@ class JobQueue:
                 return self.jobs[jid], False
             if len(self.inflight) >= self.cap:
                 raise QueueFull(f"queue full ({self.cap} jobs)")
-            job = Job(id=geom["id"], geom=dict(geom), created=self.clock())
+            job = Job(id=geom["id"], geom=dict(geom), kind=job_kind(geom), created=self.clock())
             self.jobs[job.job_id] = job
             self.inflight[job.id] = job.job_id
             self.order.append(job.job_id)
@@ -100,12 +114,13 @@ class JobQueue:
             return {"queued": len(self.order), "running": run}
 
     # ---------------------------------------------------------------- leases
-    def lease(self, worker: str, lease_s=None) -> Job | None:
-        """Pop the oldest queued job for `worker` (non-blocking)."""
+    def lease(self, worker: str, lease_s=None, caps=()) -> Job | None:
+        """Pop the oldest queued job `worker` can run with its `caps` (non-blocking)."""
         with self._lock:
-            if not self.order:
+            jid = next((k for k in self.order if can_run(self.jobs[k].kind, caps)), None)
+            if jid is None:
                 return None
-            jid = self.order.pop(0)
+            self.order.remove(jid)
             j = self.jobs[jid]
             now = self.clock()
             j.status, j.worker, j.attempts = RUNNING, worker, j.attempts + 1
@@ -117,7 +132,7 @@ class JobQueue:
         self._emit_positions(rest)                        # everyone behind moves up one
         return j
 
-    async def lease_wait(self, worker: str, timeout: float, lease_s=None) -> Job | None:
+    async def lease_wait(self, worker: str, timeout: float, lease_s=None, caps=()) -> Job | None:
         """Long-poll: lease a job, waiting up to `timeout` s for one to be submitted."""
         end = time.monotonic() + max(0.0, timeout)
         loop = asyncio.get_running_loop()
@@ -127,7 +142,7 @@ class JobQueue:
             self._waiters.append(item)
         try:
             while True:
-                j = self.lease(worker, lease_s)
+                j = self.lease(worker, lease_s, caps)
                 left = end - time.monotonic()
                 if j is not None or left <= 0:
                     return j
@@ -141,9 +156,21 @@ class JobQueue:
                 if item in self._waiters:
                     self._waiters.remove(item)
 
-    def touch_worker(self, name):
+    def touch_worker(self, name, caps=None):
+        """Mark a remote worker seen; `caps` None keeps the capabilities it last announced."""
         with self._lock:
-            self.workers[name] = self.clock()
+            old = self.workers.get(name, (0.0, ()))[1]
+            self.workers[name] = (self.clock(), tuple(old if caps is None else caps))
+
+    def worker_caps(self, name) -> tuple:
+        with self._lock:
+            return self.workers.get(name, (0.0, ()))[1]
+
+    def live_workers(self, seen_s, now=None) -> dict:
+        """{name: caps} of remote workers seen within `seen_s` seconds."""
+        now = self.clock() if now is None else now
+        with self._lock:
+            return {n: c for n, (t, c) in self.workers.items() if now - t < seen_s}
 
     def _owns(self, j, worker, token) -> bool:
         return (worker is None or j.worker == worker) and (token is None or j.lease_token == token)
@@ -192,7 +219,7 @@ class JobQueue:
             self._emit_positions(rest)
             self._wake()
 
-    def complete(self, job_id, entry: dict) -> bool:
+    def complete(self, job_id, entry: dict, components: dict | None = None) -> bool:
         """Mark done (first valid result wins, even from a worker whose lease was reassigned)."""
         with self._lock:
             j = self.jobs.get(job_id)
@@ -202,10 +229,11 @@ class JobQueue:
             if moved:
                 self.order.remove(job_id)
             j.status, j.stage, j.frac, j.msg, j.entry = DONE, "done", 1.0, "ready", entry
+            j.components = components
             j.finished, j.finishing, j.lease_token = self.clock(), False, None
             self.inflight.pop(j.id, None)
             rest = list(self.order)
-        self._emit(job_id, "done", {"id": j.id, "entry": entry})
+        self._emit(job_id, "done", {"id": j.id, "entry": entry, "components": components})
         if moved:
             self._emit_positions(rest)
         return True
@@ -236,11 +264,13 @@ class JobQueue:
             self._emit(job_id, "error", {"message": j.error})
         return new
 
-    def expire_queued(self, message, older_than=0.0, now=None) -> list:
-        """Error every queued job that has waited more than `older_than` s (e.g. no worker left)."""
+    def expire_queued(self, message, older_than=0.0, now=None, kind=None) -> list:
+        """Error every queued job that has waited more than `older_than` s (e.g. no worker left);
+        `kind` (e.g. ENDPOINTS) limits it to jobs of that kind (no worker with the cap left)."""
         now = self.clock() if now is None else now
         with self._lock:
             gone = [jid for jid in self.order if not self.jobs[jid].finishing
+                    and (kind is None or self.jobs[jid].kind == kind)
                     and now - self.jobs[jid].created > older_than]
             for jid in gone:
                 j = self.jobs[jid]

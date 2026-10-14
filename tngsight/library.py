@@ -15,7 +15,7 @@ import threading
 from pathlib import Path
 import numpy as np
 from .config import C_KMS, DLAMBDA, VWIN_GEN_KMS, LINE_KEYS, LINES, GALAXY, NPZ_PREFIX
-from .geometry import geom_id
+from .geometry import geom_id, custom_id, CENTER_KPC, H as TNG_H
 
 WEB_MAGIC = b"TNGS"
 WEB_VERSION = 1
@@ -82,7 +82,10 @@ def load_npz(path, id=None) -> dict:
     if out["id"] is None and isinstance(path, (str, os.PathLike)):
         stem = Path(path).stem
         out["id"] = stem[len(NPZ_PREFIX):] if stem.startswith(NPZ_PREFIX) else stem
-    if out["id"] is None and not str(geom.get("orientation", "")).lower().startswith("rand"):
+    if out["id"] is None and geom.get("kind") == "endpoints":
+        out["id"] = custom_id(geom["p0_kpc"], geom["p1_kpc"])
+    if out["id"] is None and not str(geom.get("orientation", "")).lower().startswith("rand") \
+            and geom.get("kind") != "endpoints":
         out["id"] = geom_id(geom["orientation"], geom["b_kpc"], geom["azimuth_deg"],
                             inclination_deg=geom.get("inclination_deg"))
     return out
@@ -188,18 +191,78 @@ def _b(x):
     return None if x is None or (isinstance(x, float) and math.isnan(x)) else bool(x)
 
 
-def catalog_entry(payload, scores: dict | None, source: str) -> dict:
+def _r(x, nd):
+    """round to nd decimals, -0.0 -> 0.0 (JSON never shows -0)."""
+    return round(float(x), nd) + 0.0
+
+
+def geom_endpoints(geom: dict, nd=2) -> tuple[list, list]:
+    """(p0, p1): ray start/end in physical kpc relative to CENTER_KPC (= galaxy center_kpc, box axes),
+    rounded to `nd` decimals (0.01 kpc). Uses start/end_kpc, else start/end_ckpch / TNG_H (equal by
+    construction). Never subtract center_ckpch/TNG_H (it differs from center_kpc; design-2 §2)."""
+    if "start_kpc" in geom and "end_kpc" in geom:
+        a, b = np.asarray(geom["start_kpc"], float), np.asarray(geom["end_kpc"], float)
+    else:
+        a = np.asarray(geom["start_ckpch"], float) / TNG_H
+        b = np.asarray(geom["end_ckpch"], float) / TNG_H
+    return [_r(x, nd) for x in a - CENTER_KPC], [_r(x, nd) for x in b - CENTER_KPC]
+
+
+def npz_endpoints(path, nd=2) -> tuple[list, list]:
+    """geom_endpoints() of a library npz, reading only its `geom` member (for the exporter)."""
+    with np.load(path, allow_pickle=False) as d:
+        return geom_endpoints(json.loads(str(d["geom"])), nd)
+
+
+AOD_K = 1e5 / (0.02654008 * 1e-8)   # N [cm^-2] = AOD_K / (f λ0[Å]) ∫τ dv[km/s]  (πe²/(m_e c) = 0.02654 cm² s⁻¹)
+
+
+def aod_columns(payload, nd=3) -> dict:
+    """{ion: apparent-optical-depth log10 N of the stored τ over the whole ±1500 km/s window (None when ∫τ = 0)}.
+    Exact for the noiseless, unclipped τ. It is the column the spectrum actually holds; payload["logN"] is the
+    ray column Σ n dl, larger for weak, diffuse absorbers whose cells Trident deposits only partly (min_tau)."""
+    out = {}
+    for k in LINE_KEYS:
+        lam = np.asarray(payload["lam"][k], float); rest = float(payload["rest"][k])
+        n = AOD_K / (LINES[k]["f"] * rest) * float(np.trapz(np.asarray(payload["tau"][k], float),
+                                                           C_KMS * (lam / rest - 1.0)))
+        out[k] = _r(math.log10(n), nd) if n > 0 and math.isfinite(n) else None
+    return out
+
+
+def _n_fit(components) -> dict:
+    return {k: len(components.get(k) or []) for k in LINE_KEYS}
+
+
+def catalog_entry(payload, scores: dict | None, source: str, components: dict | None = None) -> dict:
     """Catalog row. `scores` is flat like a grid_index.csv row / scoring.score_payload():
-    rank, showcase_score, n_showcase_ions, ovi_showcase, <ion>_{n_comp,min_flux,showcase}."""
+    rank, showcase_score, n_showcase_ions, ovi_showcase, <ion>_{n_comp,min_flux,showcase}.
+    `components` ({ion: [comp]}, default payload["components"]) sets has_components / n_fit.
+    logN is the ray column, logN_aod the spectrum's (aod_columns); compare fits with logN_aod.
+    Every row carries p0/p1 (geom_endpoints, 0.01 kpc); custom (kind "endpoints") rows also carry
+    kind, length_kpc, angle_to_normal_deg, b_segment_kpc and closest-approach b/azimuth (0.1)."""
     g, id, s = payload["geom"], payload["id"], scores or {}
+    if components is None:
+        components = payload.get("components")
+    custom = g.get("kind") == "endpoints"
     m = _SEED_RE.search(id or "")
-    seed = int(m.group(1)) if (m and str(id).startswith("rand")) else None
+    seed = int(m.group(1)) if (m and not custom and str(id).startswith("rand")) else None
     star = _b(s.get("ovi_showcase"))
-    return {"id": id, "orientation": g["orientation"], "b_kpc": float(g["b_kpc"]),
-            "azimuth_deg": float(g["azimuth_deg"]), "seed": seed, "v_sys": float(payload["v_sys"]),
-            "logN": {k: _f(payload["logN"][k]) for k in LINE_KEYS},
-            "rank": _i(s.get("rank")), "score": _f(s.get("showcase_score")),
-            "n_showcase_ions": _i(s.get("n_showcase_ions")), "star": bool(star) if star is not None else False,
-            "ions": {k: {"n_comp": _i(s.get(f"{k}_n_comp")), "min_flux": _f(s.get(f"{k}_min_flux")),
-                         "showcase": _b(s.get(f"{k}_showcase"))} for k in LINE_KEYS},
-            "source": source}
+    p0, p1 = geom_endpoints(g)
+    e = {"id": id, "orientation": "custom" if custom else g["orientation"],
+         "b_kpc": _r(g["b_kpc"], 1) if custom else float(g["b_kpc"]),
+         "azimuth_deg": _r(g["azimuth_deg"], 1) if custom else float(g["azimuth_deg"]),
+         "seed": seed, "v_sys": float(payload["v_sys"]),
+         "logN": {k: _f(payload["logN"][k]) for k in LINE_KEYS},
+         "logN_aod": aod_columns(payload) if "tau" in payload else None,
+         "rank": _i(s.get("rank")), "score": _f(s.get("showcase_score")),
+         "n_showcase_ions": _i(s.get("n_showcase_ions")), "star": bool(star) if star is not None else False,
+         "ions": {k: {"n_comp": _i(s.get(f"{k}_n_comp")), "min_flux": _f(s.get(f"{k}_min_flux")),
+                      "showcase": _b(s.get(f"{k}_showcase"))} for k in LINE_KEYS},
+         "source": source, "p0": p0, "p1": p1, "has_components": components is not None}
+    if components is not None:
+        e["n_fit"] = _n_fit(components)
+    if custom:
+        e.update(kind="endpoints", length_kpc=_r(g["length_kpc"], 1),
+                 angle_to_normal_deg=_r(g["angle_to_normal_deg"], 1), b_segment_kpc=_r(g["b_segment_kpc"], 1))
+    return e

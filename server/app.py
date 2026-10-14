@@ -13,15 +13,19 @@ import threading
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
-from .jobs import DONE, ERROR, JOB_ID_RE, QUEUED, RUNNING, JobQueue, QueueFull, TooManySubscribers
+from .jobs import (CAPS, DONE, ENDPOINTS, ERROR, JOB_ID_RE, QUEUED, RUNNING, JobQueue, QueueFull,
+                   TooManySubscribers)
+from . import chat
 from .ratelimit import RateLimiter, client_ip
 from .settings import VERSION, Settings
 from .storage import ID_RE, HFSync, LibraryStore
@@ -71,8 +75,18 @@ class FigureReq(_M):
         return v
 
 
+_Coord = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=-1e4, le=1e4)]
+
+
+class CustomReq(_M):
+    """Custom ray p0 -> p1, physical kpc relative to the galaxy centre (box axes)."""
+    p0_kpc: list[_Coord] = Field(min_length=3, max_length=3)
+    p1_kpc: list[_Coord] = Field(min_length=3, max_length=3)
+
+
 class LeaseReq(_M):
     name: str = Field(pattern=_NAME_RE)
+    caps: list[Literal["endpoints", "fit"]] = Field(default_factory=list, max_length=len(CAPS))
 
 
 class ProgressReq(_M):
@@ -87,15 +101,19 @@ class FailReq(_M):
 
 # ------------------------------------------------------------------------------ ASGI middleware
 class BodyLimit:
-    """413 for request bodies over `limit` (worker result uploads get `big`)."""
+    """413 for request bodies over `limit`; `limits` maps a path prefix to its own limit (worker
+    result uploads, /api/chat). The first matching prefix wins."""
 
-    def __init__(self, app, limit, big, big_prefix="/api/worker/result/"):
-        self.app, self.limit, self.big, self.big_prefix = app, limit, big, big_prefix
+    def __init__(self, app, limit, limits=None, big=None, big_prefix="/api/worker/result/"):
+        self.app, self.limit = app, limit
+        self.limits = dict(limits or {})
+        if big is not None:                         # Phase-1 signature
+            self.limits.setdefault(big_prefix, big)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
-        limit = self.big if scope["path"].startswith(self.big_prefix) else self.limit
+        limit = next((v for k, v in self.limits.items() if scope["path"].startswith(k)), self.limit)
         cl = dict(scope.get("headers") or []).get(b"content-length")
         if cl is not None and (not cl.isdigit() or int(cl) > limit):
             return await _send_json(send, 413, {"detail": f"request body exceeds {limit} bytes"})
@@ -156,7 +174,7 @@ class PrivateNetwork:
 
 # ------------------------------------------------------------------------------ helpers
 def _sid(name: str, ext: str) -> str:
-    if not name.endswith(ext) or not ID_RE.match(name[: -len(ext)]):
+    if not name.endswith(ext) or not ID_RE.fullmatch(name[: -len(ext)]):
         raise HTTPException(422, f"invalid sightline id {name[:60]!r}")
     return name[: -len(ext)]
 
@@ -171,6 +189,18 @@ def _limited(retry_after: float, what: str):
     s = max(1, int(retry_after + 0.999))
     return JSONResponse({"detail": f"rate limit exceeded for {what}; retry in {s} s"}, 429,
                         headers={"Retry-After": str(s)})
+
+
+async def _validation_error(request: Request, exc: RequestValidationError):
+    """FastAPI's 422 body, minus echoed inputs that are not valid JSON (a NaN/Infinity literal in the
+    request would otherwise make the error response itself unserialisable)."""
+    errs = jsonable_encoder(exc.errors())
+    try:
+        body = json.dumps({"detail": errs}, allow_nan=False)
+    except ValueError:
+        errs = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in errs]
+        body = json.dumps({"detail": errs}, allow_nan=False, default=str)
+    return Response(body, status_code=422, media_type="application/json")
 
 
 def _default_renderer(payload, fmt, **kw):
@@ -206,18 +236,21 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         tasks = []
 
         async def reaper():
-            no_worker_since = None
+            since = {None: None, ENDPOINTS: None}       # need -> first time no such worker was seen
+            msgs = {None: "no worker available; please try again later",
+                    ENDPOINTS: "no worker that can cast custom rays is available; please try again later"}
             while True:
                 await asyncio.sleep(S.reap_every_s)
                 try:
                     jobq.reap()
                     now = time.time()
-                    if workers_available(now):
-                        no_worker_since = None
-                    elif no_worker_since is None:
-                        no_worker_since = now
-                    elif now - no_worker_since > S.no_worker_grace_s:
-                        jobq.expire_queued("no worker available; please try again later")
+                    for need in (None, ENDPOINTS):     # capless (Phase-1) workers never run custom rays
+                        if workers_available(now, need=need):
+                            since[need] = None
+                        elif since[need] is None:
+                            since[need] = now
+                        elif now - since[need] > S.no_worker_grace_s:
+                            jobq.expire_queued(msgs[need], kind=need)
                 except Exception:
                     log.exception("reaper")
         tasks.append(asyncio.create_task(reaper()))
@@ -250,9 +283,11 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
 
     app = FastAPI(title="TNG50 sightline explorer", version=VERSION, lifespan=lifespan,
                   docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
+    app.add_exception_handler(RequestValidationError, _validation_error)
     app.state.settings, app.state.store, app.state.jobs, app.state.local = S, store, jobq, local
     app.state.limiter, app.state.fig_cache = limiter, fig_cache
-    app.add_middleware(BodyLimit, limit=S.max_body, big=S.max_result)
+    app.add_middleware(BodyLimit, limit=S.max_body,
+                       limits={"/api/worker/result/": S.max_result, "/api/chat": S.chat_max_bytes + 4096})
     cors = dict(allow_origins=list(S.cors_origins), allow_methods=["GET", "POST", "OPTIONS"],
                 allow_headers=["Content-Type", "Authorization"], max_age=600,
                 expose_headers=["ETag", "Retry-After", "Content-Disposition"])
@@ -264,13 +299,16 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
     def ip(request: Request) -> str:
         return client_ip(request, S.trust_proxy, S.trusted_hops)
 
-    def workers_available(now=None) -> bool:
+    def workers_available(now=None, need=None) -> bool:
         """A worker can pick up new jobs: the local one is starting/warm/busy, or a remote worker
-        polled or reported within worker_seen_s (the same test /api/health uses for 'warm')."""
+        polled or reported within worker_seen_s (the same test /api/health uses for 'warm').
+        `need` = a capability (e.g. "endpoints") the worker must have announced; the local worker
+        has them all."""
         now = time.time() if now is None else now
         if local is not None and local.state in ("starting", "warm", "busy"):
             return True
-        return any(now - t < S.worker_seen_s for t in list(jobq.workers.values()))
+        live = jobq.live_workers(S.worker_seen_s, now)
+        return any(need is None or need in caps for caps in live.values())
 
     def worker_auth(request: Request):
         if not S.worker_token:
@@ -284,13 +322,14 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
     @app.get("/api/health")
     def health():
         now = time.time()
-        remote = [{"name": n, "last_seen": round(t, 1)} for n, t in sorted(jobq.workers.items())
-                  if now - t < 3600]
+        remote = [{"name": n, "last_seen": round(t, 1), "caps": list(caps)}
+                  for n, (t, caps) in sorted(jobq.workers.items()) if now - t < 3600]
         lib_n, gen_n = store.sizes()
         loc = local.status() if local is not None else {"state": "disabled"}
         warm = loc["state"] in ("warm", "busy") or any(now - w["last_seen"] < S.worker_seen_s for w in remote)
         d = {"status": "ok", "version": VERSION, "warm": warm, "workers": {"local": loc, "remote": remote},
              "queue": jobq.counts(), "library_size": lib_n, "generated_size": gen_n, "node": S.node_name}
+        d["chat"] = chat.health_fragment(S)
         if hf is not None:
             d["hf"] = hf.status()
         return d
@@ -334,17 +373,23 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         return {**c, "geom": json.loads(json.dumps(g, default=lambda x: x.tolist())),
                 "exists": store.has(c["id"])}
 
-    @app.post("/api/sightlines")
-    def submit(req: GeometryReq, request: Request):
-        c = _canon(req)
+    def enqueue(c: dict, request: Request, extra: dict | None = None):
+        """Ready (200) / queued-or-deduped (202) / refused (429, 503) for a canonical geometry.
+        Orientation and custom rays share the queue, the dedupe and the "sightlines" rate bucket."""
+        extra = extra or {}
         e = store.entry(c["id"])
         if e is not None:
-            return {"id": c["id"], "status": "ready", "entry": e}
+            return {"id": c["id"], "status": "ready", "entry": e, **extra}
         jid = jobq.inflight.get(c["id"])
         if jid is None:                       # only new work is rate-limited / capped
             if not S.generation_possible:
-                raise HTTPException(503, "generation disabled on this node (no local or remote workers)")
-            if not workers_available():
+                return JSONResponse({"detail": "generation disabled on this node (no local or remote workers)"},
+                                    503, headers={"Retry-After": "60"})
+            if c.get("kind") == ENDPOINTS:
+                if not workers_available(need=ENDPOINTS):
+                    return JSONResponse({"detail": "no worker that supports custom rays is available"}, 503,
+                                        headers={"Retry-After": "60"})
+            elif not workers_available():
                 return JSONResponse({"detail": "no worker available right now"}, 503, headers={"Retry-After": "60"})
             wait = limiter.check("sightlines", ip(request))
             if wait:
@@ -359,7 +404,48 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             limiter.refund("sightlines", ip(request))
         snap = jobq.snapshot(job.job_id)
         return JSONResponse({"id": c["id"], "job_id": job.job_id, "status": snap["status"],
-                             "position": snap["position"]}, 202)
+                             "position": snap["position"], **extra}, 202)
+
+    @app.post("/api/sightlines")
+    def submit(req: GeometryReq, request: Request):
+        return enqueue(_canon(req), request)
+
+    def _canon_custom(req: CustomReq) -> dict:
+        from tngsight.geometry import canonicalize_endpoints
+        try:
+            return canonicalize_endpoints(req.p0_kpc, req.p1_kpc)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    @app.post("/api/geometry/custom")
+    def geometry_custom(req: CustomReq):
+        from tngsight.geometry import make_endpoints
+        c = _canon_custom(req)
+        g = make_endpoints(c["p0_kpc"], c["p1_kpc"])
+        return {"id": c["id"], "canonical": {"p0_kpc": c["p0_kpc"], "p1_kpc": c["p1_kpc"]},
+                "geom": json.loads(json.dumps(g, default=lambda x: x.tolist())), "exists": store.has(c["id"])}
+
+    @app.post("/api/sightlines/custom")
+    def submit_custom(req: CustomReq, request: Request):
+        c = _canon_custom(req)
+        return enqueue(c, request, {"canonical": {"p0_kpc": c["p0_kpc"], "p1_kpc": c["p1_kpc"]}})
+
+    @app.get("/api/components")
+    def components_index(request: Request):
+        body, etag = store.components_index()
+        hdr = {"ETag": etag, "Cache-Control": "max-age=60"}
+        if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
+            return Response(status_code=304, headers=hdr)
+        return Response(body, media_type="application/json", headers=hdr)
+
+    @app.get("/api/components/{name}")
+    def components_one(name: str):
+        sid = _sid(name, ".json")
+        d = store.components(sid)
+        if d is None:
+            raise HTTPException(404, f"no components for {sid}")
+        return {"id": sid, "fitter": d.get("fitter"), "params_tag": d.get("params_tag"),
+                "components": d["components"]}
 
     @app.get("/api/jobs/{job_id}")
     def job(job_id: str):
@@ -391,7 +477,8 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
                     return                          # (not an "error" event: the job itself is fine)
                 s = jobq.snapshot(job_id)
                 if s["status"] == DONE:
-                    yield {"event": "done", "data": json.dumps({"id": s["id"], "entry": s["entry"]})}
+                    yield {"event": "done", "data": json.dumps({"id": s["id"], "entry": s["entry"],
+                                                                "components": s["components"]})}
                     return
                 if s["status"] == ERROR:
                     yield {"event": "error", "data": json.dumps({"message": s["error"]})}
@@ -463,9 +550,10 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
     # -------------------------------------------------------------------------- worker protocol
     @app.post("/api/worker/lease", dependencies=[Depends(worker_auth)])
     async def lease(req: LeaseReq, wait: float | None = None):
-        jobq.touch_worker(req.name)
+        caps = tuple(sorted(set(req.caps)))
+        jobq.touch_worker(req.name, caps=caps)
         t = S.lease_poll_s if wait is None else max(0.0, min(float(wait), S.lease_poll_s))
-        j = await jobq.lease_wait(req.name, timeout=t)
+        j = await jobq.lease_wait(req.name, timeout=t, caps=caps)
         jobq.touch_worker(req.name)
         if j is None:
             return Response(status_code=204)
@@ -507,7 +595,8 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             raise
         if j.worker:
             jobq.touch_worker(j.worker)
-        if not jobq.complete(job_id, entry):
+        d = store.components(j.id)
+        if not jobq.complete(job_id, entry, components=d["components"] if d else None):
             raise HTTPException(409, "job finished concurrently")
         return {"ok": True, "id": j.id, "entry": entry}
 
@@ -523,6 +612,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         log.warning("worker %s failed job %s: %s", worker, job_id, req.message)   # full text: log only
         return {"ok": True, "status": new}
 
+    app.include_router(chat.make_router(S))       # POST /api/chat (404 "chat disabled" without a key)
     return app
 
 
