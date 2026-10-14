@@ -1499,6 +1499,7 @@ def test_upload_plan_includes_phase2_files(tmp_path):
     cut, ion = tmp_path / "cut.hdf5", tmp_path / "ion.h5"
     cut.write_bytes(b"x"); ion.write_bytes(b"x")
     rel = lambda items: sorted(r for _, r in items[2:])  # noqa: E731
-    assert rel(up.plan(cut, ion, lib)) == sorted(files[:8])
+    # Phase 2b: the vol/ volumes are no longer uploaded (the deposited cubes live in the public viz dataset)
+    assert rel(up.plan(cut, ion, lib)) == sorted(files[:5])
     assert rel(up.plan(cut, ion, lib, phase2=False)) == sorted(files[:3])
-    assert rel(up.plan(cut, ion, lib, generated=True)) == sorted(files[:10])
+    assert rel(up.plan(cut, ion, lib, generated=True)) == sorted(files[:5] + files[8:10])

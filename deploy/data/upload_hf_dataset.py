@@ -10,11 +10,12 @@ its `generated/<id>.npz` uploads land in the same tree):
   catalog.json                      library catalog
   sightlines/<id>.npz, web/<id>.bin library files
   components.json                   Phase-2 Voigt-component catalogue (deploy/data/build_components.py)
-  components/<id>.json              its per-sightline fit cache (resumable rebuilds)       } backups of the
-  vol/manifest.json, vol/<key>.u8.gz, vol/<key>.128.u8.gz  3D-viewer volumes (build_volumes.py)  } 25-60 min
+  components/<id>.json              its per-sightline fit cache (resumable rebuilds; a backup of a 25-60 min build)
   generated/<id>.{npz,bin,components.json}  written by the Space (HFSync); only uploaded here with --generated
 Phase-2 files are included whenever they exist (--no-phase2 skips them). The Space and the server skip
-components/ and vol/ when they download the dataset (the page serves its own copies from docs/tng50/data).
+components/ when they download the dataset (the page serves its own copy from docs/tng50/data). The 3D cubes are
+NOT in this private dataset: they live in the public tanmay-starslab/tng50-sub488530-viz
+(deploy/data/upload_viz_dataset.py); the Phase-2 vol/ volumes are no longer uploaded.
 Never uploads yt.toml, config.tri, *.ewah indexes or anything outside the explicit list.
 """
 from __future__ import annotations
@@ -34,7 +35,7 @@ ION_TABLE = Path("/Volumes/cgm_work/data/trident_slim/hm2012_ss_hr.h5")
 ID = r"(face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?"
 GID = rf"({ID}|cust_[0-9a-f]{{10}})"                    # generated ids include custom rays
 LIB_RE = re.compile(rf"^(catalog\.json|sightlines/{ID}\.npz|web/{ID}\.bin)$")
-P2_RE = re.compile(rf"^(components\.json|components/{ID}\.json|vol/manifest\.json|vol/[A-Za-z]+(\.\d+)?\.u8\.gz)$")
+P2_RE = re.compile(rf"^(components\.json|components/{ID}\.json)$")
 GEN_RE = re.compile(rf"^generated/{GID}\.(npz|bin|components\.json)$")
 FORBIDDEN = re.compile(r"(^|/)(yt\.toml|config\.tri|\.env)$|\.ewah$|/\.|^\.")
 
@@ -83,7 +84,7 @@ def main(argv=None):
     ap.add_argument("--library", type=Path, default=None, help="default tngsight library_dir()")
     ap.add_argument("--generated", action="store_true", help="also upload <library>/generated/*")
     ap.add_argument("--no-phase2", action="store_true",
-                    help="skip components.json, components/ and vol/ (uploaded by default when present)")
+                    help="skip components.json and components/ (uploaded by default when present)")
     ap.add_argument("--allow-full-table", action="store_true", help="permit an ion table > 200 MB")
     ap.add_argument("--message", default="Update TNG50 sub-488530 data")
     ap.add_argument("--dry-run", action="store_true", help="print the plan; no token needed")
@@ -95,11 +96,11 @@ def main(argv=None):
     if not (lib / "catalog.json").is_file():
         ap.error(f"{lib}/catalog.json missing: run deploy/data/build_library.py first")
     n = {k: sum(1 for _, r in items if r.startswith(k))
-         for k in ("sightlines/", "web/", "generated/", "components", "vol/")}
+         for k in ("sightlines/", "web/", "generated/", "components")}
     tot = sum(p.stat().st_size for p, _ in items)
     print(f"dataset {a.repo} (private): {len(items)} files, {tot / 1e6:.1f} MB "
           f"[{n['sightlines/']} npz, {n['web/']} bin, {n['generated/']} generated, "
-          f"{n['components']} components, {n['vol/']} vol]")
+          f"{n['components']} components]")
     for p, r in items[:2] + [it for it in items if it[1] == "catalog.json"]:
         print(f"  {r:40s} <- {p} ({p.stat().st_size / 1e6:.2f} MB)")
     if a.dry_run:
