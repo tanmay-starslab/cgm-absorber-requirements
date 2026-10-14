@@ -5,10 +5,16 @@ LocalWorker   in-process coordinator side: one spawn ProcessPoolExecutor(max_wor
               child -> Manager().Queue() -> relay thread -> JobQueue -> SSE.
 RemoteWorker  client for another machine (`python -m server.remote_worker`): long-polls
               /api/worker/lease over HTTPS, runs a Generator locally, posts progress/result.
+
+Capabilities: both workers announce CAPS = ("endpoints", "fit"): they run custom-ray (endpoints)
+jobs and ship fitted components (npz member `components_json`). A Phase-1 remote worker sends no
+caps and is never leased an endpoints job.
 """
 from __future__ import annotations
 import asyncio
 import importlib
+import io
+import json
 import logging
 import multiprocessing as mp
 import os
@@ -18,8 +24,13 @@ import tempfile
 import threading
 import time
 import uuid
+import zipfile
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
+
+import numpy as np
+
+from .jobs import CAPS
 
 log = logging.getLogger("tngsight.server")
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")     # same pattern the coordinator's LeaseReq enforces
@@ -165,7 +176,7 @@ class LocalWorker:
                 self._kill()
                 ok = await self._warm(self._make_executor())
                 continue
-            job = await self.q.lease_wait(self.NAME, timeout=5.0, lease_s=self.job_timeout_s + 60)
+            job = await self.q.lease_wait(self.NAME, timeout=5.0, lease_s=self.job_timeout_s + 60, caps=CAPS)
             if job is None:
                 continue
             self.state, self.current = "busy", job.job_id
@@ -183,7 +194,7 @@ class LocalWorker:
                 except BaseException:
                     self.q.unclaim(job.job_id)
                     raise
-                self.q.complete(job.job_id, entry)
+                self.q.complete(job.job_id, entry, components=_stored_components(self.store, job.id))
             except asyncio.TimeoutError:
                 self.q.fail(job.job_id, f"local job timeout ({self.job_timeout_s:.0f} s)", retry=False, **own)
                 self._kill()
@@ -250,6 +261,7 @@ class RemoteWorker:
         self.poll_s, self.heartbeat_s, self.max_backoff = poll_s, heartbeat_s, max_backoff
         self.gen, self.gen_spec, self.gen_kwargs = generator, gen_spec, dict(gen_kwargs or {})
         self.workdir = workdir
+        self.caps = tuple(CAPS)
         self.done = self.failed = 0
         self._stop = threading.Event()
 
@@ -281,7 +293,13 @@ class RemoteWorker:
         self.gen.load(progress=lambda s, f, m="": log.info("load %s %.0f%% %s", s, 100 * f, m))
 
     def lease(self):
-        r = self._post(f"/api/worker/lease?wait={self.poll_s:g}", tries=1, json={"name": self.name})
+        body = {"name": self.name, **({"caps": list(self.caps)} if self.caps else {})}
+        r = self._post(f"/api/worker/lease?wait={self.poll_s:g}", tries=1, json=body)
+        if r.status_code == 422 and self.caps:
+            # a Phase-1 coordinator forbids the "caps" field: lease as a capability-less worker instead
+            log.warning("coordinator rejected worker caps (HTTP 422); continuing without custom-ray support")
+            self.caps = ()
+            r = self._post(f"/api/worker/lease?wait={self.poll_s:g}", tries=1, json={"name": self.name})
         if r.status_code == 204:
             return None
         if r.status_code == 401:
@@ -325,7 +343,8 @@ class RemoteWorker:
         hb.start()
         try:
             payload = self.gen.generate(dict(geom), progress=send)
-            blob = payload_to_npz_bytes(payload, self.workdir)
+            # a Phase-1 coordinator (caps refused, see lease()) accepts only the exact npz key set
+            blob = payload_to_npz_bytes(payload, self.workdir, with_components="fit" in self.caps)
         except Exception as e:
             stop_hb.set()
             log.exception("job %s failed", jid)
@@ -377,16 +396,44 @@ class RemoteWorker:
         self._stop.set()
 
 
-def payload_to_npz_bytes(payload, workdir=None) -> bytes:
-    """Exact-schema npz bytes via tngsight.library.save_npz (through a temp file)."""
+def _stored_components(store, sid):
+    try:
+        d = store.components(sid)
+    except Exception as e:
+        log.warning("components of %s unreadable: %s", sid, e)
+        return None
+    return None if d is None else d["components"]
+
+
+def payload_to_npz_bytes(payload, workdir=None, with_components=True) -> bytes:
+    """Exact-schema npz bytes via tngsight.library.save_npz (through a temp file), plus (with_components)
+    one extra member `components_json` (0-d unicode, compact JSON) when payload["components"] exists, or
+    JSON null when the fit was attempted and failed (payload["components_skipped"]). with_components=False
+    gives the exact Phase-1 key set (a coordinator that did not accept the "fit" cap)."""
     from tngsight.library import save_npz
     fd, tmp = tempfile.mkstemp(suffix=".npz", dir=workdir)
     os.close(fd)
     try:
         save_npz(tmp, payload["geom"], payload["logN"], payload["tau"])
+        comps = payload.get("components")
+        if with_components and (comps is not None or payload.get("components_skipped")):
+            buf = io.BytesIO()
+            text = json.dumps(comps, separators=(",", ":"), allow_nan=False, default=_json_num)
+            np.lib.format.write_array(buf, np.array(text), allow_pickle=False)
+            with zipfile.ZipFile(tmp, "a", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("components_json.npy", buf.getvalue())
         with open(tmp, "rb") as f:
             return f.read()
     finally:
         os.unlink(tmp)
+
+
+def _json_num(x):
+    """numpy scalars from a fitter -> plain JSON numbers."""
+    if isinstance(x, np.integer):
+        return int(x)
+    if isinstance(x, np.floating):
+        return float(x)
+    raise TypeError(f"not JSON serialisable: {type(x).__name__}")
 
 

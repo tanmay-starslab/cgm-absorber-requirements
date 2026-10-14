@@ -37,8 +37,9 @@ FATAL = ("RepositoryNotFoundError", "GatedRepoError", "RevisionNotFoundError", "
 for i in range(6):
     try:
         t = time.time()
+        # vol/ and components/ are Phase-2 build backups the server never reads (the page has its own copies)
         snapshot_download(repo_id=repo, repo_type="dataset", local_dir=d, token=os.environ["HF_TOKEN"],
-                          max_workers=8)
+                          max_workers=8, ignore_patterns=["vol/*", "components/*"])
         print(f"[start] dataset {repo} -> {d} in {time.time() - t:.0f}s", flush=True); sys.exit(0)
     except Exception as e:
         code = getattr(getattr(e, "response", None), "status_code", None)

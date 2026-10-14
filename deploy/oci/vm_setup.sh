@@ -40,7 +40,9 @@ elif ! sudo grep -q -- '--dport 443 -j ACCEPT' $R && sudo grep -q -- '^-A INPUT 
 fi
 
 if ! command -v docker >/dev/null; then
-  curl -fsSL https://get.docker.com | sudo sh </dev/null      # docker-ce + compose plugin, enables docker.service
+  # download first: with `curl | sh </dev/null` the redirect replaces the pipe, sh reads nothing
+  curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  sudo sh /tmp/get-docker.sh </dev/null      # docker-ce + compose plugin, enables docker.service
   sudo usermod -aG docker "$USER"
 fi
 mkdir -p ~/tng50

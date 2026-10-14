@@ -65,6 +65,18 @@ class Settings:
     figure_cache: int = 64
     figure_dpi: int = 240
     hf_startup_download: bool = True
+    # chat (POST /api/chat, server/chat.py): Claude proxy, off unless a key is configured
+    anthropic_api_key: str | None = field(default=None, repr=False)
+    chat_claude: bool = True
+    chat_daily_budget: int = 500            # upstream requests per UTC day, all clients together
+    chat_client_daily_budget: int = 50      # upstream requests per UTC day for one client (IPv6: its /64)
+    chat_daily_tokens: int = 4_000_000      # upstream input+output tokens per UTC day, all clients (0: off)
+    rl_chat: tuple = (60, 12)               # (per hour, burst) per client (IPv4 address / IPv6 /64)
+    chat_max_tokens: int = 1024
+    chat_timeout_s: float = 30.0
+    chat_max_messages: int = 40
+    chat_max_bytes: int = 49152             # serialised messages
+    chat_max_concurrent: int = 4            # upstream calls in flight
     extra: dict = field(default_factory=dict)
 
     @classmethod
@@ -82,7 +94,11 @@ class Settings:
                 trusted_hops=max(1, int(g("TRUSTED_HOPS") or 1)),
                 hf_startup_download=_flag(g("HF_STARTUP_DOWNLOAD"), True),
                 node_name=g("NODE_NAME") or "local", port=int(g("PORT") or 8787),
-                generator=g("TNG_GENERATOR") or cls.generator)
+                generator=g("TNG_GENERATOR") or cls.generator,
+                anthropic_api_key=g("ANTHROPIC_API_KEY") or None, chat_claude=_flag(g("CHAT_CLAUDE"), True),
+                chat_daily_budget=int(g("CHAT_DAILY_BUDGET") or cls.chat_daily_budget),
+                chat_client_daily_budget=int(g("CHAT_CLIENT_DAILY_BUDGET") or cls.chat_client_daily_budget),
+                chat_daily_tokens=int(g("CHAT_DAILY_TOKENS") or cls.chat_daily_tokens))
         for k, v in over.items():
             setattr(s, k, v)
         return s

@@ -57,6 +57,7 @@ tests/         analytic limits and thin-line agreement
 ```bash
 pip install -r requirements.txt          # LaTeX with txfonts + dvipng needed for the figures
 python -m pytest tests
+PYTHON=$(which python) node tests/js/run_all.mjs   # JS tests (explorer page, picker, search, chat)
 python scripts/build_grids.py            # ~1-2 min per ion on 2 cores
 python scripts/make_figures.py
 python scripts/make_tables.py && (cd paper && pdflatex detectability_note.tex)
@@ -102,6 +103,30 @@ deploy/laptop/serve.sh                  # backend on 127.0.0.1:8787
 (cd docs && python3 -m http.server 8000)        # then open http://127.0.0.1:8000/tng50/
 ```
 
+Phase 2 adds, in the same page:
+
+- **3D tab.** Ray-marched gas volumes (n_H, T, Z, n(O VI), n(H I), n(C III)) on a 256³ grid over a
+  ±400 kpc box around the galaxy, SPH-deposited from the slim cutout with the same ion table as the
+  spectra (`tngsight/volume.py`, `deploy/data/build_volumes.py`; 128³ first, 256³ on desktop). three.js
+  0.169.0 loads from jsdelivr only when the tab is first opened; it needs WebGL2. Face-on/edge-on presets
+  use the disk frame. Clicking a line selects that sightline in both tabs.
+- **Ray picking.** Pick two points in 3D, or type them in the six numeric fields (|p| ≤ 395 kpc,
+  length 20–800 kpc, quantised to 0.1 kpc). `POST /api/sightlines/custom` casts the ray (id
+  `cust_<sha1[:10]>`) through the same queue and SSE progress, and the spectrum opens when it is done.
+- **Voigt components.** A clean-room fitter (`tngsight/vpfit.py`, scipy `wofz` + `least_squares`) fits
+  the intrinsic native-grid spectra in the fixed V frame. It uses a pseudo-noise σ = 0.01 per pixel, so
+  the quoted errors are **formal**, not observational. Flags: 1 SAT (logN effectively a lower limit), 2 BOUND,
+  4 MAXCOMP, 8 POORFIT, 16 EDGE, 32 NOERR. Library fits ship in `docs/tng50/data/components.json`; new
+  sightlines are fitted in a "fit" stage of the generator.
+- **Find.** A deterministic component search (ion, count, Δv pairs, logN, b, impact parameter,
+  orientation), with identical JS (`docs/tng50/js/search.js`) and Python (`tngsight/search.py`) versions.
+- **Ask (chat).** The model only emits tool calls and the page runs them. The default is a local model
+  (WebLLM 0.2.85, Qwen2.5-1.5B q4f16, about 1 GB) that runs entirely in your browser. It downloads only
+  when you click "Load local model" (from huggingface.co/mlc-ai and raw.githubusercontent.com) and needs WebGPU with shader-f16. An optional Claude backend
+  (`POST /api/chat`, model claude-haiku-5-5) appears only when the server has `ANTHROPIC_API_KEY`. That
+  backend sends the conversation to Anthropic through our server, which is stateless and logs no message
+  content. Answers whose numbers do not come from a tool result get an "unverified" badge.
+
 Layout: `tngsight/` (geometry, degrade, npz/web formats, generator), `server/` (FastAPI),
 `deploy/` (data build, HF Space, laptop scripts), `tng50/` (the original app and scripts, with
 history). Rebuild, deployment and worker commands are in
@@ -127,6 +152,9 @@ Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full t
   redistributed under its licence, and `deploy/hf_space/trident_doppler_only.patch` is derived from
   Trident source and is BSD-3, not MIT.
 - **yt** (BSD-3, © yt Development Team): a dependency, not vendored.
+- **three.js** (MIT), **WebLLM** (Apache-2.0) and the **Qwen2.5-1.5B-Instruct** weights (Apache-2.0)
+  are loaded from their CDNs by the browser and are not vendored. pygad (GPL-2+) was only run
+  out-of-tree to validate the fitter. None of its code is in this repository.
 - **TNG50 data.** The TNG50-derived spectra and library (`docs/tng50/data/`, the npz library, the
   private HF dataset) are not MIT. They are redistributed under the
   [IllustrisTNG data policy](https://www.tng-project.org/data/), which asks you to cite

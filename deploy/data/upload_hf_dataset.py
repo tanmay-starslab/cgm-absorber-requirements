@@ -9,7 +9,12 @@ its `generated/<id>.npz` uploads land in the same tree):
   trident/hm2012_ss_hr.h5           slim ion table (H, C, O)
   catalog.json                      library catalog
   sightlines/<id>.npz, web/<id>.bin library files
-  generated/<id>.{npz,bin}          written by the Space (HFSync); only uploaded here with --generated
+  components.json                   Phase-2 Voigt-component catalogue (deploy/data/build_components.py)
+  components/<id>.json              its per-sightline fit cache (resumable rebuilds)       } backups of the
+  vol/manifest.json, vol/<key>.u8.gz, vol/<key>.128.u8.gz  3D-viewer volumes (build_volumes.py)  } 25-60 min
+  generated/<id>.{npz,bin,components.json}  written by the Space (HFSync); only uploaded here with --generated
+Phase-2 files are included whenever they exist (--no-phase2 skips them). The Space and the server skip
+components/ and vol/ when they download the dataset (the page serves its own copies from docs/tng50/data).
 Never uploads yt.toml, config.tri, *.ewah indexes or anything outside the explicit list.
 """
 from __future__ import annotations
@@ -27,15 +32,17 @@ from tngsight.config import cutout_path, library_dir  # noqa: E402
 REPO = "tanmay-starslab/tng50-sub488530-cgm"
 ION_TABLE = Path("/Volumes/cgm_work/data/trident_slim/hm2012_ss_hr.h5")
 ID = r"(face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?"
+GID = rf"({ID}|cust_[0-9a-f]{{10}})"                    # generated ids include custom rays
 LIB_RE = re.compile(rf"^(catalog\.json|sightlines/{ID}\.npz|web/{ID}\.bin)$")
-GEN_RE = re.compile(rf"^generated/{ID}\.(npz|bin)$")
+P2_RE = re.compile(rf"^(components\.json|components/{ID}\.json|vol/manifest\.json|vol/[A-Za-z]+(\.\d+)?\.u8\.gz)$")
+GEN_RE = re.compile(rf"^generated/{GID}\.(npz|bin|components\.json)$")
 FORBIDDEN = re.compile(r"(^|/)(yt\.toml|config\.tri|\.env)$|\.ewah$|/\.|^\.")
 
 
-def plan(cutout: Path, ion_table: Path, lib: Path, generated=False) -> list[tuple[Path, str]]:
+def plan(cutout: Path, ion_table: Path, lib: Path, generated=False, phase2=True) -> list[tuple[Path, str]]:
     """[(local file, path_in_repo)] — an explicit allow-list, validated against FORBIDDEN."""
     items = [(cutout, cutout.name), (ion_table, f"trident/{ion_table.name}")]
-    pats = [LIB_RE] + ([GEN_RE] if generated else [])
+    pats = [LIB_RE] + ([P2_RE] if phase2 else []) + ([GEN_RE] if generated else [])
     for p in sorted(lib.rglob("*")):
         rel = p.relative_to(lib).as_posix()
         if p.is_file() and any(q.match(rel) for q in pats):
@@ -75,20 +82,24 @@ def main(argv=None):
     ap.add_argument("--ion-table", type=Path, default=ION_TABLE, help="SLIM table (slim_iontable.py)")
     ap.add_argument("--library", type=Path, default=None, help="default tngsight library_dir()")
     ap.add_argument("--generated", action="store_true", help="also upload <library>/generated/*")
+    ap.add_argument("--no-phase2", action="store_true",
+                    help="skip components.json, components/ and vol/ (uploaded by default when present)")
     ap.add_argument("--allow-full-table", action="store_true", help="permit an ion table > 200 MB")
     ap.add_argument("--message", default="Update TNG50 sub-488530 data")
     ap.add_argument("--dry-run", action="store_true", help="print the plan; no token needed")
     a = ap.parse_args(argv)
     lib = a.library or library_dir()
-    items = plan(a.cutout or cutout_path(), a.ion_table, lib, a.generated)
+    items = plan(a.cutout or cutout_path(), a.ion_table, lib, a.generated, phase2=not a.no_phase2)
     if a.ion_table.stat().st_size > 200e6 and not a.allow_full_table:
         ap.error(f"{a.ion_table} is {a.ion_table.stat().st_size / 1e9:.2f} GB: pass the slim table")
     if not (lib / "catalog.json").is_file():
         ap.error(f"{lib}/catalog.json missing: run deploy/data/build_library.py first")
-    n = {k: sum(1 for _, r in items if r.startswith(k)) for k in ("sightlines/", "web/", "generated/")}
+    n = {k: sum(1 for _, r in items if r.startswith(k))
+         for k in ("sightlines/", "web/", "generated/", "components", "vol/")}
     tot = sum(p.stat().st_size for p, _ in items)
     print(f"dataset {a.repo} (private): {len(items)} files, {tot / 1e6:.1f} MB "
-          f"[{n['sightlines/']} npz, {n['web/']} bin, {n['generated/']} generated]")
+          f"[{n['sightlines/']} npz, {n['web/']} bin, {n['generated/']} generated, "
+          f"{n['components']} components, {n['vol/']} vol]")
     for p, r in items[:2] + [it for it in items if it[1] == "catalog.json"]:
         print(f"  {r:40s} <- {p} ({p.stat().st_size / 1e6:.2f} MB)")
     if a.dry_run:

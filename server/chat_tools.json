@@ -1,0 +1,288 @@
+[
+ {
+  "name": "set_instrument",
+  "description": "Set the spectrograph settings of the 4-column figure. R: resolving power for both R menus (one value) or [R_lo, R_hi]. snr: S/N per resolution element for both S/N sliders or [sn_hi, sn_lo]. vwin: half-width of the velocity window in km/s.",
+  "input_schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "R": {
+     "anyOf": [
+      {
+       "type": "integer",
+       "enum": [
+        20000,
+        30000,
+        40000,
+        60000,
+        80000,
+        100000
+       ]
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "integer",
+        "enum": [
+         20000,
+         30000,
+         40000,
+         60000,
+         80000,
+         100000
+        ]
+       },
+       "minItems": 2,
+       "maxItems": 2
+      }
+     ]
+    },
+    "snr": {
+     "anyOf": [
+      {
+       "type": "integer",
+       "minimum": 2,
+       "maximum": 20
+      },
+      {
+       "type": "array",
+       "items": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 20
+       },
+       "minItems": 2,
+       "maxItems": 2
+      }
+     ]
+    },
+    "vwin": {
+     "type": "integer",
+     "minimum": 150,
+     "maximum": 800,
+     "multipleOf": 50
+    }
+   }
+  }
+ },
+ {
+  "name": "select_sightline",
+  "description": "Show an existing sightline by id (as returned by search_sightlines or request_*).",
+  "input_schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id"
+   ],
+   "properties": {
+    "id": {
+     "type": "string",
+     "pattern": "^((face|edge|rand)_b\\d{3}_a\\d{3}(_s\\d+)?|cust_[0-9a-f]{10})$"
+    }
+   }
+  }
+ },
+ {
+  "name": "search_sightlines",
+  "description": "Find sightlines by their fitted Voigt components. Returns ranked ids with reasons.",
+  "input_schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "query"
+   ],
+   "properties": {
+    "query": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "ion"
+     ],
+     "properties": {
+      "ion": {
+       "type": "string",
+       "enum": [
+        "OVI",
+        "HILyb",
+        "CIII"
+       ]
+      },
+      "n_min": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 30
+      },
+      "n_max": {
+       "type": "integer",
+       "minimum": 0,
+       "maximum": 30
+      },
+      "sep_kms": {
+       "type": "array",
+       "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 3000
+       },
+       "minItems": 2,
+       "maxItems": 2
+      },
+      "logN_min": {
+       "type": "number",
+       "minimum": 10,
+       "maximum": 19
+      },
+      "logN_max": {
+       "type": "number",
+       "minimum": 10,
+       "maximum": 19
+      },
+      "b_min": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 150
+      },
+      "b_max": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 150
+      },
+      "b_kpc": {
+       "type": "array",
+       "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 400
+       },
+       "minItems": 2,
+       "maxItems": 2
+      },
+      "orientation": {
+       "type": "string",
+       "enum": [
+        "face-on",
+        "edge-on",
+        "random",
+        "custom"
+       ]
+      },
+      "sort": {
+       "type": "string",
+       "enum": [
+        "score",
+        "b_kpc",
+        "n"
+       ]
+      },
+      "limit": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 200
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "request_sightline",
+  "description": "Load or generate the sightline with this orientation, impact parameter b (kpc) and azimuth (deg from the projected major axis). seed is required for random orientation.",
+  "input_schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "orientation",
+    "b_kpc",
+    "azimuth_deg"
+   ],
+   "properties": {
+    "orientation": {
+     "type": "string",
+     "enum": [
+      "face-on",
+      "edge-on",
+      "random"
+     ]
+    },
+    "b_kpc": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 300
+    },
+    "azimuth_deg": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 360
+    },
+    "seed": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 4294967295
+    }
+   }
+  }
+ },
+ {
+  "name": "request_custom_ray",
+  "description": "Generate a straight ray between two points given in kpc relative to the galaxy centre (simulation box axes). |p| <= 395 kpc, length 20-800 kpc.",
+  "input_schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "p0_kpc",
+    "p1_kpc"
+   ],
+   "properties": {
+    "p0_kpc": {
+     "type": "array",
+     "items": {
+      "type": "number",
+      "minimum": -395,
+      "maximum": 395
+     },
+     "minItems": 3,
+     "maxItems": 3
+    },
+    "p1_kpc": {
+     "type": "array",
+     "items": {
+      "type": "number",
+      "minimum": -395,
+      "maximum": 395
+     },
+     "minItems": 3,
+     "maxItems": 3
+    }
+   }
+  }
+ },
+ {
+  "name": "show_3d",
+  "description": "Open the 3D tab, optionally choosing the gas field and camera preset.",
+  "input_schema": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "species": {
+     "type": "string",
+     "enum": [
+      "nH",
+      "T",
+      "Z",
+      "OVI",
+      "HI",
+      "CIII"
+     ]
+    },
+    "preset": {
+     "type": "string",
+     "enum": [
+      "face-on",
+      "edge-on",
+      "sightline"
+     ]
+    }
+   }
+  }
+ }
+]

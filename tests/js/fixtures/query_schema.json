@@ -1,0 +1,89 @@
+{
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "ion"
+ ],
+ "properties": {
+  "ion": {
+   "type": "string",
+   "enum": [
+    "OVI",
+    "HILyb",
+    "CIII"
+   ]
+  },
+  "n_min": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 30
+  },
+  "n_max": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 30
+  },
+  "sep_kms": {
+   "type": "array",
+   "items": {
+    "type": "number",
+    "minimum": 0,
+    "maximum": 3000
+   },
+   "minItems": 2,
+   "maxItems": 2
+  },
+  "logN_min": {
+   "type": "number",
+   "minimum": 10,
+   "maximum": 19
+  },
+  "logN_max": {
+   "type": "number",
+   "minimum": 10,
+   "maximum": 19
+  },
+  "b_min": {
+   "type": "number",
+   "minimum": 0,
+   "maximum": 150
+  },
+  "b_max": {
+   "type": "number",
+   "minimum": 0,
+   "maximum": 150
+  },
+  "b_kpc": {
+   "type": "array",
+   "items": {
+    "type": "number",
+    "minimum": 0,
+    "maximum": 400
+   },
+   "minItems": 2,
+   "maxItems": 2
+  },
+  "orientation": {
+   "type": "string",
+   "enum": [
+    "face-on",
+    "edge-on",
+    "random",
+    "custom"
+   ]
+  },
+  "sort": {
+   "type": "string",
+   "enum": [
+    "score",
+    "b_kpc",
+    "n"
+   ]
+  },
+  "limit": {
+   "type": "integer",
+   "minimum": 1,
+   "maximum": 200
+  }
+ }
+}
