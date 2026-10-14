@@ -91,6 +91,24 @@ def test_forwards_fixed_request():
     assert "thinking" not in b and "temperature" not in b
 
 
+def test_response_only_keys_are_dropped_so_the_round_trip_validates():
+    # the API adds response-only fields such as "caller" on tool_use; forwarding them verbatim made the
+    # browser's next turn fail with "messages[1].content[1]: unexpected key 'caller'"
+    tu = {"type": "tool_use", "id": "toolu_01", "name": "search_sightlines", "input": {"ion": "CIII"},
+          "caller": {"type": "direct"}}
+    txt = {"type": "text", "text": "searching", "citations": None}
+    c, up = client(up=Upstream(lambda req: upstream_ok([txt, tu], stop="tool_use")))
+    r = c.post("/api/chat", json=user("find C III pairs"))
+    assert r.status_code == 200, r.text
+    content = r.json()["content"]
+    assert content == [{"type": "text", "text": "searching"},
+                       {"type": "tool_use", "id": "toolu_01", "name": "search_sightlines", "input": {"ion": "CIII"}}]
+    nxt = {"messages": [{"role": "user", "content": "find C III pairs"},
+                        {"role": "assistant", "content": content},
+                        {"role": "user", "content": [_tr()]}]}
+    assert c.post("/api/chat", json=nxt).status_code == 200
+
+
 def test_max_tokens_below_cap_is_kept():
     c, up = client(chat_max_tokens=300)
     assert c.post("/api/chat", json=user()).status_code == 200
