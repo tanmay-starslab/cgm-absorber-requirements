@@ -1,0 +1,264 @@
+{
+ "version": 1,
+ "generator": "tngsight.volume/1",
+ "created": "2026-10-14T05:46:22Z",
+ "galaxy": {
+  "subhalo_id": 488530,
+  "TNG_H": 0.6774,
+  "center_kpc": [
+   41686.448184233835,
+   29121.34632418069,
+   6969.309123117804
+  ],
+  "R200c_kpc": 246.35226737104722,
+  "Lhat": [
+   0.04170790684964916,
+   -0.8403492677980035,
+   -0.5404383023228281
+  ],
+  "xhat": [
+   -0.9968862719846454,
+   -0.07122981073705145,
+   0.03382417465245191
+  ],
+  "yhat": [
+   -0.0669194383925682,
+   0.5373447889146441,
+   -0.8407034950513171
+  ],
+  "SubhaloVel_kms": [
+   85.6135,
+   -84.1245,
+   44.9702
+  ]
+ },
+ "frame": "box axes; physical kpc relative to galaxy.center_kpc",
+ "half_kpc": 400.0,
+ "r_mask_kpc": 400.0,
+ "z_sun": 0.0127,
+ "order": "x-fastest: index = i + n*(j + n*k); voxel centre = -half_kpc + (i + 0.5) * voxel_kpc",
+ "encoding": {
+  "type": "log10-u8",
+  "empty": 0,
+  "q_min": 1,
+  "q_max": 255,
+  "decode": "log10(v) = lo + (q - 1) * (hi - lo) / 254"
+ },
+ "grids": {
+  "256": {
+   "n": 256,
+   "voxel_kpc": 3.125
+  },
+  "128": {
+   "n": 128,
+   "voxel_kpc": 6.25
+  }
+ },
+ "fields": {
+  "nH": {
+   "label": "n_H",
+   "units": "cm^-3",
+   "source": "('gas', 'H_nuclei_density')",
+   "lo": -6.0,
+   "hi": -2.1,
+   "cmap": "viridis",
+   "default_window": [
+    -6.0,
+    -4.0
+   ],
+   "files": {
+    "256": "nH.u8.gz",
+    "128": "nH.128.u8.gz"
+   },
+   "bytes": {
+    "256": 7421262,
+    "128": 954341
+   },
+   "raw_bytes": {
+    "256": 16777216,
+    "128": 2097152
+   },
+   "sha256": {
+    "256": "9f65edb24990292c10bc8e3a5e4a549c6cf3cee0929eb0159b16a92ad448085b",
+    "128": "204465f143b3207837db34462a720996bb754a99a42a3fd20271b69427c1f768"
+   },
+   "stats": {
+    "p01": -5.892,
+    "p50": -5.025,
+    "p99": -3.952,
+    "frac_empty": 0.4764
+   }
+  },
+  "T": {
+   "label": "T",
+   "units": "K",
+   "source": "('gas', 'temperature')",
+   "lo": 4.8,
+   "hi": 7.0,
+   "cmap": "inferno",
+   "default_window": [
+    4.8,
+    6.3
+   ],
+   "files": {
+    "256": "T.u8.gz",
+    "128": "T.128.u8.gz"
+   },
+   "bytes": {
+    "256": 6941748,
+    "128": 951287
+   },
+   "raw_bytes": {
+    "256": 16777216,
+    "128": 2097152
+   },
+   "sha256": {
+    "256": "1801d98281b425ddda2f39f66720c7756072891548337a23f420604cc3494d45",
+    "128": "ab8471273ce7dbc02dccf885e73ef9e5b5f81ffdf9ae790d00a53e714e2fe8e7"
+   },
+   "stats": {
+    "p01": 5.028,
+    "p50": 5.732,
+    "p99": 6.265,
+    "frac_empty": 0.4764
+   }
+  },
+  "Z": {
+   "label": "Z",
+   "units": "Zsun",
+   "source": "('gas', 'metallicity')",
+   "lo": -2.8,
+   "hi": 0.6,
+   "cmap": "cividis",
+   "default_window": [
+    -1.5,
+    0.4
+   ],
+   "files": {
+    "256": "Z.u8.gz",
+    "128": "Z.128.u8.gz"
+   },
+   "bytes": {
+    "256": 7677782,
+    "128": 1053450
+   },
+   "raw_bytes": {
+    "256": 16777216,
+    "128": 2097152
+   },
+   "sha256": {
+    "256": "5f55516c246ed6219708ba326cd20735a391f31961339ba9eb403e53ea3de603",
+    "128": "c62c097f7f27f43c1375dd0b730e99f6e4ae02216f8ea08aa1682ba45710a86b"
+   },
+   "stats": {
+    "p01": -2.518,
+    "p50": -0.541,
+    "p99": 0.432,
+    "frac_empty": 0.4764
+   }
+  },
+  "OVI": {
+   "label": "n(O VI)",
+   "units": "cm^-3",
+   "source": "('gas', 'O_p5_number_density')",
+   "lo": -13.5,
+   "hi": -7.9,
+   "cmap": "magma",
+   "default_window": [
+    -11.7,
+    -9.0
+   ],
+   "files": {
+    "256": "OVI.u8.gz",
+    "128": "OVI.128.u8.gz"
+   },
+   "bytes": {
+    "256": 8147393,
+    "128": 1053269
+   },
+   "raw_bytes": {
+    "256": 16777216,
+    "128": 2097152
+   },
+   "sha256": {
+    "256": "986a69438cb57463a6af5ec99240fe0fdcd78108ef0afe85fbec9d390c236553",
+    "128": "e377e57f8e60cfd60d4075822ba6268900f7154bcda133a887bfc21521d84dae"
+   },
+   "stats": {
+    "p01": -13.135,
+    "p50": -10.743,
+    "p99": -9.017,
+    "frac_empty": 0.4765
+   }
+  },
+  "HI": {
+   "label": "n(H I)",
+   "units": "cm^-3",
+   "source": "('gas', 'H_p0_number_density')",
+   "lo": -12.3,
+   "hi": -2.3,
+   "cmap": "viridis",
+   "default_window": [
+    -11.8,
+    -7.9
+   ],
+   "files": {
+    "256": "HI.u8.gz",
+    "128": "HI.128.u8.gz"
+   },
+   "bytes": {
+    "256": 6627268,
+    "128": 869602
+   },
+   "raw_bytes": {
+    "256": 16777216,
+    "128": 2097152
+   },
+   "sha256": {
+    "256": "004497980a8b185190988e266331cdc31d583a16e7806e07e9a71490a42ad81f",
+    "128": "6b95b94863c363652b88e2001ae909bd80330a2b7cbceea493cf1471fab71534"
+   },
+   "stats": {
+    "p01": -12.126,
+    "p50": -10.824,
+    "p99": -7.947,
+    "frac_empty": 0.4764
+   }
+  },
+  "CIII": {
+   "label": "n(C III)",
+   "units": "cm^-3",
+   "source": "('gas', 'C_p2_number_density')",
+   "lo": -19.0,
+   "hi": -6.6,
+   "cmap": "magma",
+   "default_window": [
+    -16.5,
+    -8.5
+   ],
+   "files": {
+    "256": "CIII.u8.gz",
+    "128": "CIII.128.u8.gz"
+   },
+   "bytes": {
+    "256": 7716952,
+    "128": 1026654
+   },
+   "raw_bytes": {
+    "256": 16777216,
+    "128": 2097152
+   },
+   "sha256": {
+    "256": "849e7465c8b59b25217dd182d0fd109f62fcfc8b0810fc67d70e60a7db126b6c",
+    "128": "eb70be7917021129d59b8e13bf772f4520a4b722f487c3da103c0250ff26928e"
+   },
+   "stats": {
+    "p01": -18.472,
+    "p50": -15.535,
+    "p99": -8.506,
+    "frac_empty": 0.478
+   }
+  }
+ },
+ "nH_source": "('gas', 'H_nuclei_density')"
+}

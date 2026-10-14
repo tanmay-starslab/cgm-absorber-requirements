@@ -60,9 +60,30 @@ curl -s https://<ip-dashes>.sslip.io/api/health
 Then point the published page at the VM and re-export it:
 
 ```bash
-/Volumes/cgm_work/envs/trident/bin/python scripts/export_tng50_web.py --prune \
+/Volumes/cgm_work/envs/trident/bin/python scripts/export_tng50_web.py --prune --chat \
     --space-url https://<ip-dashes>.sslip.io
 ```
+
+Keep `--chat`: without it the exporter writes `chat.enabled = false` and the page hides its Ask button.
+The exporter also copies `components.json` and `vol/` from the library (`--components`, `--vol-dir`;
+defaults `<library>/components.json` and `<library>/vol`).
+
+### Chat (Claude backend, optional)
+
+The Claude backend of the Ask panel needs an Anthropic key on the VM. It is not written by
+`push_oci.sh` (that writes `.env` once, with the HF and worker tokens only). On the VM:
+
+```bash
+cd ~/tng50
+umask 077
+read -rs KEY && printf 'ANTHROPIC_API_KEY=%s\n' "$KEY" >> .env && unset KEY   # paste the key; not echoed
+chmod 600 .env
+# optional: CHAT_DAILY_BUDGET=500, CHAT_CLIENT_DAILY_BUDGET=50, CHAT_DAILY_TOKENS=4000000, CHAT_CLAUDE=0
+docker compose up -d
+curl -s https://<ip-dashes>.sslip.io/api/health      # "chat": {"claude": true}
+```
+
+Never commit, print or paste the key into a shell history (`read -s` keeps it out of both).
 
 `CORS_ORIGINS` in `.env` already allows `https://tanmay-starslab.github.io` and the local preview
 on port 8000.
@@ -100,7 +121,8 @@ deploy/laptop/worker.sh https://<ip-dashes>.sslip.io     # or: export TNG_SPACE_
 
 ## Secrets: what can see them
 
-- **Where they live.** `HF_TOKEN` and `WORKER_TOKEN` exist only in `~/tng50/.env` on the VM. They
-  are not in the image: `.dockerignore` keeps `.env` out of the build context.
+- **Where they live.** `HF_TOKEN`, `WORKER_TOKEN` and (if set) `ANTHROPIC_API_KEY` exist only in
+  `~/tng50/.env` on the VM. They are not in the image: `.dockerignore` keeps `.env` out of the build
+  context.
 - **Who can print them.** `docker compose config` and `docker inspect tng50-app-1` print them in
   clear. Anyone in the VM's `docker` group (or root) can run those, so keep the VM single-user.

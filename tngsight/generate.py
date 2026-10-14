@@ -4,9 +4,13 @@ Recipe (generation.md §1.4–1.8, §6): yt.load(cutout, index_filename=<writabl
 ion fields → trident.make_simple_ray between the ±R200c endpoints (ckpc/h) → ion columns from the ray
 HDF5 → per line SpectrumGenerator(rest(1∓1500/c), dλ=0.002).make_spectrum(use_peculiar_velocity=True,
 use_doppler_redshift_only=True [trident fork], ly_continuum=False) → float32. yt/trident import lazily.
+Geometry: a canonicalize() dict (orientation/b/azimuth), a canonicalize_endpoints() dict (custom ray
+p0 -> p1, kind "endpoints") or a full stored geom. Optional "fit" stage (Voigt components) after the
+spectra, guarded so a computed sightline is never lost over the fit.
 """
 from __future__ import annotations
 import io
+import logging
 import os
 import sys
 import tempfile
@@ -16,7 +20,7 @@ import h5py
 import numpy as np
 from . import config
 from .config import C_KMS, DLAMBDA, VWIN_GEN_KMS, LINE_KEYS, LINES
-from .geometry import make_sightline, geom_id, _ALIASES
+from .geometry import make_sightline, make_endpoints, custom_id, geom_id, _ALIASES
 from .library import wavelength_grid, save_npz, load_npz
 
 ION_TABLE_FILE = "hm2012_ss_hr.h5"
@@ -24,7 +28,9 @@ RAY_FIELDS = [("gas", "density"), ("gas", "temperature"), ("gas", "metallicity")
               ("gas", "H_number_density")] + [("gas", LINES[k]["field"]) for k in LINE_KEYS]
 GEOM_KEYS = ("orientation", "b_kpc", "azimuth_deg", "inclination_deg", "n_los", "v_sys_kms", "half_kpc",
              "b_perp_check_kpc", "anchor_kpc", "start_kpc", "end_kpc", "start_ckpch", "end_ckpch")
+STAGES = ("load", "ray") + tuple(f"spectrum:{k}" for k in LINE_KEYS) + ("fit", "save")
 _IMPORT_LOCK = threading.Lock()
+log = logging.getLogger("tngsight.generate")
 
 
 def _noop(stage, frac, msg):
@@ -79,18 +85,34 @@ def ray_columns(tmp) -> dict:
     return out
 
 
-def make_line_spectrum(trident, ray, key):
+# Trident's per-cell deposition window starts at 2 coarse bins and only widens while τ at its edge is ≥ min_tau,
+# so a cell whose peak τ is already < min_tau is deposited over ~1.2 km/s only (a few % of its column). With the
+# Trident default 1e-3 (which the 672-sightline library was made with) weak, diffuse absorbers carry up to ~2 dex
+# less column in τ than the ray holds (catalog logN vs logN_aod). 1e-8 deposits them in full but makes new
+# spectra inconsistent with the library until it is regenerated (owner decision), so the default stays 1e-3.
+SPEC_MIN_TAU = float(os.environ.get("TNG_SPEC_MIN_TAU") or 1e-3)
+
+
+def make_line_spectrum(trident, ray, key, min_tau=None):
     L = LINES[key]; rest = L["rest_A"]
     lam_min = rest * (1 - VWIN_GEN_KMS / C_KMS); lam_max = rest * (1 + VWIN_GEN_KMS / C_KMS)
     sg = trident.SpectrumGenerator(lambda_min=lam_min, lambda_max=lam_max, dlambda=DLAMBDA)
     sg.make_spectrum(ray, lines=[L["trident_line"]], use_peculiar_velocity=True,
-                     use_doppler_redshift_only=True, ly_continuum=False, njobs=1)
+                     use_doppler_redshift_only=True, ly_continuum=False, njobs=1,
+                     min_tau=SPEC_MIN_TAU if min_tau is None else float(min_tau))
     lam = np.array(sg.lambda_field); tau = np.array(sg.tau_field)
     return lam.astype(np.float32), tau.astype(np.float32)
 
 
 def resolve_geometry(geom: dict):
-    """(make_sightline dict, id) from a canonicalize() dict or a full stored geom (+ optional "id")."""
+    """(geometry dict, id) from a canonicalize() dict, a canonicalize_endpoints() dict (kind "endpoints",
+    id defaults to custom_id) or a full stored geom (+ optional "id"; endpoint geoms keep every key)."""
+    if geom.get("kind") == "endpoints":
+        if "start_ckpch" in geom:
+            sl = {k: v for k, v in geom.items() if k != "id"}
+        else:
+            sl = make_endpoints(geom["p0_kpc"], geom["p1_kpc"])
+        return sl, geom.get("id") or custom_id(sl["p0_kpc"], sl["p1_kpc"])
     if "start_ckpch" in geom:
         sl = {k: geom[k] for k in GEOM_KEYS}
         gid = geom.get("id")
@@ -108,10 +130,40 @@ def resolve_geometry(geom: dict):
     return sl, geom.get("id") or geom_id(o, geom["b_kpc"], geom["azimuth_deg"], seed=seed)
 
 
+# ------------------------------------------------------------------------------- fit stage (hook)
+def fit_stage(payload: dict, progress=None) -> dict:
+    """INTEGRATION HOOK — Voigt-component "fit" stage (design §4.2). Sets payload["components"] =
+    tngsight.components.fit_payload(payload, progress) (U_fit's module). If that module is not
+    importable or the fit raises, logs a warning, reports progress("fit", 1.0, "skipped") and leaves
+    the payload without "components"; a fit that raised also sets payload["components_skipped"] = True so
+    LibraryStore.add_generated does not repeat the (deterministic) fit while the job finishes. Returns the
+    payload."""
+    progress = progress or _noop
+    progress("fit", 0.0, "fitting Voigt components")
+    try:
+        from . import components as _components          # built by U_fit; absent before integration
+        comps = _components.fit_payload(payload, progress)
+    except ImportError as e:
+        log.warning("fit stage skipped: tngsight.components unavailable (%s)", e)
+        progress("fit", 1.0, "skipped")
+        return payload
+    except Exception as e:                                  # never lose a computed sightline over the fit
+        log.warning("fit stage skipped for %s: %s: %s", payload.get("id"), e.__class__.__name__, e)
+        progress("fit", 1.0, "skipped")
+        payload.pop("components", None)
+        payload["components_skipped"] = True                # attempted and failed: the coordinator won't redo it
+        return payload
+    payload["components"] = comps
+    progress("fit", 1.0, "components fitted")
+    return payload
+
+
 class Generator:
     """Warm generator: one cached yt dataset; ray casts serialised by a lock (yt is not thread-safe)."""
 
-    def __init__(self, cutout=None, ion_table_dir=None, index_filename=None, workdir=None):
+    def __init__(self, cutout=None, ion_table_dir=None, index_filename=None, workdir=None,
+                 fit_components=True):
+        self.fit_components = bool(fit_components)
         self.cutout = Path(cutout) if cutout else config.cutout_path()
         self.ion_table_dir = Path(ion_table_dir) if ion_table_dir else config.ion_table_dir()
         self.index_filename = Path(index_filename) if index_filename else config.index_path()
@@ -173,10 +225,12 @@ class Generator:
                 del ray
                 if os.path.exists(tmp):
                     os.remove(tmp)
-        progress("save", 0.0, "packing npz")
-        buf = io.BytesIO()
+        buf = io.BytesIO()                      # round trip through the npz writer (exact stored dtypes)
         save_npz(buf, sl, cols, taus)
         buf.seek(0)
         payload = load_npz(buf, id=gid)
+        if self.fit_components:
+            fit_stage(payload, progress)        # stage "fit" (skipped cleanly without tngsight.components)
+        progress("save", 0.0, "packing npz")
         progress("save", 1.0, "done")
         return payload

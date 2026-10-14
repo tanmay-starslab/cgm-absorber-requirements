@@ -28,6 +28,11 @@ which workers are attached (this Space and any laptop pull-worker), and the queu
 | `HF_DATASET` | variable | `tanmay-starslab/tng50-sub488530-cgm` (default) |
 | `WORKER_TOKEN` | secret | long random string; enables `/api/worker/*` for `deploy/laptop/worker.sh` |
 | `CORS_ORIGINS` | variable | optional; default allows `https://tanmay-starslab.github.io` and localhost:8000 |
+| `ANTHROPIC_API_KEY` | secret | optional; enables the Claude backend of the page's Ask panel (`POST /api/chat`) |
+| `CHAT_CLAUDE` | variable | optional; `0` turns the Claude backend off while the key stays set |
+| `CHAT_DAILY_BUDGET` | variable | optional; upstream chat requests per UTC day, all clients (default 500) |
+| `CHAT_CLIENT_DAILY_BUDGET` | variable | optional; upstream chat requests per UTC day per client (default 50) |
+| `CHAT_DAILY_TOKENS` | variable | optional; upstream chat tokens per UTC day, all clients (default 4000000; 0 = off) |
 
 `start.sh` downloads the dataset into `/data` (persistent storage) or `$HOME/data`, sets the cutout's
 mtime to a fixed epoch so yt's index hash stays stable, writes `config.tri`, and starts one uvicorn

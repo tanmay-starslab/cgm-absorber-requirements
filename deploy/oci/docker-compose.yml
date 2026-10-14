@@ -2,7 +2,8 @@
 # The app image is the same one the HF Space uses (deploy/hf_space/Dockerfile, built natively on the
 # VM, so no buildx/--platform); Caddy terminates TLS for $HOST.
 #   docker compose up -d --build      (run in ~/tng50, the context assembled by push_oci.sh)
-# ./.env (VM only, mode 600) holds HF_TOKEN, WORKER_TOKEN, HF_DATASET, CORS_ORIGINS and HOST; compose
+# ./.env (VM only, mode 600) holds HF_TOKEN, WORKER_TOKEN, HF_DATASET, CORS_ORIGINS, HOST and optionally
+# ANTHROPIC_API_KEY (+ CHAT_DAILY_BUDGET, CHAT_CLIENT_DAILY_BUDGET, CHAT_DAILY_TOKENS, CHAT_CLAUDE); compose
 # reads HOST from it for interpolation, so logs/ps/restart/down work without exporting anything.
 # `docker compose config` and `docker inspect` print the tokens in clear. See deploy/oci/README.md.
 x-logging: &logging

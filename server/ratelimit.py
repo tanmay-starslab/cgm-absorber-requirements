@@ -1,5 +1,6 @@
 """Per-client token buckets (in-memory; fine for the single-process server)."""
 from __future__ import annotations
+import ipaddress
 import math
 import threading
 import time
@@ -71,3 +72,18 @@ def client_ip(request, trust_proxy: bool, trusted_hops: int = 1) -> str:
         if hops:
             return hops[-min(max(int(trusted_hops), 1), len(hops))][:64]
     return request.client.host if request.client else "unknown"
+
+
+def client_key(ip: str) -> str:
+    """Grouping key for per-client limits: an IPv6 address counts as its /64 (one subscriber usually gets a
+    whole /64, so rotating addresses inside it must not mint fresh buckets); IPv4 and anything unparsable
+    are used as they are."""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if a.version == 6:
+        if a.ipv4_mapped is not None:
+            return str(a.ipv4_mapped)
+        return str(ipaddress.IPv6Network((int(a) >> 64 << 64, 64)))
+    return ip

@@ -34,14 +34,14 @@ TOKEN = "s3cret-token"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 LIB_IDS = ("edge_b100_a330", "face_b050_a090")
 PNG = b"\x89PNG\r\n\x1a\n"
-SCRATCH = Path("/Volumes/cgm_work/scratch/C_server/pytest")
+SCRATCH = Path(os.environ["TNG_TEST_TMP"]) if os.environ.get("TNG_TEST_TMP") else None
 
 
 @pytest.fixture
 def libdir(tmp_path):
-    """Small seeded library (2 fake 'library' sightlines). Uses the work volume when present
-    (the internal disk of the dev Mac is full), else pytest's tmp_path."""
-    if SCRATCH.parent.is_dir():
+    """Small seeded library (2 fake 'library' sightlines) under $TNG_TEST_TMP when set, else pytest's
+    tmp_path (point --basetemp at the work volume: the internal disk of the dev Mac is full)."""
+    if SCRATCH is not None:
         d = SCRATCH / uuid.uuid4().hex[:8]
     else:
         d = tmp_path / "lib"
@@ -739,12 +739,13 @@ def test_store_reconcile_and_hfsync(libdir):
     e = store.add_generated(p)
     assert e["source"] == "generated"
     wait_for(lambda: api.commits and hf.pending() == 0, timeout=10)
-    assert len(api.commits) == 1                                        # npz + bin in ONE commit
+    assert len(api.commits) == 1                              # npz + bin + components in ONE commit
     assert {o.path_in_repo for o in api.commits[0]["operations"]} == {
-        "generated/edge_b060_a061.npz", "generated/edge_b060_a061.bin"}
+        "generated/edge_b060_a061.npz", "generated/edge_b060_a061.bin",
+        "generated/edge_b060_a061.components.json"}
     assert api.commits[0]["repo_type"] == "dataset" and api.commits[0]["repo_id"] == "user/ds"
     st = hf.status()
-    assert st["uploaded"] == 2 and st["last_error"] is None and st["disabled"] is False   # cleared on success
+    assert st["uploaded"] == 3 and st["last_error"] is None and st["disabled"] is False   # cleared on success
     hf.stop()
     # restart without the catalog row (e.g. a fresh Space after snapshot_download): reconcile restores it
     cat = json.loads((libdir / "catalog.json").read_text())
@@ -824,6 +825,7 @@ def test_startup_hf_download(libdir):
     with TestClient(create_app(s, hf=hf)) as c:
         wait_for(lambda: seen)
         assert seen[0]["repo_type"] == "dataset" and seen[0]["local_dir"] == str(libdir)
+        assert seen[0]["ignore_patterns"] == ["vol/*", "components/*"]
         assert c.get("/api/health").json()["hf"]["repo"] == "user/ds"
     seen.clear()
     s = settings(libdir, local_worker=False, hf_token="tok", hf_dataset="user/ds", hf_startup_download=False)
@@ -863,3 +865,640 @@ def test_local_worker_spawn_process(libdir):
         done = wait_for(poll, timeout=300, every=0.05)
         assert done["status"] == "done", done
         assert seen & {"spectrum:OVI", "spectrum:HILyb", "spectrum:CIII"}, seen     # relayed from the child
+
+
+# ------------------------------------------------------------------------------ Phase 2: custom rays
+from server.storage import ID_RE, validate_components  # noqa: E402
+from server.testing import fake_components  # noqa: E402
+from tngsight.geometry import canonicalize_endpoints, make_endpoints  # noqa: E402
+
+CUSTOM = {"p0_kpc": [-100, 0, 0], "p1_kpc": [100, 0, 0]}         # golden id cust_35277e0469
+CAPS_ALL = ["endpoints", "fit"]
+
+
+def register_caps(c, name="w2", caps=CAPS_ALL):
+    assert c.post("/api/worker/lease?wait=0", json={"name": name, "caps": caps}, headers=AUTH).status_code == 204
+
+
+def _custom(x, length=60.0):
+    """A valid custom body; x shifts it (distinct ids)."""
+    return {"p0_kpc": [x, -length / 2, 10.0], "p1_kpc": [x, length / 2, 10.0]}
+
+
+def _sse(c, job_id):
+    with c.stream("GET", f"/api/jobs/{job_id}/events") as r:
+        lines = list(r.iter_lines())
+    evs, cur = [], None
+    for ln in lines:
+        if ln.startswith("event:"):
+            cur = ln.split(":", 1)[1].strip()
+        elif ln.startswith("data:") and cur:
+            evs.append((cur, json.loads(ln[5:])))
+    return evs
+
+
+def test_custom_id_regex():
+    for good in ("cust_35277e0469", "cust_0123456789", "face_b050_a090", "rand_b005_a134_s1"):
+        assert ID_RE.fullmatch(good)
+    for bad in ("cust_ABCDEF0123", "cust_123", "cust_0123456789a", "cust_", "cust_0123456789\n", "cust_zz23456789"):
+        assert not ID_RE.fullmatch(bad), bad
+    assert not ID_RE.match("cust_ABCDEF0123") and not ID_RE.match("cust_123")
+
+
+def test_custom_geometry_endpoint(libdir):
+    with client_for(libdir, local_worker=False) as c:
+        r = c.post("/api/geometry/custom", json={"p0_kpc": [12.34, -56.78, 90.05], "p1_kpc": [-200.0, 150.25, -0.04]})
+        assert r.status_code == 200, r.text
+        j = r.json()
+        assert j["id"] == "cust_b7fe2279d7" and j["exists"] is False
+        assert j["canonical"] == {"p0_kpc": [12.3, -56.8, 90.0], "p1_kpc": [-200.0, 150.2, 0.0]}
+        g = make_endpoints(j["canonical"]["p0_kpc"], j["canonical"]["p1_kpc"])
+        assert j["geom"]["orientation"] == "custom" and j["geom"]["kind"] == "endpoints"
+        np.testing.assert_allclose(j["geom"]["start_ckpch"], g["start_ckpch"], rtol=1e-15)
+        assert c.post("/api/geometry/custom", json={"p0_kpc": [0, 0, 0], "p1_kpc": [5, 0, 0]}).status_code == 422
+
+
+def test_custom_submit_sse_ready_and_dedupe(libdir):
+    GATE.clear()
+    with client_for(libdir, gen=GatedGenerator) as c:
+        warm(c)
+        a = c.post("/api/sightlines/custom", json=CUSTOM)
+        assert a.status_code == 202, a.text
+        a = a.json()
+        assert a["id"] == "cust_35277e0469" and a["status"] in ("queued", "running")
+        assert a["canonical"] == {"p0_kpc": [-100.0, 0.0, 0.0], "p1_kpc": [100.0, 0.0, 0.0]}
+        # same canonical endpoints (after 0.1 kpc quantisation) while in flight -> the same job
+        b = c.post("/api/sightlines/custom", json={"p0_kpc": [-100.04, 0.01, 0], "p1_kpc": [100, -0.02, 0.0]})
+        assert b.status_code == 202 and b.json()["job_id"] == a["job_id"]
+        # the reversed ray is a different sightline
+        rv = c.post("/api/sightlines/custom", json={"p0_kpc": CUSTOM["p1_kpc"], "p1_kpc": CUSTOM["p0_kpc"]}).json()
+        assert rv["id"] != a["id"] and rv["job_id"] != a["job_id"]
+        wait_job(c, a["job_id"], ("running",))
+        assert c.get(f"/api/jobs/{a['job_id']}").json()["kind"] == "endpoints"
+        evs, err = [], []
+
+        def read():
+            try:
+                evs.extend(_sse(c, a["job_id"]))
+            except Exception as e:  # pragma: no cover
+                err.append(e)
+        t = threading.Thread(target=read)
+        t.start()
+        wait_for(lambda: a["job_id"] in c.app.state.jobs._subs)
+        GATE.set()
+        t.join(60)
+        assert not err and not t.is_alive()
+        stages = [d["stage"] for e, d in evs if e == "progress"]
+        assert "fit" in stages and stages.index("fit") > stages.index("spectrum:CIII")
+        assert stages.index("fit") < stages.index("save")
+        ev, done = evs[-1]
+        assert ev == "done" and done["id"] == a["id"]
+        e = done["entry"]
+        assert e["orientation"] == "custom" and e["kind"] == "endpoints" and e["seed"] is None
+        assert e["p0"] == [-100.0, 0.0, 0.0] and e["p1"] == [100.0, 0.0, 0.0]
+        assert e["has_components"] is True and set(e["n_fit"]) == {"OVI", "HILyb", "CIII"}
+        assert e["length_kpc"] == 200.0 and e["b_segment_kpc"] == e["b_kpc"] == 0.0
+        assert set(done["components"]) == {"OVI", "HILyb", "CIII"}
+        validate_components(done["components"])
+        snap = c.get(f"/api/jobs/{a['job_id']}").json()
+        assert snap["components"] == done["components"]
+        assert (libdir / "generated" / "cust_35277e0469.npz").is_file()
+        assert (libdir / "generated" / "cust_35277e0469.components.json").is_file()
+        stored = L.load_npz(libdir / "generated" / "cust_35277e0469.npz")
+        assert stored["id"] == "cust_35277e0469" and stored["geom"]["kind"] == "endpoints"
+        r = c.post("/api/sightlines/custom", json=CUSTOM)
+        assert r.status_code == 200 and r.json()["status"] == "ready" and r.json()["entry"]["id"] == a["id"]
+        assert r.json()["canonical"] == a["canonical"]
+        assert c.get("/api/sightline/cust_35277e0469.bin").status_code == 200
+        assert c.get("/api/sightline/cust_35277e0469.npz").status_code == 200
+        assert "cust_35277e0469" in [x["id"] for x in c.get("/api/catalog").json()["entries"]]
+        assert wait_job(c, rv["job_id"])["status"] == "done"
+        # replayed terminal event of a finished job carries the components too
+        ev, d = _sse(c, a["job_id"])[-1]
+        assert ev == "done" and d["components"] == done["components"]
+        assert c.post("/api/geometry/custom", json=CUSTOM).json()["exists"] is True
+    GATE.set()
+
+
+BAD_CUSTOM = [
+    ({"p0_kpc": [0, 0, 0]}, "p1_kpc"),                                         # missing key
+    ({"p0_kpc": [0, 0], "p1_kpc": [50, 0, 0]}, "p0_kpc"),                      # length 2
+    ({"p0_kpc": [0, "1", 0], "p1_kpc": [50, 0, 0]}, "p0_kpc"),                 # string item
+    ('{"p0_kpc": [NaN, 0, 0], "p1_kpc": [50, 0, 0]}', "p0_kpc"),               # NaN literal
+    ('{"p0_kpc": [0, 0, 0], "p1_kpc": [Infinity, 0, 0]}', "p1_kpc"),           # inf literal
+    ({"p0_kpc": [395.1, 0, 0], "p1_kpc": [0, 0, 0]}, "exceeds 395"),           # |p| > 395
+    ({"p0_kpc": [0, 0, 0], "p1_kpc": [0, 19.9, 0]}, "length 19.9"),            # too short
+    ({"p0_kpc": [-300, -260, 0], "p1_kpc": [300, 250, 1]}, "p0_kpc: |p| = 397.0 kpc exceeds 395 kpc"),
+    ({"p0_kpc": [0, 0, 0], "p1_kpc": [50, 0, 0], "id": "cust_0000000000"}, "id"),   # extra field
+    ({"p0_kpc": [True, 0, 0], "p1_kpc": [50, 0, 0]}, "p0_kpc"),                # bool item
+    ({"p0_kpc": [1e5, 0, 0], "p1_kpc": [50, 0, 0]}, "p0_kpc"),                 # pre-check |x| <= 1e4
+]
+
+
+@pytest.mark.parametrize("body,needle", BAD_CUSTOM)
+def test_custom_submit_422(libdir, body, needle):
+    with client_for(libdir, local_worker=False) as c:
+        register_caps(c)
+        if isinstance(body, str):
+            r = c.post("/api/sightlines/custom", content=body, headers={"Content-Type": "application/json"})
+        else:
+            r = c.post("/api/sightlines/custom", json=body)
+        assert r.status_code == 422, r.text
+        assert needle in json.dumps(r.json()["detail"]), r.json()
+        assert c.get("/api/health").json()["queue"]["queued"] == 0
+
+
+def test_custom_too_long_rejected(libdir, monkeypatch):
+    """L_CUSTOM_MAX_KPC = 800 cannot bind while |p| <= 395 (the longest legal ray is 790 kpc):
+    relax R to reach it and check the length bound itself through the API."""
+    from tngsight import geometry as G
+    monkeypatch.setattr(G, "R_CUSTOM_MAX_KPC", 500.0)
+    with client_for(libdir, local_worker=False) as c:
+        register_caps(c)
+        r = c.post("/api/sightlines/custom", json={"p0_kpc": [-400, 0, 0], "p1_kpc": [400.1, 0, 0]})
+        assert r.status_code == 422 and "length 800.1" in r.json()["detail"]
+        assert c.post("/api/sightlines/custom", json={"p0_kpc": [-400, 0, 0], "p1_kpc": [400, 0, 0]}).status_code == 202
+
+
+def test_custom_rate_limit_shared_with_sightlines(libdir):
+    with client_for(libdir, local_worker=False, rl_sightlines=(12, 4)) as c:
+        register_caps(c)
+        for az in range(2):
+            assert _submit(c, az)
+        for x in (1, 2):
+            assert c.post("/api/sightlines/custom", json=_custom(x)).status_code == 202
+        r = c.post("/api/sightlines/custom", json=_custom(3))
+        assert r.status_code == 429 and int(r.headers["retry-after"]) > 0
+        assert c.post("/api/sightlines", json={"orientation": "edge", "b_kpc": 40, "azimuth_deg": 3}).status_code == 429
+        assert c.post("/api/sightlines/custom", json=_custom(1)).status_code == 202     # dedupe: not charged
+
+
+def test_custom_503_without_capable_worker(libdir):
+    with client_for(libdir, local_worker=False) as c:
+        r = c.post("/api/sightlines/custom", json=CUSTOM)
+        assert r.status_code == 503 and r.headers["retry-after"] == "60"
+        register(c, "old")                                     # Phase-1 worker: no caps
+        r = c.post("/api/sightlines/custom", json=CUSTOM)
+        assert r.status_code == 503 and r.json()["detail"] == "no worker that supports custom rays is available"
+        assert r.headers["retry-after"] == "60"
+        h = c.get("/api/health").json()
+        assert [(w["name"], w["caps"]) for w in h["workers"]["remote"]] == [("old", [])]
+        register_caps(c, "new")
+        assert c.post("/api/sightlines/custom", json=CUSTOM).status_code == 202
+        h = c.get("/api/health").json()
+        assert {w["name"]: w["caps"] for w in h["workers"]["remote"]} == {"old": [], "new": CAPS_ALL}
+        assert _submit(c, 5)                                   # orientation rays accepted as before
+        assert c.post("/api/worker/lease?wait=0", json={"name": "x", "caps": ["warp"]}, headers=AUTH).status_code == 422
+    with client_for(libdir, local_worker=False, worker_token=None) as c:
+        r = c.post("/api/sightlines/custom", json=CUSTOM)
+        assert r.status_code == 503 and "retry-after" in r.headers
+    with client_for(libdir) as c:                              # the local worker runs custom rays
+        warm(c)
+        assert c.post("/api/sightlines/custom", json=CUSTOM).status_code == 202
+
+
+def test_capless_lease_never_gets_endpoints_job(libdir):
+    with client_for(libdir, local_worker=False) as c:
+        register_caps(c, "new")
+        jc = c.post("/api/sightlines/custom", json=CUSTOM).json()      # oldest job: endpoints
+        jo = _submit(c, 20)
+        r = c.post("/api/worker/lease?wait=0.2", json={"name": "old"}, headers=AUTH)
+        assert r.status_code == 200 and r.json()["job_id"] == jo["job_id"]          # skips the custom job
+        assert c.post("/api/worker/lease?wait=0.2", json={"name": "old"}, headers=AUTH).status_code == 204
+        assert c.get(f"/api/jobs/{jc['job_id']}").json()["position"] == 1
+        r = c.post("/api/worker/lease?wait=0.2", json={"name": "new", "caps": CAPS_ALL}, headers=AUTH)
+        assert r.status_code == 200 and r.json()["job_id"] == jc["job_id"]
+        g = r.json()["geom"]
+        assert g == {"kind": "endpoints", "p0_kpc": [-100.0, 0.0, 0.0], "p1_kpc": [100.0, 0.0, 0.0],
+                     "id": "cust_35277e0469"}
+
+
+def test_jobqueue_caps_order():
+    q = JobQueue(cap=10)
+    a = q.submit(canonicalize_endpoints([0, 0, 0], [50, 0, 0]))[0]
+    b = q.submit({"id": "face_b001_a000"})[0]
+    assert a.kind == "endpoints" and b.kind == "orientation"
+    assert q.lease("old").job_id == b.job_id and q.lease("old") is None
+    assert q.lease("new", caps=("endpoints",)).job_id == a.job_id
+    q.touch_worker("w", caps=("endpoints", "fit"))
+    q.touch_worker("w")                                        # a progress touch keeps the caps
+    assert q.worker_caps("w") == ("endpoints", "fit") and q.live_workers(60) == {"w": ("endpoints", "fit")}
+
+
+def test_validate_result_components_and_endpoint_geom(libdir):
+    with client_for(libdir, local_worker=False) as c:
+        register_caps(c)
+        j = c.post("/api/sightlines/custom", json=CUSTOM).json()
+        L1 = c.post("/api/worker/lease?wait=1", json={"name": "w2", "caps": CAPS_ALL}, headers=AUTH).json()
+        payload = FakeGenerator(components="fake").generate(L1["geom"])
+        assert "components" in payload
+        url = f"/api/worker/result/{j['job_id']}"
+        # endpoint geometry mismatch: a different custom ray
+        other = FakeGenerator().generate(canonicalize_endpoints([-100, 0, 0], [100, 0.1, 0]))
+        r = c.post(url, content=payload_to_npz_bytes(other), headers=AUTH)
+        assert r.status_code == 422 and "geom" in r.json()["detail"]
+        # an orientation result for an endpoints job
+        r = c.post(url, content=payload_to_npz_bytes(FakeGenerator().generate(canonicalize("face", 0, 0))), headers=AUTH)
+        assert r.status_code == 422 and "geom" in r.json()["detail"]
+        # malformed components
+        for bad in ({"OVI": [], "HILyb": []},
+                    dict(payload["components"], OVI=[{"v": 0}]),
+                    dict(payload["components"], OVI=[dict(payload["components"]["OVI"][0], logN=25.0)]),
+                    dict(payload["components"], OVI=[dict(payload["components"]["OVI"][0], flag=128)])):
+            r = c.post(url, content=payload_to_npz_bytes(dict(payload, components=bad)), headers=AUTH)
+            assert r.status_code == 422 and "components" in r.json()["detail"], r.text
+        blob = payload_to_npz_bytes(payload)
+        names = zipfile_names(blob)
+        assert "components_json.npy" in names and len(names) == 15
+        # a non-finite number inside components_json
+        txt = json.dumps(payload["components"]).replace('"dv": 0.1', '"dv": NaN', 1)
+        r = c.post(url, content=_with_member(payload, txt), headers=AUTH)
+        assert r.status_code == 422
+        assert c.get(f"/api/jobs/{j['job_id']}").json()["status"] == "running"
+        r = c.post(url, content=blob, headers=AUTH)
+        assert r.status_code == 200, r.text
+        e = r.json()["entry"]
+        assert e["has_components"] is True and e["orientation"] == "custom"
+        snap = c.get(f"/api/jobs/{j['job_id']}").json()
+        assert snap["status"] == "done" and snap["components"] == payload["components"]
+        # without components_json a result is still accepted (Phase-1 schema)
+        j2 = _submit(c, 30)
+        L2 = c.post("/api/worker/lease?wait=1", json={"name": "w2", "caps": CAPS_ALL}, headers=AUTH).json()
+        p2 = FakeGenerator(components=None).generate(L2["geom"])
+        assert "components" not in p2 and len(zipfile_names(payload_to_npz_bytes(p2))) == 14
+        assert c.post(f"/api/worker/result/{j2['job_id']}", content=payload_to_npz_bytes(p2), headers=AUTH).status_code == 200
+
+
+def zipfile_names(blob):
+    import zipfile
+    return zipfile.ZipFile(io.BytesIO(blob)).namelist()
+
+
+def _with_member(payload, text):
+    import zipfile
+    blob = payload_to_npz_bytes(dict(payload, components=None))
+    out = io.BytesIO(blob)
+    m = io.BytesIO()
+    np.lib.format.write_array(m, np.array(text), allow_pickle=False)
+    with zipfile.ZipFile(out, "a") as zf:
+        zf.writestr("components_json.npy", m.getvalue())
+    return out.getvalue()
+
+
+def test_components_api(libdir):
+    with client_for(libdir, local_worker=False) as c:
+        r = c.get("/api/components")
+        assert r.status_code == 200 and r.json()["version"] == 1 and r.json()["entries"] == {}
+        store = c.app.state.store
+        p = FakeGenerator(components="fake").generate(canonicalize_endpoints(**CUSTOM))
+        e = store.add_generated(p)
+        assert e["has_components"] is True and e["n_fit"] == {k: len(v) for k, v in p["components"].items()}
+        r = c.get("/api/components")
+        doc = r.json()
+        assert set(doc) == {"version", "fitter", "params_tag", "entries"}
+        assert doc["entries"] == {"cust_35277e0469": p["components"]}
+        etag = r.headers["etag"]
+        assert c.get("/api/components", headers={"If-None-Match": etag}).status_code == 304
+        assert r.headers["cache-control"] == "max-age=60"
+        r = c.get("/api/components/cust_35277e0469.json")
+        assert r.status_code == 200 and r.json()["id"] == "cust_35277e0469"
+        assert r.json()["components"] == p["components"] and set(r.json()) == {"id", "fitter", "params_tag", "components"}
+        assert c.get("/api/components/cust_0000000000.json").status_code == 404
+        assert c.get(f"/api/components/{LIB_IDS[0]}.json").status_code == 404     # library entry, none stored
+        assert c.get("/api/components/cust_ZZ.json").status_code == 422
+        assert c.get("/api/components/cust_35277e0469").status_code == 422
+        # a second sightline invalidates the ETag; one without components is not listed
+        from server.storage import _components_mod
+        store.add_generated(FakeGenerator(components=None).generate(canonicalize("face", 9, 9)))
+        if _components_mod() is None:                     # no fitter installed: nothing to back-fill
+            assert c.get("/api/components").headers["etag"] == etag
+        store.add_generated(FakeGenerator(components="fake").generate(canonicalize("face", 9, 10)))
+        assert c.get("/api/components").headers["etag"] != etag
+
+
+def test_store_components_persist_reconcile_and_hf(libdir, monkeypatch):
+    api = FakeHfApi()
+    hf = HFSync("tok", "user/ds", libdir, api=api, base_delay=0.01, batch_s=0.05)
+    store = LibraryStore(libdir, hf=hf)
+    p = FakeGenerator(components="fake").generate(canonicalize_endpoints(**CUSTOM))
+    comps = p.pop("components")
+    e = store.add_generated(p, components=comps)               # explicit argument
+    assert e["has_components"] is True
+    wait_for(lambda: hf.pending() == 0 and api.commits, timeout=10)
+    assert "generated/cust_35277e0469.components.json" in {o.path_in_repo for o in api.commits[0]["operations"]}
+    doc = json.loads((libdir / "generated" / "cust_35277e0469.components.json").read_text())
+    assert doc["id"] == "cust_35277e0469" and doc["components"] == comps
+    hf.stop()
+    # sync_missing re-queues component files the dataset lacks
+    api2 = FakeHfApi(remote=["generated/cust_35277e0469.npz", "generated/cust_35277e0469.bin"])
+    hf2 = HFSync("tok", "user/ds", libdir, api=api2, base_delay=0.01, batch_s=0.05)
+    assert hf2.sync_missing(libdir / "generated") == 1
+    wait_for(lambda: hf2.pending() == 0, timeout=10)
+    hf2.stop()
+    # restart without the catalog row: reconcile restores it with has_components from the stored file
+    cat = json.loads((libdir / "catalog.json").read_text())
+    cat["entries"] = [x for x in cat["entries"] if x["id"] != "cust_35277e0469"]
+    (libdir / "catalog.json").write_text(json.dumps(cat))
+    s2 = LibraryStore(libdir)
+    assert s2.reconcile(backfill=False) == 1
+    e2 = s2.entry("cust_35277e0469")
+    assert e2["has_components"] is True and e2["orientation"] == "custom" and e2["p0"] == [-100.0, 0.0, 0.0]
+    # a corrupt component file is ignored, not served
+    (libdir / "generated" / "cust_35277e0469.components.json").write_text('{"id": "x", "components": {"OVI": 1}}')
+    assert LibraryStore(libdir).components("cust_35277e0469") is None
+    # add_generated without components: (a) no fitter installed -> persisted without components
+    import server.storage as storage_mod
+    p3 = FakeGenerator(components=None).generate(canonicalize("edge", 3, 3))
+    with monkeypatch.context() as m:
+        m.setattr(storage_mod, "_components_mod", lambda: None)
+        e3 = s2.add_generated(p3)
+    assert e3["has_components"] is False and "n_fit" not in e3
+    assert not s2.components_path(p3["id"]).exists() and (libdir / "generated" / f"{p3['id']}.npz").is_file()
+    # (b) a fitter (stub) -> best-effort fit in the calling thread, stored and flagged
+    import tngsight.components as comp_mod
+    p4 = FakeGenerator(components=None).generate(canonicalize("edge", 3, 4))
+    stub = fake_components({"OVI": [(1.0, 10.0, 20.0)], "HILyb": [], "CIII": []})
+    calls = []
+    monkeypatch.setattr(comp_mod, "fit_payload", lambda payload, *a, **k: calls.append(payload["id"]) or stub)
+    e4 = s2.add_generated(p4)
+    assert calls == [p4["id"]] and e4["has_components"] is True and e4["n_fit"] == {"OVI": 1, "HILyb": 0, "CIII": 0}
+    assert s2.components(p4["id"])["components"] == validate_components(stub)
+    # (c) the worker's fit was attempted and failed (components_skipped): not repeated while finishing
+    p5 = FakeGenerator(components=None).generate(canonicalize("edge", 3, 5))
+    p5["components_skipped"] = True
+    e5 = s2.add_generated(p5)
+    assert calls == [p4["id"]] and e5["has_components"] is False
+
+
+def _raise_fit(*a, **k):
+    raise RuntimeError("fit exploded")
+
+
+def test_failing_fit_keeps_sightline_local_worker(libdir, monkeypatch):
+    """A fit that raises: progress "fit"/"skipped", job DONE, sightline persisted without components, and
+    the coordinator does not re-run the fit."""
+    import tngsight.components as comp_mod
+    calls = []
+    monkeypatch.setattr(comp_mod, "fit_payload", lambda *a, **k: calls.append(1) or _raise_fit())
+    seen = []
+    p = FakeGenerator().generate(canonicalize("edge", 7, 7), progress=lambda s, f, m="": seen.append((s, m)))
+    assert ("fit", "skipped") in seen and p.get("components_skipped") is True and "components" not in p
+    calls.clear()
+    with client_for(libdir) as c:
+        warm(c)
+        j = _submit(c, 71)
+        s = wait_job(c, j["job_id"])
+        assert s["status"] == "done", s
+        sid = s["entry"]["id"]
+        assert s["entry"]["has_components"] is False and s.get("components") is None
+        store = c.app.state.store
+        assert store.entry(sid)["has_components"] is False and store.components(sid) is None
+        assert (libdir / "generated" / f"{sid}.npz").is_file() and (libdir / "generated" / f"{sid}.bin").is_file()
+        assert c.get(f"/api/sightline/{sid}.bin").status_code == 200
+        assert calls == [1]                                    # the worker's attempt only
+
+
+def test_failing_fit_keeps_sightline_remote_worker(libdir, monkeypatch):
+    import tngsight.components as comp_mod
+    calls = []
+    monkeypatch.setattr(comp_mod, "fit_payload", lambda *a, **k: calls.append(1) or _raise_fit())
+    with client_for(libdir, local_worker=False) as c:
+        register_caps(c, name="laptop")
+        j = _submit(c, 72)
+        w = RemoteWorker("", TOKEN, name="laptop", generator=FakeGenerator(), client=c, poll_s=1.0, heartbeat_s=0.2)
+        assert w.run(max_jobs=1) == 1 and w.done == 1
+        s = c.get(f"/api/jobs/{j['job_id']}").json()
+        assert s["status"] == "done" and s["entry"]["has_components"] is False and s.get("components") is None
+        sid = s["entry"]["id"]
+        assert c.app.state.store.components(sid) is None
+        assert (libdir / "generated" / f"{sid}.npz").is_file() and (libdir / "generated" / f"{sid}.bin").is_file()
+        assert calls == [1]
+
+
+def test_skipped_fit_transport_member():
+    p = FakeGenerator(components=None).generate(canonicalize("face", 50, 90))
+    p["components_skipped"] = True
+    import zipfile
+    names = lambda blob: sorted(zipfile.ZipFile(io.BytesIO(blob)).namelist())  # noqa: E731
+    assert "components_json.npy" in names(payload_to_npz_bytes(p))
+    with np.load(io.BytesIO(payload_to_npz_bytes(p))) as z:
+        assert str(z["components_json"]) == "null"
+    assert "components_json.npy" not in names(payload_to_npz_bytes(p, with_components=False))
+
+
+def test_custom_figure_png(libdir):
+    pytest.importorskip("tngsight.figure")
+    with client_for(libdir, local_worker=False) as c:
+        c.app.state.store.add_generated(FakeGenerator().generate(canonicalize_endpoints(**CUSTOM)))
+        r = c.post("/api/figure", json={"id": "cust_35277e0469", "seed": 1, "fmt": "png"})
+        assert r.status_code == 200 and r.content.startswith(PNG) and len(r.content) > 10000
+        assert "cust_35277e0469" in r.headers["content-disposition"]
+        assert c.post("/api/figure", json={"id": "cust_ABCDEF0123", "fmt": "png"}).status_code == 422
+
+
+def test_remote_worker_runs_custom_job(libdir):
+    with client_for(libdir, local_worker=False) as c:
+        register_caps(c)
+        j = c.post("/api/sightlines/custom", json=CUSTOM).json()
+        w = RemoteWorker("", TOKEN, name="laptop", generator=FakeGenerator(), client=c, poll_s=1.0, heartbeat_s=0.2)
+        assert w.caps == ("endpoints", "fit")
+        assert w.run(max_jobs=1) == 1 and w.done == 1
+        s = c.get(f"/api/jobs/{j['job_id']}").json()
+        assert s["status"] == "done" and s["entry"]["orientation"] == "custom" and s["components"] is not None
+        assert {x["name"]: x["caps"] for x in c.get("/api/health").json()["workers"]["remote"]}["laptop"] == CAPS_ALL
+
+
+def test_remote_worker_falls_back_without_caps():
+    """A Phase-1 coordinator answers the caps field with 422: the worker leases without it."""
+    class Resp:
+        def __init__(self, code):
+            self.status_code, self.headers, self.text = code, {}, ""
+
+    class Client:
+        def __init__(self):
+            self.bodies = []
+
+        def post(self, url, headers=None, json=None, **kw):
+            self.bodies.append(json)
+            return Resp(422 if "caps" in json else 204)
+    cl = Client()
+    w = RemoteWorker("http://x", TOKEN, name="w", generator=FakeGenerator(), client=cl)
+    assert w.lease() is None and w.caps == ()
+    assert cl.bodies == [{"name": "w", "caps": CAPS_ALL}, {"name": "w"}]
+    assert w.lease() is None and cl.bodies[-1] == {"name": "w"}
+
+
+def test_remote_worker_phase1_coordinator_gets_exact_npz():
+    """After the caps fallback, the result upload has exactly the Phase-1 npz key set (a Phase-1
+    coordinator rejects any extra member with 422), so the job is not lost."""
+    import zipfile
+    from server.storage import NPZ_KEYS
+    geom = dict(canonicalize("face", 50, 90))
+
+    class Resp:
+        def __init__(self, code, body=None):
+            self.status_code, self.headers, self.text, self._b = code, {}, "", body
+
+        def json(self):
+            return self._b
+
+    class Phase1:
+        def __init__(self):
+            self.results, self.leases = [], 0
+
+        def post(self, url, headers=None, json=None, content=None, **kw):
+            if "/api/worker/lease" in url:
+                if "caps" in (json or {}):
+                    return Resp(422)
+                self.leases += 1
+                return Resp(200, {"job_id": "j1", "geom": geom, "lease": "t1"}) if self.leases == 1 else Resp(204)
+            if "/api/worker/result/" in url:
+                got = sorted(zipfile.ZipFile(io.BytesIO(content)).namelist())
+                self.results.append(got)
+                return Resp(200 if got == sorted(k + ".npy" for k in NPZ_KEYS) else 422)
+            return Resp(200, {})
+    cl = Phase1()
+    gen = FakeGenerator(components="fake")
+    w = RemoteWorker("http://x", TOKEN, name="w", generator=gen, client=cl, heartbeat_s=30)
+    assert w.run(max_jobs=1, max_idle_polls=1) == 1
+    assert w.caps == () and w.done == 1 and w.failed == 0
+    assert cl.results == [sorted(k + ".npy" for k in NPZ_KEYS)]
+
+
+def test_reconcile_rebuilds_old_generated_rows(libdir):
+    """Phase-1 generated rows (no p0/p1, has_components, logN_aod) are rebuilt from their npz once."""
+    store = LibraryStore(libdir)
+    p = FakeGenerator(components="fake").generate(canonicalize("edge", 13, 211))
+    sid = store.add_generated(p)["id"]
+    cat = json.loads((libdir / "catalog.json").read_text())
+    for e in cat["entries"]:
+        if e["id"] == sid:
+            for k in ("p0", "p1", "has_components", "n_fit", "logN_aod"):
+                e.pop(k, None)
+            e["legacy_note"] = "kept"
+    (libdir / "catalog.json").write_text(json.dumps(cat))
+    s2 = LibraryStore(libdir)
+    assert "p0" not in s2.entry(sid)
+    assert s2.reconcile(backfill=False) == 1
+    e = s2.entry(sid)
+    assert len(e["p0"]) == 3 and len(e["p1"]) == 3 and e["has_components"] is True and e["legacy_note"] == "kept"
+    assert set(e["logN_aod"]) == {"OVI", "HILyb", "CIII"}
+    assert LibraryStore(libdir).reconcile(backfill=False) == 0          # idempotent
+    lib_row = next(x for x in json.loads((libdir / "catalog.json").read_text())["entries"] if x["id"] == LIB_IDS[0])
+    assert lib_row["source"] == "library"                                # library rows untouched
+
+
+def test_reload_drops_components_caches(libdir):
+    store = LibraryStore(libdir)
+    body0, etag0 = store.components_index()
+    assert json.loads(body0)["entries"] == {}
+    # an HF snapshot download lands a components file behind the store's back
+    p = FakeGenerator(components="fake").generate(canonicalize_endpoints(**CUSTOM))
+    other = LibraryStore(libdir)
+    other.add_generated(p)
+    assert store.components_index()[1] == etag0                          # stale until reload
+    store.reload()
+    body1, etag1 = store.components_index()
+    assert etag1 != etag0 and "cust_35277e0469" in json.loads(body1)["entries"]
+
+
+def test_reaper_expires_custom_jobs_without_capable_worker(libdir):
+    """Only a capless (Phase-1) worker stays live: queued custom-ray jobs error after no_worker_grace_s,
+    not after queue_ttl_s; ordinary jobs stay queued for the capless worker."""
+    with client_for(libdir, local_worker=False, worker_seen_s=0.5, no_worker_grace_s=0.3) as c:
+        register_caps(c, name="laptop")
+        j = c.post("/api/sightlines/custom", json=_custom(5.0))
+        assert j.status_code == 202, j.text
+        jid = j.json()["job_id"]
+
+        def poll():
+            register(c, name="old")                                    # the capless worker keeps polling
+            s = c.get(f"/api/jobs/{jid}").json()
+            return s if s["status"] == "error" else None
+        s = wait_for(poll, timeout=15, every=0.1)
+        assert "custom rays" in s["error"]
+    q = JobQueue()
+    a = q.submit(canonicalize_endpoints([0, 0, 0], [50, 0, 0]))[0]
+    o = q.submit(dict(canonicalize("edge", 40, 74)))[0]
+    assert q.expire_queued("gone", kind="endpoints") == [a.job_id]
+    assert q.jobs[o.job_id].status == "queued" and q.jobs[a.job_id].status == "error"
+
+
+def test_fake_components_valid():
+    p = FakeGenerator(components="fake").generate(canonicalize("rand", 50, 10, seed=3))
+    validate_components(p["components"])
+    json.dumps(p["components"], allow_nan=False)
+    for k, comps in p["components"].items():
+        assert [x["v"] for x in comps] == sorted(x["v"] for x in comps)
+    stages = []
+    FakeGenerator(components=None).generate(canonicalize("face", 1, 1), progress=lambda s, f, m: stages.append(s))
+    assert "fit" not in stages
+    stages = []
+    FakeGenerator(components="fake").generate(canonicalize("face", 1, 1), progress=lambda s, f, m: stages.append(s))
+    assert stages.index("fit") < stages.index("save")
+
+
+def test_fallback_component_validator_matches_rules():
+    """storage's local validator (used before tngsight.components exists) applies the same §5.3 rules."""
+    from server.storage import _basic_validate_components
+    good = fake_components({"OVI": [(1.0, 10.0, 20.0)], "HILyb": [], "CIII": [(0.5, -40.0, 12.0)]})
+    assert _basic_validate_components(good) == good
+    validate_components(good)
+    c0 = good["OVI"][0]
+    bads = [{"OVI": []}, dict(good, OVI="x"), dict(good, OVI=[{**c0, "logN": 9.9}]),
+            dict(good, OVI=[{**c0, "b": 0.5}]), dict(good, OVI=[{**c0, "v": 2000.5}]),
+            dict(good, OVI=[{**c0, "flag": 128}]), dict(good, OVI=[{**c0, "dv": float("nan")}]),
+            dict(good, OVI=[{**c0, "logN": 19.5}]), dict(good, HILyb=[{**c0, "logN": 22.6}]),
+            dict(good, OVI=[{**c0, "v": None}]), dict(good, OVI=[{k: v for k, v in c0.items() if k != "EW"}]),
+            dict(good, OVI=[c0] * 31)]
+    for bad in bads:
+        with pytest.raises(ValueError):
+            _basic_validate_components(bad)
+        with pytest.raises(ValueError):
+            validate_components(bad)
+    assert _basic_validate_components(dict(good, OVI=[{**c0, "dv": None, "dlogN": None, "db": None}]))
+    damped = dict(good, HILyb=[{**c0, "logN": 21.1, "flag": 81}])       # DAMPED|EDGE|SAT
+    assert _basic_validate_components(damped) == validate_components(damped)
+
+
+# ----------------------------------------------------------------------------- integration: chat router
+def test_chat_router_mounted_health_and_body_limits(libdir):
+    """create_app mounts server/chat.py: /api/health carries chat.claude (False without a key), POST
+    /api/chat answers 404 "chat disabled" and has its own body limit (chat_max_bytes + 4096) while
+    other routes keep max_body."""
+    with client_for(libdir, local_worker=False) as c:
+        S = c.app.state.settings
+        assert S.anthropic_api_key is None
+        assert c.get("/api/health").json()["chat"] == {"claude": False}
+        mid = json.dumps({"messages": [{"role": "user", "content": "x" * (S.max_body + 2000)}]})
+        assert S.max_body < len(mid) < S.chat_max_bytes + 4096
+        r = c.post("/api/chat", content=mid, headers={"content-type": "application/json"})
+        assert r.status_code == 404 and r.json() == {"detail": "chat disabled"}
+        r = c.post("/api/sightlines", content=mid, headers={"content-type": "application/json"})
+        assert r.status_code == 413
+        big = json.dumps({"messages": [{"role": "user", "content": "x" * (S.chat_max_bytes + 5000)}]})
+        r = c.post("/api/chat", content=big, headers={"content-type": "application/json"})
+        assert r.status_code == 413
+
+
+# ----------------------------------------------------------------------------- deploy: HF dataset upload plan
+def test_upload_plan_includes_phase2_files(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("upload_hf_dataset",
+                                                  Path(__file__).resolve().parents[1] / "deploy/data/upload_hf_dataset.py")
+    up = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(up)
+    lib = tmp_path / "lib"
+    files = ["catalog.json", "sightlines/face_b050_a090.npz", "web/face_b050_a090.bin", "components.json",
+             "components/face_b050_a090.json", "vol/manifest.json", "vol/nH.u8.gz", "vol/HI.128.u8.gz",
+             "generated/cust_35277e0469.npz", "generated/cust_35277e0469.components.json",
+             "vol_cache/nH_256.npy", "cutout.ewah", "components/.tmp.json", "yt.toml"]
+    for f in files:
+        (lib / f).parent.mkdir(parents=True, exist_ok=True)
+        (lib / f).write_bytes(b"x")
+    cut, ion = tmp_path / "cut.hdf5", tmp_path / "ion.h5"
+    cut.write_bytes(b"x"); ion.write_bytes(b"x")
+    rel = lambda items: sorted(r for _, r in items[2:])  # noqa: E731
+    assert rel(up.plan(cut, ion, lib)) == sorted(files[:8])
+    assert rel(up.plan(cut, ion, lib, phase2=False)) == sorted(files[:3])
+    assert rel(up.plan(cut, ion, lib, generated=True)) == sorted(files[:10])
