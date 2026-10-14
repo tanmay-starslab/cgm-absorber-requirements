@@ -26,6 +26,19 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
      (Turk et al. 2011, ApJS 192, 9); please cite both as well.
 
 
+4. three.js 0.169.0 (MIT), https://github.com/mrdoob/three.js
+   - Loaded by docs/tng50 from cdn.jsdelivr.net when the 3D tab is opened; not vendored.
+     docs/tng50/js/colormaps.js holds 33 sampled stops of the matplotlib colormaps viridis, magma
+     and inferno (CC0, van der Walt & Smith) and cividis (Nuñez, Anderton & Renslow 2018, as
+     shipped in matplotlib).
+
+5. WebLLM 0.2.85 (Apache-2.0), https://github.com/mlc-ai/web-llm, and the model weights
+   Qwen2.5-1.5B-Instruct-q4f16_1-MLC (Apache-2.0, Qwen team / MLC)
+   - Downloaded by the visitor's browser only when they click "Load local model"; not vendored.
+
+6. pygad (GPL-2.0-or-later) is NOT part of this repository. It was only executed, out of tree, to
+   compare against tngsight/vpfit.py, which is an independent clean-room implementation (MIT).
+
 ------------------------------------------------------------------------------------------------
 Trident licence (verbatim from trident 1.4.2)
 ------------------------------------------------------------------------------------------------

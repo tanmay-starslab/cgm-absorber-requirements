@@ -24,7 +24,8 @@ chmod +x "$BUILD/start.sh"
 # Refuse to ship secrets, cluster paths or data. (git-tracked? irrelevant: we copy explicit paths.)
 bad=$(cd "$BUILD" && { find . \( -name 'yt.toml' -o -name '*.tri' -o -name '.env' -o -name '*.h5' -o -name '*.hdf5' \
         -o -name '*.npz' -o -name '*.ewah' \) -print; \
-      grep -rIlE '/data/sborthak|/home/tsingh65|/scratch/tsingh65|hf_[A-Za-z0-9]{30,}|api_key' . || true; } )
+      grep -rIlE '/data/sborthak|/home/tsingh65|/scratch/tsingh65|hf_[A-Za-z0-9]{30,}|sk-ant-[A-Za-z0-9_-]{20,}|api_key[[:space:]]*[=:][[:space:]]*["'"'"'][^"'"'"']+' . || true; } )
+# (api_key: a quoted literal value, e.g. yt.toml's; server/chat.py names the setting anthropic_api_key)
 if [[ -n "$bad" ]]; then echo "refusing to push; offending files:"; echo "$bad"; exit 1; fi
 echo "context $BUILD: $(find "$BUILD" -type f | wc -l | tr -d ' ') files, $(du -sh "$BUILD" | cut -f1)"
 [[ $ASSEMBLE_ONLY == 1 ]] && exit 0

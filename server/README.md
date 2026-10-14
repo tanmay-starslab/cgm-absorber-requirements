@@ -49,6 +49,12 @@ The event loop stays responsive while a ray is being cast, because the cast runs
 | `TRUSTED_HOPS` | `1` | number of trusted proxies appending to `X-Forwarded-For`; the client is the `TRUSTED_HOPS`-th entry from the right |
 | `NODE_NAME` | `local` | shown in `/api/health` and the page's status pill |
 | `PORT` | `8787` | read by the deploy scripts (uvicorn takes `--port`) |
+| `ANTHROPIC_API_KEY` | unset | enables the Claude chat proxy `POST /api/chat` (server/chat.py); never logged |
+| `CHAT_CLAUDE` | `1` | `0` disables the proxy while the key stays set |
+| `CHAT_DAILY_BUDGET` | `500` | upstream chat requests per UTC day, all clients together |
+| `CHAT_CLIENT_DAILY_BUDGET` | `50` | upstream chat requests per UTC day for one client (IPv4 address / IPv6 /64) |
+| `CHAT_DAILY_TOKENS` | `4000000` | upstream input + output tokens per UTC day, all clients (`0` = no token budget) |
+| `TNG_SPEC_MIN_TAU` | `1e-3` | Trident `min_tau` for new spectra (the library was made with 1e-3; 1e-8 deposits weak, diffuse absorbers in full but differs from the library) |
 
 ## Endpoints (prefix `/api`)
 
