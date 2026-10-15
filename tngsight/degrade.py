@@ -53,3 +53,55 @@ def degrade(lam, tau, rest, R, snr, v_sys, dlam=DLAMBDA, pix_per_resel=PIX_PER_R
 
 def resolution_element_kms(R):
     return C_KMS / R if _has_lsf(R) else np.nan
+
+
+# ------------------------------------------------------------------------------- v2 (velocity grid)
+def lsf_kernel(R, du):
+    """Pixel-integrated Gaussian LSF taps (design §3.4 step 1): σ_pix = (c/R)·FWHM_TO_SIGMA/du,
+    h = max(1, ceil(4σ_pix)), k_j = ½[erf((j+½)/(√2σ_pix)) − erf((j−½)/(√2σ_pix))], j = −h..h, Σk = 1."""
+    from scipy.special import erf
+    sig = (C_KMS / float(R)) * FWHM_TO_SIGMA / float(du)
+    h = max(1, int(math.ceil(4.0 * sig)))
+    j = np.arange(-h, h + 1, dtype=np.float64)
+    s2 = math.sqrt(2.0) * sig
+    k = 0.5 * (erf((j + 0.5) / s2) - erf((j - 0.5) / s2))
+    return k / k.sum()
+
+
+def convolve_extend(flux, k):
+    """flux ⊛ k (odd, symmetric) with the edge value repeated beyond both ends ("extend"); same length."""
+    flux = np.asarray(flux, np.float64)
+    h = (k.size - 1) // 2
+    padded = np.concatenate((np.full(h, flux[0]), flux, np.full(h, flux[-1])))
+    if padded.size * k.size > 4e7:                       # big kernels (low R): FFT, identical to ~1e-15
+        from scipy.signal import fftconvolve
+        return fftconvolve(padded, k, mode="valid")
+    return np.convolve(padded, k, mode="valid")
+
+
+def degrade_v(u, flux, R, snr, v_sys, du, pix_per_resel=PIX_PER_RESEL, seed=None, vwin=None, vcenter=0.0):
+    """v2 degrade operator on a constant-velocity grid (design §3.4; the page and the browser fitter use the same).
+    u: rest-frame velocities (km/s, step du); flux: transmission on u. Returns (v, flux_noisy, flux_model) on
+    v = arange(lo, hi + dv_pix, dv_pix), dv_pix = (c/R)/pix_per_resel, with [lo, hi] = vcenter ± vwin (or the full
+    V = u + v_sys range). R None/0/inf -> no LSF and dv_pix = du·pix_per_resel."""
+    u = np.asarray(u, np.float64); flux = np.asarray(flux, np.float64)
+    if _has_lsf(R):
+        f_lsf = convolve_extend(flux, lsf_kernel(R, du))
+        dv_pix = (C_KMS / float(R)) / pix_per_resel
+    else:
+        f_lsf = flux
+        dv_pix = float(du) * pix_per_resel
+    V = u + VSYS_SIGN * float(v_sys)
+    if vwin is None:
+        lo, hi = float(V[0]), float(V[-1])
+    else:
+        lo, hi = float(vcenter) - float(vwin), float(vcenter) + float(vwin)
+    v = np.arange(lo, hi + dv_pix, dv_pix)
+    model = np.interp(v, V, f_lsf, left=1.0, right=1.0)
+    if snr and snr > 0:
+        rng = np.random.default_rng(seed)
+        sigma = math.sqrt(pix_per_resel) / float(snr)
+        noisy = np.clip(model + rng.normal(0.0, sigma, size=model.shape), 0.0, None)
+    else:
+        noisy = model.copy()
+    return v, noisy, model

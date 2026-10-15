@@ -1,24 +1,50 @@
-// 3D viewer v2 for the TNG50 page (Phase-2b design §5): deposited gas cubes (L0 ±400, L1 ±100, L2 ±25 kpc) and
-// true-colour stellar cubes (S0-S2) ray-marched in one pass (raymarch.js). Default render = integral (a column map
-// from any angle, à la Lucchini); volume mode = emission/absorption. Nested LOD with fade-in, GPU budget + LRU,
-// on-demand rendering (cheap moving frames, one exact refine frame), every catalogued sightline as a line,
-// click-to-select, presets, optional guides (R200c ring + L arrow), HTML scale bar, and a real fullscreen mode.
-// three.js is imported lazily inside mount() through the page's importmap, so the pure exports also run in node.
+// 3D viewer v3 for the TNG50 page (Phase-2b design §5, Phase-3 design §6.2 C13): deposited gas cubes (L0 ±400, L1 ±100,
+// L2 ±25 kpc) and true-colour stellar cubes (S0-S2) ray-marched in one pass (raymarch.js). Default render = integral (a
+// column map from any angle); volume mode = emission/absorption. Nested LOD with fade-in, GPU budget + LRU, on-demand
+// rendering, every catalogued sightline as a line, click-to-select, presets, optional guides, HTML scale bar, fullscreen.
+// three.js is imported lazily through the page's importmap, so the pure exports also run in node.
 // Scene units: physical kpc, origin = galaxy centre, box axes; the cube mesh carries the disk-frame rotation.
+//
+// ---- Page API (Phase 3) ------------------------------------------------------------------------------------------------
+// One engine per page (one WebGL context, one set of GPU cubes). It is shown either on the full square stage of the 3D tab
+// or in a small square thumbnail on the Spectra tab; the same canvas moves between the two hosts, so the cubes loaded for
+// one are never fetched or uploaded again for the other.
+//
+//   mount(root, app, opts) -> Promise<viewer>        the full stage (resolves once the first field is shown)
+//       root: #v3d-root. If it sits inside the page's square #v3d-stage, the canvas fills it; otherwise the viewer builds
+//             its own layout inside root (a square .v3d-sq stage beside a 300 px control column, below it under 1024 px).
+//       opts.controls: element for the grouped control column (default #v3d-controls, else the built layout's column).
+//             The viewer puts its cards there first (#v3-ctl: Field, View, Layers, Mode, Pick ray); a #picker-root found in
+//             the column or the page moves into the Pick ray card (else one is created there) for picker.attachPicker.
+//       opts.viz (default app.config.viz), opts.species (first field), opts.manifest / opts.webgl2 (tests).
+//   mountThumb(host, app, opts) -> Promise<thumb>    the Spectra-tab thumbnail
+//       host: a positioned, square element (e.g. button#v3d-mini, aspect-ratio 1/1). The canvas fills it. Low cost: thumb
+//             frames use THUMB.spv steps per voxel, no stars or fine levels unless already resident, no refine passes; a
+//             slow turn about the disk normal (opts.spin, default true; off with prefers-reduced-motion) runs at THUMB.fps
+//             only while the host is on screen and the page is visible. No orbit, keys or picking in the thumbnail.
+//       opts.onOpen(): called on a click of the host (e.g. () => app.showTab("3d")); omit it to handle the click yourself.
+//       opts.tags (default true): the field tag and the "3D" tag at the bottom of the thumbnail; false if the page draws its own.
+//       thumb = {viewer, host, get active(), setSpin(bool), dispose()}  (dispose detaches the thumbnail only)
+//   Docking is automatic: the canvas goes to the full stage whenever that is on screen, else to the thumbnail when that is
+//   on screen (IntersectionObserver). viewer.dock("full" | "thumb" | "auto") overrides it; viewer.docked reads it.
+//   current() -> the engine promise or null. speciesList (vizdata.js) is the pure species-menu model.
+//   viewer keeps the v2 surface: setSpecies(k) -> Promise<bool> (false, no exception, for a species whose cubes are not
+//   built: viewer.loadError = {key, message}), setPreset, setMode, setStars, setGuides, setTransfer, setLines, select,
+//   toggleFullscreen, levels, gpuBytes, bench, render, resize, dispose, hooks, stats, species, wanted, mode, message.
+// ------------------------------------------------------------------------------------------------------------------------
 import {lut, cssGradient, NAMES as CMAPS} from "./colormaps.js";
-import {VOL_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, MU_ZERO} from "./vizdata.js";
+import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, speciesList, MU_ZERO} from "./vizdata.js";
 import {makeMaterial} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
 
-export {VOL_KEYS, decodeU8, gunzipIfNeeded};
-/* tune3: short option labels so the selects do not truncate at desktop widths (the long forms go to title) */
+export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList};
 /* fix-ui V8: no literal underscores; COL_HTML is the colour-bar title with real subscripts (plain text elsewhere) */
-const SPECIES_LABEL = {nH: "nH", T: "T", Z: "Z", OVI: "O VI", HI: "H I", CIII: "C III"};
-const SPECIES_LONG = {nH: "hydrogen density nH", T: "temperature", Z: "metallicity", OVI: "O VI", HI: "H I", CIII: "C III"};
-const COL_LABEL = {nH: "NH", OVI: "N(O VI)", HI: "N(H I)", CIII: "N(C III)", T: "⟨T⟩ (nH-weighted)", Z: "⟨Z⟩ (nH-weighted)"};
 const COL_HTML = {nH: "N<sub>H</sub>", T: "⟨T⟩ (n<sub>H</sub>-weighted)", Z: "⟨Z⟩ (n<sub>H</sub>-weighted)"};
+const COL_TXT = {nH: "NH", T: "⟨T⟩ (nH-weighted)", Z: "⟨Z⟩ (nH-weighted)"};
 const VOL_HTML = {nH: "n<sub>H</sub>"};
-const plainLabel = l => String(l || "").replace(/([nN])_H\b/g, "$1H");
+const isIon = k => ION_KEYS.includes(k);
+/* Phase 3 thumbnail: steps per voxel, frame rate of the slow turn, its speed, refine frames when still */
+const THUMB = {spv: 0.6, fps: 12, degPerSec: 5, acc: 2};
 const GAS_L = ["L0", "L1", "L2"], STAR_L = ["S0", "S1", "S2"];
 const BYTES = {gas: 256 ** 3, stars: 4 * 256 ** 3};
 const BG = "#05070b";
@@ -35,9 +61,10 @@ const WIN_DEFAULT = {nH: {lo: 18.4}, Z: {lo: -1.1, hi: 0.25}, HI: {lo: 17.3, hi:
 /* tune3: per-field soft floor width (dex below the window low; raymarch uFadeDex, default 1) — the ions fade out over
    more dex, so cloud edges are soft instead of a hard rim at the window low */
 const FADE_DEX = {HI: 2.0, OVI: 1.5, CIII: 1.5};
+const fadeDex = k => FADE_DEX[k] ?? (isIon(k) ? 1.5 : 1.0);   // Phase 3: the new ions fade like O VI / C III
 /* tune3: default colour maps over the manifest's (Z: cividis was a low-contrast grey-olive on the dark stage) */
 const CMAP_DEFAULT = {Z: "viridis"};
-/* tune3 volume mode: kappa = VOL.k · opacity² per kpc, emitted colour × VOL.gain, default opacity VOL.opacity */
+/* tune3 volume mode: kappa = VOL.k * opacity² per kpc, emitted colour × VOL.gain, default opacity VOL.opacity */
 const VOL = {k: 1.6, gain: 1.8, opacity: 0.6};
 /* tune3 composite (raymarch uCompMode 1): bright starlight (max channel 0.4 → 0.9) attenuates the gas layer, then the stars
    screen over it; the tune1 hue-replacement (mode 0, 0.04 → 0.45) tinted the faint envelope olive over the gas */
@@ -52,6 +79,7 @@ const SEL_PX = 1.25, SEL_ALPHA = 0.6, SEL_GAL = {r0: 25, r1: 90, front: 0.15, ba
    intermediate zoom the ±25 kpc box otherwise shows as a square of finer, speckled texture inside the smoother L1 field */
 /* tune4: with the lighter ion prefilter the levels carry the same texture, so the ions go back to L2 from 2 px per voxel */
 const LOD_C = {gas: 1.0, stars: 1.5, field: {OVI: 2.0, HI: 2.0, CIII: 2.0}};
+const lodField = k => (k && (LOD_C.field[k] ?? (isIon(k) ? 2.0 : null))) || LOD_C.gas;   // Phase 3: every ion like H I
 /* tune2 near fade (raymarch.js uNear), as fractions of the camera–target distance */
 const NEAR = [0.35, 0.6];
 /* tune2: a narrower field of view (was 40°) puts the default camera outside the r = 400 kpc data sphere at the same
@@ -77,6 +105,7 @@ const STAR_CLOSE = {occ: [0.06, 0.4], gasW: 0.55};
    remove the L2 creases), stars 2/2/1 (S2: σ 0.7 voxel removes the single-particle grain and keeps the thin disk; S0/S1 carry only the diffuse
    envelope and halo along the line of sight, where 2 passes remove the blocky mottling of their 0.8–3 kpc voxels) */
 const SMOOTH = {OVI: [2, 4, 2], HI: [1, 1, 1], CIII: [1, 1, 1], nH: [0, 0, 0], T: [0, 0, 0], Z: [0, 0, 0], stars: [2, 2, 1]};   // passes per level 0, 1, 2 (stars: S0-S2, RGB)
+const smoothPasses = k => SMOOTH[k] || (isIon(k) ? [1, 1, 1] : null);   // Phase 3: the new ions get one pass per level
 let smoothW = null, smoothN = 0; const smoothP = new Map();
 function smoothAsync(q, n, vmin, vmax, passes, ch = 1) {
   try { if (!smoothW) { smoothW = new Worker(new URL("./smooth_worker.js", import.meta.url), {type: "module"});
@@ -89,59 +118,123 @@ export function webgl2Available() {
   try { const c = document.createElement("canvas"); return !!(globalThis.WebGL2RenderingContext && c.getContext("webgl2")); } catch { return false; }
 }
 
-const CSS = `.v3d{display:flex;flex-direction:column;gap:0;min-width:0;
+const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
   --s-panel:#0c1016;--s-ink:#e9eef4;--s-ink2:#b3bdc9;--s-rule:#2f3844;--s-accent:#7db2f0;--s-fit:#f39a5c;--s-bad:#ff8a8a;--lib-line:#8d97a6}
-.v3d-stage{position:relative;height:clamp(420px,78vh,1100px);touch-action:none;color-scheme:dark;background:${BG};color:var(--s-ink);overflow:hidden}
+.v3d-stage{position:relative;width:100%;height:100%;touch-action:none;color-scheme:dark;background:${BG};color:var(--s-ink);overflow:hidden}
 .v3d-stage canvas{display:block;width:100%;height:100%;outline:none}
 .v3d-stage canvas:focus-visible{outline:2px solid var(--s-accent);outline-offset:-2px}
+#v3d-stage{position:relative}
+#v3d-stage .v3d:not(.v3d-thumb):not(.v3d-fs){position:absolute;inset:0}
 .v3d-ov{position:absolute;font-size:12.5px;color:var(--s-ink2);pointer-events:none;background:color-mix(in srgb,${BG} 72%,transparent);border-radius:6px}
-.v3d-msg{left:12px;top:10px;max-width:min(560px,calc(100% - 150px));padding:4px 8px;overflow-wrap:anywhere;color:var(--s-ink)}
-.v3d-msg:empty{display:none}.v3d-msg.bad{color:var(--s-bad);background:${BG};z-index:2}.v3d-msg small{display:block;color:var(--s-ink2);font:11px var(--mono)}
-.v3d-tr{position:absolute;right:10px;top:10px;display:flex;gap:6px;z-index:3}
-.v3d-tr .btn{background:color-mix(in srgb,${BG} 70%,transparent);color:var(--s-ink);border-color:var(--s-rule);font-size:12.5px;padding:4px 10px}
-.v3d-tr .btn:focus-visible{outline:2px solid var(--s-accent);outline-offset:1px}
+.v3d-msg{left:12px;top:10px;max-width:min(560px,calc(100% - 24px));padding:4px 8px;overflow-wrap:anywhere;color:var(--s-ink)}
+.v3d-msg:empty{display:none}.v3d-msg.bad{color:var(--s-bad);background:${BG};z-index:2}.v3d-msg small{display:block;color:var(--s-ink2);font:11px var(--mono,ui-monospace,monospace)}
+.v3d-tr{position:absolute;right:10px;top:10px;display:none;gap:6px;z-index:3}
+.v3d-tr button{background:color-mix(in srgb,${BG} 70%,transparent);color:var(--s-ink);border:1px solid var(--s-rule);border-radius:8px;font-size:12.5px;padding:4px 10px;cursor:pointer}
+.v3d-tr button:focus-visible{outline:2px solid var(--s-accent);outline-offset:1px}
+.v3d:fullscreen .v3d-tr,.v3d.v3d-fs .v3d-tr{display:flex}
 /* final: no focus ring from the viewer's own programmatic focus (entering / leaving fullscreen); Tab or a pointer brings it back */
-.v3d.v3d-pf .v3d-stage canvas:focus-visible,.v3d.v3d-pf .v3d-tr .btn:focus-visible{outline:none}
-.v3d-leg{left:12px;bottom:10px;width:min(280px,58%);font:11px var(--mono);padding:5px 8px}
+.v3d.v3d-pf .v3d-stage canvas:focus-visible,.v3d.v3d-pf .v3d-tr button:focus-visible,.v3d.v3d-pf #v3-fs:focus-visible{outline:none}
+.v3d-leg{left:12px;bottom:10px;width:min(280px,58%);font:11px var(--mono,ui-monospace,monospace);padding:5px 8px}
 .v3d-leg .bar{height:10px;border-radius:2px;border:1px solid var(--s-rule)}
 .v3d-leg .ticks{position:relative;height:14px}.v3d-leg .ticks span{position:absolute;transform:translateX(-50%);top:1px}
-.v3d-leg .ttl{font:500 11.5px var(--body);color:var(--s-ink);margin-bottom:3px}
-.v3d-leg .st{margin-top:4px;font:11px var(--body)}.v3d-leg .st i{display:inline-block;width:46px;height:8px;border-radius:2px;vertical-align:middle;margin-right:6px;background:linear-gradient(90deg,#4d6fd0,#fff4e6,#ffb347)}
+.v3d-leg .ttl{font:500 11.5px var(--sans,system-ui,sans-serif);color:var(--s-ink);margin-bottom:3px}
+.v3d-leg .st{margin-top:4px;font:11px var(--sans,system-ui,sans-serif)}.v3d-leg .st i{display:inline-block;width:46px;height:8px;border-radius:2px;vertical-align:middle;margin-right:6px;background:linear-gradient(90deg,#4d6fd0,#fff4e6,#ffb347)}
 .v3d-lines{right:10px;bottom:10px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;padding:4px 8px}
 .v3d-lines i{display:inline-block;width:20px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
 .v3d-lines i.sel{border-top-width:5px;outline:1px dashed var(--s-ink);outline-offset:2px}
-.v3d-scale{left:50%;bottom:12px;transform:translateX(-50%);font:11px var(--mono);text-align:center;padding:3px 8px}
+.v3d-scale{left:50%;bottom:12px;transform:translateX(-50%);font:11px var(--mono,ui-monospace,monospace);text-align:center;padding:3px 8px}
 .v3d-scale i{display:block;height:6px;border:1.5px solid var(--s-ink2);border-top:0;margin:0 auto 2px}
-.v3d-leg .off{margin-top:4px;font:11px var(--body);color:var(--s-ink2)}
-.v3d-leg .gd{margin-top:4px;font:11px var(--body);color:var(--s-ink2)}.v3d-leg .gd i{display:inline-block;width:18px;height:0;border-top:2px solid #d9c38c;vertical-align:middle;margin-right:6px}
-.v3d-ctl{border-top:1px solid var(--rule);padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px;align-items:end}
-.v3d-ctl .ctl{min-width:0}.v3d-ctl .ctl select{width:100%}
-.v3d-ctl .wide{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
-.v3d-ctl .lod{grid-column:1/-1;font:11.5px var(--mono);color:var(--ink2);overflow-wrap:anywhere}
-.v3d-ctl fieldset{border:0;margin:0;padding:0;min-width:0}
-.v3d-ctl[hidden]{display:none}
-#v3-ctl-toggle{display:none}
+.v3d-leg .off{margin-top:4px;font:11px var(--sans,system-ui,sans-serif);color:var(--s-ink2)}
+.v3d-leg .gd{margin-top:4px;font:11px var(--sans,system-ui,sans-serif);color:var(--s-ink2)}.v3d-leg .gd i{display:inline-block;width:18px;height:0;border-top:2px solid #d9c38c;vertical-align:middle;margin-right:6px}
+.v3d-tt{display:none}
+/* Phase 3 thumbnail (mountThumb): the canvas fills the host, no overlays but a field tag and a 3D tag */
+.v3d.v3d-thumb{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
+.v3d-thumb .v3d-stage{cursor:pointer;touch-action:auto;border-radius:inherit}
+.v3d-thumb .v3d-tr,.v3d-thumb .v3d-leg,.v3d-thumb .v3d-lines,.v3d-thumb .v3d-scale{display:none}
+.v3d-thumb .v3d-msg{left:8px;top:8px;max-width:calc(100% - 16px);font-size:10.5px;padding:3px 6px}.v3d-thumb .v3d-msg small{display:none}
+.v3d-thumb .v3d-tt{display:flex;position:absolute;left:10px;right:10px;bottom:10px;justify-content:space-between;align-items:center;pointer-events:none;font:500 10.5px var(--mono,ui-monospace,monospace)}
+.v3d-tt span{background:rgba(8,6,18,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:3px 8px;border-radius:6px;color:#f1ecff}
+.v3d-tt span:empty{display:none}
+.v3d-notags .v3d-tt{display:none!important}
+/* the layout the viewer builds when the page gives no square #v3d-stage (§6.2 C13: square, a fraction of the width, centred,
+   controls beside it at ≥ 1024 px and below it otherwise) */
+.v3d-layout{display:flex;justify-content:center;align-items:flex-start;gap:16px;padding:12px 0;min-width:0}
+.v3d-layout>.v3d-sq{position:relative;flex:none;aspect-ratio:1/1;width:min(60vw,calc(100vh - 120px),900px);width:min(60vw,calc(100svh - 120px),900px);border-radius:16px;overflow:hidden;
+  border:1px solid var(--gline,rgba(160,175,220,.14));background:${BG}}
+.v3d-layout>.v3d-side{width:300px;flex:none;min-width:0}
+@media (max-width:1023px){.v3d-layout{flex-direction:column;align-items:center}.v3d-layout>.v3d-sq{width:min(100%,calc(100vh - 140px),900px);width:min(100%,calc(100svh - 140px),900px)}
+  .v3d-layout>.v3d-side{width:min(100%,560px)}}
+/* the grouped control column (B look, A's explicit labels); page tokens with dark fallbacks */
+.v3c{display:flex;flex-direction:column;gap:12px;min-width:0;font:13px/1.4 var(--sans,system-ui,sans-serif);color:var(--ink,#eef0f7)}
+.v3c[hidden]{display:none}
+.v3c-card{background:var(--glass,rgba(22,27,42,.62));border:1px solid var(--gline,rgba(160,175,220,.14));border-radius:14px;padding:11px 12px 12px;
+  backdrop-filter:blur(18px) saturate(1.3);-webkit-backdrop-filter:blur(18px) saturate(1.3);min-width:0}
+.v3c-card>h2{margin:0 0 9px;font:500 10px var(--mono,ui-monospace,monospace);letter-spacing:.14em;text-transform:uppercase;color:var(--muted,#98a0b8)}
+.v3c .k{display:block;font:500 10px var(--mono,ui-monospace,monospace);color:var(--faint,#7a83a0);margin:2px 0 5px}
+.v3c-seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:3px;border-radius:10px;background:rgba(127,127,160,.10);gap:2px;margin-bottom:8px}
+.v3c-seg.two{grid-template-columns:1fr 1fr}
+.v3c-seg label,.v3c-ions label{position:relative;cursor:pointer;min-width:0}
+.v3c-seg input,.v3c-ions input{position:absolute;opacity:0;inset:0;margin:0;cursor:inherit}
+.v3c-seg span{display:flex;align-items:center;justify-content:center;height:26px;padding:0 8px;font:500 11.5px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);border-radius:7px;white-space:nowrap}
+.v3c-seg input:checked+span{background:var(--glass2,rgba(30,36,56,.72));color:var(--ink,#eef0f7);box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.v3c-ions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:8px}
+.v3c-ion{--c:var(--icd)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .v3c-ion{--c:var(--ic)}}
+:root[data-theme="light"] .v3c-ion{--c:var(--ic)}
+.v3d .v3c-ion{--c:var(--icd)}
+.v3c-ions span{display:flex;align-items:center;gap:6px;height:28px;padding:0 7px;border:1px solid var(--gline,rgba(160,175,220,.14));border-radius:8px;font-size:11.5px;white-space:nowrap;overflow:hidden}
+.v3c-ions i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.v3c-ions input:checked+span{border-color:var(--c);background:var(--hl,rgba(143,168,255,.16))}
+.v3c-ions input:disabled+span,.v3c-seg input:disabled+span{opacity:.42;cursor:not-allowed}
+.v3c-ions input:disabled+span i{background:none;border:1px solid var(--c)}
+.v3c-ions label:has(input:disabled),.v3c-seg label:has(input:disabled){cursor:not-allowed}
+.v3c-seg input:focus-visible+span,.v3c-ions input:focus-visible+span{outline:2px solid var(--accent,#8fa8ff);outline-offset:1px}
+.v3c-row{display:grid;grid-template-columns:62px minmax(0,1fr) 44px;align-items:center;gap:8px;min-height:26px}
+.v3c-row>label,.v3c-row>.lab{font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v3c-row output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right;color:var(--ink,#eef0f7)}
+.v3c-row input[type=range]{width:100%;min-width:0;margin:0}
+.v3c-row select{grid-column:2/4;min-width:0;width:100%;height:28px;border:1px solid var(--gline,rgba(160,175,220,.14));border-radius:8px;background:rgba(127,127,160,.08);color:inherit;font:inherit;font-size:12px;padding:0 6px}
+.v3c-row input[type=checkbox]{margin:0 6px 0 0;vertical-align:middle}
+.v3c-btns{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.v3c-btn{height:30px;border:1px solid var(--gline,rgba(160,175,220,.14));background:none;border-radius:8px;cursor:pointer;font:inherit;font-size:12px;color:var(--muted,#98a0b8);padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v3c-btn:hover{background:var(--hl,rgba(143,168,255,.16));color:var(--ink,#eef0f7)}
+.v3c-btn:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:1px}
+.v3c-btn[aria-pressed=true]{background:var(--hl,rgba(143,168,255,.16));border-color:var(--accent,#8fa8ff);color:var(--ink,#eef0f7)}
+.v3c-wide{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:6px}
+.v3c-wide svg{width:14px;height:14px;flex:none}
+.v3c-sw{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--muted,#98a0b8)}
+.v3c-sw label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}.v3c-sw input{margin:0}
+.v3c details{margin-top:2px}.v3c summary{cursor:pointer;font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);padding:3px 0}
+.v3c-lod{font:10.5px/1.45 var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:pre-line;overflow-wrap:anywhere;padding:0 4px}
+.v3c-lod:empty{display:none}
+.v3c #picker-root .pk{margin:0}
+.v3c #picker-root button{height:28px;border:1px solid var(--gline,rgba(160,175,220,.14));background:rgba(127,127,160,.08);border-radius:8px;padding:0 9px;cursor:pointer;color:var(--ink,#eef0f7);font:inherit;font-size:12px}
+.v3c #picker-root button[aria-pressed=true]{border-color:var(--accent,#8fa8ff);background:var(--hl,rgba(143,168,255,.16))}.v3c #picker-root button:disabled{opacity:.5;cursor:not-allowed}
+.v3c #picker-root input[type=number]{height:26px;border:1px solid var(--gline,rgba(160,175,220,.14));background:rgba(127,127,160,.08);border-radius:7px;padding:0 5px;color:inherit;font:inherit;font-size:12px}
+.v3c #picker-root .row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.v3c #picker-root .pk-xyz{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.v3c #picker-root .pk-in{display:flex;align-items:center;gap:4px;min-width:0}.v3c #picker-root .pk-in input{width:100%;min-width:0}
+.v3c #picker-root fieldset{border:0;margin:0 0 6px;padding:0;min-width:0}.v3c #picker-root legend{font:500 10px var(--mono,ui-monospace,monospace);color:var(--faint,#7a83a0);padding:0;margin-bottom:3px}
+.v3c #picker-root .hint,.v3c #picker-root .msg{font-size:11.5px;color:var(--muted,#98a0b8);margin:4px 0}
+/* fullscreen: the control column moves onto the stage as a closable panel (dark, whatever the page theme) */
 .v3d:fullscreen{position:fixed;inset:0;z-index:1000;background:${BG};width:100vw;height:100vh}
-.v3d:fullscreen .v3d-stage{height:100vh;width:100vw}
-/* fix-ui FE-08: the CSS fallback (iPhone Safari has no element Fullscreen API) uses the dynamic viewport, so the bottom
-   overlays are not hidden under the browser toolbar */
+/* fix-ui FE-08: the CSS fallback (iPhone Safari has no element Fullscreen API) uses the dynamic viewport */
 .v3d.v3d-fs{position:fixed;inset:0;z-index:1000;background:${BG};width:auto;height:100vh;height:100dvh}
-.v3d.v3d-fs .v3d-stage{width:100%;height:100%}
-.v3d:fullscreen #v3-ctl-toggle,.v3d.v3d-fs #v3-ctl-toggle{display:inline-block}
-.v3d:fullscreen .v3d-ctl,.v3d.v3d-fs .v3d-ctl{position:absolute;top:52px;right:10px;bottom:10px;width:min(340px,90vw);overflow:auto;z-index:2;
-  grid-template-columns:minmax(0,1fr);align-content:start;border:1px solid var(--s-rule);border-radius:10px;
-  background:color-mix(in srgb,#0c1016 88%,transparent);color:var(--s-ink);--ink:var(--s-ink);--ink2:var(--s-ink2);--rule:var(--s-rule);--panel:#0c1016;color-scheme:dark}
+.v3d .v3c{position:absolute;top:52px;right:10px;bottom:10px;width:min(340px,90vw);overflow:auto;z-index:2;padding:10px;border:1px solid var(--s-rule);border-radius:12px;
+  background:color-mix(in srgb,#0c1016 88%,transparent);color-scheme:dark;--ink:#eef0f7;--muted:#98a0b8;--faint:#7a83a0;--gline:rgba(160,175,220,.16);
+  --glass:rgba(22,27,42,.7);--glass2:rgba(40,46,70,.9);--hl:rgba(143,168,255,.16);--accent:#8fa8ff;color:var(--ink)}
 .v3d:fullscreen .v3d-lines,.v3d.v3d-fs .v3d-lines{right:auto;left:12px;bottom:auto;top:52px}
-/* fix-ui V6: on wide screens the whole stage (colour bar and line legend included) fits under the header on load */
-@media (min-width:1280px){.v3d-stage{height:clamp(420px,calc(100svh - 330px),1100px)}}
 body.v3d-noscroll{overflow:hidden}
 .v3d-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-@media (max-width:720px){.v3d-stage{height:min(78svh,130vw)}.v3d-lines{display:none}.v3d-ctl{grid-template-columns:minmax(0,1fr)}
-  .v3d-msg{max-width:calc(100% - 24px);top:48px}.v3d-leg{width:min(220px,62%)}
+/* Phase 3: the stage is a square fraction of the page (614 px at a 1024 px viewport), so the narrow-stage rule keys on the
+   stage width too: under 720 px of stage the scale bar leaves the bottom row it would share with the colour bar */
+.v3d{container-type:inline-size}
+@container (max-width:719px){.v3d-scale{left:12px;top:12px;bottom:auto;transform:none}.v3d-msg{top:48px}}
+@media (max-width:720px){.v3d-lines{display:none}.v3d-msg{max-width:calc(100% - 24px);top:48px}.v3d-leg{width:min(220px,62%)}
   /* tune3: the scale bar moves to the top-left corner on narrow screens, so it never shares a row with the colour bar */
   .v3d-scale{left:12px;top:12px;bottom:auto;transform:none}
   /* fix-ui V9: in fullscreen with the settings panel open, the panel is opaque and the colour bar under it is hidden */
-  .v3d.v3d-panel .v3d-ctl{background:#0c1016}.v3d.v3d-panel .v3d-leg{visibility:hidden}}`;
+  .v3d.v3d-panel .v3c{background:#0c1016}.v3d.v3d-panel .v3d-leg{visibility:hidden}}`;
 
 const pretty = u => String(u || "").replace("cm^-3", "cm⁻³").replace("cm^-2", "cm⁻²").replace("Zsun", "Z☉");
 const isMobile = () => matchMedia("(max-width: 720px)").matches;
@@ -149,24 +242,40 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
 const mb = b => (b / 1e6).toFixed(b > 1e7 ? 0 : 1) + " MB";
 
-function stub(root, msg, frame) {
-  const p = document.createElement("p"); p.className = "msg bad v3d-fallback"; p.style.padding = "18px 14px"; p.textContent = msg; root.appendChild(p);
-  const no = () => {};
-  return {webgl2: false, message: msg, frame, hooks: {}, setSpecies: async () => false, setPreset: () => false, setTransfer: no, setLines: no, select: no,
-    refreshLines: no, resize: no, render: no, setMode: () => false, setStars: no, setGuides: no, toggleFullscreen: async () => false,
-    levels: () => ({gas: {}, stars: {}}), gpuBytes: () => 0, dispose: () => p.remove()};
+function stub(msg, frame) {
+  const no = () => {}, made = [];
+  const note = (host, text, cls) => { const p = document.createElement("p"); p.className = cls; p.textContent = text; host.appendChild(p); made.push(p); return p; };
+  const v = {webgl2: false, message: msg, frame, hooks: {}, setSpecies: async () => false, setPreset: () => false, setTransfer: no, setLines: no, select: no,
+    refreshLines: no, resize: no, render: no, setMode: () => false, setStars: no, setGuides: no, toggleFullscreen: async () => false, dock: () => false, docked: null,
+    levels: () => ({gas: {}, stars: {}}), gpuBytes: () => 0, stats: {},
+    _attachFull(root) { const p = note(root, msg, "msg bad v3d-fallback"); p.style.padding = "18px 14px"; },
+    _attachThumb(host) { const p = note(host, "3D needs WebGL2", "v3d-fallback"); p.style.cssText = "margin:0;padding:10px;font:11px var(--mono,monospace);opacity:.7";
+      return {viewer: v, host, active: false, setSpin: no, dispose: () => p.remove()}; },
+    _start: async () => false,
+    dispose() { made.forEach(p => p.remove()); ENGINE = null; }};
+  return v;
 }
 
+let ENGINE = null;   // Promise<viewer>: the one engine of this page (see the API note at the top)
+export function current() { return ENGINE; }
+function engine(app, opts) { if (!ENGINE) ENGINE = create(app, opts).catch(x => { ENGINE = null; throw x; }); return ENGINE; }
 export async function mount(root, app, opts = {}) {
+  const v = await engine(app, opts); v._attachFull(root, opts); await v._start(opts.species); return v;
+}
+export async function mountThumb(host, app, opts = {}) {
+  const v = await engine(app, opts), t = v._attachThumb(host, opts); v._start(opts.species).catch(() => {}); return t;
+}
+
+async function create(app, opts = {}) {
   if (!document.getElementById("v3d-css")) { const st = document.createElement("style"); st.id = "v3d-css"; st.textContent = CSS; document.head.appendChild(st); }
   const cfg = app.config || {}, G = cfg.galaxy || {}, F0 = cfg.frame || {};
   const viz = opts.viz === undefined ? (cfg.viz ?? null) : opts.viz;
   const frame = {Lhat: F0.Lhat || G.Lhat, xhat: F0.xhat || G.xhat, yhat: F0.yhat || G.yhat, R200c: F0.R200c_kpc || G.R200c_kpc || 246.35};
   if (!(opts.webgl2 ?? webgl2Available()))
-    return stub(root, "3D view needs WebGL2, which this browser does not provide. The Spectra tab and the numeric ray form below still work.", frame);
+    return stub("3D view needs WebGL2, which this browser does not provide. The Spectra tab and the numeric ray form still work.", frame);
   let T, OrbitControls;
   try { T = await import("three"); ({OrbitControls} = await import("three/addons/controls/OrbitControls.js")); }
-  catch (x) { return stub(root, `Could not load three.js ${cfg.three || ""} from cdn.jsdelivr.net (${x.message}). The Spectra tab and the numeric ray form below still work.`, frame); }
+  catch (x) { return stub(`Could not load three.js ${cfg.three || ""} from cdn.jsdelivr.net (${x.message}). The Spectra tab and the numeric ray form still work.`, frame); }
   /* final: the manifest fetch has a timeout (vizload fetchText); a ?viz= override host that times out or refuses is reported
      as unreachable at once, instead of falling through to the committed manifest and then stalling on every cube */
   let manifest = opts.manifest || null, manErr = null, hostDown = null;
@@ -182,34 +291,51 @@ export async function mount(root, app, opts = {}) {
   T.ColorManagement.enabled = false;                       // LUT and CSS colours are sRGB values: pass them straight through
   const mobile = isMobile(), deviceMemory = navigator.deviceMemory ?? 8;
 
-  /* ---- DOM ---- */
+  /* ---- DOM: the stage (el, moved between the full host and the thumbnail) and the control column (ctlBox) ---- */
+  const SPEC = speciesList(cfg.ions, manifest), specOf = k => SPEC.find(x => x.key === k);
   const el = document.createElement("div"); el.className = "v3d";
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
-    <div class="v3d-tr"><button type="button" class="btn" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl">Controls</button><button type="button" class="btn" id="v3-fs" aria-pressed="false" title="Fullscreen (Shift+F)">Fullscreen</button></div>
+    <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl">Controls</button><button type="button" id="v3-fs-exit" title="Exit fullscreen (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
-    <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off · switch on “stars” below</div><div class="gd" hidden></div></div>
-    <div class="v3d-ov v3d-lines" aria-hidden="true"><span><i style="border-color:var(--lib-line)"></i>library</span><span><i style="border-color:var(--s-accent)"></i>generated</span><span><i style="border-color:var(--s-fit)"></i>custom</span><span><i class="sel" style="border-color:var(--s-ink)"></i>selected</span></div></div>
-    <div class="v3d-ctl" id="v3-ctl" role="group" aria-label="3D view settings">
-      <div class="ctl"><label for="v3-mode">render</label><select id="v3-mode"><option value="integral" title="integral: a column-density map from any angle">integral</option><option value="volume" title="volume: emission and absorption with a transfer function">volume</option></select></div>
-      <div class="ctl"><label for="v3-species">gas field</label><select id="v3-species"></select></div>
-      <div class="ctl"><div class="row"><label for="v3-lo">window low</label><output id="v3-lo-o" for="v3-lo"></output></div><input id="v3-lo" type="range" step="0.1"></div>
-      <div class="ctl"><div class="row"><label for="v3-hi">window high</label><output id="v3-hi-o" for="v3-hi"></output></div><input id="v3-hi" type="range" step="0.1"></div>
-      <div class="ctl"><label for="v3-cmap">colour map</label><select id="v3-cmap"></select></div>
-      <div class="ctl"><div class="row"><label for="v3-op">volume opacity</label><output id="v3-op-o" for="v3-op"></output></div><input id="v3-op" type="range" min="0" max="1" step="0.01"></div>
-      <div class="ctl"><div class="row"><label for="v3-gasmix">gas layer</label><output id="v3-gasmix-o" for="v3-gasmix"></output></div><input id="v3-gasmix" type="range" min="0" max="1" step="0.05"></div>
-      <div class="ctl"><div class="row"><label for="v3-starmix">star layer</label><output id="v3-starmix-o" for="v3-starmix"></output></div><input id="v3-starmix" type="range" min="0" max="1" step="0.05"></div>
-      <div class="ctl"><div class="row"><label for="v3-mu0" title="the base value; the legend shows the effective μ₀,eff, which follows the zoom">star brightness μ₀ (base)</label><output id="v3-mu0-o" for="v3-mu0"></output></div><input id="v3-mu0" type="range" min="17" max="26" step="0.1"></div>
-      <div class="ctl"><label for="v3-lines">sightlines</label><select id="v3-lines"><option value="selected">selected only</option><option value="showcase">showcase ★/☆ + new</option><option value="all">all</option><option value="none">none</option></select></div>
-      <div class="wide"><label class="hint"><input type="checkbox" id="v3-stars"> stars (g, r, i true colour)</label>
-        <label class="hint"><input type="checkbox" id="v3-guides"> guides (R<sub>200c</sub> ring, disk normal)</label>
-        <label class="hint"><input type="checkbox" id="v3-scale" checked> scale bar</label></div>
-      <div class="presets wide"><button type="button" class="btn" data-p="face-on">Face-on</button><button type="button" class="btn" data-p="edge-on">Edge-on</button>
-        <button type="button" class="btn" data-p="sightline">Along selected</button><button type="button" class="btn" data-p="reset">Reset</button></div>
-      <div class="lod" id="v3-lod"></div>
-    </div>`;
-  root.appendChild(el);
-  const q = s => el.querySelector(s), canvas = q("canvas"), stage = q(".v3d-stage"), msgEl = q(".v3d-msg");
+    <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off (Layers)</div><div class="gd" hidden></div></div>
+    <div class="v3d-ov v3d-lines" aria-hidden="true"><span><i style="border-color:var(--lib-line)"></i>library</span><span><i style="border-color:var(--s-accent)"></i>generated</span><span><i style="border-color:var(--s-fit)"></i>custom</span><span><i class="sel" style="border-color:var(--s-ink)"></i>selected</span></div>
+    <div class="v3d-tt" aria-hidden="true"><span class="f"></span><span>3D</span></div></div>`;
+  const escH = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+  const radio = (x, name) => `<label${x.available ? "" : ` title="${escH(x.reason)}"`}${x.group === "ion" ? ` class="v3c-ion" style="--ic:${x.color};--icd:${x.color_dark}"` : ""}>` +
+    `<input type="radio" name="${name}" value="${x.key}" data-testid="v3-species-${x.key}"${x.available ? "" : " disabled"} aria-label="${escH(x.label)}">` +
+    `<span${x.available ? ` title="${escH(x.long)}"` : ""}>${x.group === "ion" ? "<i></i>" : ""}${escH(x.label)}</span></label>`;
+  const ctlBox = document.createElement("div"); ctlBox.className = "v3c"; ctlBox.id = "v3-ctl"; ctlBox.setAttribute("role", "group"); ctlBox.setAttribute("aria-label", "3D view settings");
+  ctlBox.innerHTML = `<section class="v3c-card" data-group="field"><h2>Field</h2>
+      <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
+        <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div></div>
+      <div class="v3c-row"><label for="v3-lo" title="window low (log10)">low</label><input id="v3-lo" type="range" step="0.1"><output id="v3-lo-o" for="v3-lo"></output></div>
+      <div class="v3c-row"><label for="v3-hi" title="window high (log10)">high</label><input id="v3-hi" type="range" step="0.1"><output id="v3-hi-o" for="v3-hi"></output></div>
+      <div class="v3c-row"><label for="v3-cmap">colours</label><select id="v3-cmap"></select></div></section>
+    <section class="v3c-card" data-group="view"><h2>View</h2>
+      <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" title="face-on (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" title="edge-on (E)">Edge-on</button>
+        <button type="button" class="v3c-btn" data-p="sightline" title="along the selected sightline (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" title="default view (R)">Reset</button></div>
+      <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" title="Fullscreen (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button></section>
+    <section class="v3c-card" data-group="layers"><h2>Layers</h2>
+      <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
+      <div class="v3c-row"><label class="lab" title="stars (g, r, i true colour)"><input type="checkbox" id="v3-stars">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
+      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0" title="the base value; the legend shows the effective μ₀,eff, which follows the zoom">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
+      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines"><option value="selected">selected only</option><option value="showcase">showcase and new</option><option value="all">all</option><option value="none">none</option></select></div>
+      <div class="v3c-sw"><label title="R200c ring and disk normal"><input type="checkbox" id="v3-guides">guides</label><label><input type="checkbox" id="v3-scale" checked>scale bar</label></div></section>
+    <section class="v3c-card" data-group="mode"><h2>Mode</h2>
+      <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label title="integral: a column-density map from any angle"><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral"><span>integral</span></label>
+        <label title="volume: emission and absorption with a transfer function"><input type="radio" name="v3-mode" value="volume" data-testid="v3-mode-volume"><span>volume</span></label></div>
+      <div class="v3c-row"><label for="v3-op">opacity</label><input id="v3-op" type="range" min="0" max="1" step="0.01"><output id="v3-op-o" for="v3-op"></output></div></section>
+    <section class="v3c-card" data-group="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section>
+    <div class="v3c-lod" id="v3-lod" aria-hidden="true"></div>`;
+  const q = s => el.querySelector(s) || ctlBox.querySelector(s), canvas = q("canvas"), stage = q(".v3d-stage"), msgEl = q(".v3d-msg");
+  /* tune1 F1: the page's range style fills the track up to --pc; keep it at each slider's value (set from code and on input) */
+  const fillRanges = () => { for (const i of ctlBox.querySelectorAll('input[type=range]')) { const a = i.min === "" ? 0 : +i.min, b = i.max === "" ? 100 : +i.max;
+    i.style.setProperty("--pc", (b > a ? Math.min(100, Math.max(0, (+i.value - a) / (b - a) * 100)) : 0).toFixed(2) + "%"); } };
+  ctlBox.addEventListener("input", ev => { if (ev.target.type === "range") fillRanges(); });
+  const markSpecies = k => { for (const i of ctlBox.querySelectorAll('input[name="v3-species"]')) i.checked = i.value === k; };
+  const markMode = m => { for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.checked = i.value === m; };
+  let docked = null, spinRaf = 0, fullHost = null, thumbHost = null;   // Phase 3 docking state (see "docking" below)
   /* stage message; `transient` ones (a hint about the current selection or preset) are cleared by the next selection or preset */
   /* fix-ui FE-11: the stage message is not a live region (download progress rewrites it 5× a second); state changes are
      announced through #v3-live instead, deduplicated and at most one every 2 s. FE-05: progress messages are tagged
@@ -354,7 +480,7 @@ export async function mount(root, app, opts = {}) {
     balance: manifest?.stars?.display?.balance ?? [1, 1, 1]};
   const tf = {integral: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
   const stats = {};
-  const fld = k => manifest.gas.fields[k], lab = k => plainLabel(fld(k)?.label || SPECIES_LABEL[k] || k);
+  const fld = k => manifest?.gas?.fields?.[k], lab = k => specOf(k)?.label || k;
   const weighted = k => fld(k)?.kind === "mass_weighted" || fld(k)?.proj?.kind === "weighted_mean";
   function fieldTf(k, m = mode) { const f = fld(k), d = m === "integral" ? WIN_DEFAULT[k] || {} : {},
       w = m === "integral" ? [d.lo ?? f.proj.vmin, d.hi ?? f.proj.vmax] : f.vol_window;
@@ -370,11 +496,11 @@ export async function mount(root, app, opts = {}) {
   let hostErr = null, useMovingExact = true, calibrated = "";
   const keyOf = (kind, k, L) => `${kind}|${k || ""}|${L}`;
   const hVis = () => camera.position.distanceTo(controls.target) * Math.tan(camera.fov * Math.PI / 360);
-  /* final: footprint ratios of L1/L2/S1/S2 for viewPlan, as the shader's lodLevel computes them (voxel / (C · kpc per
+  /* final: footprint ratios of L1/L2/S1/S2 for viewPlan, as the shader's lodLevel computes them (voxel / (C * kpc per
      drawing-buffer pixel)), at the point of each level's box nearest the camera */
   function ratios(k) {
     const bufH = Math.max(1, (stage.clientHeight || 400) * exactPR), pxAng = 2 * Math.tan(camera.fov * Math.PI / 360) / bufH;
-    const c = camera.position, cd = [c.dot(Xv), c.dot(Yv), c.dot(Lv)], cg = (k && LOD_C.field[k]) || LOD_C.gas, out = {};
+    const c = camera.position, cd = [c.dot(Xv), c.dot(Yv), c.dot(Lv)], cg = lodField(k), out = {};
     for (const [L, C] of [["L1", cg], ["L2", cg], ["S1", LOD_C.stars], ["S2", LOD_C.stars]]) {
       const hh = half(L), n = manifest?.levels?.[L]?.n || 256, d = Math.max(1, Math.hypot(...cd.map(x => x - Math.max(-hh, Math.min(hh, x)))));
       out[L] = (2 * hh / n) / (C * pxAng * d); }
@@ -387,6 +513,9 @@ export async function mount(root, app, opts = {}) {
       if (kind === "gas") { if (!k) continue; keys.push(keyOf("gas", k, L)); if (weighted(k) && mode === "integral") keys.push(keyOf("gas", "nH", L)); }
       else if (manifest.stars?.cubes?.[L]) keys.push(keyOf("stars", "", L)); }
     let ks = keys.filter(x => { const [kind, kk, L] = x.split("|"); return kind === "stars" || fld(kk)?.cubes?.[L]; });
+    /* Phase 3 thumbnail: only L0 / L1 of the field (and nH weights) are fetched for it; stars and finer levels are used only
+       when the full stage already loaded them */
+    if (docked === "thumb") ks = ks.filter(x => TEX.has(x) || /^gas\|.*\|L[01]$/.test(x));
     /* fix-ui FE-06: the needed set itself must fit the GPU budget (with the render targets): drop S0, then S2, then the L2
        field (with its weights), then S1, until it does; evict() can only free what is not needed */
     const over = () => ks.reduce((a, x) => a + keyBytes(x), 0) + rtBytes() > BUDGET, dropped = [];
@@ -410,7 +539,7 @@ export async function mount(root, app, opts = {}) {
     if (!PEND.has(key)) { const pend = (async () => { const [kind, k, L] = key.split("|");
       const c = kind === "stars" ? manifest.stars.cubes[L] : fld(k).cubes[L], pr = {got: 0, total: c.webp.bytes.reduce((a, b) => a + b, 0)}; PROG.set(key, pr);
       const r = await loader.load(kind, k || null, L, {prio, onBytes: b => { pr.got += b; progressSoon(); }}).finally(() => { PROG.delete(key); progressSoon(); });
-      const sk = kind === "stars" ? "stars" : k, np = SMOOTH[sk] ? SMOOTH[sk][+L[1]] || 0 : 0;
+      const sk = kind === "stars" ? "stars" : k, np = smoothPasses(sk) ? smoothPasses(sk)[+L[1]] || 0 : 0;
       if (np) { const rg = kind === "stars" ? c : fld(k), q0 = r.data;
         try { r.data = await smoothAsync(q0.slice(), r.n, rg.vmin, rg.vmax, np, kind === "stars" ? 4 : 1); r.smoothed = np; } catch { r.data = q0; } }
       const tex = makeTex(r);
@@ -472,9 +601,10 @@ export async function mount(root, app, opts = {}) {
   let lastLod = "";
   function lodStatus() {
     const lv = levels(), mark = s => (s === "bound" ? "✓" : s === "loading" ? "…" : "–");
-    let t = species ? `gas ${lab(species)}: ${GAS_L.map(L => `${L} ${mark(lv.gas[L])}`).join("  ")}` + (layer.stars ? ` · stars: ${STAR_L.map(S => `${S} ${mark(lv.stars[S])}`).join("  ")}` : " · stars off") +
-      ` · GPU ${mb(gpuBytes())}` : "";
-    const [g, tot] = progOf([...PROG.keys()]); if (t && budgetDropped.length) t += ` · GPU budget: ${budgetDropped.join(", ")} skipped`; if (t && tot) t += ` · downloading ${mb(g)} / ${mb(tot)}`;
+    /* Phase 3 (C12): one fact per line, no dot separators */
+    let t = species ? `gas ${lab(species)}  ${GAS_L.map(L => `${L} ${mark(lv.gas[L])}`).join("  ")}` + (layer.stars ? `\nstars  ${STAR_L.map(S => `${S} ${mark(lv.stars[S])}`).join("  ")}` : "\nstars off") +
+      `\nGPU ${mb(gpuBytes())}` + (docked === "thumb" ? "  thumbnail" : "") : "";
+    const [g, tot] = progOf([...PROG.keys()]); if (t && budgetDropped.length) t += `\nGPU budget: ${budgetDropped.join(", ")} skipped`; if (t && tot) t += `\ndownloading ${mb(g)} of ${mb(tot)}`;
     if (t !== lastLod) { q("#v3-lod").textContent = lastLod = t; }
     /* final: once the field is shown, a small progress note while the finer levels of the current view stream in */
     if (species && (!wanted || wanted === species)) {
@@ -482,7 +612,7 @@ export async function mount(root, app, opts = {}) {
       if (rest.length && (!msgEl.textContent || msgEl.dataset.prog)) {
         const tot2 = rest.reduce((a, x) => a + (PROG.get(x)?.total ?? cubeOf(x)?.webp?.bytes?.reduce((s, b) => s + b, 0) ?? 0), 0), got2 = rest.reduce((a, x) => a + (PROG.get(x)?.got ?? 0), 0);
         const lvls = [...new Set(rest.map(x => x.split("|")[2]))].join(", ");
-        say(`${lab(species)} shown · loading ${lvls} for this view · ${mb(got2)} of ${mb(tot2)}`, false, false, "", true); }
+        say(`${lab(species)} shown, loading ${lvls} for this view, ${mb(got2)} of ${mb(tot2)}`, false, false, "", true); }
       else if (!rest.length) clearProg(); }
   }
   const cubeOf = key => { const [kind, kk, L] = key.split("|"); return kind === "stars" ? manifest?.stars?.cubes?.[L] : manifest?.gas?.fields?.[kk]?.cubes?.[L]; };
@@ -537,36 +667,40 @@ export async function mount(root, app, opts = {}) {
   }
   async function setSpecies(k) {
     if (!manifest) { say(viz ? `3D data not available${manErr ? ` (${manErr})` : ""}. Sightlines, ray picking and the spectra still work.` : "3D data not published for this build. Sightlines, ray picking and the spectra still work.", false); return false; }
-    if (!fld(k)) return false;
-    if (species === k && (TEX.has(keyOf("gas", k, "L0")) || TEX.has(keyOf("gas", k, "L1")))) { if (wanted !== k) { loadTok++; wanted = k; progMsg = null; clearProg(); } q("#v3-species").value = k; return true; }
-    const tok = ++loadTok; wanted = k; q("#v3-species").value = k; viewer.loadError = null;
+    if (!fld(k)) { const x = specOf(k);   // Phase 3: an ion whose cubes are not built yet (or an unknown key): no exception
+      viewer.loadError = {key: k, message: x ? x.reason || "not available" : `unknown field ${k}`};
+      if (x) say(`${x.reason.charAt(0).toUpperCase()}${x.reason.slice(1)}.`, false, true); markSpecies(species); return false; }
+    if (species === k && (TEX.has(keyOf("gas", k, "L0")) || TEX.has(keyOf("gas", k, "L1")))) { if (wanted !== k) { loadTok++; wanted = k; progMsg = null; clearProg(); } markSpecies(k); thumbLabel(); return true; }
+    const tok = ++loadTok; wanted = k; markSpecies(k); viewer.loadError = null;
     /* final: the first frame waits for L0 alone (the coarse, whole-halo level); L1 and the rest follow (ensure / pump) */
     const L1st = fld(k).cubes.L0 ? "L0" : "L1", c1 = fld(k).cubes[L1st];
     const tot1 = c1.webp.bytes.reduce((a, b) => a + b, 0), k1 = keyOf("gas", k, L1st);
     say(`loading ${lab(k)} (${L1st}, ${mb(tot1)})…`, false, false, "", true); announce(`loading ${lab(k)}`);
     progMsg = () => { if (tok !== loadTok || species === k) { progMsg = null; return; } const p = PROG.get(k1);
-      if (p) say(`loading ${lab(k)} (${L1st}) · ${mb(p.got)} of ${mb(p.total)}…`, false, false, "", true); else if (TEX.has(k1) || PEND.has(k1)) say(`preparing ${lab(k)}…`, false, false, "", true); };
+      if (p) say(`loading ${lab(k)} (${L1st}), ${mb(p.got)} of ${mb(p.total)}…`, false, false, "", true); else if (TEX.has(k1) || PEND.has(k1)) say(`preparing ${lab(k)}…`, false, false, "", true); };
     try {
       const t0 = performance.now(); stats.speciesAt ??= Math.round(t0); await ensure();
       if (tok !== loadTok) return false;
       species = k; bindAll(); syncTfInputs(); applyTf();
       const gl = renderer.getContext(), t1 = performance.now(); draw(true); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
       stats.firstFrameMs = performance.now() - t1; stats.firstBindMs = t1 - t0; stats.firstFrameAt ??= Math.round(performance.now());
-      say(""); announce(`${lab(k)} shown`); hostErr = null; lodStatus();
+      say(""); announce(`${lab(k)} shown`); hostErr = null; lodStatus(); thumbLabel(); spinKick();
       setTimeout(() => { ensure().catch(() => {}); calibrate(); }, 0);
       return true;
     } catch (x) {
       if (tok !== loadTok) return false;
-      progMsg = null; viewer.loadError = {key: k, message: x.message}; wanted = species; q("#v3-species").value = species || k;
+      progMsg = null; viewer.loadError = {key: k, message: x.message}; wanted = species; markSpecies(species || null);
       if (x instanceof HostError) hostMessage(x);
       else say(`Could not load ${lab(k)}: ${String(x.message).replace(/\.?$/, ".")}` + (species ? ` Still showing ${lab(species)}.` : ""), true);
       return false;
     }
   }
   /* fix-ui V8: the gas-field options carry the unit of what is drawn (a column in integral mode, a density in volume mode) */
-  function speciesUnits() { for (const o of q("#v3-species").options) { const f = manifest?.gas?.fields?.[o.value]; if (!f) continue;
-    const u = mode === "integral" && !weighted(o.value) ? (f.proj?.units || "cm^-2") : f.units; o.textContent = `${SPECIES_LABEL[o.value] || o.value} · ${pretty(u)}`; } }
-  function setMode(m) { if (!["integral", "volume"].includes(m)) return false; if (m === mode) return true; mode = m; q("#v3-mode").value = m; speciesUnits();
+  /* fix-ui V8 / Phase 3: each field button's tooltip names what is drawn and its unit (a column in integral mode) */
+  function speciesUnits() { for (const i of ctlBox.querySelectorAll('input[name="v3-species"]')) { const f = fld(i.value), x = specOf(i.value); if (!f || !x) continue;
+    const u = mode === "integral" && !weighted(i.value) ? (f.proj?.units || "cm^-2") : f.units;
+    i.nextElementSibling.title = `${x.long}, ${mode === "integral" ? (weighted(i.value) ? "projected mean" : "column") : "density"} in ${pretty(u)}`; } }
+  function setMode(m) { if (!["integral", "volume"].includes(m)) return false; if (m === mode) return true; mode = m; markMode(m); speciesUnits();
     if (species) { syncTfInputs(); applyTf(); ensure().catch(() => {}); bindAll(); } else { aria(); render(); } return true; }
   function setStars(o = {}) {
     if (o.on !== undefined) layer.stars = !!o.on && !!manifest?.stars;
@@ -576,7 +710,7 @@ export async function mount(root, app, opts = {}) {
     if (Number.isFinite(+o.mu0) && o.mu0) layer.mu0 = Math.min(28, Math.max(14, +o.mu0));
     if (Number.isFinite(+o.gasMix) && o.gasMix !== null && o.gasMix !== undefined) layer.gasMix = Math.min(1, Math.max(0, +o.gasMix));
     q("#v3-stars").checked = layer.stars; q("#v3-starmix").value = layer.starMix; q("#v3-starmix-o").textContent = layer.starMix.toFixed(2);
-    q("#v3-mu0").value = layer.mu0; q("#v3-mu0-o").textContent = layer.mu0.toFixed(1); q("#v3-gasmix").value = layer.gasMix; q("#v3-gasmix-o").textContent = layer.gasMix.toFixed(2);
+    q("#v3-mu0").value = layer.mu0; q("#v3-mu0-o").textContent = layer.mu0.toFixed(1); q("#v3-gasmix").value = layer.gasMix; q("#v3-gasmix-o").textContent = layer.gasMix.toFixed(2); fillRanges();
     /* tune2: no star request before the first gas field is wanted, so a cold first load fetches the gas L1 cube first */
     if (manifest && (species || wanted)) { ensure().catch(x => { if (x instanceof HostError) hostMessage(x); }); bindAll(); }
     legend(); aria(); render(); viewer?.hooks?.starsChanged?.(layer.stars);
@@ -591,11 +725,11 @@ export async function mount(root, app, opts = {}) {
     for (const id of ["#v3-lo", "#v3-hi"]) { const i = q(id); i.min = a; i.max = b; }
     q("#v3-lo").value = s.lo; q("#v3-hi").value = s.hi; q("#v3-op").value = s.opacity; q("#v3-cmap").value = s.cmap;
     q("#v3-lo-o").textContent = (+s.lo).toFixed(1); q("#v3-hi-o").textContent = (+s.hi).toFixed(1); q("#v3-op-o").textContent = (+s.opacity).toFixed(2);
-    q("#v3-op").disabled = mode !== "volume"; }
+    q("#v3-op").disabled = mode !== "volume"; fillRanges(); }
   let lastCmap = null;
   function applyTf() { if (!manifest || !species) return; const s = fieldTf(species);
     U.uWin.value.set(s.lo, s.hi); U.uOpacity.value = +s.opacity; U.uMode.value = mode === "volume" ? 1 : 0; U.uKind.value = weighted(species) ? 1 : 0;
-    U.uFadeDex.value = FADE_DEX[species] ?? 1.0; U.uVolK.value = VOL.k; U.uVolGain.value = VOL.gain;
+    U.uFadeDex.value = fadeDex(species); U.uVolK.value = VOL.k; U.uVolGain.value = VOL.gain;
     if (s.cmap !== lastCmap) { RM.lutTex.image.data.set(lut(s.cmap)); RM.lutTex.needsUpdate = true; lastCmap = s.cmap; }
     legend(); aria(); render(); }
   function setTransfer(o = {}) { if (!species) return; const s = fieldTf(species), [a, b] = winRange(species);
@@ -607,7 +741,7 @@ export async function mount(root, app, opts = {}) {
     const f = fld(species), s = fieldTf(species); L.hidden = false;
     const integ = mode === "integral", units = integ ? (weighted(species) ? f.units : (f.proj.units || "cm^-2")) : f.units;
     const esc = t => String(t).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"})[c]);
-    L.querySelector(".ttl").innerHTML = integ ? `log₁₀ ${COL_HTML[species] || esc(COL_LABEL[species] || lab(species))} [${esc(pretty(units))}]` : `log₁₀ ${VOL_HTML[species] || esc(lab(species))} [${esc(pretty(units))}] · volume`;
+    L.querySelector(".ttl").innerHTML = integ ? `log₁₀ ${COL_HTML[species] || esc(COL_TXT[species] || `N(${lab(species)})`)} [${esc(pretty(units))}]` : `log₁₀ ${VOL_HTML[species] || esc(isIon(species) ? `n(${lab(species)})` : lab(species))} [${esc(pretty(units))}], volume`;
     L.querySelector(".bar").style.background = cssGradient(s.cmap);
     const tk = L.querySelector(".ticks"); tk.textContent = ""; const span = s.hi - s.lo || 1, st = span > 6 ? 2 : span > 2.5 ? 1 : span > 1.2 ? 0.5 : span > 0.5 ? 0.2 : 0.1;
     for (let v = Math.ceil(s.lo / st) * st; v <= s.hi + 1e-9; v += st) { const sp = document.createElement("span");
@@ -630,22 +764,22 @@ export async function mount(root, app, opts = {}) {
     requestAnimationFrame(now => { rq = false; draw(!moving); if (stepFades(now)) render(); else if (!moving) refineLater(); }); }
   /* tune2: progressive refine frames while the view is still (each blends 1/(k+1) into the accumulation target) */
   function refineLater() { if (accT) return; accT = requestAnimationFrame(() => { accT = 0;
-    if (moving || rq || accK === 0 || accK >= Math.min(ACC_N, accMax) || document.hidden || ctxLost) return; draw(true, true); refineLater(); }); }
+    if (moving || rq || accK === 0 || accK >= Math.min(ACC_N, docked === "thumb" ? THUMB.acc : accMax) || spinRaf || document.hidden || ctxLost) return; draw(true, true); refineLater(); }); }
   function setPR(pr) { if (Math.abs(pr - curPR) < 1e-6) return; curPR = pr; renderer.setPixelRatio(pr); renderer.setSize(stage.clientWidth || 600, stage.clientHeight || 400, false); }
   function motion() { moving = true; clearTimeout(quietT); quietT = setTimeout(() => { moving = false; render(); }, 150); render(); }
   const accSize = new T.Vector2();
   function draw(exact = true, acc = false) {
-    setPR(exact ? exactPR : Math.min(PR * 0.5, exactPR));
+    const th = docked === "thumb"; setPR(th ? PR : exact ? exactPR : Math.min(PR * 0.5, exactPR));
     if (!acc) accK = 0;
     /* tune3: half-voxel steps for exact frames in close views (L2), so the finest grid shows no step banding */
-    U.uSpv.value = exact ? (hVis() < 30 ? 2.0 : 1.0) : 0.5; U.uStarFloor.value = STAR_COMP.floor; U.uCompMode.value = STAR_COMP.mode; U.uOccRange.value.set(...[0, 1].map(i => STAR_CLOSE.occ[i] + (STAR_ZOOM.occWide[i] - STAR_CLOSE.occ[i]) * zoomW())); U.uGasW.value = STAR_CLOSE.gasW + (1 - STAR_CLOSE.gasW) * zoomW(); U.uExact.value = exact || useMovingExact ? 1 : 0;
+    U.uSpv.value = th ? THUMB.spv : exact ? (hVis() < 30 ? 2.0 : 1.0) : 0.5; U.uStarFloor.value = STAR_COMP.floor; U.uCompMode.value = STAR_COMP.mode; U.uOccRange.value.set(...[0, 1].map(i => STAR_CLOSE.occ[i] + (STAR_ZOOM.occWide[i] - STAR_CLOSE.occ[i]) * zoomW())); U.uGasW.value = STAR_CLOSE.gasW + (1 - STAR_CLOSE.gasW) * zoomW(); U.uExact.value = exact || useMovingExact ? 1 : 0;
     const c = camera.position; U.uCamDisk.value.set(c.dot(Xv), c.dot(Yv), c.dot(Lv)); U.uFrame.value = (++frameNo) % 1024;
     U.uGasMix.value = species ? layer.gasMix : 0; U.uStarMix.value = layer.stars ? layer.starMix : 0;
     U.uStarQ.value = layer.Q; U.uStarSat.value = layer.sat; U.uStarS0.value = 10 ** (0.4 * (MU_ZERO - mu0Eff())); U.uStarBal.value.set(...layer.balance);
     if (guides.visible) guideFit();
     selUniforms();
     renderer.getDrawingBufferSize(accSize); U.uPxAng.value = 2 * Math.tan(camera.fov * Math.PI / 360) / Math.max(accSize.y, 1);
-    const lc = species && LOD_C.field[species] || LOD_C.gas; U.uLodC.value.set(lc, LOD_C.stars);
+    U.uLodC.value.set(species ? lodField(species) : LOD_C.gas, LOD_C.stars);
     const dT = camera.position.distanceTo(controls.target); U.uNear.value.set(NEAR[0] * dT, NEAR[1] * dT);
     if (exact) {
       if (accRT.width !== accSize.x || accRT.height !== accSize.y) { accRT.setSize(accSize.x, accSize.y); accK = 0; }
@@ -664,8 +798,8 @@ export async function mount(root, app, opts = {}) {
     ring.scale.setScalar(r / frame.R200c);
     const len = Math.min(150, 0.7 * hv); arrow.setLength(len, 0.16 * len, 0.08 * len);
     if (r !== ringR) { ringR = r; const g = q(".v3d-leg .gd");
-      g.innerHTML = r === frame.R200c ? `<i></i>guides: ring R<sub>200c</sub> = ${Math.round(r)} kpc · arrow: disk normal`
-        : `<i></i>guides: ring ${r} kpc (R<sub>200c</sub> = ${Math.round(frame.R200c)} kpc is off-screen) · arrow: disk normal`; } }
+      g.innerHTML = r === frame.R200c ? `<i></i>guides: ring R<sub>200c</sub> = ${Math.round(r)} kpc<br><i></i>arrow: disk normal`
+        : `<i></i>guides: ring ${r} kpc (R<sub>200c</sub> = ${Math.round(frame.R200c)} kpc is off-screen)<br><i></i>arrow: disk normal`; } }
   /* tune4: 0 in close views → 1 in wide views (STAR_ZOOM) */
   function zoomW() { const t = Math.min(1, Math.max(0, (hVis() - STAR_ZOOM.h[0]) / (STAR_ZOOM.h[1] - STAR_ZOOM.h[0]))); return t * t * (3 - 2 * t); }
   function mu0Eff() { return layer.mu0 + STAR_ZOOM.dmag[0] + (STAR_ZOOM.dmag[1] - STAR_ZOOM.dmag[0]) * zoomW(); }
@@ -696,6 +830,7 @@ export async function mount(root, app, opts = {}) {
     useMovingExact = keep; return ts;
   }
   function calibrate() {
+    if (docked !== "full") return;     // Phase 3: calibrated on the full stage only (dock() calls it)
     const sig = JSON.stringify(levels()); if (!species || sig === calibrated) return; calibrated = sig;
     const p0 = camera.position.clone(); const t = median(timeFrames(5, false, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
     useMovingExact = t <= 1000 / 30; stats.calibration = {moving_exact_ms: t, moving_path: useMovingExact ? "exact" : "fast"};
@@ -772,7 +907,7 @@ export async function mount(root, app, opts = {}) {
   }
   let down = null;
   canvas.addEventListener("pointerdown", ev => { down = {x: ev.clientX, y: ev.clientY, t: performance.now()}; });
-  canvas.addEventListener("pointerup", ev => { if (!down || viewer.picking) { down = null; return; }
+  canvas.addEventListener("pointerup", ev => { if (!down || viewer.picking || docked !== "full") { down = null; return; }
     const moved = Math.hypot(ev.clientX - down.x, ev.clientY - down.y), dt = performance.now() - down.t; down = null;
     if (moved >= (ev.pointerType === "touch" ? 6 : 5) || dt >= 400) return;
     const r = canvas.getBoundingClientRect(), id = nearestLine(ev.clientX - r.left, ev.clientY - r.top, ev.pointerType === "touch" ? 14 : 8);
@@ -787,13 +922,17 @@ export async function mount(root, app, opts = {}) {
     const on = isFs(); if (!on) fsExitAt = performance.now();
     if (!on && fsScroll) { const [x, y] = fsScroll; fsScroll = null;   // back to where the page was (after the layout settles)
       requestAnimationFrame(() => requestAnimationFrame(() => scrollTo({left: x, top: y, behavior: "instant"}))); }
-    q("#v3-fs").textContent = on ? "Exit fullscreen" : "Fullscreen"; q("#v3-fs").setAttribute("aria-pressed", String(on));
+    q("#v3-fs span").textContent = on ? "Exit fullscreen" : "Fullscreen"; q("#v3-fs").setAttribute("aria-pressed", String(on));
+    /* Phase 3: the control column lives beside the stage; in fullscreen it moves onto it as the closable panel, and back */
+    if (on && ctlBox.parentNode !== el) { ctlHome = [ctlBox.parentNode, ctlBox.nextSibling]; el.appendChild(ctlBox); }
+    else if (!on && ctlBox.parentNode === el) { const [pa, nx] = ctlHome || []; if (pa) pa.insertBefore(ctlBox, nx && nx.parentNode === pa ? nx : null); else ctlBox.remove(); ctlHome = null; }
     /* tune4: fullscreen opens with the settings panel collapsed (the Controls button shows it), and on exit the focus moves
        from the canvas to the Fullscreen button without a focus ring, so no outline is left around the stage */
     setPanel(on ? false : true); resize(); el.classList.add("v3d-pf");
     if (on) canvas.focus({preventScroll: true, focusVisible: false});   // keyboard ready, but no ring around the whole screen
     else if (document.activeElement === canvas || el.contains(document.activeElement)) { try { q("#v3-fs").focus({preventScroll: true, focusVisible: false}); } catch { canvas.blur(); } } }
-  function setPanel(open) { const c = q("#v3-ctl"); c.hidden = isFs() ? !open : false; q("#v3-ctl-toggle").setAttribute("aria-expanded", String(!c.hidden));
+  let ctlHome = null;
+  function setPanel(open) { const c = ctlBox; c.hidden = isFs() ? !open : false; q("#v3-ctl-toggle").setAttribute("aria-expanded", String(!c.hidden));
     el.classList.toggle("v3d-panel", isFs() && !c.hidden); }
   /* fix-ui FE-08: while the CSS fallback covers the page, everything behind it is inert, so Tab stays inside the viewer */
   let inertEls = [];
@@ -805,6 +944,7 @@ export async function mount(root, app, opts = {}) {
   async function toggleFullscreen(force) {
     const on = force === undefined ? !isFs() : !!force;
     if (on === isFs()) return on;
+    if (on && docked !== "full") return false;          // Phase 3: never from the thumbnail
     if (on) {
       fsScroll = [scrollX, scrollY];
       // a requestFullscreen promise that never settles (seen in headless Edge) must not leave the button dead:
@@ -822,11 +962,12 @@ export async function mount(root, app, opts = {}) {
   el.addEventListener("pointerdown", () => el.classList.remove("v3d-pf"), true);
   document.addEventListener("fullscreenchange", fsChanged); document.addEventListener("webkitfullscreenchange", fsChanged);
   q("#v3-fs").addEventListener("click", () => toggleFullscreen());
-  q("#v3-ctl-toggle").addEventListener("click", () => setPanel(q("#v3-ctl").hidden));
+  q("#v3-fs-exit").addEventListener("click", () => toggleFullscreen(false));
+  q("#v3-ctl-toggle").addEventListener("click", () => setPanel(ctlBox.hidden));
 
   /* ---- keyboard on the canvas ---- */
   canvas.addEventListener("keydown", ev => {
-    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.isComposing) return;     // fix-ui FE-07: Cmd/Ctrl/Alt shortcuts stay the browser's
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.isComposing || docked !== "full") return;     // fix-ui FE-07: Cmd/Ctrl/Alt shortcuts stay the browser's
     const k = ev.key, tgt = controls.target, off = camera.position.clone().sub(tgt), rot = (axis, deg) => { off.applyAxisAngle(axis, deg * Math.PI / 180); camera.position.copy(tgt).add(off); camera.lookAt(tgt); controls.update(); };
     const right = new T.Vector3().crossVectors(off, camera.up).normalize();
     if (k === "ArrowLeft") rot(camera.up, -5); else if (k === "ArrowRight") rot(camera.up, 5);
@@ -845,15 +986,13 @@ export async function mount(root, app, opts = {}) {
     ev.preventDefault(); ev.stopPropagation(); render(); });
 
   /* ---- controls ---- */
-  const sp = q("#v3-species");
-  for (const k of VOL_KEYS) { const f = manifest?.gas?.fields?.[k]; const o = document.createElement("option"); o.value = k;
-    o.textContent = SPECIES_LABEL[k] || k; o.title = SPECIES_LONG[k] || k; o.disabled = !f; sp.appendChild(o); }
   speciesUnits();
   for (const c of CMAPS) { const o = document.createElement("option"); o.value = c; o.textContent = c; q("#v3-cmap").appendChild(o); }
-  for (const id of ["#v3-species", "#v3-mode", "#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars"]) q(id).disabled = !manifest;
+  for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.disabled = !manifest;
+  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars"]) q(id).disabled = !manifest;
   if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0"]) q(id).disabled = true;
-  sp.addEventListener("change", () => setSpecies(sp.value));
-  q("#v3-mode").addEventListener("change", ev => setMode(ev.target.value));
+  q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) setSpecies(ev.target.value); });
+  q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) setMode(ev.target.value); });
   q("#v3-lo").addEventListener("input", ev => setTransfer({lo: Math.min(+ev.target.value, fieldTf(species).hi - 0.1)}));
   q("#v3-hi").addEventListener("input", ev => setTransfer({hi: Math.max(+ev.target.value, fieldTf(species).lo + 0.1)}));
   q("#v3-op").addEventListener("input", ev => setTransfer({opacity: +ev.target.value}));
@@ -865,14 +1004,15 @@ export async function mount(root, app, opts = {}) {
   q("#v3-guides").addEventListener("change", ev => setGuides({ring: ev.target.checked}));
   q("#v3-scale").addEventListener("change", ev => setGuides({scale: ev.target.checked}));
   q("#v3-lines").addEventListener("change", ev => setLines(ev.target.value));
-  el.querySelectorAll(".presets [data-p]").forEach(b => b.addEventListener("click", () => setPreset(b.dataset.p)));
+  ctlBox.querySelectorAll(".presets [data-p]").forEach(b => b.addEventListener("click", () => setPreset(b.dataset.p)));
   function setLines(m) { if (!["selected", "showcase", "all", "none"].includes(m)) return; linesMode = m; q("#v3-lines").value = m; refreshLines(); }
 
   const onSel = ev => select(ev.detail?.id), onCat = () => refreshLines();
   addEventListener("tng:select", onSel); addEventListener("tng:catalog", onCat);
   Object.assign(viewer, {drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
     setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes,
-    dispose() { loadTok++; anim++; progMsg = null; clearTimeout(quietT); clearTimeout(progT); clearTimeout(liveT); if (accT) cancelAnimationFrame(accT); accT = 0;
+    dispose() { loadTok++; anim++; progMsg = null; ENGINE = null; io?.disconnect(); if (spinRaf) cancelAnimationFrame(spinRaf); spinRaf = 0;
+      document.removeEventListener("visibilitychange", spinKick); if (thumbHost && thumbClick) thumbHost.removeEventListener("click", thumbClick); ctlBox.remove(); clearTimeout(quietT); clearTimeout(progT); clearTimeout(liveT); if (accT) cancelAnimationFrame(accT); accT = 0;
       if (fallbackFs) toggleFullscreen(false); else if (fsEl() === el) document.exitFullscreen?.().catch(() => {});
       try { dprMq?.removeEventListener("change", onDpr); } catch { /* ignore */ }
       if (smoothW) { smoothW.terminate(); smoothW = null; for (const [, p] of smoothP) p[1](new Error("viewer disposed")); smoothP.clear(); }
@@ -880,11 +1020,99 @@ export async function mount(root, app, opts = {}) {
       document.removeEventListener("fullscreenchange", fsChanged); document.removeEventListener("webkitfullscreenchange", fsChanged); removeEventListener("keydown", onFsKey, true);
       for (const o of TEX.values()) o.tex.dispose(); RM.lutTex.dispose(); RM.material.dispose(); accRT.dispose(); blitMat.dispose(); controls.dispose(); renderer.dispose(); el.remove(); }});
   if (loader) loader.prune().catch(() => {});
-  setStars({}); setGuides({ring: false, scale: true}); q("#v3-mode").value = mode;
+  setStars({}); setGuides({ring: false, scale: true}); markMode(mode);
   stats.mountAt = Math.round(performance.now());
+
+  /* ---- Phase 3 docking: one canvas, shown on the full stage or in the Spectra-tab thumbnail ---- */
+  const vis = {full: false, thumb: false};
+  let dockMode = "auto", savedPose = null, thumbSpin = true, thumbClick = null, spinLast = 0;
+  const shown = h => !!h && h.isConnected && h.getClientRects().length > 0;
+  const io = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver(es => {
+    for (const e of es) { if (e.target === fullHost) vis.full = e.isIntersecting; if (e.target === thumbHost) vis.thumb = e.isIntersecting; }
+    autoDock(); spinKick(); }) : null;
+  const onScreen = w => (w === "full" ? fullHost : thumbHost) && (io ? vis[w] : shown(w === "full" ? fullHost : thumbHost));
+  function autoDock() { if (dockMode !== "auto" || isFs()) return;
+    if (onScreen("full")) dock("full"); else if (onScreen("thumb")) dock("thumb"); }
+  const pose = () => ({p: camera.position.clone(), t: controls.target.clone(), u: camera.up.clone()});
+  function setPoseTo(o) { anim++; camera.position.copy(o.p); controls.target.copy(o.t); camera.up.copy(o.u); camera.lookAt(o.t); controls.update(); }
+  function dock(where) {
+    if (where === "auto") { dockMode = "auto"; autoDock(); return docked; }
+    if (!["full", "thumb"].includes(where)) return docked;
+    const host = where === "thumb" ? thumbHost : fullHost; if (!host || where === docked || isFs()) return docked;
+    const was = docked;
+    if (where === "thumb") { viewer.hooks.exitPick?.(); anim++; if (was !== "thumb") savedPose = pose(); }
+    host.appendChild(el); docked = where; el.classList.toggle("v3d-thumb", where === "thumb");
+    controls.enabled = where === "full";
+    if (where === "full") { canvas.tabIndex = 0; canvas.removeAttribute("aria-hidden"); if (savedPose && was === "thumb") setPoseTo(savedPose); savedPose = null; }
+    else { canvas.removeAttribute("tabindex"); canvas.setAttribute("aria-hidden", "true"); }
+    resize(); lodStatus(); thumbLabel();
+    if (manifest && (species || wanted)) ensure().catch(x => { if (x instanceof HostError) hostMessage(x); });
+    if (where === "full" && species) setTimeout(calibrate, 0);
+    spinKick(); render(); viewer.hooks.docked?.(where);
+    return docked;
+  }
+  function thumbLabel() { const t = q(".v3d-tt .f"); if (t) t.textContent = species ? lab(species) : ""; }
+  /* the thumbnail's slow turn about the disk normal: only while it is docked, on screen, the page visible, motion allowed */
+  const spinning = () => docked === "thumb" && thumbSpin && !!species && !document.hidden && !reduced() && !ctxLost && (io ? vis.thumb : true);
+  function spinKick() {
+    if (spinning()) { if (!spinRaf) { spinLast = 0; spinRaf = requestAnimationFrame(spinTick); } }
+    else if (spinRaf) { cancelAnimationFrame(spinRaf); spinRaf = 0; render(); } }
+  function spinTick(now) {
+    spinRaf = 0; if (!spinning()) { render(); return; }
+    if (!spinLast) spinLast = now - 1000 / THUMB.fps;
+    const dt = now - spinLast;
+    if (dt >= 1000 / THUMB.fps - 2) { spinLast = now;
+      const off = camera.position.clone().sub(controls.target).applyAxisAngle(Lv, THUMB.degPerSec * Math.min(dt, 250) / 1000 * Math.PI / 180);
+      camera.position.copy(controls.target).add(off); camera.lookAt(controls.target);
+      const t0 = performance.now(); accK = 0; draw(true); stats.thumbFrameMs = performance.now() - t0; }
+    spinRaf = requestAnimationFrame(spinTick); }
+  document.addEventListener("visibilitychange", spinKick);
+  /* the full stage: the page's square #v3d-stage, or the layout built here */
+  function _attachFull(root, o = {}) {
+    if (!root) throw new Error("mount: no root element");
+    let stageHost = root, colHost = o.controls || null;
+    if (!root.closest("#v3d-stage")) {
+      root.textContent = "";
+      const lay = document.createElement("div"); lay.className = "v3d-layout";
+      const sq = document.createElement("div"); sq.className = "v3d-sq"; sq.dataset.testid = "v3d-stage"; if (!document.getElementById("v3d-stage")) sq.id = "v3d-stage";
+      const side = document.createElement("div"); side.className = "v3d-side"; side.dataset.testid = "v3d-controls"; if (!document.getElementById("v3d-controls")) side.id = "v3d-controls";
+      lay.append(sq, side); root.appendChild(lay); stageHost = sq; colHost ||= side;
+    } else {
+      colHost ||= document.getElementById("v3d-controls");
+      if (!colHost) { colHost = document.createElement("div"); colHost.id = "v3d-controls"; colHost.dataset.testid = "v3d-controls"; root.closest("#v3d-stage").after(colHost); }
+      for (const c of [...root.childNodes]) if (c !== el) c.remove();       // the page's "loading the 3D view" note
+    }
+    if (fullHost && io) io.unobserve(fullHost);
+    fullHost = stageHost; io?.observe(fullHost);
+    if (ctlBox.parentNode !== colHost && !isFs()) colHost.insertBefore(ctlBox, colHost.firstChild);
+    const pr = colHost.querySelector("#picker-root") || document.getElementById("picker-root"), slot = ctlBox.querySelector(".v3c-pick");
+    if (pr && !ctlBox.contains(pr)) slot.appendChild(pr);
+    else if (!pr) { const d = document.createElement("div"); d.id = "picker-root"; slot.appendChild(d); }
+    if (o.dock) dockMode = o.dock === "auto" ? "auto" : "manual";
+    if (shown(fullHost) || !docked) { if (o.dock && o.dock !== "auto") dock(o.dock); else if (shown(fullHost) || !thumbHost) dock("full"); }
+    return viewer;
+  }
+  function _attachThumb(host, o = {}) {
+    if (!host) throw new Error("mountThumb: no host element");
+    if (thumbHost && thumbHost !== host) { if (thumbClick) thumbHost.removeEventListener("click", thumbClick); io?.unobserve(thumbHost); if (docked === "thumb") { docked = null; el.remove(); } }
+    thumbHost = host; thumbSpin = o.spin !== false; io?.observe(host); el.classList.toggle("v3d-notags", o.tags === false);
+    if (typeof o.onOpen === "function") { thumbClick = ev => { ev.preventDefault(); o.onOpen(); }; host.addEventListener("click", thumbClick); }
+    if (!docked || (docked === "full" && !onScreen("full") && shown(host))) dock("thumb");
+    const t = {viewer, host, get active() { return docked === "thumb" && thumbHost === host; }, setSpin(on) { thumbSpin = !!on; spinKick(); return thumbSpin; },
+      dispose() { if (thumbHost !== host) return; if (thumbClick) host.removeEventListener("click", thumbClick); thumbClick = null; io?.unobserve(host);
+        thumbHost = null; if (docked === "thumb") { docked = null; el.remove(); spinKick(); if (fullHost) dock("full"); } }};
+    return t;
+  }
+  let started = null;
+  function _start(k) {
+    return started ||= (async () => {
+      if (!manifest && hostDown) { hostMessage(new HostError(manErr || "no answer", hostDown)); return false; }
+      if (!manifest) { say(viz ? `3D data not available${manErr ? ` (${manErr})` : ""}. Sightlines, ray picking and the spectra still work.` : "3D data not published for this build. Sightlines, ray picking and the spectra still work."); return false; }
+      return setSpecies(k && fld(k) ? k : fld("nH") ? "nH" : Object.keys(manifest.gas.fields)[0]);
+    })();
+  }
+  Object.assign(viewer, {dock, _attachFull, _attachThumb, _start});
+  Object.defineProperty(viewer, "docked", {get: () => docked, enumerable: true});
   resize(); selId = null; refreshLines(); select(app.getState().id, true);
-  if (!manifest && hostDown) hostMessage(new HostError(manErr || "no answer", hostDown));
-  else if (!manifest) say(viz ? `3D data not available${manErr ? ` (${manErr})` : ""}. Sightlines, ray picking and the spectra still work.` : "3D data not published for this build. Sightlines, ray picking and the spectra still work.");
-  else await setSpecies(opts.species && fld(opts.species) ? opts.species : fld("nH") ? "nH" : Object.keys(manifest.gas.fields)[0]);
   return viewer;
 }

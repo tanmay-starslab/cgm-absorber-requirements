@@ -24,9 +24,10 @@ from server.app import create_app  # noqa: E402
 from server.jobs import JobQueue  # noqa: E402
 from server.ratelimit import RateLimiter, TokenBucket, client_ip  # noqa: E402
 from server.settings import Settings  # noqa: E402
-from server.storage import HFSync, LibraryStore  # noqa: E402
+from server.storage import HFSync, LibraryStore, npz_like  # noqa: E402
 from server.testing import FakeGenerator  # noqa: E402
 from server.workers import RemoteWorker, payload_to_npz_bytes  # noqa: E402
+from tngsight import ions as I  # noqa: E402
 from tngsight import library as L  # noqa: E402
 from tngsight.geometry import canonicalize  # noqa: E402
 
@@ -51,7 +52,7 @@ def libdir(tmp_path):
         o, b, a = sid.split("_")
         c = canonicalize(o, int(b[1:]), int(a[1:]))
         p = gen.generate(c)
-        L.save_npz(d / "sightlines" / L.npz_name(sid), p["geom"], p["logN"], p["tau"])
+        L.save_npz(d / "sightlines" / L.npz_name(sid), npz_like(p))
         cat.upsert(L.catalog_entry(p, {"rank": i + 1, "showcase_score": 2.0 - i, "ovi_showcase": True}, "library"))
     cat.save()
     yield d
@@ -86,6 +87,24 @@ def client_for(libdir, **over):
     gen, renderer = over.pop("gen", None), over.pop("renderer", None)
     s = settings(libdir, **over)
     return TestClient(create_app(s, generator=gen or s.generator, figure_renderer=renderer))
+
+
+def write_v1_npz(path, sid):
+    """A Phase-1/2 (npz v1) library file: OVI, HILyb, CIII on the 0.002 A grid (design.md §2.3 v1 members)."""
+    o, b, a = sid.split("_")[:3]
+    from tngsight.geometry import make_sightline
+    g = make_sightline(canonicalize(o, int(b[1:]), int(a[1:]))["orientation"], int(b[1:]), int(a[1:]))
+    out = {"geom": np.array(json.dumps(g, default=lambda x: x.tolist())), "v_sys": np.float64(g["v_sys_kms"])}
+    for k, rest in (("OVI", 1031.912), ("HILyb", 1025.7223), ("CIII", 977.02)):
+        lo = round(rest * (1 - 1500 / 299792.458) / 0.002) * 0.002
+        hi = round(rest * (1 + 1500 / 299792.458) / 0.002) * 0.002
+        lam = np.linspace(lo, hi, int(round((hi - lo) / 0.002 + 1))).astype(np.float32)
+        v = 299792.458 * (lam.astype(float) / rest - 1)
+        out[f"logN_{k}"] = np.float64(14.0)
+        out[f"{k}_lambda"], out[f"{k}_rest"] = lam, np.float64(rest)
+        out[f"{k}_tau"] = (1.5 * np.exp(-0.5 * ((v - 20) / 15) ** 2)).astype(np.float32)
+    with open(path, "wb") as fh:
+        np.savez_compressed(fh, **out)
 
 
 def wait_for(fn, timeout=20.0, every=0.02):
@@ -127,7 +146,8 @@ def test_health_and_warm(libdir):
         h = c.get("/api/health").json()
         assert h["status"] == "ok" and h["node"] == "test" and h["workers"]["local"]["state"] == "warm"
         assert h["library_size"] == 2 and h["generated_size"] == 0 and h["queue"] == {"queued": 0, "running": 0}
-        assert set(h) >= {"version", "warm", "workers", "queue"}
+        assert set(h) >= {"version", "warm", "workers", "queue", "registry_tag", "data_version", "ions"}
+        assert h["registry_tag"] == I.registry_tag() and h["data_version"] == 2 and h["ions"] == list(I.KEYS)
 
 
 def test_health_local_disabled_and_broken_load(libdir):
@@ -147,7 +167,8 @@ def test_catalog_etag_and_cache(libdir):
         r = c.get("/api/catalog")
         assert r.status_code == 200 and r.headers["cache-control"] == "max-age=60"
         doc, etag = r.json(), r.headers["etag"]
-        assert doc["version"] == 1 and {"galaxy", "lines"} <= set(doc)
+        assert doc["version"] == 2 and {"galaxy", "ions", "registry_tag"} <= set(doc)
+        assert all(e["data_version"] == 2 and e["lines"] == list(I.KEYS) for e in doc["entries"])
         assert [e["id"] for e in doc["entries"]] == list(LIB_IDS)
         assert all(e["source"] == "library" for e in doc["entries"])
         r2 = c.get("/api/catalog", headers={"If-None-Match": etag})
@@ -159,11 +180,11 @@ def test_sightline_bin_npz_and_ids(libdir):
         r = c.get(f"/api/sightline/{LIB_IDS[0]}.bin")
         assert r.status_code == 200 and r.headers["content-type"] == "application/octet-stream"
         d = L.decode_web(r.content)
-        assert set(d["lines"]) == {"OVI", "HILyb", "CIII"} and d["lines"]["OVI"]["n"] == 5165
+        assert d["version"] == 2 and list(d["lines"]) == list(I.KEYS) and d["lines"]["OVI"]["n"] == 3001
         r = c.get(f"/api/sightline/{LIB_IDS[1]}.npz")
         assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
         p = L.load_npz(io.BytesIO(r.content), id=LIB_IDS[1])
-        assert p["tau"]["CIII"].shape == (4889,)
+        assert p["format"] == 2 and p["tau"]["CIII"].shape == (12001,)
         assert c.get("/api/sightline/edge_b123_a045.bin").status_code == 404      # valid id, unknown
         assert c.get("/api/sightline/rand_b010_a010_s5.npz").status_code == 404
         for bad in ("face_b1_a000.bin", "edge_b100_a330.txt", "..%2Fcatalog.json", "x.bin",
@@ -333,6 +354,7 @@ def test_lease_progress_result_cycle(libdir):
         assert r.status_code == 200
         L1 = r.json()
         assert L1["job_id"] == j["job_id"] and L1["geom"]["id"] == "edge_b040_a007" and L1["lease_s"] == 120
+        assert L1["registry_tag"] == I.registry_tag()
         P1 = f"?lease={L1['lease']}"
         t.start()
         time.sleep(0.2)
@@ -361,7 +383,7 @@ def test_lease_progress_result_cycle(libdir):
         other = FakeGenerator().generate(canonicalize("edge", 41, 7))
         r = c.post(f"/api/worker/result/{j['job_id']}", content=payload_to_npz_bytes(other), headers=AUTH)
         assert r.status_code == 422 and "geom" in r.json()["detail"]
-        bad = dict(payload, tau=dict(payload["tau"], OVI=np.full(5165, np.nan, np.float32)))
+        bad = dict(payload, tau=dict(payload["tau"], OVI=np.full(12001, np.nan, np.float32)))
         assert c.post(f"/api/worker/result/{j['job_id']}", content=payload_to_npz_bytes(bad),
                       headers=AUTH).status_code == 422
         buf = io.BytesIO()
@@ -375,7 +397,8 @@ def test_lease_progress_result_cycle(libdir):
         assert c.post(f"/api/worker/result/{j['job_id']}", content=blob, headers=AUTH).status_code == 409
         assert c.post(f"/api/worker/progress/{j['job_id']}{P1}", json={"stage": "x", "frac": 0}, headers=AUTH).status_code == 409
         stored = L.load_npz(libdir / "generated" / "edge_b040_a007.npz")
-        np.testing.assert_array_equal(stored["tau"]["HILyb"], payload["tau"]["HILyb"])
+        for k in I.KEYS:
+            np.testing.assert_array_equal(stored["tau"][k], payload["tau"][k])
         # explicit failure: requeue once, then error
         P2 = f"?lease={got['r'].json()['lease']}"
         assert c.post(f"/api/worker/fail/{j2['job_id']}", json={"message": "oom"}, headers=AUTH).status_code == 422
@@ -565,24 +588,35 @@ def test_figure_endpoint_cache_and_errors(libdir):
     def renderer(payload, fmt, **kw):
         calls.append((payload["id"], fmt, kw))
         return PNG + b"fake" if fmt == "png" else b"%PDF-1.4 fake"
-    with client_for(libdir, local_worker=False, renderer=renderer, rl_figure=(60, 4)) as c:
-        body = {"id": LIB_IDS[0], "R_lo": 20000, "R_hi": 40000, "sn_hi": 8, "sn_lo": 5, "vwin": 300,
-                "intrinsic": False, "seed": 3, "fmt": "png"}
+    with client_for(libdir, local_worker=False, renderer=renderer, rl_figure=(60, 6)) as c:
+        pairs = {b: d["R"]["pair"] for b, d in I.BANDS.items()}
+        body = {"id": LIB_IDS[0], "ions": ["OVII", "HI", "CIV"], "R": {"uv": [15000, 50000], "xray": [300, 3000]},
+                "sn": [20, 5], "vhw": 300, "vc": -25.5, "intrinsic": False, "seed": 3, "fmt": "png"}
         r = c.post("/api/figure", json=body)
         assert r.status_code == 200 and r.content.startswith(PNG) and r.headers["content-type"] == "image/png"
         assert r.headers["content-disposition"].startswith("attachment;") and LIB_IDS[0] in r.headers["content-disposition"]
-        assert calls[0][2] == {"R_lo": 20000, "R_hi": 40000, "sn_hi": 8.0, "sn_lo": 5.0, "intrinsic": False,
-                               "vwin": 300.0, "seed": 3, "dpi": 240}
+        assert calls[0][2] == {"ions": ["HI", "CIV", "OVII"], "R": {**pairs, "uv": [15000, 50000], "xray": [300, 3000]},
+                               "sn": [20, 5], "vhw": 300, "vc": -25.5, "intrinsic": False, "seed": 3, "dpi": 240}
         assert c.post("/api/figure", json=body).content == r.content and len(calls) == 1      # LRU hit
         r = c.post("/api/figure", json=dict(body, fmt="pdf"))
         assert r.headers["content-type"] == "application/pdf" and len(calls) == 2
+        # defaults from the registry; the v2 fields map onto the uv band, S/N and vhw (one release)
+        c.post("/api/figure", json={"id": LIB_IDS[0]})
+        assert calls[-1][2] == {"ions": list(I.DEFAULTS["ions"]), "R": pairs, "sn": list(I.SNR["pair"]),
+                                "vhw": I.DEFAULTS["vhw_kms"], "vc": 0.0, "intrinsic": False, "dpi": 240}
+        c.post("/api/figure", json={"id": LIB_IDS[0], "R_lo": 20000, "R_hi": 40000, "sn_hi": 8, "sn_lo": 5, "vwin": 300})
+        assert calls[-1][2]["R"]["uv"] == [20000, 40000] and calls[-1][2]["sn"] == [8, 5] and calls[-1][2]["vhw"] == 300
+        assert len(calls) == 4
         assert c.post("/api/figure", json=dict(body, id="edge_b111_a000")).status_code == 404
         assert c.post("/api/figure", json=dict(body, id="../../x")).status_code == 422
         assert c.post("/api/figure", json=dict(body, fmt="svg")).status_code == 422
-        assert c.post("/api/figure", json=dict(body, R_lo=10)).status_code == 422
-        for bad in ({"R_hi": 41000}, {"sn_hi": 25}, {"sn_lo": 7.5}, {"seed": 100000}, {"vwin": 310}, {"vwin": 900}):
+        for bad in ({"ions": []}, {"ions": ["HILyb"]}, {"ions": ["HI", "HI"]}, {"ions": list(I.KEYS)[:7]},
+                    {"R": {"uv": [4000, 50000]}}, {"R": {"xray": [300, 6000]}}, {"R": {"radio": [300, 600]}},
+                    {"R": {"uv": [15000]}}, {"sn": [101, 5]}, {"sn": [20]}, {"sn": [1, 5]}, {"vhw": 5},
+                    {"vhw": 1501}, {"vc": 1600}, {"seed": 100000}, {"R_lo": 200000}, {"sn_hi": 101},
+                    {"vwin": 9}):
             assert c.post("/api/figure", json=dict(body, **bad)).status_code == 422, bad
-        r = c.post("/api/figure", json=body)
+        r = c.post("/api/figure", json=body)                 # 6 charged requests (cache hits count): burst spent
         assert r.status_code == 429 and "retry-after" in r.headers
 
 
@@ -591,6 +625,9 @@ def test_figure_real_png(libdir):
     with client_for(libdir, local_worker=False) as c:
         r = c.post("/api/figure", json={"id": LIB_IDS[0], "seed": 1, "fmt": "png"})
         assert r.status_code == 200 and r.content.startswith(PNG) and len(r.content) > 10000
+        r = c.post("/api/figure", json={"id": LIB_IDS[0], "ions": ["MgII", "NeVIII", "OVII"], "R": {"euv": [5000, 150000]},
+                                        "sn": [100, 2], "vhw": 10, "seed": 2, "fmt": "png"})
+        assert r.status_code == 200 and r.content.startswith(PNG)
 
 
 # ------------------------------------------------------------------------------ units: queue, storage, HF
@@ -864,7 +901,7 @@ def test_local_worker_spawn_process(libdir):
             return s_ if s_["status"] in ("done", "error") else None
         done = wait_for(poll, timeout=300, every=0.05)
         assert done["status"] == "done", done
-        assert seen & {"spectrum:OVI", "spectrum:HILyb", "spectrum:CIII"}, seen     # relayed from the child
+        assert seen & {f"spectrum:{k}" for k in I.KEYS}, seen                  # relayed from the child
 
 
 # ------------------------------------------------------------------------------ Phase 2: custom rays
@@ -949,16 +986,16 @@ def test_custom_submit_sse_ready_and_dedupe(libdir):
         t.join(60)
         assert not err and not t.is_alive()
         stages = [d["stage"] for e, d in evs if e == "progress"]
-        assert "fit" in stages and stages.index("fit") > stages.index("spectrum:CIII")
+        assert "fit" in stages and stages.index("fit") > stages.index(f"spectrum:{I.KEYS[-1]}")
         assert stages.index("fit") < stages.index("save")
         ev, done = evs[-1]
         assert ev == "done" and done["id"] == a["id"]
         e = done["entry"]
         assert e["orientation"] == "custom" and e["kind"] == "endpoints" and e["seed"] is None
         assert e["p0"] == [-100.0, 0.0, 0.0] and e["p1"] == [100.0, 0.0, 0.0]
-        assert e["has_components"] is True and set(e["n_fit"]) == {"OVI", "HILyb", "CIII"}
+        assert e["has_components"] is True and set(e["n_fit"]) == set(I.KEYS)
         assert e["length_kpc"] == 200.0 and e["b_segment_kpc"] == e["b_kpc"] == 0.0
-        assert set(done["components"]) == {"OVI", "HILyb", "CIII"}
+        assert set(done["components"]) == set(I.KEYS)                      # v2 rows {k: [[...], ...]}
         validate_components(done["components"])
         snap = c.get(f"/api/jobs/{a['job_id']}").json()
         assert snap["components"] == done["components"]
@@ -1101,17 +1138,19 @@ def test_validate_result_components_and_endpoint_geom(libdir):
         r = c.post(url, content=payload_to_npz_bytes(FakeGenerator().generate(canonicalize("face", 0, 0))), headers=AUTH)
         assert r.status_code == 422 and "geom" in r.json()["detail"]
         # malformed components
-        for bad in ({"OVI": [], "HILyb": []},
+        for bad in ({"HILyb": []}, {"OVI": [], "NaI": []}, {},
                     dict(payload["components"], OVI=[{"v": 0}]),
+                    dict(payload["components"], OVI=[[0, 1]]),
                     dict(payload["components"], OVI=[dict(payload["components"]["OVI"][0], logN=25.0)]),
-                    dict(payload["components"], OVI=[dict(payload["components"]["OVI"][0], flag=128)])):
+                    dict(payload["components"], OVI=[dict(payload["components"]["OVI"][0], flag=256)])):
             r = c.post(url, content=payload_to_npz_bytes(dict(payload, components=bad)), headers=AUTH)
             assert r.status_code == 422 and "components" in r.json()["detail"], r.text
         blob = payload_to_npz_bytes(payload)
         names = zipfile_names(blob)
-        assert "components_json.npy" in names and len(names) == 15
+        assert "components_json.npy" in names and len(names) == 5 + 6 * len(I.KEYS) + 1
         # a non-finite number inside components_json
         txt = json.dumps(payload["components"]).replace('"dv": 0.1', '"dv": NaN', 1)
+        assert "NaN" in txt
         r = c.post(url, content=_with_member(payload, txt), headers=AUTH)
         assert r.status_code == 422
         assert c.get(f"/api/jobs/{j['job_id']}").json()["status"] == "running"
@@ -1120,12 +1159,14 @@ def test_validate_result_components_and_endpoint_geom(libdir):
         e = r.json()["entry"]
         assert e["has_components"] is True and e["orientation"] == "custom"
         snap = c.get(f"/api/jobs/{j['job_id']}").json()
-        assert snap["status"] == "done" and snap["components"] == payload["components"]
+        assert snap["status"] == "done" and validate_components(snap["components"]) == payload["components"]
+        doc = c.get(f"/api/components/{j['id']}.json").json()
+        assert doc["aod"] == payload["components_aod"]                        # transported with the rows
         # without components_json a result is still accepted (Phase-1 schema)
         j2 = _submit(c, 30)
         L2 = c.post("/api/worker/lease?wait=1", json={"name": "w2", "caps": CAPS_ALL}, headers=AUTH).json()
         p2 = FakeGenerator(components=None).generate(L2["geom"])
-        assert "components" not in p2 and len(zipfile_names(payload_to_npz_bytes(p2))) == 14
+        assert "components" not in p2 and len(zipfile_names(payload_to_npz_bytes(p2))) == 5 + 6 * len(I.KEYS)
         assert c.post(f"/api/worker/result/{j2['job_id']}", content=payload_to_npz_bytes(p2), headers=AUTH).status_code == 200
 
 
@@ -1148,21 +1189,26 @@ def _with_member(payload, text):
 def test_components_api(libdir):
     with client_for(libdir, local_worker=False) as c:
         r = c.get("/api/components")
-        assert r.status_code == 200 and r.json()["version"] == 1 and r.json()["entries"] == {}
+        assert r.status_code == 200 and r.json()["version"] == 2 and r.json()["entries"] == {}
         store = c.app.state.store
         p = FakeGenerator(components="fake").generate(canonicalize_endpoints(**CUSTOM))
         e = store.add_generated(p)
         assert e["has_components"] is True and e["n_fit"] == {k: len(v) for k, v in p["components"].items()}
         r = c.get("/api/components")
         doc = r.json()
-        assert set(doc) == {"version", "fitter", "params_tag", "entries"}
-        assert doc["entries"] == {"cust_35277e0469": p["components"]}
+        assert set(doc) == {"version", "fitter", "params_tag", "comp_keys", "entries", "aod"}
+        assert doc["comp_keys"] == ["v", "dv", "logN", "dlogN", "b", "db", "region", "flag", "EW"]
+        assert validate_components(doc["entries"]["cust_35277e0469"]) == p["components"]
+        assert all(isinstance(r_, list) for v in doc["entries"]["cust_35277e0469"].values() for r_ in v)
+        assert doc["aod"] == {"cust_35277e0469": p["components_aod"]}
         etag = r.headers["etag"]
         assert c.get("/api/components", headers={"If-None-Match": etag}).status_code == 304
         assert r.headers["cache-control"] == "max-age=60"
         r = c.get("/api/components/cust_35277e0469.json")
         assert r.status_code == 200 and r.json()["id"] == "cust_35277e0469"
-        assert r.json()["components"] == p["components"] and set(r.json()) == {"id", "fitter", "params_tag", "components"}
+        assert validate_components(r.json()["components"]) == p["components"]
+        assert set(r.json()) == {"version", "id", "fitter", "params_tag", "comp_keys", "components", "aod"}
+        assert r.json()["version"] == 2
         assert c.get("/api/components/cust_0000000000.json").status_code == 404
         assert c.get(f"/api/components/{LIB_IDS[0]}.json").status_code == 404     # library entry, none stored
         assert c.get("/api/components/cust_ZZ.json").status_code == 422
@@ -1182,12 +1228,14 @@ def test_store_components_persist_reconcile_and_hf(libdir, monkeypatch):
     store = LibraryStore(libdir, hf=hf)
     p = FakeGenerator(components="fake").generate(canonicalize_endpoints(**CUSTOM))
     comps = p.pop("components")
+    p.pop("components_aod")
     e = store.add_generated(p, components=comps)               # explicit argument
     assert e["has_components"] is True
     wait_for(lambda: hf.pending() == 0 and api.commits, timeout=10)
-    assert "generated/cust_35277e0469.components.json" in {o.path_in_repo for o in api.commits[0]["operations"]}
+    # (union over commits: on a loaded machine the 50 ms batch window can split npz + bin from the components file)
+    assert "generated/cust_35277e0469.components.json" in {o.path_in_repo for c_ in api.commits for o in c_["operations"]}
     doc = json.loads((libdir / "generated" / "cust_35277e0469.components.json").read_text())
-    assert doc["id"] == "cust_35277e0469" and doc["components"] == comps
+    assert doc["id"] == "cust_35277e0469" and doc["version"] == 2 and validate_components(doc["components"]) == comps
     hf.stop()
     # sync_missing re-queues component files the dataset lacks
     api2 = FakeHfApi(remote=["generated/cust_35277e0469.npz", "generated/cust_35277e0469.bin"])
@@ -1217,12 +1265,12 @@ def test_store_components_persist_reconcile_and_hf(libdir, monkeypatch):
     # (b) a fitter (stub) -> best-effort fit in the calling thread, stored and flagged
     import tngsight.components as comp_mod
     p4 = FakeGenerator(components=None).generate(canonicalize("edge", 3, 4))
-    stub = fake_components({"OVI": [(1.0, 10.0, 20.0)], "HILyb": [], "CIII": []})
+    stub = fake_components({"OVI": [(1.0, 10.0, 20.0)], "HI": [], "CIII": []})
     calls = []
     monkeypatch.setattr(comp_mod, "fit_payload", lambda payload, *a, **k: calls.append(payload["id"]) or stub)
     e4 = s2.add_generated(p4)
-    assert calls == [p4["id"]] and e4["has_components"] is True and e4["n_fit"] == {"OVI": 1, "HILyb": 0, "CIII": 0}
-    assert s2.components(p4["id"])["components"] == validate_components(stub)
+    assert calls == [p4["id"]] and e4["has_components"] is True and e4["n_fit"] == {"HI": 0, "CIII": 0, "OVI": 1}
+    assert validate_components(s2.components(p4["id"])["components"]) == validate_components(stub)
     # (c) the worker's fit was attempted and failed (components_skipped): not repeated while finishing
     p5 = FakeGenerator(components=None).generate(canonicalize("edge", 3, 5))
     p5["components_skipped"] = True
@@ -1329,10 +1377,11 @@ def test_remote_worker_falls_back_without_caps():
 
 
 def test_remote_worker_phase1_coordinator_gets_exact_npz():
-    """After the caps fallback, the result upload has exactly the Phase-1 npz key set (a Phase-1
-    coordinator rejects any extra member with 422), so the job is not lost."""
+    """After the caps fallback, the result upload has exactly the npz v2 member set, without the
+    components member a capless coordinator does not accept."""
     import zipfile
-    from server.storage import NPZ_KEYS
+    from server.storage import NPZ_KEYS as _NK
+    NPZ_KEYS = _NK(I.KEYS)
     geom = dict(canonicalize("face", 50, 90))
 
     class Resp:
@@ -1373,7 +1422,7 @@ def test_reconcile_rebuilds_old_generated_rows(libdir):
     cat = json.loads((libdir / "catalog.json").read_text())
     for e in cat["entries"]:
         if e["id"] == sid:
-            for k in ("p0", "p1", "has_components", "n_fit", "logN_aod"):
+            for k in ("p0", "p1", "has_components", "n_fit", "logN_aod", "data_version", "lines"):
                 e.pop(k, None)
             e["legacy_note"] = "kept"
     (libdir / "catalog.json").write_text(json.dumps(cat))
@@ -1382,7 +1431,7 @@ def test_reconcile_rebuilds_old_generated_rows(libdir):
     assert s2.reconcile(backfill=False) == 1
     e = s2.entry(sid)
     assert len(e["p0"]) == 3 and len(e["p1"]) == 3 and e["has_components"] is True and e["legacy_note"] == "kept"
-    assert set(e["logN_aod"]) == {"OVI", "HILyb", "CIII"}
+    assert set(e["logN_aod"]) == set(I.KEYS) and e["data_version"] == 2 and e["lines"] == list(I.KEYS)
     assert LibraryStore(libdir).reconcile(backfill=False) == 0          # idempotent
     lib_row = next(x for x in json.loads((libdir / "catalog.json").read_text())["entries"] if x["id"] == LIB_IDS[0])
     assert lib_row["source"] == "library"                                # library rows untouched
@@ -1439,26 +1488,162 @@ def test_fake_components_valid():
 
 
 def test_fallback_component_validator_matches_rules():
-    """storage's local validator (used before tngsight.components exists) applies the same §5.3 rules."""
-    from server.storage import _basic_validate_components
-    good = fake_components({"OVI": [(1.0, 10.0, 20.0)], "HILyb": [], "CIII": [(0.5, -40.0, 12.0)]})
+    """storage's local validator (used while tngsight.components is not v2) applies the v2 rules: any non-empty
+    subset of the registry keys, rows or dicts, logN <= atomic(k)["logN_max"], flags 0..255."""
+    from server.storage import _basic_validate_components, dicts_to_rows
+    good = fake_components({"OVI": [(1.0, 10.0, 20.0)], "HI": [], "CIII": [(0.5, -40.0, 12.0)]})
     assert _basic_validate_components(good) == good
+    assert _basic_validate_components({k: dicts_to_rows(v) for k, v in good.items()}) == good
+    assert validate_components({k: dicts_to_rows(v) for k, v in good.items()}) == good
     validate_components(good)
     c0 = good["OVI"][0]
-    bads = [{"OVI": []}, dict(good, OVI="x"), dict(good, OVI=[{**c0, "logN": 9.9}]),
-            dict(good, OVI=[{**c0, "b": 0.5}]), dict(good, OVI=[{**c0, "v": 2000.5}]),
-            dict(good, OVI=[{**c0, "flag": 128}]), dict(good, OVI=[{**c0, "dv": float("nan")}]),
-            dict(good, OVI=[{**c0, "logN": 19.5}]), dict(good, HILyb=[{**c0, "logN": 22.6}]),
+    assert _basic_validate_components({"OVI": [], "HILyb": []}) == {"OVI": []} == validate_components({"OVI": [], "HILyb": []})
+    bads = [{}, {"HILyb": []}, {"OVI": [], "NaI": []}, dict(good, OVI="x"), dict(good, OVI=[{**c0, "logN": 9.9}]),
+            dict(good, OVI=[{**c0, "b": 0.5}]), dict(good, OVI=[{**c0, "v": 11000.5}]), dict(good, OVI=[{**c0, "b": 150.5}]),
+            dict(good, OVI=[{**c0, "flag": 256}]), dict(good, OVI=[{**c0, "dv": float("nan")}]),
+            dict(good, OVI=[{**c0, "logN": 19.5}]), dict(good, HI=[{**c0, "logN": 22.6}]),
             dict(good, OVI=[{**c0, "v": None}]), dict(good, OVI=[{k: v for k, v in c0.items() if k != "EW"}]),
-            dict(good, OVI=[c0] * 31)]
+            dict(good, OVI=[c0] * 31), dict(good, OVI=[[1, 2, 3]]), dict(good, OVI=[{**c0, "region": True}])]
     for bad in bads:
         with pytest.raises(ValueError):
             _basic_validate_components(bad)
         with pytest.raises(ValueError):
             validate_components(bad)
     assert _basic_validate_components(dict(good, OVI=[{**c0, "dv": None, "dlogN": None, "db": None}]))
-    damped = dict(good, HILyb=[{**c0, "logN": 21.1, "flag": 81}])       # DAMPED|EDGE|SAT
+    damped = dict(good, HI=[{**c0, "logN": 21.1, "flag": 81}])          # DAMPED|EDGE|SAT
     assert _basic_validate_components(damped) == validate_components(damped)
+    assert _basic_validate_components({"MgII": [{**c0, "flag": 128}]})   # BUDGET (browser fitter)
+
+
+# ----------------------------------------------------------------------------- Phase 3: data v2
+def _npz_bytes(like):
+    buf = io.BytesIO()
+    L.save_npz(buf, like)
+    return buf.getvalue()
+
+
+def test_validate_result_v2_rules(libdir):
+    """design.md §4.1: npz v2 with all 12 lines on the native grids, the registry window, finite tau and the
+    server's registry tag; exact 422 messages for v1, a missing line, a wrong grid, a wrong H I W, non-finite tau
+    and a registry mismatch."""
+    store = LibraryStore(libdir)
+    geom = dict(canonicalize("edge", 40, 7))
+    p = FakeGenerator(components=None).generate(geom)
+    ok = store.validate_result(_npz_bytes(npz_like(p)), geom, 5 << 20)
+    assert ok["format"] == 2 and ok["lines"] == list(I.KEYS) and ok["generation"]["registry_tag"] == I.registry_tag()
+    np.testing.assert_array_equal(ok["tau"]["OVII"], p["tau"]["OVII"])
+
+    def err(like=None, blob=None):
+        with pytest.raises(ValueError) as e:
+            store.validate_result(blob if blob is not None else _npz_bytes(like), geom, 5 << 20)
+        return str(e.value)
+    v1 = libdir / "v1.npz"
+    write_v1_npz(v1, "edge_b040_a007")
+    assert err(blob=v1.read_bytes()) == "worker result is npz v1; update the worker"
+    like = npz_like(p)
+    sub = dict(like, lines=[k for k in I.KEYS if k != "OVII"])
+    assert err(sub) == "lines must be all 12 registry keys in order; missing OVII"
+    rest = I.get("CIV")["lam0_A"]
+    assert err(dict(like, lam0=dict(like["lam0"], CIV=like["lam0"]["CIV"] + 2e-9 * rest))) == \
+        "CIV: wavelength grid mismatch"
+    assert err(dict(like, dlam=dict(like["dlam"], CIV=like["dlam"]["CIV"] * (1 + 1e-6)))) == "CIV: wavelength grid mismatch"
+    wd = I.gen_window("HI", 20.40)
+    assert wd > 1500
+    assert err(dict(like, logN=dict(like["logN"], HI=20.40))) == f"HI: window W 1500 != {wd:g} km/s for logN 20.400"
+    assert err(dict(like, tau=dict(like["tau"], NV=like["tau"]["NV"][:-1]))) == "NV: tau shape (12000,) != native grid (12001,)"
+    bad = like["tau"]["MgII"].copy(); bad[10] = np.inf
+    assert err(dict(like, tau=dict(like["tau"], MgII=bad))) == "MgII: tau not finite/non-negative"
+    bad = like["tau"]["MgII"].copy(); bad[10] = -0.01
+    assert err(dict(like, tau=dict(like["tau"], MgII=bad))) == "MgII: tau not finite/non-negative"
+    gen = dict(like["generation"], registry_tag="deadbeef0000")
+    assert err(dict(like, generation=gen)) == f"registry mismatch (worker deadbeef0000, server {I.registry_tag()})"
+    assert err(dict(like, rest=dict(like["rest"], SiIV=1393.76))).startswith("SiIV: rest wavelength")
+    assert err(dict(like, logN=dict(like["logN"], CII=float("nan")))).startswith("logN_CII not a finite scalar")
+    # a zero column (-inf) is legal; a damped H I on its widened window is accepted
+    zero = store.validate_result(_npz_bytes(dict(like, logN=dict(like["logN"], NeVIII=float("-inf")))), geom, 5 << 20)
+    assert zero["logN"]["NeVIII"] == float("-inf")
+    pd = FakeGenerator(components=None, logN={"HI": 20.40}).generate(geom)
+    assert pd["W"]["HI"] == wd and pd["tau"]["HI"].size == int(round(2 * wd / 0.25)) + 1
+    assert store.validate_result(_npz_bytes(npz_like(pd)), geom, 5 << 20)["W"]["HI"] == wd
+    assert err(blob=b"PK\x05\x06" + b"\0" * 18) == "npz has no format member (not an npz v2 result)"
+
+
+def test_v1_library_npz_served_as_tngs_v2(libdir):
+    """A v1 library npz (Phase 1/2) stays v1 on disk; its web binary is TNGS v2 with the 2 registry lines it has,
+    and a cached v1 .bin is re-encoded on first read and replaced by the v2 bytes."""
+    sid = "face_b020_a045"
+    write_v1_npz(libdir / "sightlines" / L.npz_name(sid), sid)
+    v1_bin = libdir / "web" / f"{sid}.bin"
+    v1_bin.parent.mkdir(exist_ok=True)
+    v1_bin.write_bytes(b"TNGS\x01\x03\x00\x00" + b"\0" * 32)
+    store = LibraryStore(libdir)
+    blob = store.bin_bytes(sid)
+    d = L.decode_web(blob)
+    assert d["version"] == 2 and list(d["lines"]) == ["CIII", "OVI"] and d["skipped"] == []
+    assert v1_bin.read_bytes() == blob                                     # the v2 bytes replaced the v1 cache
+    assert store.bin_bytes(sid) == blob
+    v1_bin.unlink()
+    assert store.bin_bytes(sid) == blob and v1_bin.read_bytes() == blob   # rebuilt from the npz
+    payload = store.load_payload(sid)
+    assert payload["format"] == 1 and payload["lines"] == ["CIII", "OVI"] and payload["id"] == sid
+    store.catalog.upsert(L.catalog_entry(payload, None, "library"))
+    store.catalog.save()
+    assert store.entry(sid)["data_version"] == 1 and store.entry(sid)["lines"] == ["CIII", "OVI"]
+    calls = []
+
+    def renderer(payload, fmt, **kw):
+        calls.append(kw)
+        return PNG
+    with client_for(libdir, local_worker=False, renderer=renderer) as c:
+        r = c.get(f"/api/sightline/{sid}.bin")
+        assert r.status_code == 200 and r.content == blob
+        assert c.get(f"/api/sightline/{LIB_IDS[0]}.bin").content[4] == 2
+        assert c.post("/api/figure", json={"id": sid}).status_code == 200 and calls[-1]["ions"] == ["OVI"]
+        r = c.post("/api/figure", json={"id": sid, "ions": ["HI", "OVI"]})
+        assert r.status_code == 422 and "HI is not in sightline" in r.json()["detail"]
+        assert c.post("/api/figure", json={"id": sid, "ions": ["CIII", "OVI"]}).status_code == 200
+        assert calls[-1]["ions"] == ["CIII", "OVI"]
+
+
+def test_reconcile_v1_generated_row_and_v1_components_doc(libdir):
+    """A generated v1 npz (Phase 2) gets a data_version 1 row with lines OVI and CIII; its v1 components file
+    (OVI, HILyb, CIII dicts) is read and converted to the v2 doc (HILyb dropped)."""
+    sid = "edge_b033_a033"
+    (libdir / "generated").mkdir(exist_ok=True)
+    write_v1_npz(libdir / "generated" / f"{sid}.npz", sid)
+    c0 = {"v": 10.0, "dv": 0.1, "logN": 13.5, "dlogN": 0.01, "b": 20.0, "db": 0.2, "region": 0, "flag": 0, "EW": 50.0}
+    (libdir / "generated" / f"{sid}.components.json").write_text(json.dumps(
+        {"id": sid, "fitter": "tngsight.vpfit/1", "params_tag": "abc", "components": {"OVI": [c0], "HILyb": [c0],
+                                                                                       "CIII": []}}))
+    store = LibraryStore(libdir)
+    assert store.reconcile(backfill=False) == 1
+    e = store.entry(sid)
+    assert e["data_version"] == 1 and e["lines"] == ["CIII", "OVI"] and e["has_components"] is True
+    doc = store.components(sid)
+    assert doc["version"] == 2 and set(doc["components"]) == {"OVI", "CIII"} and doc["fitter"] == "tngsight.vpfit/1"
+    assert doc["components"]["OVI"] == [[10.0, 0.1, 13.5, 0.01, 20.0, 0.2, 0, 0, 50.0]] and doc["aod"] == {}
+    assert LibraryStore(libdir).reconcile(backfill=False) == 0
+    assert L.decode_web(store.bin_bytes(sid))["version"] == 2
+
+
+def test_fake_generator_v2_payload():
+    from server.testing import STAGES
+    assert STAGES == ("load", "ray", *(f"spectrum:{k}" for k in I.KEYS), "fit", "save")
+    try:
+        from tngsight.generate import STAGES as GEN_STAGES
+    except Exception:                                  # yt/trident absent: the registry-derived form is the contract
+        GEN_STAGES = STAGES
+    assert STAGES == tuple(GEN_STAGES)
+    seen = []
+    p = FakeGenerator(components="fake").generate(canonicalize("face", 50, 90), progress=lambda s, f, m="": seen.append(s))
+    assert [s_ for s_ in seen if s_.startswith("spectrum:")] == [f"spectrum:{k}" for k in I.KEYS]
+    for k in I.KEYS:
+        lam0, dlam, n = L.native_grid(k, p["W"][k])
+        assert p["tau"][k].dtype == np.float32 and p["tau"][k].size == n
+        assert (p["lam0"][k], p["dlam"][k]) == (lam0, dlam)
+    back = L.load_npz(io.BytesIO(_npz_bytes(npz_like(p))))
+    assert back["lines"] == list(I.KEYS) and back["generation"]["registry_tag"] == I.registry_tag()
+    assert set(p["components_aod"]) == set(I.KEYS)
 
 
 # ----------------------------------------------------------------------------- integration: chat router

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Build the explorer's sightline library from the read-only npz set.
 
+This is the v1 copy tool (the 672 three-line npz files, copied as they are). The Phase-3 data v2 library (12 registry
+lines, npz v2, TNGS v2, components v2) is made by deploy/data/regen_library.py instead. Through tngsight.library the
+web binaries written here are TNGS v2 with the two registry lines a v1 npz holds (O VI, C III).
+
     python deploy/data/build_library.py [--src DIR] [--out DIR] [-j N] [--force] [--verify] [--legacy-index CSV]
     (--index is the old name of --legacy-index)
 

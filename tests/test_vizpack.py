@@ -16,7 +16,8 @@ def test_constants():
     assert VP.GAS_LEVELS == {"L0": 400.0, "L1": 100.0, "L2": 25.0}
     assert VP.STAR_LEVELS == {"S0": 400.0, "S1": 100.0, "S2": 25.0}
     assert VP.R_MASK_KPC == {"L0": 400.0, "S0": 400.0}
-    assert VP.VOL_KEYS == ("nH", "T", "Z", "OVI", "HI", "CIII")
+    from tngsight import ions
+    assert VP.VOL_KEYS == ("nH", "T", "Z") + ions.KEYS
     assert abs(VP.MU_ZERO - 36.57212566588) < 1e-10 and VP.BANDS == {"g": 4, "r": 5, "i": 6}
 
 

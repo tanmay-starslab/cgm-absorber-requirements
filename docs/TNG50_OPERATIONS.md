@@ -208,6 +208,22 @@ TNG_BROWSER=1 node tests/js/viewer_browser.mjs --viz $WORK/data/library/viz --po
 `tests/test_stars.py` is synthetic and fast, so it runs in the plain `pytest tests` line. Under `run_all.mjs`,
 `viewer_browser.mjs` only prints "skipped"; it runs only with `TNG_BROWSER=1` and `--viz DIR`.
 
+The Phase-3 page tests drive an exported page (`scripts/export_tng50_web.py --out <dir>`; the repo template alone has
+no config) in headless Edge through `window.tngApp` v3 and the `data-testid` hooks. Without `TNG_BROWSER=1` they run
+only their static checks. Each starts its own static server (never 8787 or 8000) and blocks the laptop server and the
+hosted backends, so pass `--viz` for local cubes:
+
+```bash
+SITE=$WORK/scratch/site; VIZ=$WORK/data/library/viz      # an export dir, and a viz dir with manifest_v2.json
+TNG_BROWSER=1 node tests/js/page_smoke.mjs $SITE [backend URL] --port 8871 --viz $VIZ   # §C items 1-12 through the bridge
+TNG_BROWSER=1 node tests/js/ui_budget.mjs  $SITE --port 8871 --viz $VIZ [--shots DIR]   # words, separators, shares, square 3D
+TNG_BROWSER=1 node tests/js/ui_static.mjs  $SITE --port 8871                          # ids, removed ids, sources
+TNG_BROWSER=1 node tests/js/viewer_browser.mjs --viz $VIZ --docs $SITE --page $SITE/index.html --port 8871 --cdp 9271
+```
+
+`degrade_parity.mjs` checks the legacy v1 degrade port, which now lives in `tests/js/lib/legacy_degrade.js` (the page
+degrades with `js/fit.js`, checked by `fit_degrade.mjs`).
+
 `tests/test_export_web.py` covers the exporter: the manifest-only copy, `CFG.viz`, `viz: null` for a missing or
 invalid manifest, and `--viz-local` refused for `docs/tng50`. `tests/test_upload_viz.py` covers the uploader: the
 allow-list, the refusals, skip-if-identical, ordering, prune, and that the token is never printed. It uses a fake

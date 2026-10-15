@@ -15,8 +15,12 @@ import math
 import sys
 from pathlib import Path
 
-ION_KEYS = ("OVI", "HILyb", "CIII")
-ION_SHORT = {"OVI": "O VI", "HILyb": "H I", "CIII": "C III"}
+from . import ions as _ions
+
+ION_KEYS = tuple(_ions.KEYS)
+ION_SHORT = {k: _ions.get(k)["ion"] for k in ION_KEYS}
+LOGN_MAX = {k: float(_ions.atomic(k)["logN_max"]) for k in ION_KEYS}    # per-ion logN bound (validate_query)
+LOGN_SCHEMA_MAX = 22.5
 ORIENTATIONS = ("face-on", "edge-on", "random", "custom")
 SORTS = ("score", "b_kpc", "n")
 DEFAULTS = {"n_min": 1, "sort": "score", "limit": 50}
@@ -32,8 +36,8 @@ QUERY_SCHEMA = {
         "n_max": {"type": "integer", "minimum": 0, "maximum": 30},
         "sep_kms": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 3000},
                     "minItems": 2, "maxItems": 2},
-        "logN_min": {"type": "number", "minimum": 10, "maximum": 19},
-        "logN_max": {"type": "number", "minimum": 10, "maximum": 19},
+        "logN_min": {"type": "number", "minimum": 10, "maximum": LOGN_SCHEMA_MAX},
+        "logN_max": {"type": "number", "minimum": 10, "maximum": LOGN_SCHEMA_MAX},
         "b_min": {"type": "number", "minimum": 0, "maximum": 150},
         "b_max": {"type": "number", "minimum": 0, "maximum": 150},
         "b_kpc": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 400},
@@ -104,7 +108,8 @@ def _num_txt(v):
 def validate_query(q) -> dict:
     """Validate a query object; returns a normalised copy with defaults (n_min, sort, limit) filled in.
     Check order: object → unknown keys (sorted) → ion required → each property in QUERY_SCHEMA order →
-    cross-field (n_min ≤ n_max, logN_min ≤ logN_max, b_min ≤ b_max). Raises ValueError("<field>: <reason>")."""
+    per-ion logN bound (logN_min, then logN_max ≤ LOGN_MAX[ion]) → cross-field (n_min ≤ n_max, logN_min ≤ logN_max,
+    b_min ≤ b_max). Raises ValueError("<field>: <reason>")."""
     if not isinstance(q, dict):
         raise ValueError("query: must be an object")
     props = QUERY_SCHEMA["properties"]
@@ -117,6 +122,10 @@ def validate_query(q) -> dict:
     for k, spec in props.items():
         if k in q:
             out[k] = _check(k, q[k], spec)
+    lim = LOGN_MAX[out["ion"]]
+    for k in ("logN_min", "logN_max"):
+        if k in out and out[k] > lim:
+            raise ValueError(f"{k}: must be <= {_num_txt(lim)} for {out['ion']}")
     for lo, hi in (("n_min", "n_max"), ("logN_min", "logN_max"), ("b_min", "b_max")):
         a = out.get(lo, DEFAULTS.get(lo))
         if a is not None and hi in out and a > out[hi]:
@@ -228,7 +237,8 @@ GOLDEN_PATH = Path(__file__).resolve().parent.parent / "tests" / "search_golden.
 def make_fixture() -> dict:
     """40 synthetic catalog entries + components (deterministic; numbers rounded like components.json).
     Includes deliberate edge cases: entries without components, empty ion lists, a missing ion key, b_kpc ties,
-    SAT flags, pairs exactly at 30.00 km/s whose float difference is not exactly 30, duplicate logN values."""
+    SAT flags, pairs exactly at 30.00 km/s whose float difference is not exactly 30, duplicate logN values, and v1
+    entries that carry only O VI and C III."""
     import numpy as np
     rng = np.random.default_rng(20261013)
     orients = ["face-on", "edge-on", "random", "custom"]
@@ -246,6 +256,8 @@ def make_fixture() -> dict:
         for k in ION_KEYS:
             if i % 17 == 3 and k == "CIII":
                 continue                                      # ion key missing
+            if i % 19 == 7 and k not in ("OVI", "CIII"):
+                continue                                      # a v1 entry: only O VI and C III were fitted
             n = int(rng.integers(0, 7)) if i % 11 else 0
             v = np.sort(rng.uniform(-250, 250, n))
             lst = []
@@ -275,29 +287,32 @@ CASES = [
     {"name": "ovi_pairs_30_80", "query": {"ion": "OVI", "sep_kms": [30, 80]}},
     {"name": "ovi_pair_exact_30", "query": {"ion": "OVI", "sep_kms": [30, 30]}},
     {"name": "ovi_pair_zero_sep", "query": {"ion": "OVI", "sep_kms": [0, 0]}},
-    {"name": "hi_n_range", "query": {"ion": "HILyb", "n_min": 2, "n_max": 3}},
+    {"name": "hi_n_range", "query": {"ion": "HI", "n_min": 2, "n_max": 3}},
     {"name": "ciii_zero_comps", "query": {"ion": "CIII", "n_min": 0, "n_max": 0}},
     {"name": "ovi_logN_window", "query": {"ion": "OVI", "logN_min": 13.5, "logN_max": 14.5}},
     {"name": "ovi_b_window", "query": {"ion": "OVI", "b_min": 12.5, "b_max": 20}},
     {"name": "edge_on_only", "query": {"ion": "OVI", "orientation": "edge-on"}},
-    {"name": "custom_only", "query": {"ion": "HILyb", "orientation": "custom", "n_min": 0}},
+    {"name": "custom_only", "query": {"ion": "HI", "orientation": "custom", "n_min": 0}},
     {"name": "impact_window_sort_b", "query": {"ion": "OVI", "b_kpc": [50, 150], "sort": "b_kpc"}},
-    {"name": "impact_tie_100", "query": {"ion": "HILyb", "b_kpc": [100, 100], "n_min": 0}},
+    {"name": "impact_tie_100", "query": {"ion": "HI", "b_kpc": [100, 100], "n_min": 0}},
     {"name": "sort_n", "query": {"ion": "CIII", "sort": "n", "limit": 7}},
     {"name": "limit_1", "query": {"ion": "OVI", "limit": 1}},
-    {"name": "many_comps", "query": {"ion": "HILyb", "n_min": 5}},
+    {"name": "many_comps", "query": {"ion": "HI", "n_min": 5}},
     {"name": "pairs_strong", "query": {"ion": "CIII", "sep_kms": [10, 200], "logN_min": 13}},
-    {"name": "pairs_wide_sort_n", "query": {"ion": "HILyb", "sep_kms": [100, 3000], "sort": "n"}},
+    {"name": "pairs_wide_sort_n", "query": {"ion": "HI", "sep_kms": [100, 3000], "sort": "n"}},
     {"name": "random_b_sort", "query": {"ion": "CIII", "orientation": "random", "sort": "b_kpc", "n_min": 0}},
     {"name": "narrow_lines", "query": {"ion": "OVI", "b_max": 10, "n_min": 1}},
     {"name": "everything", "query": {"ion": "OVI", "n_min": 1, "n_max": 30, "sep_kms": [0, 3000],
                                      "logN_min": 10, "logN_max": 19, "b_min": 0, "b_max": 150, "b_kpc": [0, 400],
                                      "orientation": "face-on", "sort": "score", "limit": 200}},
+    {"name": "civ_pairs_20_120", "query": {"ion": "CIV", "sep_kms": [20, 120]}},
+    {"name": "mgii_n_min_3", "query": {"ion": "MgII", "n_min": 3}},
+    {"name": "hi_damped_logN", "query": {"ion": "HI", "logN_min": 16, "logN_max": 22.5, "n_min": 0}},
 ]
 
 INVALID_CASES = [
     ({"n_min": 1}, "ion: required"),
-    ({"ion": "NV"}, "ion: must be one of OVI, HILyb, CIII"),
+    ({"ion": "HILyb"}, "ion: must be one of " + ", ".join(ION_KEYS)),
     ({"ion": "OVI", "foo": 1}, "foo: unknown field"),
     ({"ion": "OVI", "n_min": 2.5}, "n_min: must be an integer"),
     ({"ion": "OVI", "n_min": True}, "n_min: must be an integer"),
@@ -309,6 +324,9 @@ INVALID_CASES = [
     ({"ion": "OVI", "sep_kms": [-1, 30]}, "sep_kms[0]: must be >= 0"),
     ({"ion": "OVI", "logN_min": 9.5}, "logN_min: must be >= 10"),
     ({"ion": "OVI", "logN_min": 15, "logN_max": 14}, "logN_min: exceeds logN_max"),
+    ({"ion": "OVI", "logN_max": 20}, "logN_max: must be <= 19 for OVI"),
+    ({"ion": "CIV", "logN_min": 19.5}, "logN_min: must be <= 19 for CIV"),
+    ({"ion": "HI", "logN_max": 22.6}, "logN_max: must be <= 22.5"),
     ({"ion": "OVI", "b_kpc": [0, "x"]}, "b_kpc[1]: must be a number"),
     ({"ion": "OVI", "limit": 0}, "limit: must be >= 1"),
     ({"ion": "OVI", "sort": "random"}, "sort: must be one of score, b_kpc, n"),
@@ -317,7 +335,9 @@ INVALID_CASES = [
 
 SEMANTICS = [
     "Query: validate_query per QUERY_SCHEMA; integers may arrive as integral floats (JSON 3.0); booleans are not "
-    "numbers. Check order: object, unknown keys (sorted), ion required, properties in schema order, then cross-field "
+    "numbers. Check order: object, unknown keys (sorted), ion required, properties in schema order, then the per-ion "
+    "bound (logN_min, then logN_max, each <= LOGN_MAX[ion] = the registry logN_max, 22.5 for HI and 19 otherwise; "
+    "message '<field>: must be <= 19 for OVI'), then cross-field "
     "n_min<=n_max (n_min default 1 applies), logN_min<=logN_max, b_min<=b_max. Error text '<field>: <reason>' exactly "
     "as in invalid_cases. Defaults: n_min 1, n_max none (infinite), sort 'score', limit 50.",
     "Entries: duplicates by id are collapsed, the LATER entry wins (backend after static); iterate ids in ascending "
@@ -340,8 +360,8 @@ SEMANTICS = [
     "7. reason = '{n} {ION_SHORT} component' + ('s' if n!=1) + (if matching: ', logN {fmt(min,1)}–{fmt(max,1)}"
     ", b {fmt(min,0)}–{fmt(max,0)} km/s' over matching) + (if pairs: ', Δv {fmt(dv_smallest,0)} km/s') + "
     "(if b_kpc is a number: ', {fmt(b_kpc,0)} kpc'). fmt(x,d) = round_half_away(x,d) printed with d decimals; "
-    "round_half_away(x,d) = sign(x)*floor(|x|*10^d+0.5)/10^d, -0 -> 0. ION_SHORT = {OVI:'O VI', HILyb:'H I', "
-    "CIII:'C III'}.",
+    "round_half_away(x,d) = sign(x)*floor(|x|*10^d+0.5)/10^d, -0 -> 0. ION_SHORT = the registry ion names "
+    "(HI:'H I', MgII:'Mg II', ..., OVII:'O VII').",
 ]
 
 

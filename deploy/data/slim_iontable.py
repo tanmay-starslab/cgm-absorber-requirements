@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Slim the Trident ion table to the elements the explorer needs (H, C, O).
+"""Slim the Trident ion table to the elements the explorer needs (H, C, N, O, Ne, Mg, Si).
 
-    python deploy/data/slim_iontable.py [--src FILE] [--out FILE] [--elements H C O] [--no-trident-check]
+    python deploy/data/slim_iontable.py [--src FILE] [--out FILE] [--elements H C N O Ne Mg Si] [--no-trident-check]
 
 Each element dataset is copied with h5py's object copy (same dtype >f4, shape, layout and the three
 axis attributes Parameter1/Parameter2/Temperature, verbatim); file-level attributes are copied too.
-H must be kept even though H I comes from NeutralHydrogenAbundance: trident loads the table for
-every ion field it adds (critic.md §2.1). The result is then checked value-by-value against the
+The element list is the set of elements of the 12 registry ions (tngsight/ions.json: H I, Mg II,
+Si II-IV, C II-IV, N V, O VI, O VII, Ne VIII; design.md §4.4); the result is about 186 MB, under the
+200 MB guard of upload_hf_dataset.py. H must be kept even though H I comes from
+NeutralHydrogenAbundance: trident loads the table for every ion field it adds (critic.md §2.1). The result is then checked value-by-value against the
 source and loaded with trident.ion_balance.IonBalanceTable in a subprocess whose cwd holds a
 config.tri pointing at the output directory (the same mechanism the server uses).
 """
@@ -22,8 +24,9 @@ import h5py
 import numpy as np
 
 SRC = Path("/Volumes/cgm_work/data/trident/hm2012_ss_hr.h5")
-OUT = Path("/Volumes/cgm_work/data/trident_slim/hm2012_ss_hr.h5")
-ELEMENTS = ("H", "C", "O")
+OUT = Path("/Volumes/cgm_work/data/trident_slim_v3/hm2012_ss_hr.h5")   # v1 (H, C, O): trident_slim/
+ELEMENTS = ("H", "C", "N", "O", "Ne", "Mg", "Si")
+MAX_BYTES = 190e6                    # design.md §8 U_server 2 (measured 185.7 MB)
 AXES = ("Parameter1", "Parameter2", "Temperature")
 
 
@@ -106,6 +109,9 @@ def main(argv=None):
     check(a.src, a.out, a.elements)
     print(f"{a.out}: {a.out.stat().st_size:,} B ({', '.join(a.elements)}); src {a.src.stat().st_size:,} B; "
           "values and attributes identical")
+    if a.out.stat().st_size > MAX_BYTES:
+        print(f"error: {a.out.stat().st_size:,} B exceeds the {MAX_BYTES:,.0f} B budget", file=sys.stderr)
+        return 1
     if not a.no_trident_check:
         print(trident_check(a.out, a.elements))
     return 0

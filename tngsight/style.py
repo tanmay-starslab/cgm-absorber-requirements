@@ -1,6 +1,6 @@
 """Publication style for the CGM spectra figures (port of tng50/scripts/cgm_style.py).
 Computer-Modern serif (usetex optional, mathtext 'cm' otherwise), inward major+minor ticks on all
-sides, thick spines, vivid per-ion colours. FIGDIR comes from config.figdir() (no cluster paths)."""
+sides, thick spines, per-ion colours from the ion registry. FIGDIR comes from config.figdir() (no cluster paths)."""
 from __future__ import annotations
 import shutil
 from pathlib import Path
@@ -9,12 +9,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from .config import figdir
 
-ION = {
-    "OVI":   dict(color="#D81E5B", label=r"$\mathrm{O\,VI}\ \lambda1032$"),      # magenta-red
-    "HILyb": dict(color="#1D4E89", label=r"$\mathrm{H\,I}\ \mathrm{Ly}\beta$"),  # deep blue
-    "CIII":  dict(color="#1B998B", label=r"$\mathrm{C\,III}\ \lambda977$"),      # teal-green
-}
-ION_ORDER = ["OVI", "HILyb", "CIII"]
+from . import ions as _ions
+
+
+def _tex_label(key) -> str:
+    """'$\\mathrm{O\\,VI}\\ \\lambda1032$' from the registry label_tex 'O\\,VI\\ \\lambda1032'."""
+    t = _ions.get(key)["label_tex"]
+    ion, _, rest = t.partition("\\ ")
+    return rf"$\mathrm{{{ion}}}\ {rest}$" if rest else f"${t}$"
+
+
+# Per-ion colours (light theme: >= 4.99:1 on white) and LaTeX labels, from the ion registry.
+ION = {k: dict(color=_ions.get(k)["color"], color_dark=_ions.get(k)["color_dark"], label=_tex_label(k))
+       for k in _ions.KEYS}
+ION_ORDER = list(_ions.KEYS)
 
 
 def has_latex() -> bool:

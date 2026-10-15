@@ -8,9 +8,18 @@
   "ion": {
    "type": "string",
    "enum": [
+    "HI",
+    "MgII",
+    "SiII",
+    "CII",
+    "SiIII",
+    "CIII",
+    "SiIV",
+    "CIV",
+    "NV",
     "OVI",
-    "HILyb",
-    "CIII"
+    "NeVIII",
+    "OVII"
    ]
   },
   "n_min": {
@@ -36,12 +45,12 @@
   "logN_min": {
    "type": "number",
    "minimum": 10,
-   "maximum": 19
+   "maximum": 22.5
   },
   "logN_max": {
    "type": "number",
    "minimum": 10,
-   "maximum": 19
+   "maximum": 22.5
   },
   "b_min": {
    "type": "number",

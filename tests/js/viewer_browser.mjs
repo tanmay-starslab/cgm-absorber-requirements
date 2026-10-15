@@ -1,6 +1,12 @@
-// Headless-Edge browser test of the Phase-2b 3D viewer (design §5.11 items 6-8). Run manually:
+// Headless-Edge browser test of the 3D viewer (Phase-2b design §5.11 items 6-8; Phase-3 design §6.2 C13). Run manually:
 //   TNG_BROWSER=1 node tests/js/viewer_browser.mjs --viz <viz dir with manifest_v2.json> [--port 8871] [--cdp 9271]
 //       [--profile <edge user-data-dir>] [--shots <dir>] [--bench 60] [--edge <binary>] [--page <html served at /tng50/>]
+//       [--docs <dir served as /tng50/, default docs/tng50>]
+// Phase 3 adds: the square stage (|w - h| <= 1, at most 60 vw) beside the grouped control column (Field, View, Layers,
+// Mode, Pick ray), the 15-entry species menu (nH, T, Z + 12 ions in ladder order; species without cubes disabled with a
+// tooltip, setSpecies on them false without an exception), no dot separators in the viewer's text, and, when the page
+// has a #v3d-mini-host thumbnail (mountThumb), the thumbnail checks: shared cubes, square, not blank, the slow turn
+// pausing off-screen, click to the 3D tab with the camera restored, and a thumbnail-first cold load (L0/L1 only).
 // It starts its own static server on --port (the page at /tng50/ from docs/tng50, the viz dir at /viz/), launches
 // Edge headless with remote debugging, opens /tng50/?viz=http://127.0.0.1:<port>/viz/#tab=3d at 1440×900 and checks:
 // WebP decode byte-exact (sha256 = raw_sha256, no gz fallback), non-blank frames, viewer.bench() exact/moving frame
@@ -26,8 +32,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---- static server ---- */
 const TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".webp": "image/webp",
-  ".gz": "application/octet-stream", ".bin": "application/octet-stream", ".png": "image/png"};
-const DOCS = join(ROOT, "docs/tng50"), ix = join(DOCS, "index.html");
+  ".gz": "application/octet-stream", ".bin": "application/octet-stream", ".png": "image/png", ".css": "text/css", ".svg": "image/svg+xml"};
+const DOCS = A.docs ? resolve(A.docs) : join(ROOT, "docs/tng50"), ix = join(DOCS, "index.html");
 const PAGE = A.page ? resolve(A.page) : existsSync(ix) && readFileSync(ix, "utf8").includes("manifest_v2") ? ix : join(DOCS, "_template.html");   // --page: another page file
 let blockViz = false; const held = [], hangSeen = [];
 const MEM = new Map(), readMem = f => { if (!MEM.has(f)) MEM.set(f, readFileSync(f)); return MEM.get(f); };   // the viz dir may sit on a slow disk
@@ -51,15 +57,22 @@ console.log(`serving ${PAGE.replace(ROOT + "/", "")} and ${VIZ} on http://127.0.
 /* ---- Edge + CDP ---- */
 const profile = A.profile || join(VIZ, "..", "edge-profile");
 const edge = spawn(EDGE, ["--headless=new", `--remote-debugging-port=${CDP}`, `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check",
+  "--disable-extensions", "--disable-component-update",     // Edge's built-in extensions inject scripts that throw into the page
   "--window-size=1440,900", "about:blank"], {stdio: "ignore"});
-let tabs = null; for (let i = 0; i < 300 && !tabs; i++) { await sleep(200); try { tabs = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json(); } catch {} }
+/* a crash anywhere below must not leave this headless Edge (and its CDP port) behind for the next run */
+process.on("exit", () => { try { edge.kill(); } catch {} });
+process.on("uncaughtException", e => { console.error(e); try { edge.kill(); } catch {} process.exit(1); });
+process.on("unhandledRejection", e => { console.error(e); try { edge.kill(); } catch {} process.exit(1); });
+let tabs = null; for (let i = 0; i < 600 && !tabs?.some(t => t.type === "page"); i++) { await sleep(200); try { tabs = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json(); } catch {} }   // wait for the page target, not only the port
 if (!tabs) { console.error(`Edge did not open CDP port ${CDP}`); edge.kill(); process.exit(1); }
 const page = tabs.find(t => t.type === "page"), ws = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise(r => ws.addEventListener("open", r));
 let id = 0; const pend = new Map(), exceptions = [], consoleErr = [];
 ws.addEventListener("message", ev => { const m = JSON.parse(ev.data);
   if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); return; }
-  if (m.method === "Runtime.exceptionThrown") exceptions.push(JSON.stringify(m.params.exceptionDetails).slice(0, 400));
+  if (m.method === "Runtime.exceptionThrown" && !/^chrome-extension:\/\//.test(m.params.exceptionDetails?.url || "")      // Edge's built-in extensions are not the page,
+      && !/Receiving end does not exist/.test(m.params.exceptionDetails?.exception?.description || ""))                 // nor is their messaging error (no page code uses chrome.runtime)
+    exceptions.push(JSON.stringify(m.params.exceptionDetails).slice(0, 400));
   if (m.method === "Runtime.consoleAPICalled" && m.params.type === "error") consoleErr.push(m.params.args.map(a => a.value ?? a.description).join(" ").slice(0, 300)); });
 const send = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({id: i, method, params})); });
 const ev = async (expr, gesture = false) => { const r = await send("Runtime.evaluate", {expression: expr, awaitPromise: true, returnByValue: true, userGesture: gesture, timeout: 120000});
@@ -91,7 +104,7 @@ else {
   /* fix-ui FE-05: switching to another field and straight back leaves no stale "loading …" message */
   { const r = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d, a = v.setSpecies("HI"), b = v.setSpecies("nH"); const rb = await b; await a.catch(() => {});
       await new Promise(r => setTimeout(r, 600)); return JSON.stringify({rb, species: v.species, msg: v.message}); })()`));
-    check(r.rb === true && r.species === "nH" && r.msg === "", `setSpecies("HI") then setSpecies("nH"): back on ${r.species}, stage message "${r.msg}"`); }
+    check(r.rb === true && r.species === "nH" && !/H I|HI|loading nH/.test(r.msg), `setSpecies("HI") then setSpecies("nH"): back on ${r.species}, no stale message ("${r.msg}")`); }
   /* fix-ui FE-07: Cmd/Ctrl/Alt + key on the canvas is left to the browser */
   { const r = JSON.parse(await ev(`(() => { const v = window.tngViewer3d, c = v.canvas, p0 = v.camera.position.clone(), s0 = v.stars, out = {};
       for (const [key, mod] of [["r", "metaKey"], ["s", "ctrlKey"], ["f", "metaKey"], ["=", "ctrlKey"], ["g", "altKey"]]) {
@@ -111,6 +124,30 @@ else {
   const nb = await nonBlank();
   check(nb.frac > 0.05, `default view not blank: ${(100 * nb.frac).toFixed(1)} % lit pixels, mean ${nb.mean.toFixed(1)}`);
   await shot("07_default_composite.png");
+  /* ---- Phase 3: square stage, grouped control column, species menu, no dot separators ---- */
+  { const L = JSON.parse(await ev(`(() => { const s = document.querySelector(".v3d-stage").getBoundingClientRect(), c = document.querySelector("#v3-ctl").getBoundingClientRect();
+      const groups = [...document.querySelectorAll("#v3-ctl > section > h2")].map(h => h.textContent);
+      return JSON.stringify({s: [s.width, s.height, s.left, s.right], c: [c.left, c.width], groups, vw: innerWidth, picker: !!document.querySelector("#v3-ctl #picker-root .pk, #v3-ctl #picker-root form")}); })()`));
+    check(Math.abs(L.s[0] - L.s[1]) <= 1 && L.s[0] <= 0.6 * L.vw + 1 && L.s[0] >= 300 && L.c[0] >= L.s[3] - 1 && L.c[1] >= 280,
+      `square stage ${L.s[0].toFixed(1)}×${L.s[1].toFixed(1)} (${(100 * L.s[0] / L.vw).toFixed(1)} % of ${L.vw}), control column beside it (left ${L.c[0].toFixed(0)} ≥ stage right ${L.s[3].toFixed(0)}, ${L.c[1].toFixed(0)} px wide)`);
+    check(L.groups.join() === "Field,View,Layers,Mode,Pick ray" && L.picker, `control groups: ${L.groups.join(", ")}; picker inside the Pick ray card ${L.picker}`); }
+  { const S = JSON.parse(await ev(`(() => { const R = [...document.querySelectorAll('#v3-species input[name="v3-species"]')], m = window.tngViewer3d.manifest;
+      const sw = document.querySelector('#v3-species input[value="OVI"]')?.nextElementSibling?.querySelector("i");
+      return JSON.stringify({keys: R.map(i => i.value), enabled: R.filter(i => !i.disabled).map(i => i.value), fields: Object.keys(m.gas.fields),
+        tips: R.filter(i => i.disabled).map(i => i.closest("label").title), names: R.map(i => i.nextElementSibling.textContent),
+        civ: sw ? getComputedStyle(sw).backgroundColor : null, dark: matchMedia("(prefers-color-scheme: dark)").matches}); })()`));
+    const ladder = ["nH", "T", "Z", "HI", "MgII", "SiII", "CII", "SiIII", "CIII", "SiIV", "CIV", "NV", "OVI", "NeVIII", "OVII"];
+    check(S.keys.join() === ladder.join() && S.enabled.slice().sort().join() === S.fields.filter(k => ladder.includes(k)).sort().join() && S.tips.every(t => /not built/.test(t)),
+      `species menu: ${S.keys.length} entries in ladder order (${S.names.join(", ")}); enabled = manifest fields (${S.enabled.join(", ")}); ${S.tips.length} disabled with a tooltip`);
+    check(!S.dark || S.civ === "rgb(251, 122, 60)", `O VI swatch in the registry colour (${S.dark ? "dark" : "light"}: ${S.civ})`);
+    const miss = ladder.find(k => !S.fields.includes(k));
+    if (miss) { const r = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d, s0 = v.species; let ok, err = null; try { ok = await v.setSpecies(${JSON.stringify(miss)}); } catch (x) { err = x.message; }
+        const b = document.querySelector('#v3-species input[value=${JSON.stringify(miss)}]'); b.closest("label").click(); await new Promise(r => setTimeout(r, 300));
+        return JSON.stringify({ok, err, still: v.species === s0, le: v.loadError, checked: b.checked}); })()`));
+      check(r.ok === false && !r.err && r.still && r.le?.key === miss && !r.checked, `setSpecies("${miss}") (no cubes yet): false, no exception, loadError "${r.le?.message}", still on the previous field, its button stays off`); }
+    const sep = await ev(`(() => { const F = /[\\u00B7\\u2022\\u2027\\u22C5\\u30FB]| \\. /; const t = [document.querySelector("#v3-ctl").innerText, document.querySelector(".v3d-stage").innerText, document.querySelector(".v3d-stage canvas").getAttribute("aria-label"),
+        ...[...document.querySelectorAll("#v3-ctl [title], .v3d [title], #v3-ctl [aria-label]")].flatMap(e => [e.title, e.getAttribute("aria-label") || ""])].join("\\n"); const m = t.match(F); return m ? m[0] + " in " + t.slice(Math.max(0, m.index - 40), m.index + 40) : ""; })()`);
+    check(sep === "", `no dot separators in the viewer's text, titles and labels${sep ? ": " + sep : ""}`); }
   const B = await ev(`window.tngViewer3d.bench(${NB})`);
   console.log(`     bench: exact ${B.exact_ms_median.toFixed(1)} ms, moving exact ${B.moving_exact_ms_median.toFixed(1)} ms, moving fast ${B.moving_fast_ms_median.toFixed(1)} ms → moving path ${B.moving_path}; canvas ${B.size.join("×")} px`);
   check(B.exact_ms_median <= 300, `exact refine frame ${B.exact_ms_median.toFixed(1)} ms ≤ 300 ms`);
@@ -142,13 +179,14 @@ else {
   const before = JSON.parse(await ev(`JSON.stringify([document.querySelector(".v3d-stage").getBoundingClientRect().width, document.querySelector(".v3d-stage").getBoundingClientRect().height, scrollY])`));
   const bp = JSON.parse(await ev(`(() => { const r = document.querySelector("#v3-fs").getBoundingClientRect(); return JSON.stringify([r.x + r.width / 2, r.y + r.height / 2]); })()`));
   for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", {type, x: bp[0], y: bp[1], button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1});
-  await sleep(1200);
+  await sleep(2200);   // a native request headless Edge refuses falls back to the CSS fullscreen after 1.5 s
   const fs = JSON.parse(await ev(`JSON.stringify({native: document.fullscreenElement === document.querySelector(".v3d"), fallback: document.querySelector(".v3d").classList.contains("v3d-fs"),
     stage: [document.querySelector(".v3d-stage").clientWidth, document.querySelector(".v3d-stage").clientHeight], vw: innerWidth, vh: innerHeight,
     label: document.querySelector("#v3-fs").textContent, pressed: document.querySelector("#v3-fs").getAttribute("aria-pressed"), panel: !document.querySelector("#v3-ctl").hidden,
+    onStage: document.querySelector(".v3d").contains(document.querySelector("#v3-ctl")), exitBtn: document.querySelector("#v3-fs-exit").getClientRects().length > 0,
     focus: document.activeElement === window.tngViewer3d.canvas})`));
-  check((fs.native || fs.fallback) && fs.stage[0] === fs.vw && fs.stage[1] === fs.vh && fs.label === "Exit fullscreen" && fs.pressed === "true" && fs.focus,
-    `fullscreen (${fs.native ? "native" : fs.fallback ? "CSS fallback" : "none"}): stage ${fs.stage.join("×")} = viewport ${fs.vw}×${fs.vh}, label "${fs.label}", controls panel ${fs.panel ? "open" : "closed"}, focus on canvas ${fs.focus}`);
+  check((fs.native || fs.fallback) && fs.stage[0] === fs.vw && fs.stage[1] === fs.vh && fs.label === "Exit fullscreen" && fs.pressed === "true" && fs.focus && fs.onStage && !fs.panel && fs.exitBtn,
+    `fullscreen (${fs.native ? "native" : fs.fallback ? "CSS fallback" : "none"}): stage ${fs.stage.join("×")} = viewport ${fs.vw}×${fs.vh}, label "${fs.label}", controls moved onto the stage ${fs.onStage} (panel ${fs.panel ? "open" : "closed"}), exit button shown ${fs.exitBtn}, focus on canvas ${fs.focus}`);
   await shot("09_fullscreen.png");
   await send("Input.dispatchKeyEvent", {type: "rawKeyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27});
   await send("Input.dispatchKeyEvent", {type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27});
@@ -156,7 +194,8 @@ else {
   let out = JSON.parse(await ev(`JSON.stringify({fs: !!document.fullscreenElement || document.querySelector(".v3d").classList.contains("v3d-fs"), w: document.querySelector(".v3d-stage").getBoundingClientRect().width, h: document.querySelector(".v3d-stage").getBoundingClientRect().height, label: document.querySelector("#v3-fs").textContent})`));
   if (out.fs) { console.log("     note: headless Esc did not leave native fullscreen; calling toggleFullscreen(false) (the Esc path is the browser's own)"); await ev(`window.tngViewer3d.toggleFullscreen(false)`); await sleep(600);
     out = JSON.parse(await ev(`JSON.stringify({fs: !!document.fullscreenElement || document.querySelector(".v3d").classList.contains("v3d-fs"), w: document.querySelector(".v3d-stage").getBoundingClientRect().width, h: document.querySelector(".v3d-stage").getBoundingClientRect().height, label: document.querySelector("#v3-fs").textContent})`)); }
-  check(!out.fs && Math.abs(out.w - before[0]) < 1 && Math.abs(out.h - before[1]) < 1 && out.label === "Fullscreen", `fullscreen exit restores the layout: stage ${out.w}×${out.h} (was ${before[0]}×${before[1]})`);
+  const back = await ev(`(() => { const c = document.querySelector("#v3-ctl"); return !document.querySelector(".v3d").contains(c) && !c.hidden && !!c.closest("[data-testid=v3d-controls]"); })()`);
+  check(!out.fs && Math.abs(out.w - before[0]) < 1 && Math.abs(out.h - before[1]) < 1 && out.label === "Fullscreen" && back, `fullscreen exit restores the layout: stage ${out.w}×${out.h} (was ${before[0]}×${before[1]}), control column back beside the stage ${back}`);
   /* CSS fallback path: force it by hiding the API */
   await ev(`(() => { const e = document.querySelector(".v3d"); e.requestFullscreen = undefined; e.webkitRequestFullscreen = undefined; return window.tngViewer3d.toggleFullscreen(true); })()`); await sleep(500);
   const fb = JSON.parse(await ev(`JSON.stringify({on: document.querySelector(".v3d").classList.contains("v3d-fs"), body: document.body.classList.contains("v3d-noscroll"), w: document.querySelector(".v3d-stage").clientWidth, vw: innerWidth})`));
@@ -164,16 +203,63 @@ else {
   const fb2 = JSON.parse(await ev(`JSON.stringify({on: document.querySelector(".v3d").classList.contains("v3d-fs"), body: document.body.classList.contains("v3d-noscroll"), w: document.querySelector(".v3d-stage").getBoundingClientRect().width})`));
   await ev(`(() => { const e = document.querySelector(".v3d"); delete e.requestFullscreen; delete e.webkitRequestFullscreen; })()`);
   check(fb.on && fb.body && fb.w === fb.vw && !fb2.on && !fb2.body && Math.abs(fb2.w - before[0]) < 1, `CSS fallback fullscreen: on (stage ${fb.w} = ${fb.vw}), Esc → off, layout restored (${fb2.w})`);
+  /* ---- Phase 3 thumbnail (pages with a #v3d-mini-host, e.g. the scratch harness) ---- */
+  const hasThumb = await ev(`!!document.querySelector("#v3d-mini-host")`);
+  if (hasThumb) {
+    const V = "window.tngViewer3d";
+    await ev(`${V}.setMode("integral"); ${V}.setStars({on: true, gasMix: 0.85}); ${V}.setSpecies("nH")`); await allBound();
+    for (let i = 0; i < 80 && !(await ev(`!!window.tngThumb`)); i++) await sleep(250);
+    const pre = JSON.parse(await ev(`JSON.stringify({p: ${V}.camera.position.toArray(), n: (${V}.stats.loads || []).length, same: window.tngThumb?.viewer === ${V}})`));
+    await ev(`tngApp.showTab("spectra")`); await sleep(1500);
+    const th = JSON.parse(await ev(`(async () => { const v = ${V}, h = document.querySelector("#v3d-mini-host"), r = h.getBoundingClientRect(), p0 = v.camera.position.clone();
+      await new Promise(r => setTimeout(r, 1000)); return JSON.stringify({docked: v.docked, inHost: h.contains(v.canvas), host: [r.width, r.height], n: (v.stats.loads || []).length,
+        moved: v.camera.position.distanceTo(p0), frameMs: v.stats.thumbFrameMs, levels: v.levels(), tag: h.querySelector(".v3d-tt .f")?.textContent, active: window.tngThumb.active}); })()`));
+    check(pre.same && th.docked === "thumb" && th.inHost && th.active && Math.abs(th.host[0] - th.host[1]) <= 1 && th.n === pre.n,
+      `thumbnail: one engine (${pre.same}), docked "${th.docked}" in the square host ${th.host.map(x => x.toFixed(0)).join("×")}, tag "${th.tag}", no new cube loads (${pre.n} → ${th.n})`);
+    check(th.moved > 0.5 && th.frameMs < 50, `thumbnail turns while on screen (camera moved ${th.moved.toFixed(1)} kpc in 1 s, frame ${th.frameMs?.toFixed(1)} ms submit)`);
+    const tb = await nonBlank(); check(tb.frac > 0.05, `thumbnail not blank: ${(100 * tb.frac).toFixed(1)} % lit pixels`);
+    await shot("16_thumb_spectra.png");
+    const pz = JSON.parse(await ev(`(async () => { const v = ${V}, m = document.querySelector("#v3d-mini"); m.style.display = "none"; await new Promise(r => setTimeout(r, 700));
+      const a = v.camera.position.clone(); await new Promise(r => setTimeout(r, 900)); const still = v.camera.position.distanceTo(a); m.style.display = "";
+      await new Promise(r => setTimeout(r, 900)); const b = v.camera.position.clone(); await new Promise(r => setTimeout(r, 600)); return JSON.stringify({still, again: v.camera.position.distanceTo(b)}); })()`));
+    check(pz.still === 0 && pz.again > 0.2, `thumbnail pauses off-screen (moved ${pz.still} kpc while hidden) and resumes (${pz.again.toFixed(2)} kpc)`);
+    const tbench = await ev(`${V}.bench(20)`);
+    console.log(`     thumbnail bench: exact ${tbench.exact_ms_median.toFixed(1)} ms at ${tbench.size.join("×")} px (spv 0.6), moving exact ${tbench.moving_exact_ms_median.toFixed(1)} ms`);
+    check(tbench.exact_ms_median <= 60, `thumbnail frame ${tbench.exact_ms_median.toFixed(1)} ms ≤ 60 ms at ${tbench.size.join("×")} px`);
+    const hp = JSON.parse(await ev(`(() => { const r = document.querySelector("#v3d-mini").getBoundingClientRect(); return JSON.stringify([r.x + r.width / 2, r.y + r.height / 2]); })()`));
+    for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", {type, x: hp[0], y: hp[1], button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1});
+    await sleep(1500);
+    const bk = JSON.parse(await ev(`JSON.stringify({tab: document.body.dataset.tab, docked: ${V}.docked, d: ${V}.camera.position.distanceTo(new ${V}.THREE.Vector3(...${JSON.stringify(pre.p)})),
+      inStage: document.querySelector("#v3d-stage").contains(${V}.canvas), ctl: ${V}.controls.enabled, tab3: ${V}.canvas.tabIndex})`));
+    check(bk.tab === "3d" && bk.docked === "full" && bk.inStage && bk.d < 1e-3 && bk.ctl && bk.tab3 === 0, `thumbnail click opens the 3D tab: docked "${bk.docked}" on the stage, camera restored (Δ ${bk.d.toExponential(1)} kpc), orbit on`);
+    /* thumbnail first, cold: only the field's L0 / L1 load for it; the full stage then reuses the engine */
+    await ev(`caches.delete("tng50-viz-v2")`);
+    const URLS = URL3D.replace("#tab=3d", "#tab=spectra"), tc = Date.now();
+    await send("Page.navigate", {url: "about:blank"}); await sleep(300); await send("Page.navigate", {url: URLS});
+    let ok = false; for (let i = 0; i < 1200 && !ok; i++) { await sleep(250); ok = await ev(`!!window.tngThumb?.viewer?.species`).catch(() => false); }
+    await sleep(1500);
+    const cold = JSON.parse(await ev(`JSON.stringify({docked: tngThumb.viewer.docked, levels: tngThumb.viewer.levels(), loads: (tngThumb.viewer.stats.loads || []).map(l => l.key), full: !!window.tngViewer3d})`));
+    check(ok && cold.docked === "thumb" && !cold.full && cold.loads.every(k => /^gas\|nH\|L[01]$/.test(k)) && !Object.values(cold.levels.stars).includes("bound") && cold.levels.gas.L2 !== "bound",
+      `thumbnail-first cold load (${((Date.now() - tc) / 1000).toFixed(1)} s): loads ${cold.loads.join(", ")}; stars ${JSON.stringify(cold.levels.stars)}; L2 ${cold.levels.gas.L2}`);
+    await shot("17_thumb_cold.png");
+    await ev(`tngApp.showTab("3d")`); await waitViewer();
+    for (let i = 0; i < 480 && (await ev(`tngViewer3d.levels().stars.S1`)) !== "bound"; i++) await sleep(250); await allBound(); await sleep(500);
+    const fu = JSON.parse(await ev(`JSON.stringify({same: window.tngViewer3d === tngThumb.viewer, docked: tngViewer3d.docked, stars: tngViewer3d.levels().stars,
+      stage: [document.querySelector(".v3d-stage").clientWidth, document.querySelector(".v3d-stage").clientHeight]})`));
+    check(fu.same && fu.docked === "full" && Math.abs(fu.stage[0] - fu.stage[1]) <= 1 && fu.stars.S1 === "bound", `then the 3D tab: same engine ${fu.same}, docked "${fu.docked}", square stage ${fu.stage.join("×")}, stars S1 ${fu.stars.S1}`);
+    await shot("18_full_after_thumb.png");
+  }
   /* mobile */
   await metrics(390, 844, true, 2); await send("Emulation.setTouchEmulationEnabled", {enabled: true, maxTouchPoints: 5});
   await send("Page.navigate", {url: "about:blank"}); await sleep(300); await send("Page.navigate", {url: URL3D}); const sm = await waitViewer();
   await allBound(); await sleep(800);
   const mob = JSON.parse(await ev(`JSON.stringify({vw: innerWidth, sw: document.documentElement.scrollWidth, stage: [document.querySelector(".v3d-stage").clientWidth, document.querySelector(".v3d-stage").clientHeight],
-    stars: window.tngViewer3d.levels().stars, gas: window.tngViewer3d.levels().gas, cols: getComputedStyle(document.querySelector(".v3d-ctl")).gridTemplateColumns})`));
-  check(sm === "ready" && mob.vw === 390 && mob.sw <= mob.vw && Math.abs(mob.stage[1] - Math.min(0.78 * 844, 1.3 * 390)) <= 2 && !Object.values(mob.stars).includes("bound") && mob.gas.L2 !== "bound",
-    `mobile 390×844: innerWidth ${mob.vw}, scrollWidth ${mob.sw}, stage ${mob.stage.join("×")} (min(78svh,130vw) = ${Math.min(0.78 * 844, 1.3 * 390).toFixed(0)}), stars off, L2 ${mob.gas.L2}, controls "${mob.cols}"`);
+    stars: window.tngViewer3d.levels().stars, gas: window.tngViewer3d.levels().gas, ctl: (() => { const s = document.querySelector(".v3d-stage").getBoundingClientRect(), c = document.querySelector("#v3-ctl").getBoundingClientRect();
+      return {below: c.top >= s.bottom - 1, w: Math.round(c.width)}; })()})`));
+  check(sm === "ready" && mob.vw === 390 && mob.sw <= mob.vw && Math.abs(mob.stage[0] - mob.stage[1]) <= 1 && mob.stage[0] >= 0.75 * mob.vw && mob.stage[0] <= mob.vw && mob.ctl.below && !Object.values(mob.stars).includes("bound") && mob.gas.L2 !== "bound",
+    `mobile 390×844: innerWidth ${mob.vw}, scrollWidth ${mob.sw}, square stage ${mob.stage.join("×")}, controls below it (${mob.ctl.w} px wide), stars off, L2 ${mob.gas.L2}`);
   await shot("11_mobile_3d.png");
-  if (SHOTS) { await ev(`window.scrollTo(0, document.querySelector(".v3d-ctl").getBoundingClientRect().top + scrollY - 200)`); await sleep(400); await shot("11b_mobile_controls.png"); }
+  if (SHOTS) { await ev(`window.scrollTo(0, document.querySelector("#v3-ctl").getBoundingClientRect().top + scrollY - 200)`); await sleep(400); await shot("11b_mobile_controls.png"); }
   await send("Emulation.setTouchEmulationEnabled", {enabled: false}); await metrics(1280, 800);
   /* host blocked: the message, and the Spectra tab still works */
   blockViz = true; await send("Network.enable"); await send("Network.setCacheDisabled", {cacheDisabled: true});
@@ -183,16 +269,17 @@ else {
   const hb = JSON.parse(await ev(`JSON.stringify({msg: document.querySelector(".v3d-msg")?.textContent || "", root: document.querySelector("#v3d-root")?.textContent.slice(0, 200)})`));
   await shot("13_host_blocked.png");
   await ev(`tngApp.showTab("spectra")`); await sleep(800);
-  const sp = await ev(`document.querySelector("#statusline").textContent`);
-  check(/is unreachable\. Sightlines, ray picking and the spectra still work/.test(hb.msg) && /log N/.test(sp), `host blocked: "${hb.msg.slice(0, 140)}"; spectra: "${sp.slice(0, 60)}"`);
+  const sp = await ev(`(() => { const s = document.querySelector("#statusline"); return (s?.dataset.id || "") + "|" + (s?.textContent || ""); })()`);
+  check(/is unreachable\. Sightlines, ray picking and the spectra still work/.test(hb.msg) && (/^[a-z]\w+\|/.test(sp) || /\|.*log N/.test(sp)), `host blocked: "${hb.msg.slice(0, 140)}"; spectra statusline data-id "${sp.split("|")[0]}" (or the v2 page's "log N" text)`);
   blockViz = false;
   /* fix-ui FE-01: a host that accepts the connection and never answers -> the unreachable message within the stall timeout */
   await ev(`caches.delete("tng50-viz-v2")`);
   const URLH = `http://127.0.0.1:${PORT}/tng50/?viz=${encodeURIComponent(`http://127.0.0.1:${PORT}/hang/`)}#tab=3d`, th = Date.now();
   await send("Page.navigate", {url: "about:blank"}); await sleep(300); await send("Page.navigate", {url: URLH});
-  let hm = ""; for (let i = 0; i < 120; i++) { await sleep(500); hm = await ev(`document.querySelector(".v3d-msg")?.textContent || ""`).catch(() => ""); if (/unreachable/.test(hm)) break; }
-  const dth = (Date.now() - th) / 1000;
-  check(/is unreachable/.test(hm) && dth < 45 && !hangSeen.some(u => u.endsWith(".gz")), `hanging host: "${hm.slice(0, 110)}" after ${dth.toFixed(1)} s, ${hangSeen.length} held requests, no .gz behind them`);
+  /* timed from the first "loading" message (the page load itself takes 5-60 s on a loaded machine); the stall timeout is 20 s */
+  let hm = "", tl = 0; for (let i = 0; i < 360; i++) { await sleep(500); hm = await ev(`document.querySelector(".v3d-msg")?.textContent || ""`).catch(() => ""); if (!tl && /loading/.test(hm)) tl = Date.now(); if (/unreachable/.test(hm)) break; }
+  const dth = (Date.now() - (tl || th)) / 1000;
+  check(/is unreachable/.test(hm) && dth < 45 && !hangSeen.some(u => u.endsWith(".gz")), `hanging host: "${hm.slice(0, 110)}" ${dth.toFixed(1)} s after the first loading message, ${hangSeen.length} held requests, no .gz behind them`);
   await shot("15_host_hang.png");
   for (const r of held.splice(0)) r.destroy();
 }

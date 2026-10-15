@@ -19,7 +19,8 @@ LOCK = Path(os.environ.get("TNG_HEAVY_LOCK", "/Volumes/cgm_work/scratch/p2/heavy
 
 # ------------------------------------------------------------------------------- 1. constants and FIELDS
 def test_fields_mapping():
-    assert V.VOL_KEYS == ("nH", "T", "Z", "OVI", "HI", "CIII")
+    from tngsight import ions as I
+    assert V.VOL_KEYS == ("nH", "T", "Z") + I.KEYS
     assert V.VOL_VERSION == 2 and V.GENERATOR == "tngsight.volume/2"
     assert V.GAS_LEVELS == {"L0": 400.0, "L1": 100.0, "L2": 25.0} and V.N == 256
     assert V.Z_SUN == 0.0127
@@ -34,16 +35,26 @@ def test_fields_mapping():
         assert set(e) >= {"label", "units", "kind", "cmap", "yt_field"}
         assert (e["yt_field"], e["kind"], e["cmap"]) == (f, kind, cmap)
     assert V.FIELDS["T"]["units"] == "K" and V.FIELDS["Z"]["units"] == "Zsun"
-    assert all(V.FIELDS[k]["units"] == "cm^-3" for k in ("nH", "OVI", "HI", "CIII"))
-    assert V.QUANTITIES == ("N_nH", "N_OVI", "N_HI", "N_CIII", "m", "mT", "mZ")
+    assert all(V.FIELDS[k]["units"] == "cm^-3" for k in ("nH",) + I.KEYS)
+    assert V.QUANTITIES == ("N_nH",) + tuple(f"N_{k}" for k in I.KEYS) + ("m", "mT", "mZ")
+    # design §3.5: new ions from the registry, cool -> tng_ice, intermediate -> viridis, hot -> magma
+    cm = {k: V.FIELDS[k]["cmap"] for k in I.KEYS}
+    assert [k for k in I.KEYS if cm[k] == "tng_ice"] == ["HI", "MgII", "SiII", "CII", "SiIII"]
+    assert [k for k in I.KEYS if cm[k] == "viridis"] == ["CIII", "SiIV", "CIV", "NV"]
+    assert [k for k in I.KEYS if cm[k] == "magma"] == ["OVI", "NeVIII", "OVII"]
+    for k in I.KEYS:
+        assert V.FIELDS[k]["yt_field"] == ("gas", I.get(k)["field"]) and V.FIELDS[k]["label"] == f"n({I.get(k)['ion']})"
+        assert V.SOURCES[k] == f"('gas','{I.get(k)['field']}') * V_cell" and V.PRIMARY[k] == f"N_{k}"
+    assert set(V.EXPECTED_RANGE) == {"nH", "OVI", "HI", "CIII"}
+    assert V.quantities_for(["OVII"]) == ("N_nH", "N_OVII", "m") and V.quantities_for(["T"]) == ("N_nH", "m", "mT")
 
 
 def _cells(pos, h, V_cm3, m, T, Z, nH=None):
     n = len(m)
     nH = np.full(n, 1e-3) if nH is None else np.asarray(nH, float)
     return {"pos_disk": np.asarray(pos, float), "h": np.asarray(h, float), "V_cm3": np.asarray(V_cm3, float),
-            "m": np.asarray(m, float), "nH": nH, "OVI": nH * 1e-7, "HI": nH * 1e-3, "CIII": nH * 1e-6,
-            "T": np.asarray(T, float), "Z": np.asarray(Z, float)}
+            "m": np.asarray(m, float), "nH": nH, "T": np.asarray(T, float), "Z": np.asarray(Z, float),
+            **{k: nH * 10.0 ** (-3 - i / 3) for i, k in enumerate(V.ION_KEYS)}}
 
 
 # ------------------------------------------------------------------------------- 2. extensive -> densities, T/Z
@@ -67,9 +78,12 @@ def test_extensive_and_level_cubes_four_elements():
     vvox = (25.0 * CM) ** 3
     # every element is fully inside ±100 kpc -> exact totals (density · V_vox sums back to Σ n_i V_i)
     assert dep.n_straddling == 0
-    for k in ("nH", "OVI", "HI", "CIII"):
+    for k in ("nH",) + V.ION_KEYS:
         tot = float(cubes[k].sum() * vvox)
         assert abs(tot / float(q[f"N_{k}"].sum()) - 1) < 1e-12, k
+    sub, dsub = V.build_level(cells, "L1", workers=1, n=8, keys=("nH", "MgII", "T"))   # only what the fields need
+    assert set(sub) == {"nH", "MgII", "T"} and set(dsub.grids) == {"N_nH", "N_MgII", "m", "mT"}
+    assert np.array_equal(sub["MgII"], cubes["MgII"]) and np.array_equal(sub["T"], cubes["T"])
     mv = dep.grids["m"]
     # mass-weighted T/Z: Σ_vox T·m_vox = Σ_i m_i T_i, and T = mT/m per voxel
     assert abs(float((cubes["T"] * mv).sum()) / float(np.sum(np.array(m) * T)) - 1) < 1e-12
@@ -253,7 +267,7 @@ def test_cell_arrays_from_fake_dataset():
     c = np.array(V.GALAXY["center_kpc"]) * V.TNG_H
     data = {("PartType0", "Coordinates"): Arr([c, c + 1.0]), ("PartType0", "Masses"): Arr([1e6, 2e6]),
             ("PartType0", "Density"): Arr([1.0, 4.0])}
-    for k in ("nH", "OVI", "HI", "CIII", "T", "Z"):
+    for k in ("nH", "T", "Z") + V.ION_KEYS:
         data[V.FIELDS[k]["yt_field"]] = Arr([2.0, 3.0])
 
     class DS:

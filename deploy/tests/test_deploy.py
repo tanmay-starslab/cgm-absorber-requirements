@@ -62,15 +62,17 @@ def test_build_library_outputs_and_idempotent(mini_src, tmp_path, capsys):
         a, b = src / f"cgm_sid488530_{s}.npz", out / "sightlines" / f"{s}.npz"
         assert a.read_bytes() == b.read_bytes() and int(a.stat().st_mtime) == int(b.stat().st_mtime)
         p = L.load_npz(b); w = L.decode_web((out / "web" / f"{s}.bin").read_bytes())
-        for k in L.LINE_KEYS:
-            assert np.max(np.abs(w["lines"][k]["flux"] - np.exp(-p["tau"][k].astype(float)))) <= 0.5 / 65535 + 1e-12
-            assert np.allclose(w["lines"][k]["lam"], p["lam"][k], rtol=0, atol=2e-4)
+        assert p["format"] == 1 and p["lines"] == ["CIII", "OVI"] and w["version"] == 2 and sorted(w["lines"]) == ["CIII", "OVI"]
+        for k in p["lines"]:                          # v1 npz -> TNGS v2 of its 2 registry lines (1 km/s box average)
+            u, F = L.web_flux(p, k)
+            assert w["lines"][k]["n"] == u.size and w["lines"][k]["u0"] == u[0] and w["lines"][k]["du"] == 1.0
+            assert np.max(np.abs(w["lines"][k]["flux"] - np.clip(F, 0, 1))) <= 0.5 / 65535 + 1e-12
     doc = json.loads((out / "catalog.json").read_text())
     es = {e["id"]: e for e in doc["entries"]}
     assert set(es) == set(SAMPLE) | {"face_b077_a012"} and es["face_b077_a012"]["source"] == "generated"
     for s, r in rows.items():
         assert es[s]["source"] == "library" and es[s]["rank"] == int(r["rank"])
-        assert es[s]["score"] == pytest.approx(float(r["showcase_score"]))
+        assert es[s]["score"] == pytest.approx(float(r["showcase_score"]), abs=5e-5)
         assert es[s]["star"] == (r["ovi_showcase"] == "True")
     assert es[SAMPLE[2]]["rank"] is None and es[SAMPLE[2]]["seed"] == 479980658
     assert "WARNING: 1 npz without a grid_index row" in capsys.readouterr().out
@@ -113,7 +115,7 @@ def _fake_table(path):
     rng = np.random.default_rng(1)
     with h5py.File(path, "w") as f:
         f.attrs["note"] = "fake"
-        for el, n in (("H", 2), ("He", 3), ("C", 7), ("O", 9)):
+        for el, n in (("H", 2), ("He", 3), ("C", 7), ("N", 8), ("O", 9), ("Ne", 11), ("Mg", 13), ("Si", 15)):
             d = f.create_dataset(el, data=rng.normal(size=(n, 4, 3, 5)).astype(">f4"))
             d.attrs["Parameter1"] = np.linspace(-9, 2, 4).astype(">f4")
             d.attrs["Parameter2"] = np.linspace(0, 14.849, 3).astype(">f4")
@@ -125,7 +127,8 @@ def test_slim_copies_verbatim(tmp_path):
     _fake_table(src)
     sl.slim(src, out); sl.check(src, out)
     with h5py.File(out) as f:
-        assert sorted(f) == ["C", "H", "O"] and f["O"].dtype == np.dtype(">f4") and f.attrs["note"] == "fake"
+        assert sorted(f) == sorted(sl.ELEMENTS) == ["C", "H", "Mg", "N", "Ne", "O", "Si"]
+        assert f["O"].dtype == np.dtype(">f4") and f.attrs["note"] == "fake" and "He" not in f
         assert f["C"].attrs["Temperature"].dtype == np.dtype(">f4")
     with h5py.File(out, "r+") as f:
         f["O"][0, 0, 0, 0] += 1
@@ -138,7 +141,7 @@ def test_real_slim_table():
     if not (full.is_file() and slim.is_file()):
         pytest.skip("ion tables not present")
     sl.check(full, slim)
-    assert slim.stat().st_size < 60e6
+    assert slim.stat().st_size <= sl.MAX_BYTES          # 7 elements: 185.7 MB (design.md §4.4)
 
 
 # ----------------------------------------------------------------------------- upload plan

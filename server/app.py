@@ -37,10 +37,10 @@ log = logging.getLogger("tngsight.server")
 _JOB_RE = re.compile(JOB_ID_RE)
 _NAME_RE = r"^[A-Za-z0-9._-]{1,64}$"
 SEED_MAX = 2**32 - 1
-# /api/figure accepts only what the page can send (docs/tng50: CFG.R_opts, S/N sliders 2-20,
-# velocity window 150-800 step 50, noise seed 0-99999): a small key space keeps the render cache useful.
-R_OPTS = (20000, 30000, 40000, 60000, 80000, 100000)
+# /api/figure accepts only what the page can send (design.md §4.2): ions from the registry (1-6), R per band
+# inside the band range, S/N 2-100, half-window 10-1500 km/s, centre +-1500 km/s, noise seed 0-99999.
 FIG_SEED_MAX = 99999
+FIG_MAX_IONS = 6
 LEASE_RE = r"^[0-9a-f]{32}$"
 
 
@@ -56,23 +56,104 @@ class GeometryReq(_M):
     seed: Optional[int] = Field(default=None, ge=0, le=SEED_MAX)
 
 
+def _reg():
+    from tngsight import ions
+    return ions
+
+
 class FigureReq(_M):
+    """v3 body; the v2 fields R_lo, R_hi, sn_hi, sn_lo and vwin are accepted for one release and mapped onto
+    the uv band, S/N and vhw (normalized(), which also fills the registry defaults)."""
     id: str = Field(pattern=ID_RE.pattern, max_length=40)
-    R_lo: int = 20000
-    R_hi: int = 40000
-    sn_hi: int = Field(default=8, ge=2, le=20)
-    sn_lo: int = Field(default=5, ge=2, le=20)
-    vwin: Optional[int] = Field(default=None, ge=150, le=800, multiple_of=50)
+    ions: Optional[list[str]] = Field(default=None, min_length=1, max_length=FIG_MAX_IONS)
+    R: Optional[dict[str, list[int]]] = None
+    sn: Optional[list[int]] = Field(default=None, min_length=2, max_length=2)
+    vhw: Optional[int] = Field(default=None, ge=10, le=1500)
+    vc: Optional[float] = Field(default=None, ge=-1500, le=1500, allow_inf_nan=False)
+    R_lo: Optional[int] = None                 # legacy (v2 page)
+    R_hi: Optional[int] = None
+    sn_hi: Optional[int] = None
+    sn_lo: Optional[int] = None
+    vwin: Optional[int] = None
     intrinsic: bool = False
     seed: Optional[int] = Field(default=None, ge=0, le=FIG_SEED_MAX)
     fmt: Literal["png", "pdf"] = "png"
 
+    @field_validator("ions")
+    @classmethod
+    def _ions(cls, v):
+        if v is None:
+            return v
+        keys = _reg().KEYS
+        bad = [k for k in v if k not in keys]
+        if bad:
+            raise ValueError(f"unknown ion {bad[0][:12]!r}; known: {', '.join(keys)}")
+        if len(set(v)) != len(v):
+            raise ValueError("ions must be unique")
+        return [k for k in keys if k in v]                    # registry order
+
+    @field_validator("R")
+    @classmethod
+    def _R(cls, v):
+        if v is None:
+            return v
+        bands = _reg().BANDS
+        for b, pair in v.items():
+            if b not in bands:
+                raise ValueError(f"unknown band {b[:12]!r}; known: {', '.join(bands)}")
+            lo, hi = bands[b]["R"]["min"], bands[b]["R"]["max"]
+            if len(pair) != 2 or not all(lo <= r <= hi for r in pair):
+                raise ValueError(f"R.{b} must be two integers in [{lo}, {hi}]")
+        return v
+
+    @field_validator("sn", "sn_hi", "sn_lo")
+    @classmethod
+    def _sn(cls, v):
+        if v is None:
+            return v
+        s = _reg().SNR
+        if not all(s["min"] <= x <= s["max"] for x in (v if isinstance(v, list) else [v])):
+            raise ValueError(f"S/N must be in [{s['min']}, {s['max']}]")
+        return v
+
     @field_validator("R_lo", "R_hi")
     @classmethod
-    def _r_opt(cls, v):
-        if v not in R_OPTS:
-            raise ValueError(f"R must be one of {list(R_OPTS)}")
+    def _r_legacy(cls, v):
+        if v is None:
+            return v
+        r = _reg().BANDS["uv"]["R"]
+        if not r["min"] <= v <= r["max"]:
+            raise ValueError(f"R must be in [{r['min']}, {r['max']}] (uv band)")
         return v
+
+    @field_validator("vwin")
+    @classmethod
+    def _vwin(cls, v):
+        if v is not None and not 10 <= v <= 1500:
+            raise ValueError("vwin must be in [10, 1500]")
+        return v
+
+    def normalized(self) -> dict:
+        """Canonical render parameters: ions, R {band: [lo, hi]} for every band, sn [hi, lo], vhw, vc,
+        intrinsic, seed. Explicit v3 fields win over the legacy ones."""
+        reg = _reg()
+        R = {b: list(d["R"]["pair"]) for b, d in reg.BANDS.items()}
+        if self.R_lo is not None or self.R_hi is not None:
+            R["uv"] = [self.R_lo if self.R_lo is not None else R["uv"][0],
+                       self.R_hi if self.R_hi is not None else R["uv"][1]]
+        for b, pair in (self.R or {}).items():
+            R[b] = list(pair)
+        sn = list(reg.SNR["pair"])
+        if self.sn_hi is not None:
+            sn[0] = self.sn_hi
+        if self.sn_lo is not None:
+            sn[1] = self.sn_lo
+        if self.sn is not None:
+            sn = list(self.sn)
+        vhw = self.vhw if self.vhw is not None else (self.vwin if self.vwin is not None
+                                                      else int(reg.DEFAULTS["vhw_kms"]))
+        return {"ions": list(self.ions) if self.ions else None, "R": R, "sn": sn, "vhw": int(vhw), "vc": float(self.vc or 0.0),
+                "intrinsic": bool(self.intrinsic), "seed": self.seed}
 
 
 _Coord = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=-1e4, le=1e4)]
@@ -330,6 +411,12 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         d = {"status": "ok", "version": VERSION, "warm": warm, "workers": {"local": loc, "remote": remote},
              "queue": jobq.counts(), "library_size": lib_n, "generated_size": gen_n, "node": S.node_name}
         d["chat"] = chat.health_fragment(S)
+        try:
+            from tngsight import ions as _ions
+            d.update(registry_tag=_ions.registry_tag(), data_version=2, ions=list(_ions.KEYS))
+        except Exception as e:                    # never fail the health check over the registry
+            log.warning("ion registry unavailable: %s", e)
+            d.update(registry_tag=None, data_version=2, ions=[])
         if hf is not None:
             d["hf"] = hf.status()
         return d
@@ -444,8 +531,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         d = store.components(sid)
         if d is None:
             raise HTTPException(404, f"no components for {sid}")
-        return {"id": sid, "fitter": d.get("fitter"), "params_tag": d.get("params_tag"),
-                "components": d["components"]}
+        return d                               # the per-sightline v2 doc (design.md §4.1)
 
     @app.get("/api/jobs/{job_id}")
     def job(job_id: str):
@@ -512,10 +598,18 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         wait = limiter.check("figure", ip(request))
         if wait:
             return _limited(wait, "figures")
-        params = req.model_dump()
-        key = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()
+        params = {**req.normalized(), "id": req.id, "fmt": req.fmt}
         if store.npz_path(req.id) is None:
             raise HTTPException(404, f"unknown sightline {req.id}")
+        lines = (store.entry(req.id) or {}).get("lines")
+        if lines:                          # v1 sightlines hold OVI and CIII only
+            if params["ions"] is None:
+                from tngsight import ions as _ions
+                params["ions"] = [k for k in _ions.DEFAULTS["ions"] if k in lines] or list(lines)[:FIG_MAX_IONS]
+            missing = [k for k in params["ions"] if k not in lines]
+            if missing:
+                raise HTTPException(422, f"ion {missing[0]} is not in sightline {req.id} (lines: {', '.join(lines)})")
+        key = hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest()
         blob = fig_cache.get(key)
         if blob is None:
             if fig_pending[0] >= S.figure_max_pending:      # renders are serialized: don't pile up
@@ -524,8 +618,9 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             wait = limiter.check("figure_all", "*")
             if wait:
                 return _limited(wait, "figures (all users)")
-            kw = {k: params[k] for k in ("R_lo", "R_hi", "sn_hi", "sn_lo", "intrinsic")}
-            kw.update({k: params[k] for k in ("vwin", "seed") if params[k] is not None})
+            kw = {k: params[k] for k in ("ions", "R", "sn", "vhw", "vc", "intrinsic") if params[k] is not None}
+            if params["seed"] is not None:
+                kw["seed"] = params["seed"]
 
             def work():
                 with fig_lock:                 # matplotlib is not thread-safe
@@ -544,7 +639,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         else:
             fig_cache.move_to_end(key)
         media = "image/png" if req.fmt == "png" else "application/pdf"
-        fn = f"tng50_{req.id}_R{req.R_lo}-{req.R_hi}_sn{req.sn_hi:g}-{req.sn_lo:g}.{req.fmt}"
+        fn = f"tng50_{req.id}_{'-'.join(params['ions'] or ['default'])}_sn{params['sn'][0]}-{params['sn'][1]}.{req.fmt}"
         return Response(blob, media_type=media, headers={"Content-Disposition": f'attachment; filename="{fn}"'})
 
     # -------------------------------------------------------------------------- worker protocol
@@ -559,8 +654,9 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             return Response(status_code=204)
         # `lease`: this lease's token; progress/fail must present it (a stale worker whose lease was
         # reassigned gets 409 instead of extending or failing the new holder's lease).
+        from tngsight.ions import registry_tag
         return {"job_id": j.job_id, "geom": j.geom, "lease_s": int(S.lease_s), "attempt": j.attempts,
-                "lease": j.lease_token}
+                "lease": j.lease_token, "registry_tag": registry_tag()}
 
     @app.post("/api/worker/progress/{job_id}", dependencies=[Depends(worker_auth)])
     def worker_progress(job_id: str, req: ProgressReq, lease: str = Query(pattern=LEASE_RE)):

@@ -1,14 +1,15 @@
 // Phase-2b cube decoding (design §5.11 item 1): docs/tng50/js/vizdata.js against tngsight.vizpack (or the spec
 // fallback in make_viz_fixture.py). atlasToRaw of the PIL-decoded WebP parts reproduces the raw bytes (sha256), the
 // gz path gives exact bytes, a wrong length is an error, decodeU8 matches dequantize (≤ 1e-6), and
-// validateManifestV2 accepts the fixture and rejects 5 mutations.
+// validateManifestV2 accepts the fixture and rejects 5 mutations. Phase 3: VOL_KEYS and the 3D species menu follow the
+// ion registry (tngsight/ions.json), and a manifest with a new ion field validates.
 // Usage: node tests/js/viz_decode.mjs [fixture dir]   (default: make_viz_fixture.py --out <tmp>)
 import {readFileSync, mkdtempSync} from "node:fs";
 import {execFileSync} from "node:child_process";
 import {tmpdir} from "node:os";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
-import {atlasToRaw, gunzipIfNeeded, sha256Hex, sha256Js, decodeU8, validateManifestV2, cubeRef, cubeUrls} from "../../docs/tng50/js/vizdata.js";
+import {atlasToRaw, gunzipIfNeeded, sha256Hex, sha256Js, decodeU8, validateManifestV2, cubeRef, cubeUrls, VOL_KEYS, ION_KEYS, ION_FALLBACK, speciesList} from "../../docs/tng50/js/vizdata.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 let dir = process.argv[2];
@@ -58,5 +59,25 @@ const mut = [
 ];
 for (const [name, f] of mut) { const m = JSON.parse(JSON.stringify(M)); f(m); let e = null; try { validateManifestV2(m); } catch (x) { e = x.message; }
   check(e !== null, `validateManifestV2 rejects mutation "${name}": ${e}`); }
+
+/* Phase 3: the 12-ion ladder (tngsight/ions.json is the single source; tngsight.vizpack.VOL_KEYS = nH, T, Z + its keys) */
+const REG = JSON.parse(readFileSync(join(HERE, "../../tngsight/ions.json"), "utf8")).ions.sort((a, b) => a.order - b.order);
+check(JSON.stringify(VOL_KEYS) === JSON.stringify(["nH", "T", "Z", ...REG.map(i => i.key)]) && ION_KEYS.length === 12, `VOL_KEYS = nH, T, Z + the registry keys in ladder order (${VOL_KEYS.length})`);
+check(ION_FALLBACK.length === REG.length && ION_FALLBACK.every((f, i) => f.key === REG[i].key && f.ion === REG[i].ion && f.label === REG[i].label && f.color === REG[i].color && f.color_dark === REG[i].color_dark),
+  "ION_FALLBACK (key, ion, label, color, color_dark) matches tngsight/ions.json");
+{ const M2 = JSON.parse(JSON.stringify(M)), f = JSON.parse(JSON.stringify(M2.gas.fields.nH).replaceAll("/nH.", "/MgII."));
+  M2.gas.fields.MgII = f; let e = null; try { validateManifestV2(M2); } catch (x) { e = x.message; }
+  check(e === null, "validateManifestV2 accepts a new registry ion field (MgII)" + (e ? ": " + e : ""));
+  const cfgIons = [...REG].reverse().map(i => ({key: i.key, order: i.order, ion: i.ion, label: i.label, color: i.color, color_dark: i.color_dark}));
+  const L = speciesList(cfgIons, M2), have = new Set(Object.keys(M2.gas.fields));
+  check(L.length === 15 && L.map(x => x.key).join() === VOL_KEYS.join() && L.slice(0, 3).every(x => x.group === "gas") && L.slice(3).every(x => x.group === "ion"),
+    `speciesList: nH, T, Z then 12 ions in ladder order (from a reversed CFG.ions)`);
+  check(L.every(x => x.available === have.has(x.key) && (x.available ? x.reason === "" : /not built/.test(x.reason))),
+    `speciesList: available = cubes in the manifest (${L.filter(x => x.available).map(x => x.key).join(", ")}); the rest carry "not built yet"`);
+  check(L.find(x => x.key === "CIV").label === "C IV" && L.find(x => x.key === "CIV").color === "#8A6A00" && L.find(x => x.key === "CIV").color_dark === "#E5C33A",
+    "speciesList: ion names and registry colours (C IV)");
+  const N = speciesList(null, null);
+  check(N.length === 15 && N.every(x => !x.available && x.reason) && N[3].label === "H I", "speciesList without CFG.ions or a manifest: the fallback ladder, all disabled with a reason");
+  check(!speciesList([], M).find(x => x.key === "OVII").available, "speciesList: an ion with no cubes (O VII) is disabled, no exception"); }
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nall checks passed");
 process.exit(fails ? 1 : 0);

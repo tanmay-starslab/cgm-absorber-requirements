@@ -1,0 +1,278 @@
+/* TNG50 explorer page styles (Phase 3). Look: mockup B (dark-first glass console, light theme of equal quality) with
+   mockup A's grafts (labelled control groups, labelled ion chips, switch toggles, a single-column mobile layout with a
+   controls drawer). pick.md is binding on look, design §6 on ids and semantics. */
+:root{--scheme:dark;--bg:#07090f;--bg2:#0d1220;--glow1:rgba(84,64,200,.22);--glow2:rgba(230,110,60,.10);--glass:rgba(22,27,42,.62);--glass2:rgba(30,36,56,.94);
+  --gline:rgba(160,175,220,.15);--ink:#eef0f7;--muted:#a0a8c0;--faint:#8b93ad;--strip:#131827;--swoff:rgba(127,127,160,.36);--grid:rgba(150,165,210,.11);--panel:rgba(14,18,30,.55);--data:#c4cadb;--fit:#ffffff;
+  --accent:#8fa8ff;--hl:rgba(143,168,255,.16);--good:#4ade80;--warn:#f5b84b;--bad:#ff8a8a;--shadow:0 18px 50px rgba(0,0,0,.55);
+  --sans:"Space Grotesk",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;--body:var(--sans);--rule:var(--gline);--ink2:var(--muted);color-scheme:dark}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--scheme:light;--bg:#eef0f6;--bg2:#e3e7f2;--glow1:rgba(110,90,230,.14);--glow2:rgba(240,140,80,.10);
+  --glass:rgba(255,255,255,.66);--glass2:rgba(255,255,255,.97);--gline:rgba(40,50,90,.13);--ink:#121628;--muted:#525a78;--faint:#5f6783;--strip:#f5f6fa;--swoff:rgba(60,70,110,.64);--grid:rgba(40,50,90,.08);
+  --panel:rgba(255,255,255,.6);--data:#363c52;--fit:#0b0e1a;--accent:#3a55d8;--hl:rgba(58,85,216,.10);--good:#15803d;--warn:#a16207;--bad:#b91c1c;
+  --shadow:0 18px 50px rgba(30,40,90,.16);color-scheme:light}}
+:root[data-theme="light"]{--scheme:light;--bg:#eef0f6;--bg2:#e3e7f2;--glow1:rgba(110,90,230,.14);--glow2:rgba(240,140,80,.10);
+  --glass:rgba(255,255,255,.66);--glass2:rgba(255,255,255,.97);--gline:rgba(40,50,90,.13);--ink:#121628;--muted:#525a78;--faint:#5f6783;--strip:#f5f6fa;--swoff:rgba(60,70,110,.64);--grid:rgba(40,50,90,.08);
+  --panel:rgba(255,255,255,.6);--data:#363c52;--fit:#0b0e1a;--accent:#3a55d8;--hl:rgba(58,85,216,.10);--good:#15803d;--warn:#a16207;--bad:#b91c1c;
+  --shadow:0 18px 50px rgba(30,40,90,.16);color-scheme:light}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{display:flow-root}   /* B_fix F6: #top's margin no longer collapses through body (the page was 10 px taller than the viewport) */
+body{color:var(--ink);font:13px/1.4 var(--sans);overflow:hidden;background:var(--bg);
+  background-image:radial-gradient(1200px 700px at 12% -10%,var(--glow1),transparent 60%),radial-gradient(900px 600px at 105% 110%,var(--glow2),transparent 60%),linear-gradient(180deg,var(--bg),var(--bg2));-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--accent)}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.glass{background:var(--glass);border:1px solid var(--gline);backdrop-filter:blur(18px) saturate(1.3);-webkit-backdrop-filter:blur(18px) saturate(1.3);border-radius:14px}
+sub{font-size:.75em}
+/* ---- top bar ---- */
+#top{height:48px;display:flex;align-items:center;gap:10px;padding:0 10px 0 16px;margin:10px 12px 0;position:relative;z-index:30}
+#title{font:600 12.5px var(--sans);letter-spacing:.01em;margin:0;white-space:nowrap;color:var(--ink)}
+#tabs{display:flex;gap:2px;padding:3px;border-radius:10px;background:rgba(127,127,160,.10)}
+#tabs [role=tab]{border:0;background:none;padding:5px 12px;border-radius:7px;color:var(--muted);cursor:pointer;font-weight:500}
+#tabs [role=tab][aria-selected=true]{background:var(--glass2);color:var(--ink);box-shadow:0 1px 0 var(--gline) inset,0 2px 8px rgba(0,0,0,.16)}
+.sep{width:1px;height:22px;background:var(--gline);flex:none}
+.sp{flex:1}
+.grp{display:flex;align-items:center;gap:5px;min-width:0}
+.gl{font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:2px;white-space:nowrap}
+.pbtn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 11px;border:1px solid var(--gline);background:rgba(127,127,160,.08);border-radius:9px;cursor:pointer;white-space:nowrap;color:var(--ink)}
+.pbtn:hover,.pbtn[aria-expanded=true]{background:var(--hl);border-color:var(--accent)}
+.pbtn:disabled{opacity:.5;cursor:not-allowed}
+.pbtn svg{width:14px;height:14px;color:var(--muted);flex:none}
+.pbtn .gid{font:500 11.5px var(--mono);overflow:hidden;text-overflow:ellipsis;max-width:22ch}
+.pbtn.sq{width:32px;padding:0;justify-content:center}
+.ib{width:32px;height:32px;border-radius:9px;border:1px solid transparent;background:none;display:inline-grid;place-items:center;cursor:pointer;color:var(--muted);flex:none}
+.ib:hover,.ib[aria-expanded=true],.ib[aria-pressed=true]{background:var(--hl);color:var(--ink)}
+.ib svg{width:16px;height:16px}
+.icons{display:flex;gap:0;align-items:center}
+#pill{font:500 10.5px var(--mono);color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap}
+#pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--faint)}
+#pill[data-state=offline]::before{background:#f97316;box-shadow:0 0 10px #f97316}
+#pill[data-state=warming]::before{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+#pill[data-state=live]::before{background:var(--good);box-shadow:0 0 10px var(--good)}
+.banner{margin:8px 12px 0;padding:7px 12px;border:1px solid var(--warn);border-radius:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;background:var(--glass2)}
+.banner b{font:500 11.5px var(--mono)}
+/* ---- shell ---- */
+#shell{display:grid;grid-template-columns:minmax(0,1fr) clamp(236px,20vw,300px);gap:12px;padding:12px;height:calc(100% - 58px);min-height:0}
+body.has-banner #shell{height:calc(100% - 58px - 46px)}
+body.side-off #shell{grid-template-columns:minmax(0,1fr)}
+body.side-off #side{display:none}
+#panel-spectra{display:flex;flex-direction:column;min-height:0;min-width:0;padding:8px 10px 4px 4px}
+/* tune1 F5: Layout floats right on the first row and the chips flow round it, then under it at full width, so the bar
+   takes one row of chips more only when they need it (it was up to three rows plus a stranded Layout at 1024) */
+#plotbar{display:flow-root;min-height:34px;padding:0 4px 4px 10px}
+#plotbar #grp-layout{float:right;margin:0 0 2px 14px}
+#plotbar #grp-lines{display:block;line-height:32px}
+#plotbar #grp-lines>.gl,#plotbar #ion-open{vertical-align:middle;margin-right:6px}
+#plotbar #ion-chips{display:inline}
+#plotbar .chip{margin:2px 4px 2px 0;vertical-align:middle;line-height:normal}
+#ion-chips{display:flex;gap:4px;align-items:center;flex-wrap:wrap;min-width:0}
+.chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 6px 0 8px;border-radius:99px;border:1px solid var(--gline);background:rgba(127,127,160,.07);font:500 11.5px var(--sans);cursor:pointer;white-space:nowrap;color:var(--ink)}
+.chip:hover{border-color:var(--ic)}
+.chip .x{color:var(--muted);font-size:12px;line-height:1;margin-left:1px}
+.chip:hover .x{color:var(--ink)}
+.sw{width:8px;height:8px;border-radius:50%;background:var(--ic);box-shadow:0 0 7px var(--ic);flex:none;display:inline-block}
+#ion-open .n{font:500 11px var(--mono);color:var(--accent)}
+.seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;padding:3px;border-radius:10px;background:rgba(127,127,160,.10);gap:2px}
+.seg label{position:relative;cursor:pointer}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg span{display:flex;align-items:center;justify-content:center;height:26px;padding:0 9px;font:500 11px var(--mono);color:var(--muted);border-radius:7px;white-space:nowrap}
+.seg input:checked+span{background:var(--hl);color:var(--ink);box-shadow:inset 0 0 0 1px var(--accent),0 2px 8px rgba(0,0,0,.14)}
+.seg input:focus-visible+span{outline:2px solid var(--accent)}
+.seg input:disabled+span{opacity:.4;cursor:not-allowed}
+#spectra{position:relative;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;outline:none;cursor:grab;scrollbar-width:thin;touch-action:pan-y}
+#spectra:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px}   /* B_fix F1: the same 2 px accent ring as every control */
+#spectra.dragging{cursor:grabbing}
+#cv{display:block}
+#hitboxes{position:absolute;inset:0;pointer-events:none}
+#hitboxes .panel{position:absolute}
+/* tune1 F3, B_tune2 M3: the velocity-axis strip under the stage when the rows overflow; it takes its own height (the
+   stage above ends at a row boundary) and holds the lines-below pill, right-aligned under the ticks */
+#vaxis{flex:none;box-sizing:border-box;height:48px;display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:3px 0 0;border-top:1px solid var(--grid);background:var(--strip)}
+#vaxis[hidden]{display:none}
+#vaxis-cv{display:block}
+#more-below{align-self:flex-end;display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 9px;margin-right:6px;border-radius:99px;border:1px solid var(--gline);background:var(--glass2);color:var(--ink);font:500 11px var(--sans);cursor:pointer}
+#more-below[hidden]{display:none}
+#more-below:hover{border-color:var(--accent)}#more-below svg{width:11px;height:11px;color:var(--accent)}
+#bar{display:flex;align-items:center;gap:14px;height:24px;font:10.5px var(--mono);color:var(--muted);padding:0 4px 0 24px;min-width:0}
+#statusline,#readouts{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#statusline b{font-weight:500;color:var(--ink)}
+#note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
+#note.bad{color:var(--bad)}#note.good{color:var(--good)}
+#fitstatus{white-space:nowrap}
+#fitstatus[data-state=running]{color:var(--accent)}#fitstatus[data-state=error]{color:var(--bad)}#fitstatus[data-state=budget]{color:var(--warn)}
+/* ---- side column ---- */
+#side{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto;scrollbar-width:none}
+#mobslot{display:none}
+#side-head{display:none}
+#v3d-mini{position:relative;display:block;width:100%;aspect-ratio:1/1;border-radius:14px;overflow:hidden;border:1px solid var(--gline);background:#05070b;flex:none;padding:0;cursor:pointer}
+#v3d-mini:hover{border-color:var(--accent)}
+#v3d-mini:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#v3d-mini-host{position:absolute;inset:0}
+#v3d-mini.live .mini-art{display:none}
+.mini-art{position:absolute;inset:0;background:radial-gradient(circle at 50% 52%,rgba(255,196,120,.55),rgba(214,90,140,.35) 18%,rgba(80,40,150,.28) 42%,transparent 70%),#0b0718}
+.card{padding:12px 12px 10px;display:flex;flex-direction:column;gap:9px}
+.card h2{margin:0 0 1px;font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+/* tune1 F15: a card header can carry a small text action (Velocity: Reset view) */
+.card .hd{display:flex;align-items:center;justify-content:space-between;gap:8px}.card .hd h2{margin:0}
+.lk{border:0;background:none;padding:2px 0;font:500 11.5px var(--sans);color:var(--accent);cursor:pointer}.lk:hover{text-decoration:underline}
+.ctl{display:grid;grid-template-columns:62px 1fr 54px;align-items:center;gap:8px}
+.ctl .k{font:500 11px var(--mono);color:var(--muted);white-space:nowrap}
+.ctl .k em{font-style:normal;color:var(--faint);font-size:10px;margin-left:2px}
+.ctl output{font:500 11.5px var(--mono);text-align:right;white-space:nowrap}
+#rsliders{display:flex;flex-direction:column;gap:9px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;margin:0;cursor:pointer;--pc:50%}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--accent) var(--pc),rgba(127,127,160,.24) var(--pc))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--ink);margin-top:-5px;box-shadow:0 0 0 3px rgba(143,168,255,.25)}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:rgba(127,127,160,.24)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--accent)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:0;border-radius:50%;background:var(--ink)}
+input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.tg{display:flex;align-items:center;justify-content:space-between;cursor:pointer;min-height:26px;font-size:12.5px;gap:10px}
+.tg input{appearance:none;-webkit-appearance:none;width:30px;height:17px;border-radius:99px;background:var(--swoff);position:relative;cursor:pointer;margin:0;transition:background .15s;flex:none}
+.tg input::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.tg input:checked{background:var(--accent)}.tg input:checked::after{left:15px}
+.row{display:flex;gap:6px}
+.row .pbtn{flex:1;justify-content:center;height:30px;color:var(--muted)}
+.row .pbtn.sq{flex:none}
+/* ---- popovers ---- */
+.pop{position:fixed;z-index:50;background:var(--glass2);border:1px solid var(--gline);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border-radius:14px;box-shadow:var(--shadow);padding:14px;max-width:min(400px,calc(100vw - 24px));max-height:calc(100vh - 80px);overflow:auto}
+.pop h3{margin:0 0 8px;font:600 12.5px var(--sans)}
+.pop p,.pop li{margin:0 0 6px;color:var(--muted);font-size:12.5px;line-height:1.55}
+.pop ul{margin:0;padding-left:16px}
+.pop ul.plain{list-style:none;padding:0}.pop ul.plain li{margin-bottom:9px}.pop ul.plain li:last-child{margin-bottom:0}
+.pop strong{color:var(--ink);font-weight:500}
+.pop.sheet{left:10px!important;right:10px;top:auto!important;bottom:10px;width:auto!important;max-width:none;max-height:74vh}
+#gal-pop{width:400px;padding:10px}
+#gal-pop .fl{display:flex;gap:6px;margin-bottom:8px}
+#gal-search,#filter,.pop input[type=number],.pop input[type=url]{height:32px;border:1px solid var(--gline);border-radius:9px;background:rgba(127,127,160,.08);padding:0 10px;font:12px var(--mono);min-width:0}
+#gal-search{flex:1}
+#gal-list{list-style:none;margin:0;padding:0;max-height:320px;overflow:auto;position:relative}
+#gal-list li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:6px 9px;border-radius:8px;cursor:pointer;font:11.5px var(--mono)}
+#gal-list li:hover{background:rgba(127,127,160,.09)}
+#gal-list li.hl{background:var(--hl);box-shadow:inset 0 0 0 1px var(--accent)}   /* B_fix F11: the keyboard highlight differs from the mouse hover */
+#gal-list li[aria-selected=true] .gid{color:var(--accent)}
+#gal-list .gid{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#gal-list .gm{color:var(--muted);font-size:10.5px;white-space:nowrap}
+.tag{font:500 9.5px var(--mono);color:var(--accent);border:1px solid currentColor;border-radius:4px;padding:0 4px}
+.galf{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font:11px var(--mono);color:var(--muted)}
+.galf label{display:flex;gap:5px;align-items:center;cursor:pointer}
+#ion-pop{width:320px;padding:8px}
+.ion-row{display:grid;grid-template-columns:18px 12px 1fr auto;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer}
+.ion-row:hover{background:var(--hl)}
+.ion-row input{margin:0;accent-color:var(--accent)}
+.ion-row .nm{font-weight:500}
+.ion-row .bd{font:10px var(--mono);color:var(--faint)}
+.ion-row.absent .nm{color:var(--faint)}
+.pbtns{display:flex;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid var(--gline)}
+.pbtns button{flex:1;height:28px;border:1px solid var(--gline);background:none;border-radius:8px;cursor:pointer;font-size:11.5px;color:var(--muted)}
+.pbtns button:hover{background:var(--hl);color:var(--ink)}
+#dl-menu{padding:6px;display:flex;flex-direction:column;min-width:170px}
+#dl-menu button{text-align:left;border:0;background:none;padding:8px 10px;border-radius:8px;cursor:pointer}
+#dl-menu button:hover{background:var(--hl)}#dl-menu button:disabled{opacity:.4}
+#geo-pop{width:330px}
+#geo-pop fieldset{border:0;margin:0 0 8px;padding:0}
+#geo-pop legend{font:500 9.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+.radios{display:flex;gap:12px;font-size:12.5px}
+.radios label{display:flex;gap:5px;align-items:center;cursor:pointer}
+.field{display:grid;grid-template-columns:70px 1fr;gap:8px;align-items:center;margin:6px 0;font-size:12.5px}
+.field label{color:var(--muted)}
+.go{margin-top:8px;width:100%;height:32px;border-radius:9px;border:1px solid var(--accent);background:var(--accent);color:var(--bg);cursor:pointer;font-weight:500}
+.go:disabled{opacity:.45;cursor:not-allowed}
+.prog{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+.stagebar{display:grid;grid-template-columns:repeat(6,1fr);gap:3px}
+.stagebar span{height:5px;border-radius:3px;background:rgba(127,127,160,.22);position:relative;overflow:hidden}
+.stagebar span i{position:absolute;inset:0 auto 0 0;background:var(--accent);width:0}
+.stagebar span.done i{width:100%}
+.stagenames{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;font:10px var(--mono);color:var(--faint)}
+.stagenames span.on{color:var(--ink)}
+.msg{font-size:11.5px;color:var(--muted);overflow-wrap:anywhere;margin:8px 0 0}
+.msg.bad{color:var(--bad)}.msg.good{color:var(--good)}
+#geo-pop details{margin-top:8px;font-size:12px}
+#geo-pop summary{cursor:pointer;color:var(--muted)}
+.backends{font:11px var(--mono);color:var(--muted);display:flex;flex-direction:column;gap:2px;margin-top:6px;overflow-wrap:anywhere}
+#find-pop{width:440px}
+#find-pop .msg{margin:0 0 6px}
+/* tune1 F7: the Find form on one grid: a fixed label column, equal min and max boxes, buttons in the page style */
+#find-form .field{grid-template-columns:118px minmax(0,1fr);margin:5px 0}
+#find-form .field>label,#find-form .field>.lab{color:var(--muted);white-space:nowrap;font-size:12px}
+#find-form .field>.row{display:grid!important;grid-template-columns:1fr 1fr;gap:6px!important}
+#find-body select,#find-body input{height:30px;width:100%;border:1px solid var(--gline);background:rgba(127,127,160,.08);border-radius:8px;padding:0 8px;min-width:0;font:12px var(--mono)}
+#find-form>.row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px!important}
+#find-form>.row button{height:32px;border-radius:9px;border:1px solid var(--gline);background:rgba(127,127,160,.08);color:var(--ink);cursor:pointer;font:500 12.5px var(--sans)}
+#find-form>.row button:hover{background:var(--hl);border-color:var(--accent)}
+#find-form>.row button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}#find-form>.row button.primary:hover{filter:brightness(1.08)}
+#find-body .findres button{border:1px solid var(--gline);background:rgba(127,127,160,.08);border-radius:8px;padding:5px 9px;cursor:pointer;color:var(--ink)}
+#find-body .findres button:hover{background:var(--hl)}
+#find-body .findres{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:300px;overflow:auto}
+#find-body .findres button{width:100%;text-align:left;font:11.5px/1.4 var(--mono);white-space:normal}
+#find-body .findres button[aria-current=true]{border-color:var(--accent)}
+#find-body .hint{font-size:11.5px;color:var(--muted)}
+/* ---- 3D tab ---- */
+#panel-3d{grid-column:1/-1;display:flex;justify-content:center;align-items:flex-start;gap:16px;min-height:0;overflow:auto}
+#v3d-stage{position:relative;aspect-ratio:1/1;width:min(60vw,calc(100vh - 58px - 32px),900px);flex:none;border-radius:16px;overflow:hidden;background:#05070b;border:1px solid var(--gline);box-shadow:var(--shadow)}
+#v3d-root{position:absolute;inset:0}
+#v3d-root>p{margin:0;padding:14px;color:#b3bdc9;font-size:12.5px}
+#v3d-controls{width:300px;flex:none;display:flex;flex-direction:column;gap:12px;padding-bottom:12px}
+/* tune1 F14: from 1300 px the control cards flow into two balanced columns beside the stage, so Pick ray ends near the
+   stage bottom instead of 450 px below the fold (one column of 300 px was 1264 px tall next to an 810 px stage) */
+@media (min-width:1300px){#v3d-controls{width:560px}#v3d-stage{width:min(calc(100vw - 24px - 16px - 560px - 8px),calc(100vh - 58px - 32px),900px)}
+  #v3d-controls .v3c{display:block;columns:2;column-gap:12px}#v3d-controls .v3c>*{break-inside:avoid;margin:0 0 12px}#v3d-controls .v3c>.v3c-lod{margin:0}
+  #v3d-controls .v3c-btns{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.grp-k{font:500 9.5px var(--mono);color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
+#v3d-status{font:11px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+#v3d-wait{margin:0;padding:12px;border:1px solid var(--gline);border-radius:14px;background:var(--glass);font:11px var(--mono);color:var(--muted)}
+#v3d-wait.bad{color:var(--bad)}
+#picker-root{font-size:12px}
+#picker-root .btn,#picker-root button{border:1px solid var(--gline);background:rgba(127,127,160,.08);border-radius:8px;padding:4px 9px;cursor:pointer;color:var(--ink)}
+#picker-root input{border:1px solid var(--gline);background:rgba(127,127,160,.08);border-radius:7px;padding:3px 5px;min-width:0;width:100%}
+#picker-root .pk,#picker-root .pk-xyz{display:grid;gap:6px}
+#picker-root .pk-xyz{grid-template-columns:repeat(3,minmax(0,1fr))}
+#picker-root .readouts{display:flex;flex-direction:column;gap:2px;font:11px var(--mono);color:var(--muted);border:0;padding:0}
+#picker-root .msg{margin:4px 0 0}
+#controls-open{display:none}
+body[data-tab="3d"] #panel-spectra,body[data-tab="3d"] #side{display:none}
+body[data-tab="3d"] #shell{grid-template-columns:minmax(0,1fr)}
+@media (max-width:1180px){#find-toggle .lbl{display:none}
+  #plotbar .chip{gap:5px;padding:0 5px 0 7px;font-size:11px;margin-right:3px}#plotbar .chip .sw{width:7px;height:7px}#plotbar #grp-layout{margin-left:10px}#plotbar .seg span{padding:0 7px}}
+/* B_fix F7: from 1024 px the stage stays put and only the control column scrolls (Pick ray needs clicks on the stage) */
+@media (min-width:1024px){#panel-3d{overflow:hidden}#v3d-controls{align-self:stretch;min-height:0;overflow-y:auto;scrollbar-width:thin;padding-right:4px}}
+/* B_fix F8: the 3D LOD and download line is a debug aid, shown with ?debug */
+#v3-lod{display:none}body.debug #v3-lod:not(:empty){display:block}
+@media (max-width:1023px){#panel-3d{flex-direction:column;align-items:center}#v3d-stage{width:min(100%,calc(100vh - 140px),900px)}#v3d-controls{width:min(100%,560px)}}
+/* ---- phone and narrow tablet: one column, controls in a drawer (mockup A) ---- */
+@media (max-width:820px){
+  body{overflow:auto}
+  #top{margin:8px 8px 0;padding:0 6px 0 12px;gap:6px;height:46px}
+  .hide-m{display:none!important}
+  #controls-open{display:inline-grid}
+  #shell{display:block;padding:10px 16px;height:calc(100dvh - 54px)}
+  body.side-off #side{display:flex}
+  #panel-spectra{height:100%;padding:6px 2px 4px}
+  #plotbar{display:none}
+  /* tune1 F12: the drawer is a bottom sheet over the lower part of the stage (the top rows of spectra stay in view while a
+     slider moves), with a Done button in its sticky header */
+  #side{position:fixed;z-index:40;left:0;right:0;top:auto;bottom:0;max-height:min(66dvh,600px);padding:0 16px 24px;transform:translateY(110%);transition:transform .22s;
+    background:var(--glass2);border-top:1px solid var(--gline);border-radius:18px 18px 0 0;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:0 -12px 40px rgba(0,0,0,.35);overflow:auto;visibility:hidden}
+  #side-head{display:grid;grid-template-columns:1fr auto;align-items:center;position:sticky;top:0;z-index:1;margin:0 -16px;padding:14px 16px 10px;background:var(--glass2);border-bottom:1px solid var(--gline)}
+  #side-head .grab{position:absolute;left:50%;top:5px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--gline)}
+  #side-head #side-done{height:30px;padding:0 14px;color:var(--accent);font-weight:600}
+  body.ctl-open #side{transform:none;visibility:visible}
+  #v3d-mini{display:none}
+  #mobslot{display:flex;flex-direction:column;gap:12px}
+  #mobslot .grp{flex-direction:column;align-items:stretch;gap:8px;padding:12px;border:1px solid var(--gline);border-radius:14px;background:var(--glass)}
+  #mobslot .gl{display:block;font-size:9.5px;margin:0}
+  #mobslot #grp-sight{display:grid;grid-template-columns:32px minmax(0,1fr) 32px;align-items:center}
+  #mobslot #grp-sight .gl,#mobslot #grp-sight #geo-open{grid-column:1/-1}
+  #mobslot #grp-sight #geo-open{justify-content:center}
+  #mobslot .pbtn .gid{max-width:none}
+  #mobslot #ion-chips{gap:5px}
+  #mobslot .seg{display:grid;grid-template-columns:repeat(4,1fr)}
+  #mobslot #find-toggle .lbl{display:inline}#mobslot #grp-tools .row .pbtn{color:var(--ink)}
+  #bar{padding-left:20px}
+  #note{display:none}
+  #v3d-stage{width:100%}
+  #panel-3d{padding-bottom:16px}
+}
+@media (max-width:480px){#top{gap:4px;padding:0 4px 0 10px}#title{font-size:11.5px}#tabs [role=tab]{padding:4px 8px}
+  .ib{width:28px;height:28px}.ib svg{width:15px;height:15px}#pill{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}

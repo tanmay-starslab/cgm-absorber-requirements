@@ -1,0 +1,437 @@
+{
+ "schema": "tngsight-ions/1",
+ "bands": {
+  "uv": {
+   "label": "UV",
+   "R": {
+    "min": 5000,
+    "max": 150000,
+    "default": 30000,
+    "pair": [
+     15000,
+     50000
+    ]
+   },
+   "R_eval": 40000
+  },
+  "euv": {
+   "label": "EUV",
+   "R": {
+    "min": 5000,
+    "max": 150000,
+    "default": 30000,
+    "pair": [
+     15000,
+     50000
+    ]
+   },
+   "R_eval": 40000,
+   "note": "rest-frame EUV, observable only as a redshifted analogue"
+  },
+  "xray": {
+   "label": "X-ray",
+   "R": {
+    "min": 100,
+    "max": 5000,
+    "default": 1000,
+    "pair": [
+     300,
+     3000
+    ]
+   },
+   "R_eval": 1000
+  }
+ },
+ "snr": {
+  "min": 2,
+  "max": 100,
+  "default": 10,
+  "pair": [
+   20,
+   5
+  ]
+ },
+ "grid": {
+  "dv_native_kms": 0.25,
+  "dv_web_kms": 1.0,
+  "v_gen_kms": 1500,
+  "min_tau": 1e-08,
+  "damped_tau_edge": 0.01,
+  "damped_v_max_kms": 10000,
+  "damped_v_step_kms": 500,
+  "damped_logN_min": 19.0
+ },
+ "defaults": {
+  "ions": [
+   "HI",
+   "MgII",
+   "CIV",
+   "OVI",
+   "OVII"
+  ],
+  "layout": "4",
+  "vhw_kms": 400
+ },
+ "ions": [
+  {
+   "key": "HI",
+   "order": 0,
+   "ion": "H I",
+   "element": "H",
+   "ion_state": "I",
+   "trident_line": "H I 1216",
+   "source": "trident",
+   "lam0_A": 1215.67,
+   "f": 0.416,
+   "gamma_s": 469000000.0,
+   "mass_amu": 1.008,
+   "ip_eV": [
+    0.0,
+    13.598
+   ],
+   "field": "H_p0_number_density",
+   "label": "H I 1216",
+   "label_tex": "H\\,I\\ \\lambda1216",
+   "color": "#4338CA",
+   "color_dark": "#9293F8",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": true,
+   "fit": {
+    "b_min": 8.0,
+    "logN_max": 22.5
+   },
+   "score_w": 0.35
+  },
+  {
+   "key": "MgII",
+   "order": 1,
+   "ion": "Mg II",
+   "element": "Mg",
+   "ion_state": "II",
+   "trident_line": "Mg II 2796",
+   "source": "trident",
+   "lam0_A": 2796.352,
+   "f": 0.6123,
+   "gamma_s": 261200000.0,
+   "mass_amu": 24.305,
+   "ip_eV": [
+    7.646,
+    15.035
+   ],
+   "field": "Mg_p1_number_density",
+   "label": "Mg II 2796",
+   "label_tex": "Mg\\,II\\ \\lambda2796",
+   "color": "#1D4ED8",
+   "color_dark": "#6EA8FE",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.0,
+    "logN_max": 19.0
+   },
+   "score_w": 0.6
+  },
+  {
+   "key": "SiII",
+   "order": 2,
+   "ion": "Si II",
+   "element": "Si",
+   "ion_state": "II",
+   "trident_line": "Si II 1260",
+   "source": "trident",
+   "lam0_A": 1260.422,
+   "f": 1.18,
+   "gamma_s": 2950000000.0,
+   "mass_amu": 28.085,
+   "ip_eV": [
+    8.152,
+    16.346
+   ],
+   "field": "Si_p1_number_density",
+   "label": "Si II 1260",
+   "label_tex": "Si\\,II\\ \\lambda1260",
+   "color": "#0369A1",
+   "color_dark": "#4FB3E8",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.0,
+    "logN_max": 19.0
+   },
+   "score_w": 0.4
+  },
+  {
+   "key": "CII",
+   "order": 3,
+   "ion": "C II",
+   "element": "C",
+   "ion_state": "II",
+   "trident_line": "C II 1335",
+   "source": "trident",
+   "lam0_A": 1334.532,
+   "f": 0.129,
+   "gamma_s": 241000000.0,
+   "mass_amu": 12.011,
+   "ip_eV": [
+    11.26,
+    24.383
+   ],
+   "field": "C_p1_number_density",
+   "label": "C II 1335",
+   "label_tex": "C\\,II\\ \\lambda1335",
+   "color": "#0E7490",
+   "color_dark": "#3CC5D9",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.5,
+    "logN_max": 19.0
+   },
+   "score_w": 0.4
+  },
+  {
+   "key": "SiIII",
+   "order": 4,
+   "ion": "Si III",
+   "element": "Si",
+   "ion_state": "III",
+   "trident_line": "Si III 1206",
+   "source": "trident",
+   "lam0_A": 1206.5,
+   "f": 1.63,
+   "gamma_s": 2480000000.0,
+   "mass_amu": 28.085,
+   "ip_eV": [
+    16.346,
+    33.493
+   ],
+   "field": "Si_p2_number_density",
+   "label": "Si III 1206",
+   "label_tex": "Si\\,III\\ \\lambda1206",
+   "color": "#0F766E",
+   "color_dark": "#34C4B0",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.0,
+    "logN_max": 19.0
+   },
+   "score_w": 0.6
+  },
+  {
+   "key": "CIII",
+   "order": 5,
+   "ion": "C III",
+   "element": "C",
+   "ion_state": "III",
+   "trident_line": "C III 977",
+   "source": "trident",
+   "lam0_A": 977.02,
+   "f": 0.7586,
+   "gamma_s": 1767000000.0,
+   "mass_amu": 12.011,
+   "ip_eV": [
+    24.383,
+    47.888
+   ],
+   "field": "C_p2_number_density",
+   "label": "C III 977",
+   "label_tex": "C\\,III\\ \\lambda977",
+   "color": "#15803D",
+   "color_dark": "#4ADE80",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.5,
+    "logN_max": 19.0
+   },
+   "score_w": 0.6
+  },
+  {
+   "key": "SiIV",
+   "order": 6,
+   "ion": "Si IV",
+   "element": "Si",
+   "ion_state": "IV",
+   "trident_line": "Si IV 1403",
+   "source": "trident",
+   "lam0_A": 1402.77,
+   "f": 0.255,
+   "gamma_s": 863000000.0,
+   "mass_amu": 28.085,
+   "ip_eV": [
+    33.493,
+    45.142
+   ],
+   "field": "Si_p3_number_density",
+   "label": "Si IV 1403",
+   "label_tex": "Si\\,IV\\ \\lambda1403",
+   "color": "#4D7C0F",
+   "color_dark": "#A3D63F",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.0,
+    "logN_max": 19.0
+   },
+   "score_w": 0.6
+  },
+  {
+   "key": "CIV",
+   "order": 7,
+   "ion": "C IV",
+   "element": "C",
+   "ion_state": "IV",
+   "trident_line": "C IV 1548",
+   "source": "trident",
+   "lam0_A": 1548.187,
+   "f": 0.19,
+   "gamma_s": 265000000.0,
+   "mass_amu": 12.011,
+   "ip_eV": [
+    47.888,
+    64.494
+   ],
+   "field": "C_p3_number_density",
+   "label": "C IV 1548",
+   "label_tex": "C\\,IV\\ \\lambda1548",
+   "color": "#8A6A00",
+   "color_dark": "#E5C33A",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.5,
+    "logN_max": 19.0
+   },
+   "score_w": 1.0
+  },
+  {
+   "key": "NV",
+   "order": 8,
+   "ion": "N V",
+   "element": "N",
+   "ion_state": "V",
+   "trident_line": "N V 1239",
+   "source": "trident",
+   "lam0_A": 1238.821,
+   "f": 0.156,
+   "gamma_s": 340000000.0,
+   "mass_amu": 14.007,
+   "ip_eV": [
+    77.474,
+    97.89
+   ],
+   "field": "N_p4_number_density",
+   "label": "N V 1239",
+   "label_tex": "N\\,V\\ \\lambda1239",
+   "color": "#B45309",
+   "color_dark": "#F5A524",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.5,
+    "logN_max": 19.0
+   },
+   "score_w": 0.8
+  },
+  {
+   "key": "OVI",
+   "order": 9,
+   "ion": "O VI",
+   "element": "O",
+   "ion_state": "VI",
+   "trident_line": "O VI 1032",
+   "source": "trident",
+   "lam0_A": 1031.912,
+   "f": 0.133,
+   "gamma_s": 416000000.0,
+   "mass_amu": 15.999,
+   "ip_eV": [
+    113.899,
+    138.12
+   ],
+   "field": "O_p5_number_density",
+   "label": "O VI 1032",
+   "label_tex": "O\\,VI\\ \\lambda1032",
+   "color": "#C2410C",
+   "color_dark": "#FB7A3C",
+   "band": "uv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.5,
+    "logN_max": 19.0
+   },
+   "score_w": 1.5
+  },
+  {
+   "key": "NeVIII",
+   "order": 10,
+   "ion": "Ne VIII",
+   "element": "Ne",
+   "ion_state": "VIII",
+   "trident_line": "Ne VIII 770",
+   "source": "trident",
+   "lam0_A": 770.409,
+   "f": 0.102,
+   "gamma_s": 572000000.0,
+   "mass_amu": 20.18,
+   "ip_eV": [
+    207.271,
+    239.097
+   ],
+   "field": "Ne_p7_number_density",
+   "label": "Ne VIII 770",
+   "label_tex": "Ne\\,VIII\\ \\lambda770",
+   "color": "#B91C1C",
+   "color_dark": "#F26363",
+   "band": "euv",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.0,
+    "logN_max": 19.0
+   },
+   "score_w": 0.8
+  },
+  {
+   "key": "OVII",
+   "order": 11,
+   "ion": "O VII",
+   "element": "O",
+   "ion_state": "VII",
+   "trident_line": "O VII 22",
+   "source": "supplement",
+   "lam0_A": 21.6019,
+   "f": 0.696,
+   "gamma_s": 3320000000000.0,
+   "mass_amu": 15.999,
+   "ip_eV": [
+    138.12,
+    739.29
+   ],
+   "field": "O_p6_number_density",
+   "label": "O VII 21.6",
+   "label_tex": "O\\,VII\\ \\lambda21.6",
+   "color": "#7F1D1D",
+   "color_dark": "#E07A7A",
+   "band": "xray",
+   "v_gen_kms": 1500,
+   "damped": false,
+   "fit": {
+    "b_min": 2.5,
+    "logN_max": 19.0
+   },
+   "score_w": 0.5
+  }
+ ]
+}

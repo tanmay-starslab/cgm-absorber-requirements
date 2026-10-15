@@ -54,28 +54,30 @@ The event loop stays responsive while a ray is being cast, because the cast runs
 | `CHAT_DAILY_BUDGET` | `500` | upstream chat requests per UTC day, all clients together |
 | `CHAT_CLIENT_DAILY_BUDGET` | `50` | upstream chat requests per UTC day for one client (IPv4 address / IPv6 /64) |
 | `CHAT_DAILY_TOKENS` | `4000000` | upstream input + output tokens per UTC day, all clients (`0` = no token budget) |
-| `TNG_SPEC_MIN_TAU` | `1e-3` | Trident `min_tau` for new spectra (the library was made with 1e-3; 1e-8 deposits weak, diffuse absorbers in full but differs from the library) |
+| `TNG_SPEC_MIN_TAU` | `1e-8` | Trident `min_tau` for new spectra; tests only (the v1 library was made with 1e-3, which drops part of the column of weak, diffuse absorbers) |
 
 ## Endpoints (prefix `/api`)
 
 | method | path | result |
 |---|---|---|
-| GET | `/health` | status, version, `warm`, local/remote workers, queue counts, library/generated sizes, node |
+| GET | `/health` | status, version, `warm`, local/remote workers, queue counts, library/generated sizes, node, `registry_tag`, `data_version` (2), `ions` (the registry keys) |
 | GET | `/catalog` | catalog.json (library + generated), `ETag`, `Cache-Control: max-age=60`, 304 on `If-None-Match` |
-| GET | `/sightline/{id}.bin` | web binary (octet-stream); `{id}.npz` = raw npz download; 404 if unknown, 422 for a malformed id |
+| GET | `/sightline/{id}.bin` | TNGS v2 web binary (octet-stream; a v1 npz gives its 2 lines, a cached v1 `.bin` is re-encoded once); `{id}.npz` = raw npz download (v1 or v2); 404 if unknown, 422 for a malformed id |
+| GET | `/components` | `{version: 2, fitter, params_tag, comp_keys, entries: {id: {ion: rows}}, aod: {id: {ion: [logN, regions]}}}` of the generated sightlines, `ETag` |
+| GET | `/components/{id}.json` | the per-sightline v2 doc `{version, id, fitter, params_tag, comp_keys, components, aod}`; 404 when none is stored |
 | POST | `/geometry` | `{orientation,b_kpc,azimuth_deg,seed}` → canonical values + `make_sightline` geometry + `exists` |
 | POST | `/sightlines` | same body → `200 {id,status:"ready",entry}` or `202 {id,job_id,status:"queued",position}` |
 | GET | `/jobs/{job_id}` | `{job_id,id,status,stage,frac,msg,position,error,entry,attempts}` |
 | GET | `/jobs/{job_id}/events` | SSE: `queued`, `progress`, `done`, `error`; `: ping` comment every 15 s; closes after done/error |
-| POST | `/figure` | `{id,R_lo,R_hi,sn_hi,sn_lo,vwin,intrinsic,seed,fmt}` → PNG/PDF attachment (LRU cache of 64). Only the page's values are accepted: R in {20k,30k,40k,60k,80k,100k}, integer S/N 2–20, `vwin` 150–800 in steps of 50, `seed` 0–99999 |
-| POST | `/worker/lease` | Bearer; `{name}`; long-poll ≤25 s (`?wait=` lowers it) → `200 {job_id,geom,lease_s,attempt,lease}` / `204` |
+| POST | `/figure` | `{id,ions,R,sn,vhw,vc,intrinsic,seed,fmt}` → PNG/PDF attachment (LRU cache of 64). `ions`: 1–6 registry keys present in the sightline (default: the registry defaults it has); `R`: `{band: [lo, hi]}` inside each band's range (default the band `pair`); `sn`: `[hi, lo]`, integers 2–100; `vhw` 10–1500 km/s; `vc` ±1500 km/s; `seed` 0–99999. The v2 fields `R_lo`, `R_hi` (uv band), `sn_hi`, `sn_lo` and `vwin` (= `vhw`) are still accepted for one release |
+| POST | `/worker/lease` | Bearer; `{name, caps}`; long-poll ≤25 s (`?wait=` lowers it) → `200 {job_id,geom,lease_s,attempt,lease,registry_tag}` / `204`; a worker with another registry fails the job before computing |
 | POST | `/worker/progress/{job_id}?lease=` | Bearer; `{stage,frac,msg}`; extends the lease; 409 if the job is not running under that lease token |
-| POST | `/worker/result/{job_id}` | Bearer; raw npz bytes (≤5 MB); validated, claimed, then persisted → `200 {ok,id,entry}` |
+| POST | `/worker/result/{job_id}` | Bearer; raw npz v2 bytes (≤5 MB; all 12 registry lines on their native grids, window W = `ions.gen_window`, finite τ ≥ 0, `generation.registry_tag` = the server's, optional `components_json` = `{ion: rows, "aod": ...}`); validated, claimed, then persisted → `200 {ok,id,entry}`. 422 `worker result is npz v1; update the worker` and `registry mismatch (worker <tag>, server <tag>)` name the two version errors |
 | POST | `/worker/fail/{job_id}?lease=` | Bearer; `{message}` → requeued (attempts < 2) or error; 409 for a stale lease token. The message is logged; the public job error is only `generation failed (<ExceptionClass>)` |
 
 Status codes: 422 means invalid input (pydantic bounds, `canonicalize` errors, malformed ids). 413 means a body over 8 KB (over 5 MB for worker results). 429 with `Retry-After` means a rate limit was hit: POST /sightlines allows 12/hour with a burst of 4, POST /figure 60/hour with a burst of 10. 503 with `Retry-After` means the queue cap (30) was reached, no worker can run jobs on this node (local worker not starting/warm and no remote worker seen for 60 s), or the figure renderer already has 3 renders pending. Figures also share a global budget of 600/hour (burst 30). Event streams are capped at 16 per job and 20 per client (429). Public error fields never carry exception text (it can name server paths): they say e.g. `dataset unavailable (FileNotFoundError)`; the full text is in the server log. Only requests that create a *new* job are rate-limited; cache hits and in-flight dedupes are free.
 
-Ids must match `^(face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?$` before any filesystem access. Paths are always built from validated ids, never from raw user strings.
+Ids must match `^((face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?|cust_[0-9a-f]{10})$` before any filesystem access. Paths are always built from validated ids, never from raw user strings.
 
 ## Protocol
 
@@ -98,7 +100,7 @@ Ids must match `^(face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?$` before any filesystem 
  ◀── event: progress                    │◀──────────── POST /api/worker/progress     (also renews the lease; a
                                         │                                             heartbeat thread re-posts every 30 s)
                                         │◀──────────── POST /api/worker/result       npz bytes (save_npz)
-                                        │  validate (no pickle, keys, shapes, λ grid, finite τ/logN, geom == job)
+                                        │  validate (no pickle, npz v2 members, registry tag, native grids, W, finite τ, geom == job)
                                         │  LibraryStore.add_generated: generated/<id>.npz + .bin + catalog upsert
                                         │  └─ HFSync thread: create_commit → HF dataset generated/ (backoff, persisted queue)
  ◀── event: done {id, entry}            │
@@ -136,3 +138,15 @@ The worker loads the dataset once, then loops: lease, generate, upload. Transpor
 ```
 
 The tests use `server.testing.FakeGenerator` (no yt) and the thread executor. `test_local_worker_spawn_process` exercises the real spawn + Manager-queue path.
+
+## Registry-derived chat files
+
+`server/chat_tools.json`, `server/chat_system_prompt.txt` and the marked blocks of `docs/tng50/js/chat.js`
+(`/*__GEN:TOOLS__*/`, `/*__GEN:PROMPT__*/`, `/*__GEN:IONS__*/`) and `docs/tng50/js/search.js`
+(`/*__GEN:QUERY__*/`) are generated from `tngsight/ions.json` and `tngsight.search.QUERY_SCHEMA`:
+
+```bash
+/Volumes/cgm_work/envs/trident/bin/python -m server.make_chat_tools           # rewrite after a registry edit
+/Volumes/cgm_work/envs/trident/bin/python -m server.make_chat_tools --check   # exit 1 when stale
+PYTHON=/Volumes/cgm_work/envs/trident/bin/python node tests/js/chat_tools_sync.mjs
+```

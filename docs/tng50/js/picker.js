@@ -8,7 +8,7 @@ const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const norm = a => Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
 
-/* intersection of the ray origin + t·dir (t ≥ 0) with the plane normal·x = d; null if parallel or behind */
+/* intersection of the ray origin + t*dir (t ≥ 0) with the plane dot(normal, x) = d; null if parallel or behind */
 export function rayPlane(origin, dir, normal, d = 0) {
   const den = dot(normal, dir); if (Math.abs(den) < 1e-12) return null;
   const t = (d - dot(normal, origin)) / den; if (!(t >= 0)) return null;
@@ -72,7 +72,7 @@ export function attachPicker(viewer, root, app) {
   const msg = h("p", {class: "msg", id: "pk-msg", "aria-live": "polite"});
   const form = h("form", {class: "pk", id: "pk-form", novalidate: ""},
     h("div", {class: "row"}, bMode, bUse, bClear),
-    h("p", {class: "hint", id: "pk-hint", text: viewer ? "Pick ray: click two points on the plane facing you (start, then end); drag the handles to adjust. Esc leaves pick mode. Or type the endpoints in kpc from the galaxy centre (box axes)." :
+    h("p", {class: "hint", id: "pk-hint", text: viewer ? "Click two points on the plane facing you, then drag the handles; Esc stops. Or type endpoints in kpc (box axes)." :
       "Type the ray's endpoints in kpc from the galaxy centre (simulation box axes)."}),
     h("fieldset", {}, h("legend", {class: "label", text: "start p0 [kpc]"}), h("div", {class: "pk-xyz"}, inp("pk-p0-x", "x"), inp("pk-p0-y", "y"), inp("pk-p0-z", "z"))),
     h("fieldset", {}, h("legend", {class: "label", text: "end p1 [kpc]"}), h("div", {class: "pk-xyz"}, inp("pk-p1-x", "x"), inp("pk-p1-y", "y"), inp("pk-p1-z", "z"))),
@@ -102,7 +102,7 @@ export function attachPicker(viewer, root, app) {
     bSub.disabled = !(v && v.ok) || !online || !!(app.getState().job);
     bSub.title = !online ? "needs a sightline server" : v && !v.ok ? v.errors.join("; ") : "";
     if (v && !v.ok) setMsg(v.errors.join("; "), "bad");
-    else if (!online) setMsg("Generating a custom ray needs a sightline server (none is online).", "");
+    else if (!online) setMsg("Generating needs a sightline server; none is online.", "");
     else if (msg.dataset.kind === "val" || msg.dataset.kind === "off" || msg.dataset.kind === "use") setMsg("", "");
     lastId = id;
     if (announce) live.textContent = m ? `Ray ${v.ok ? id : "(invalid)"}: length ${m.length.toFixed(1)} kpc, b ${m.b.toFixed(1)} kpc, ${m.angle_deg.toFixed(1)}° from the disk normal.` :

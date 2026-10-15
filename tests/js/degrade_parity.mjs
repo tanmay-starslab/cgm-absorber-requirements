@@ -1,4 +1,5 @@
-// Parity of the page's JS degrade (<script id="tngsight-degrade"> in docs/tng50/_template.html) with the Python model.
+// Parity of the legacy v1 JS degrade port (tests/js/lib/legacy_degrade.js; it was the <script id="tngsight-degrade"> block of
+// docs/tng50/_template.html until Phase 3, when the page moved to js/fit.js degradeV) with the Python model.
 // Usage: node tests/js/degrade_parity.mjs [reference.json]
 //   Without an argument it runs tests/js/make_reference.py ($PYTHON, default "python") into os.tmpdir().
 import {readFileSync} from "node:fs";
@@ -7,12 +8,9 @@ import {tmpdir} from "node:os";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
 
-const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, "..", "..");
+const HERE = dirname(fileURLToPath(import.meta.url));
 const TOL = 1e-6;
-const html = readFileSync(join(ROOT, "docs", "tng50", "_template.html"), "utf8");
-const m = html.match(/<script id="tngsight-degrade">([\s\S]*?)<\/script>/);
-if (!m) { console.error("FAIL: no <script id=\"tngsight-degrade\"> block in the template"); process.exit(1); }
-const TNG = new Function(m[1] + "\nreturn TNG;")();
+const TNG = new Function(readFileSync(join(HERE, "lib", "legacy_degrade.js"), "utf8") + "\nreturn TNG;")();
 
 let refPath = process.argv[2];
 if (!refPath) {

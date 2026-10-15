@@ -342,6 +342,11 @@ class RemoteWorker:
         hb = threading.Thread(target=heartbeat, daemon=True)
         hb.start()
         try:
+            want = job.get("registry_tag")
+            if want:                          # a coordinator with another ion registry would reject the npz
+                from tngsight.ions import registry_tag
+                if registry_tag() != want:
+                    raise RuntimeError(f"registry mismatch (worker {registry_tag()}, server {want})")
             payload = self.gen.generate(dict(geom), progress=send)
             # a Phase-1 coordinator (caps refused, see lease()) accepts only the exact npz key set
             blob = payload_to_npz_bytes(payload, self.workdir, with_components="fit" in self.caps)
@@ -406,19 +411,26 @@ def _stored_components(store, sid):
 
 
 def payload_to_npz_bytes(payload, workdir=None, with_components=True) -> bytes:
-    """Exact-schema npz bytes via tngsight.library.save_npz (through a temp file), plus (with_components)
-    one extra member `components_json` (0-d unicode, compact JSON) when payload["components"] exists, or
-    JSON null when the fit was attempted and failed (payload["components_skipped"]). with_components=False
-    gives the exact Phase-1 key set (a coordinator that did not accept the "fit" cap)."""
+    """npz v2 bytes via tngsight.library.save_npz (through a temp file), plus (with_components) one extra
+    member `components_json` (0-d unicode, compact JSON): the v2 rows object {k: rows} (+ "aod" when
+    payload["components_aod"] exists) when payload["components"] exists, or JSON null when the fit was
+    attempted and failed (payload["components_skipped"]). with_components=False gives the bare npz v2 member
+    set (a coordinator that did not accept the "fit" cap)."""
     from tngsight.library import save_npz
+    from .storage import dicts_to_rows, npz_like
     fd, tmp = tempfile.mkstemp(suffix=".npz", dir=workdir)
     os.close(fd)
     try:
-        save_npz(tmp, payload["geom"], payload["logN"], payload["tau"])
+        save_npz(tmp, npz_like(payload))
         comps = payload.get("components")
         if with_components and (comps is not None or payload.get("components_skipped")):
+            obj = None
+            if comps is not None:
+                obj = {k: dicts_to_rows(v) for k, v in comps.items()}
+                if payload.get("components_aod"):
+                    obj["aod"] = payload["components_aod"]
             buf = io.BytesIO()
-            text = json.dumps(comps, separators=(",", ":"), allow_nan=False, default=_json_num)
+            text = json.dumps(obj, separators=(",", ":"), allow_nan=False, default=_json_num)
             np.lib.format.write_array(buf, np.array(text), allow_pickle=False)
             with zipfile.ZipFile(tmp, "a", compression=zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr("components_json.npy", buf.getvalue())
