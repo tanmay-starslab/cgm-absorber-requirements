@@ -3,24 +3,27 @@
 
     python scripts/export_tng50_web.py [--library DIR] [--out DIR] [--space-url URL] [--local-url URL]
                                        [--include-generated] [--prune] [--components FILE] [--viz-dir DIR]
-                                       [--viz-base URL] [--viz-local] [--chat] [--ids a,b,...]
+                                       [--viz-base URL] [--viz-local] [--chat] [--ids a,b,...] [--allow-v1]
 
 Reads <library>/catalog.json and <library>/web/<id>.bin (or generated/<id>.bin), as written by
 deploy/data/build_library.py and the server; writes
   <out>/data/catalog.json      entries that have a valid web binary (library ones by default)
   <out>/data/s/<id>.bin        byte copies of the web binaries
-  <out>/index.html             docs/tng50/_template.html with a small config injected at /*__DATA__*/null
+  <out>/index.html             docs/tng50/_template.html with a small config (CFG v3: the ion registry's page_ions,
+                               bands, S/N range and defaults) injected at /*__DATA__*/null
   <out>/data/components.json   byte copy of --components (default <library>/components.json), if present
   <out>/data/viz/manifest_v2.json  byte copy of <viz-dir>/manifest_v2.json (default <library>/viz), validated with
                                tngsight.vizpack; the cubes themselves are NOT copied: the page fetches them from the
                                public HF dataset (CFG.viz.base), falling back to data/viz/ (design-2b §5.10, §6.4)
   <out>/data/luts/luts.json    copy of docs/tng50/data/luts/luts.json (only when --out is not docs/tng50)
-  <out>/js/*.js                the page's lazy modules (copied from docs/tng50/js when --out is elsewhere)
+  <out>/js/*.js, <out>/css/*.css  the page's modules and stylesheet (copied from docs/tng50 when --out is elsewhere)
 --viz-local also copies every cube into <out>/data/viz/ and points CFG.viz.base there (refused for docs/tng50:
 big cubes never go into git). --prune also deletes <out>/data/vol/ (the Phase-2 volumes).
 Every exported entry carries p0/p1 (ray start/end, physical kpc from the galaxy centre, box axes, 0.01 kpc), read
 from the npz `geom` member when the catalogue lacks them, and has_components. Custom (cust_) ids are exported only
 with --include-generated.
+Web binaries must be TNGS v2 (12 lines keyed by registry key); v1 binaries (O VI, H I Lyβ, C III) are accepted only with
+--allow-v1, and an export that would mix v1 and v2 binaries is refused. The catalogue is passed through (v2 rows).
 The library is only read. The public Space URL comes from --space-url or the TNG_SPACE_URL environment
 variable; without one (or with the literal placeholder "TNG_SPACE_URL") it is left out of the page's
 backend list and a warning is printed: the published page is then library-only for every visitor who
@@ -35,11 +38,8 @@ MARK = "/*__DATA__*/null"
 PLACEHOLDER = "TNG_SPACE_URL"
 URL_RE = re.compile(r"^https?://[^\s/]+")
 ID_RE = re.compile(r"^((face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?|cust_[0-9a-f]{10})$")   # = server.storage.ID_RE (design-2 §2)
-LINE_KEYS = ("OVI", "HILyb", "CIII")
 GAL_PUBLIC = ("sim", "snapshot", "redshift", "subhalo_id", "central", "R200c_kpc", "M200c_Msun", "Mstar_Msun", "SFR_Msun_yr")
-LABELS = {"OVI": "O VI λ1032", "HILyb": "H I Lyβ", "CIII": "C III λ977"}
-COLORS = {"OVI": "#D81E5B", "HILyb": "#1D4E89", "CIII": "#1B998B"}
-R_OPTS = [20000, 30000, 40000, 60000, 80000, 100000]
+FITTER = {"worker": "js/fitworker.js", "budget_ms": 300, "cap_ms": 1500, "version": "fit/1"}
 NPZ_PREFIX = "cgm_sid488530_"
 THREE_VERSION = "0.169.0"
 WEBLLM = {"webllm": "0.2.85", "model": "Qwen2.5-1.5B-Instruct-q4f16_1-MLC"}
@@ -49,6 +49,7 @@ VIZ_BASE = f"https://huggingface.co/datasets/{VIZ_DATASET}/resolve/main/"
 VIZ_FALLBACK = "data/viz/"
 VIZ_MANIFEST = "data/viz/manifest_v2.json"
 DOCS_OUT = ROOT / "docs" / "tng50"
+PAGE_LAYOUT = "1"          # the page opens on one large case (owner's pick, Phase 3); 2 R, 2 S/N and 2x2 are one click away
 
 
 def galaxy_frame() -> dict:
@@ -154,19 +155,51 @@ def default_library() -> Path:
         return Path(os.environ.get("TNG_LIBRARY_DIR", "/Volumes/cgm_work/data/library"))
 
 
-def check_bin(blob: bytes, sid: str) -> None:
-    """Header + length check of a design §4 web binary (no numpy needed)."""
-    if blob[:4] != b"TNGS":
+def registry():
+    """tngsight.ions (the ion registry; pure, no numpy)."""
+    from tngsight import ions
+    return ions
+
+
+def check_bin(blob: bytes, sid: str, allow_v1: bool = False) -> int:
+    """Header + length check of a web binary (Phase-3 design §2.4; no numpy needed). Returns the version (2, or 1
+    when allow_v1). v2: 16-byte header, per line char[8] registry key (unique), u32 n (<= 20001), u32 0, 3 f64,
+    u16[n]; v1: 8-byte header, 3 lines of u32 n + 4 f64 + u16[n]."""
+    if len(blob) < 8 or blob[:4] != b"TNGS":
         raise ValueError(f"{sid}: bad magic")
     ver, nl, _ = struct.unpack_from("<BBH", blob, 4)
-    if ver != 1 or nl != len(LINE_KEYS):
-        raise ValueError(f"{sid}: version {ver}, {nl} lines")
-    off = 8
-    for _ in range(nl):
-        n, lam0, dg, rest, dl = struct.unpack_from("<Idddd", blob, off)
-        off += 36 + 2 * n
+    if ver == 1:
+        if not allow_v1:
+            raise ValueError(f"{sid}: TNGS v1 (pass --allow-v1 to export v1 binaries)")
+        if nl != 3:
+            raise ValueError(f"{sid}: version 1, {nl} lines")
+        off = 8
+        for _ in range(nl):
+            if off + 36 > len(blob):
+                raise ValueError(f"{sid}: truncated")
+            n = struct.unpack_from("<I", blob, off)[0]
+            off += 36 + 2 * n
+    elif ver == 2:
+        keys = registry().KEYS
+        if not 1 <= nl <= len(keys) or len(blob) < 16:
+            raise ValueError(f"{sid}: version 2, {nl} lines")
+        off, seen = 16, set()
+        for _ in range(nl):
+            if off + 40 > len(blob):
+                raise ValueError(f"{sid}: truncated")
+            kb, n, _r = struct.unpack_from("<8sII", blob, off)
+            k = kb.rstrip(b"\0").decode("ascii", "replace")
+            if k not in keys or k in seen:
+                raise ValueError(f"{sid}: line key {k!r} unknown or repeated")
+            if n > 20001:
+                raise ValueError(f"{sid}: {k} has {n} samples (> 20001)")
+            seen.add(k)
+            off += 40 + 2 * n
+    else:
+        raise ValueError(f"{sid}: version {ver}")
     if off != len(blob):
         raise ValueError(f"{sid}: length {len(blob)} != {off}")
+    return ver
 
 
 def find_bin(lib: Path, sid: str) -> Path | None:
@@ -178,14 +211,17 @@ def find_bin(lib: Path, sid: str) -> Path | None:
 
 def page_config(cat: dict, backends: list, default_id: str | None, n: int, viz: dict | None = None,
                 chat: bool = False) -> dict:
+    """CFG v3 (Phase-3 design §7): the ion registry (page_ions, bands, snr, defaults) + the existing page keys."""
+    I = registry()
     gal = {k: cat.get("galaxy", {}).get(k) for k in GAL_PUBLIC if k in cat.get("galaxy", {})}
-    lines = {k: {"label": LABELS[k], "color": COLORS[k], "rest_A": cat.get("lines", {}).get(k, {}).get("rest_A"),
-                 "ion": cat.get("lines", {}).get(k, {}).get("ion"), "dlam_lsf": cat.get("lines", {}).get(k, {}).get("dlam_lsf", 0.002)}
-             for k in LINE_KEYS}
-    return {"version": 2, "catalog_url": "data/catalog.json", "bin_dir": "data/s/", "n_static": n, "backends": backends,
-            "galaxy": gal, "lines": lines, "R_opts": R_OPTS,
-            "defaults": {"id": default_id, "R_lo": 20000, "R_hi": 40000, "sn_hi": 8, "sn_lo": 5, "vwin": 400, "seed": 0,
-                         "intrinsic": False},
+    d = I.DEFAULTS
+    defaults = {"id": default_id, "ions": list(d["ions"]), "layout": PAGE_LAYOUT,
+                "R": {b: list(v["R"]["pair"]) for b, v in I.BANDS.items()}, "sn": list(I.SNR["pair"]),
+                "vc": 0, "vhw": d["vhw_kms"], "seed": 0, "intrinsic": False, "fit": False}
+    return {"version": 3, "catalog_url": "data/catalog.json", "bin_dir": "data/s/", "n_static": n, "backends": backends,
+            "galaxy": gal, "ions": I.page_ions(), "bands": json.loads(json.dumps(I.BANDS)),
+            "snr": dict(I.SNR), "defaults": defaults, "grid": {"dv_web": I.GRID["dv_web_kms"]},
+            "registry_tag": I.registry_tag(), "fitter": dict(FITTER),
             "frame": galaxy_frame(), "viz": viz, "components_url": "data/components.json",
             "js_base": "js/", "three": THREE_VERSION, "chat": dict(enabled=bool(chat), **WEBLLM), "custom": dict(CUSTOM)}
 
@@ -225,6 +261,7 @@ def main(argv=None) -> int:
                     help="also copy every cube into <out>/data/viz/ and load them from there (refused for docs/tng50)")
     ap.add_argument("--chat", action="store_true", help="enable the chat ('Ask') button in the page config")
     ap.add_argument("--ids", default="", help="export only these comma-separated ids (testing)")
+    ap.add_argument("--allow-v1", action="store_true", help="accept TNGS v1 binaries (never mixed with v2)")
     a = ap.parse_args(argv)
     try:
         backends, public = resolve_backends(a.local_url, a.space_url)
@@ -246,7 +283,7 @@ def main(argv=None) -> int:
     comps = {}
     if comp_path.is_file():
         comps = json.loads(comp_path.read_text()).get("entries", {})
-    keep, skipped, copied, no_geom = [], [], 0, []
+    keep, skipped, copied, no_geom, versions, pending = [], [], 0, [], {}, []
     for e in cat.get("entries", []):
         sid = e.get("id", "")
         if only and sid not in only:
@@ -260,12 +297,11 @@ def main(argv=None) -> int:
             skipped.append((sid, "no web binary")); continue
         blob = src.read_bytes()
         try:
-            check_bin(blob, sid)
+            ver = check_bin(blob, sid, allow_v1=a.allow_v1)
         except ValueError as exc:
             skipped.append((sid, str(exc))); continue
-        dst = sdir / f"{sid}.bin"
-        if not (dst.is_file() and dst.read_bytes() == blob):
-            dst.write_bytes(blob); copied += 1
+        versions.setdefault(ver, []).append(sid)
+        pending.append((sdir / f"{sid}.bin", blob))
         e = dict(e, source=e.get("source", "library"))
         if not (isinstance(e.get("p0"), list) and isinstance(e.get("p1"), list)):
             npz = find_npz(lib, sid)
@@ -275,6 +311,12 @@ def main(argv=None) -> int:
                 e["p0"], e["p1"] = npz_endpoints(npz)
         e["has_components"] = sid in comps
         keep.append(e)
+    if len(versions) > 1:
+        sys.exit(f"refused: the export would mix TNGS v1 ({len(versions[1])}, e.g. {versions[1][0]}) and v2 "
+                 f"({len(versions[2])}, e.g. {versions[2][0]}) binaries; regenerate or export one library")
+    for dst, blob in pending:
+        if not (dst.is_file() and dst.read_bytes() == blob):
+            dst.write_bytes(blob); copied += 1
     ids = {e["id"] for e in keep}
     if a.prune:
         for p in sdir.glob("*.bin"):
@@ -282,7 +324,9 @@ def main(argv=None) -> int:
                 p.unlink()
         if (a.out / "data" / "vol").is_dir():
             shutil.rmtree(a.out / "data" / "vol")             # the Phase-2 volumes (replaced by data/viz, design-2b §6.4)
-    out_cat = {"version": cat.get("version", 1), "galaxy": cat.get("galaxy", {}), "lines": cat.get("lines", {}), "entries": keep}
+    out_cat = {k: v for k, v in cat.items() if k != "entries"}            # catalog v2 passthrough (v1: as it is)
+    out_cat.setdefault("version", 1); out_cat.setdefault("galaxy", {})
+    out_cat["entries"] = keep
     (a.out / "data" / "catalog.json").write_text(json.dumps(out_cat, separators=(",", ":"), allow_nan=False))
     msgs = []
     if comp_path.is_file():
@@ -297,10 +341,12 @@ def main(argv=None) -> int:
     if luts_src.is_file() and luts_src.resolve() != luts_dst.resolve():
         w = copy_if_changed(luts_src, luts_dst)
         msgs.append(f"luts: {'written' if w else 'unchanged'} -> {luts_dst}")
-    js_src, js_dst = ROOT / "docs" / "tng50" / "js", a.out / "js"
-    if js_src.resolve() != js_dst.resolve() and js_src.is_dir():
-        n_js = sum(copy_if_changed(p, js_dst / p.name) for p in sorted(js_src.glob("*.js")))
-        msgs.append(f"js: {len(list(js_src.glob('*.js')))} modules ({n_js} written) -> {js_dst}")
+    for sub, pat in (("js", "*.js"), ("css", "*.css")):             # the page's modules and stylesheets
+        src_d, dst_d = ROOT / "docs" / "tng50" / sub, a.out / sub
+        if src_d.resolve() != dst_d.resolve() and src_d.is_dir():
+            files = sorted(src_d.glob(pat))
+            n_w = sum(copy_if_changed(p, dst_d / p.name) for p in files)
+            msgs.append(f"{sub}: {len(files)} files ({n_w} written) -> {dst_d}")
     default_id = a.default_id if a.default_id in ids else (min(keep, key=lambda e: e.get("rank") or 1e9)["id"] if keep else None)
     tpl = a.template.read_text(encoding="utf-8")
     if tpl.count(MARK) != 1:

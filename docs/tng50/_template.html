@@ -1,918 +1,136 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TNG50 Sightlines: Mock QSO Spectra</title>
-<meta name="description" content="Mock quasar absorption spectra (O VI, H I Lyβ, C III) through the circumgalactic medium of a TNG50 Milky-Way-mass galaxy, degraded live to any spectral resolution and S/N, with on-demand generation of new sightlines.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<title>TNG50 sightlines</title>
+<meta name="description" content="Mock quasar absorption spectra of twelve ions through the circumgalactic medium of a TNG50 Milky-Way-mass galaxy, degraded live to any resolving power and S/N and fitted with Voigt components in the browser, with a 3D view of the gas.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/page.css">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js":"sha384-eCdgjbMm+jekI8fyaeCZ4Pnyg5k4Jn45w2qs3lfnAd5ES5IO4hKOXNisVBTyUzDO","https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/controls/OrbitControls.js":"sha384-aJoe4qqS/DgF2jh9njAuvA6QIveJYoCuYOfYjdFY8P3eawzmc9bEQ40jq2TvOyuP"}}</script>
-<style>
-/* Same visual system as the Detect & resolve explainer (tokens copied verbatim); adds ion colours, a sidebar layout and a theme toggle. */
-:root{
-  --bg:#f4f6f9; --panel:#ffffff; --ink:#0f151c; --ink2:#4b5563; --muted:#68707d; --rule:#d6dce4; --grid:#e3e8ee;
-  --accent:#1c5cab; --accent-ink:#ffffff; --truth:#1c5cab; --fit:#d4572a; --intr:#0f151c; --noise:#5b6573;
-  --good:#0a7a37; --warn:#965a00; --bad:#b4232a;
-  --display:"Newsreader","Iowan Old Style",Georgia,serif;
-  --body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
-  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
-}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --bg:#0f1318; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#7d8896; --rule:#28303a; --grid:#222a33;
-  --accent:#6da7ec; --accent-ink:#0b1016; --truth:#6da7ec; --fit:#f08f62; --intr:#e9eef4; --noise:#9aa5b2;
-  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark } }
-:root[data-theme="dark"]{
-  --bg:#0f1318; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#7d8896; --rule:#28303a; --grid:#222a33;
-  --accent:#6da7ec; --accent-ink:#0b1016; --truth:#6da7ec; --fit:#f08f62; --intr:#e9eef4; --noise:#9aa5b2;
-  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark }
-/* ion colours: the publication figure's in light mode, lifted for contrast in dark mode */
-:root{ --ion-OVI:#D81E5B; --ion-HILyb:#1D4E89; --ion-CIII:#1B998B }
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --ion-OVI:#f2679a; --ion-HILyb:#79aef0; --ion-CIII:#3cc6b5 } }
-:root[data-theme="dark"]{ --ion-OVI:#f2679a; --ion-HILyb:#79aef0; --ion-CIII:#3cc6b5 }
-*{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;margin:0}
-.wrap{max-width:none;margin:0 auto;padding-inline:clamp(16px,2.5vw,40px);padding-block:28px 64px;display:flex;flex-direction:column;gap:26px}
-h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,4.4vw,42px);line-height:1.08;margin:0;text-wrap:balance}
-h2{font-family:var(--display);font-weight:600;font-size:clamp(21px,2.6vw,26px);line-height:1.15;margin:0;text-wrap:balance}
-p{margin:0;max-width:72ch} .lede{color:var(--ink2);font-size:16px} .lede,.cap,.hint{max-width:72ch}
-a{color:var(--accent)}
-.mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
-.label{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:500}
-header{display:flex;flex-direction:column;gap:10px}
-/* tune4: on wide screens the title and the lede share a row, so more of the 3D stage is above the fold at 1920×1080 */
-/* fix-ui V6: the lede column is at most its measure (72ch, or 38 % of the row) at the right edge and the title takes the rest, so no dead band
-   opens between them at 1920 px */
-@media (min-width:1280px){header{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,min(72ch,38%));column-gap:clamp(24px,3vw,56px);row-gap:8px;align-items:end}
-  header>.label,header>.navrow,header>.banner{grid-column:1/-1} header .lede{font-size:15px}
-  .wrap{padding-block-start:20px;gap:20px}}
-.navrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
-.navrow a{color:var(--accent);text-decoration:none} .navrow a[aria-current="page"]{color:var(--ink)}
-.navrow .sp{flex:1}
-.chip:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.controls{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px;z-index:5}
-@media (min-width:900px){.controls{position:sticky;top:env(safe-area-inset-top,0px)}}
-.ctl{display:flex;flex-direction:column;gap:2px;min-width:0}
-.ctl .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.ctl output{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
-.ctl label,.ctl .lab{font-size:13px;color:var(--ink2)}
-input[type=range]{width:100%;accent-color:var(--accent)}
-input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
-select,input[type=text],input[type=number],input[type=search],input[type=url]{font:13px var(--mono);color:var(--ink);background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:4px 6px;min-width:0;width:100%}
-.presets{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.btn{border:1px solid var(--rule);background:var(--panel);color:var(--ink);border-radius:6px;padding:5px 10px;font:500 13px var(--body);cursor:pointer}
-.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.btn[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-section{display:flex;flex-direction:column;gap:12px}
-.fig{background:var(--panel);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
-.fig canvas{display:block;width:100%}
-.figbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--rule)}
-.readouts{display:flex;flex-wrap:wrap;gap:6px 20px;padding:10px 14px;border-top:1px solid var(--rule);font-size:13.5px}
-.readouts div{display:flex;gap:6px;align-items:baseline} .readouts b{font-weight:500;color:var(--ink2)}
-.cap{padding:10px 14px 14px;color:var(--ink2);font-size:14px;border-top:1px solid var(--rule);min-height:3.2em}
-.cap strong{color:var(--ink);font-weight:600}
-.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600;border:1px solid currentColor;white-space:nowrap;text-transform:none;letter-spacing:0}
-.pill.good{color:var(--good)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)}
-.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
-.foot{color:var(--muted);font-size:13px}
-.foot a{color:var(--accent)}
-.app{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
-@media (min-width:980px){.app{grid-template-columns:minmax(320px,360px) minmax(0,1fr)}}
-/* 3D tab (Phase-2b §5.9): the stage spans the full content width; the sidebar cards follow below it */
-.app[data-tab="3d"]{grid-template-columns:minmax(0,1fr)}
-/* fix-ui FE-13: the stage comes first on the 3D tab by moving the sidebar after it in the DOM (showTab), not by CSS order,
-   so the Tab order follows the visual order */
-.app[data-tab="3d"] .side{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start}
-/* tune2: on wide screens the 3D tab puts Gallery and New sightline side by side and Find below them at full width */
-@media (min-width:980px){.app[data-tab="3d"] .side{grid-template-columns:repeat(2,minmax(0,1fr))}.app[data-tab="3d"] #find-root{grid-column:1/-1}}
-.side{display:flex;flex-direction:column;gap:18px;min-width:0}
-.card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:9px;min-width:0}
-.card h2{font-size:19px}
-.card .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.card .row > *{flex:1 1 auto}
-.hint{font-size:12.5px;color:var(--ink2)}
-#gallery{font:12px/1.5 var(--mono);height:auto;padding:2px}
-#gallery option{padding:2px 4px;overflow:hidden;text-overflow:ellipsis}
-.status{font-size:13.5px;min-width:0;overflow-wrap:anywhere}
-.status b{font-family:var(--mono);font-weight:500}
-.status .num{color:var(--accent)}
-fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;min-width:0}
-legend{padding:0;margin-bottom:4px}
-.radios{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13.5px}
-.field{display:grid;grid-template-columns:7.5em minmax(0,1fr);gap:6px;align-items:center;font-size:13.5px}
-.field label{color:var(--ink2)}
-.prog{display:flex;flex-direction:column;gap:6px}
-.prog[hidden]{display:none}
-.stagebar{display:grid;grid-template-columns:repeat(6,1fr);gap:3px}
-.stagebar span{height:6px;border-radius:3px;background:var(--grid);position:relative;overflow:hidden}
-.stagebar span i{position:absolute;inset:0 auto 0 0;background:var(--accent);width:0}
-.stagebar span.done i{width:100%}
-.stagenames{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;font:11px var(--mono);color:var(--ink2)}
-.stagenames span.on{color:var(--ink);font-weight:500}
-.msg{font-size:13px;color:var(--ink2);overflow-wrap:anywhere}
-.msg.bad{color:var(--bad)} .msg.good{color:var(--good)}
-details summary{cursor:pointer;color:var(--ink2);font-size:13px}
-.backends{font:12px var(--mono);color:var(--ink2);display:flex;flex-direction:column;gap:2px;margin-top:6px;overflow-wrap:anywhere}
-.banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border:1px solid var(--warn);border-left-width:4px;border-radius:8px;padding:8px 12px;background:var(--panel);font-size:13.5px}
-.banner[hidden],.controls[hidden]{display:none}
-.banner b{font-family:var(--mono);font-weight:500;overflow-wrap:anywhere}
-.about{columns:290px;column-gap:26px}
-.about p{break-inside:avoid;margin:0 0 12px}
-.about p{font-size:14.5px;color:var(--ink2)} .about strong{color:var(--ink)}
-@media (prefers-reduced-motion: reduce){*{transition:none!important}}
-/* phase 2: tabs, 3D panel, picker, Find */
-.tabs{display:flex;gap:4px;border-bottom:1px solid var(--rule)}
-.tabs [role=tab]{border:1px solid transparent;border-bottom:0;background:none;color:var(--ink2);font:500 14px var(--body);padding:7px 16px;border-radius:8px 8px 0 0;cursor:pointer;margin-bottom:-1px}
-.tabs [role=tab][aria-selected=true]{background:var(--panel);color:var(--ink);border-color:var(--rule);box-shadow:inset 0 3px 0 var(--accent)}
-.tabs [role=tab]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-[role=tabpanel][hidden]{display:none}
-.pk{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-top:1px solid var(--rule)}
-.pk-xyz{display:grid;grid-template-columns:repeat(3,minmax(0,9em));gap:6px}   /* fix-ui V7: 4-digit kpc values, not 600 px fields */
-.pk-in{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--ink2)}
-.pk .readouts{border:0;padding:0}
-.findres{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:340px;overflow:auto}
-.findres .btn{width:100%;text-align:left;font:12px/1.4 var(--mono);white-space:normal}
-.findres .btn[aria-current=true]{border-color:var(--accent);box-shadow:inset 4px 0 0 var(--accent)}
-#find-root h2 button{all:unset;cursor:pointer;display:flex;gap:8px;align-items:center;width:100%}
-#find-root h2 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-#find-root h2 button::after{content:"▸";margin-left:auto;font-size:14px;color:var(--ink2)}
-#find-root h2 button[aria-expanded=true]::after{content:"▾"}
-@media (max-width:720px){.tabs [role=tab]{flex:1}
-  /* fix-ui V9: on phones the 3D tab drops the lede, so more of the stage is above the fold */
-  .wrap:has(#app[data-tab="3d"]) header .lede{display:none}}
-</style>
-
-<div class="wrap">
-<header>
-  <span class="label">Interactive companion to <span class="mono">cgm-absorber-requirements</span></span>
-  <nav class="label navrow" aria-label="Pages"><a href="../">Detect &amp; resolve</a> · <a href="./" aria-current="page">TNG50 sightlines</a><span class="sp"></span><span id="pill" class="pill warn" role="status" aria-live="polite">probing backends…</span><button id="chat-open" class="btn" type="button" hidden aria-haspopup="dialog">Ask</button><button id="theme" class="btn" type="button">Theme: auto</button></nav>
-  <h1>What do O VI, H I and C III absorbers in a simulated Milky-Way halo look like through a real spectrograph?</h1>
-  <p class="lede" id="lede">Mock quasar sightlines through the circumgalactic medium of one TNG50-1 galaxy (subhalo 488530 at z = 0), with optical depths from Trident. Choose a sightline, then change the resolving power R and the S/N per resolution element: every panel is recomputed in your browser. A new geometry can be cast on demand when a sightline server is online.</p>
-  <div class="banner" id="apibanner" role="alert" hidden><span id="apibanner_t"></span><button id="apireset" class="btn" type="button">Reset to default server</button></div>
+</head>
+<body data-tab="spectra">
+<header id="top" class="glass" data-testid="topbar">
+  <h1 id="title" data-testid="title">TNG50 sightlines</h1>
+  <div role="tablist" id="tabs" aria-label="Views"><button role="tab" id="tab-spectra" aria-controls="panel-spectra" aria-selected="true" tabindex="0" type="button">Spectra</button><button role="tab" id="tab-3d" aria-controls="panel-3d" aria-selected="false" tabindex="-1" type="button">3D</button></div>
+  <span class="sep hide-m"></span>
+  <div class="grp" id="grp-sight" role="group" aria-label="Sightline"><span class="gl">Sightline</span>
+    <button class="pbtn sq" id="prev" type="button" aria-label="Previous sightline" title="Previous sightline (k)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 5 8l5 5"/></svg></button>
+    <button class="pbtn" id="gal-open" type="button" data-testid="gallery-open" aria-haspopup="dialog" aria-controls="gal-pop" aria-expanded="false" title="Search sightlines"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span class="gid">loading</span></button>
+    <button class="pbtn sq" id="next" type="button" aria-label="Next sightline" title="Next sightline (j)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 3 5 5-5 5"/></svg></button>
+    <button class="pbtn" id="geo-open" type="button" data-testid="geo-open" aria-haspopup="dialog" aria-controls="geo-pop" aria-expanded="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>New ray</button>
+  </div>
+  <span class="sp"></span>
+  <span id="pill" class="hide-m" data-state="offline" role="status" aria-live="polite">probing</span>
+  <button class="pbtn hide-m" id="find-toggle" type="button" aria-haspopup="dialog" aria-controls="find-pop" aria-expanded="false" title="Find sightlines by their fitted components"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h7M2 8h5M2 12h4"/><circle cx="11.5" cy="9.5" r="2.6"/><path d="m13.4 11.4 1.8 1.8"/></svg><span class="lbl">Find</span></button>
+  <button class="pbtn" id="chat-open" type="button" aria-haspopup="dialog" hidden>Ask</button>
+  <div class="icons">
+    <button class="ib info" id="info-read" type="button" data-testid="info-read" data-info="read" aria-controls="pop-read" aria-expanded="false" aria-label="How to read"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button>
+    <button class="ib info" id="info-methods" type="button" data-testid="info-methods" data-info="methods" aria-controls="pop-methods" aria-expanded="false" aria-label="Data and methods"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg></button>
+    <button class="ib info" id="info-licence" type="button" data-testid="info-licence" data-info="licence" aria-controls="pop-licence" aria-expanded="false" aria-label="Licence and credits"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M10.2 6.3a2.6 2.6 0 1 0 0 3.4" stroke-linecap="round"/></svg></button>
+    <button class="ib" id="theme" type="button" aria-label="Theme: auto" title="Theme: auto" data-mode="auto"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 1.7v12.6A6.3 6.3 0 0 0 8 1.7z" fill="currentColor"/></svg></button>
+    <button class="ib hide-m" id="side-toggle" type="button" aria-controls="side" aria-expanded="true" aria-label="Hide the side column" title="Hide the side column"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="2.5" width="12.4" height="11" rx="2"/><path d="M10 2.5v11"/></svg></button>
+    <button class="ib" id="controls-open" type="button" aria-controls="side" aria-expanded="false" aria-label="Controls"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--bg)"/><circle cx="11" cy="8" r="1.5" fill="var(--bg)"/><circle cx="7" cy="12" r="1.5" fill="var(--bg)"/></svg></button>
+  </div>
 </header>
-
-<div class="controls" id="controls" role="group" aria-label="Instrument settings">
-  <div class="ctl"><div class="row"><label for="rlo">R · columns 1 &amp; 3</label></div><select id="rlo"></select></div>
-  <div class="ctl"><div class="row"><label for="rhi">R · columns 2 &amp; 4</label></div><select id="rhi"></select></div>
-  <div class="ctl"><div class="row"><label for="snhi">S/N · columns 1 &amp; 2</label><output id="snhi_o" for="snhi"></output></div><input id="snhi" type="range" min="2" max="20" step="1"></div>
-  <div class="ctl"><div class="row"><label for="snlo">S/N · columns 3 &amp; 4</label><output id="snlo_o" for="snlo"></output></div><input id="snlo" type="range" min="2" max="20" step="1"></div>
-  <div class="ctl"><div class="row"><label for="vwin">velocity window ± km/s</label><output id="vwin_o" for="vwin"></output></div><input id="vwin" type="range" min="150" max="800" step="50"></div>
-  <div class="presets">
-    <label class="hint"><input id="intr" type="checkbox"> show intrinsic (unconvolved) spectrum</label>
-    <label class="hint"><input id="comps" type="checkbox"> show fitted components</label>
-    <button id="reroll" class="btn" type="button">↻ new noise</button>
-    <span class="sp" style="flex:1"></span>
-    <button id="dlpdf" class="btn primary" type="button">Publication figure (PDF)</button>
-    <button id="dlpng" class="btn" type="button">PNG</button>
-  </div>
-</div>
-
-<div class="app" id="app" data-tab="spectra">
-<aside class="side">
-  <section class="card" aria-labelledby="h-gal">
-    <h2 id="h-gal">Gallery</h2>
-    <div class="row"><input id="filter" type="search" placeholder="filter by id, e.g. edge_b100" aria-label="Filter sightlines by id"></div>
-    <div class="row"><label class="hint"><input id="showcase" type="checkbox"> ★ showcase only (multi-component, unsaturated)</label></div>
-    <select id="gallery" size="12" aria-label="Sightlines, best showcase first"></select>
-    <div class="row"><button id="prev" class="btn" type="button">◀ prev</button><button id="next" class="btn" type="button">next ▶</button></div>
-    <p class="hint" id="galcount">loading catalogue…</p>
-    <p class="hint">Rows read: star, orientation, impact parameter b (kpc), azimuth Φ, then log N [cm<sup>−2</sup>] of O VI / H I / C III. ★ = O VI multi-component and unsaturated; ☆ = another ion qualifies.</p>
-  </section>
-
-  <section class="card" aria-labelledby="h-geo">
-    <h2 id="h-geo">New sightline</h2>
-    <form id="geo" novalidate>
-      <fieldset>
-        <legend class="label">Orientation</legend>
-        <div class="radios">
-          <label><input type="radio" name="orient" value="face-on"> face-on</label>
-          <label><input type="radio" name="orient" value="edge-on" checked> edge-on</label>
-          <label><input type="radio" name="orient" value="random"> random</label>
+<div class="banner" id="apibanner" role="alert" hidden><span id="apibanner_t"></span><button id="apireset" class="pbtn" type="button">Reset to default server</button></div>
+<div id="shell">
+  <section id="panel-spectra" class="glass" role="tabpanel" aria-labelledby="tab-spectra" tabindex="-1">
+    <div id="plotbar">
+      <div class="grp" id="grp-layout" role="group" aria-label="Layout"><span class="gl">Layout</span>
+        <div class="seg" id="layout" role="radiogroup" aria-label="Layout">
+          <label title="One case: one R and one S/N"><input type="radio" name="layout" value="1" data-testid="layout-1"><span>1</span></label>
+          <label title="Two R at one S/N"><input type="radio" name="layout" value="2R" data-testid="layout-2R"><span>2 R</span></label>
+          <label title="Two S/N at one R"><input type="radio" name="layout" value="2SN" data-testid="layout-2SN"><span>2 S/N</span></label>
+          <label title="Two R by two S/N"><input type="radio" name="layout" value="4" data-testid="layout-4"><span>2×2</span></label>
         </div>
-      </fieldset>
-      <div class="field" style="margin-top:8px"><label for="gb">b [kpc]</label><input id="gb" type="number" min="0" max="300" step="1" value="100" inputmode="numeric"></div>
-      <div class="field"><label for="gaz">Φ [deg]</label><input id="gaz" type="number" min="0" max="359" step="1" value="90" inputmode="numeric"></div>
-      <div class="field"><label for="gseed">seed</label><input id="gseed" type="number" min="0" max="4294967295" step="1" value="1" inputmode="numeric" disabled></div>
-      <div class="row" style="margin-top:8px"><button id="submit" class="btn primary" type="submit">Submit · load or generate</button></div>
-    </form>
-    <div class="prog" id="prog" hidden>
-      <div class="stagebar" id="stagebar" role="progressbar" aria-label="Generation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span></div>
-      <div class="stagenames" id="stagenames"><span>queued</span><span>load</span><span>ray</span><span>spectra</span><span>fit</span><span>save</span></div>
+      </div>
+      <div class="grp" id="grp-lines" role="group" aria-label="Lines"><span class="gl">Lines</span>
+        <button class="pbtn" id="ion-open" type="button" data-testid="ion-select" aria-haspopup="dialog" aria-controls="ion-pop" aria-expanded="false" title="Choose lines"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M2 8h8M2 12h10"/></svg><span class="n">0</span></button>
+        <div id="ion-chips"></div>
+      </div>
     </div>
-    <p class="msg" id="geomsg" aria-live="polite">Existing geometries load instantly. New ones cast a Trident ray through the simulation on the sightline server (about a minute when it is warm).</p>
-    <details id="bkd"><summary>Sightline server</summary>
-      <div class="field" style="margin-top:6px"><label for="apiurl">override URL</label><input id="apiurl" type="url" placeholder="https://…" aria-describedby="apihint"></div>
-      <div class="row" style="margin-top:6px"><button id="apisave" class="btn" type="button">Use</button><button id="apiclear" class="btn" type="button">Clear</button></div>
-      <p class="hint" id="apihint">Also settable with <span class="mono">?api=URL</span>. Library sightlines always come from this site.</p>
-      <div class="backends" id="backends"></div>
-    </details>
+    <div id="spectra" data-testid="spectra" tabindex="0" aria-label="Spectra: drag or use the arrow keys to pan, plus and minus to zoom, Home to reset"><canvas id="cv" role="img" aria-label="Spectra"></canvas><div id="hitboxes"></div></div>
+    <div id="vaxis" hidden><canvas id="vaxis-cv" aria-hidden="true"></canvas><button type="button" id="more-below" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3v9m-3.5-3.5L8 12l3.5-3.5"/></svg><span></span></button></div>
+    <div id="bar"><span id="statusline" data-id="" aria-live="polite"></span><span id="readouts" hidden></span><span id="note" role="status" aria-live="polite"></span><span id="fitstatus" data-testid="fit-status" data-state="idle"></span></div>
   </section>
-
-  <section class="card" id="find-root" aria-labelledby="h-find">
-    <h2 id="h-find"><button type="button" id="find-toggle" aria-expanded="false" aria-controls="find-body">Find by components</button></h2>
-    <div id="find-body" hidden><p class="hint">Search the fitted Voigt components (fixed velocity frame) for multi-component or closely spaced absorbers.</p></div>
+  <aside id="side" aria-label="Controls">
+    <div id="side-head"><span class="grab" aria-hidden="true"></span><span class="gl">Controls</span><button class="pbtn" id="side-done" type="button">Done</button></div>
+    <div id="mobslot"></div>
+    <div id="v3d-mini" role="button" tabindex="0" aria-label="Open the 3D view" title="Open the 3D view"><span class="mini-art"></span><div id="v3d-mini-host"></div></div>
+    <section class="glass card" aria-labelledby="h-inst"><h2 id="h-inst">Instrument</h2>
+      <div id="rsliders"></div>
+      <label class="ctl"><span class="k">S/N<sub class="sn1lab" hidden>1</sub></span><input type="range" id="sn-0" data-testid="sn-0" aria-label="S/N"><output id="sn-0-out" for="sn-0"></output></label>
+      <label class="ctl" id="sn1wrap"><span class="k">S/N<sub>2</sub></span><input type="range" id="sn-1" data-testid="sn-1" aria-label="S/N 2"><output id="sn-1-out" for="sn-1"></output></label>
+    </section>
+    <section class="glass card" aria-labelledby="h-vel"><div class="hd"><h2 id="h-vel">Velocity</h2><button class="lk" id="vreset" type="button" data-testid="view-reset" title="Centre on 0 and reset the window (Home)">Reset view</button></div>
+      <label class="ctl"><span class="k">window</span><input type="range" id="vhw" data-testid="vhw" aria-label="Velocity half-window"><output id="vhw-out" for="vhw"></output></label>
+    </section>
+    <section class="glass card" aria-labelledby="h-ovl"><h2 id="h-ovl">Overlay</h2>
+      <label class="tg">Fitted components<input type="checkbox" id="fit" data-testid="fit-toggle" role="switch"></label>
+      <label class="tg">Intrinsic<input type="checkbox" id="intr" role="switch"></label>
+      <div class="row"><button class="pbtn" id="reroll" type="button" title="Draw new noise">New noise</button>
+        <button class="pbtn" id="dl-open" type="button" aria-haspopup="menu" aria-controls="dl-menu" aria-expanded="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8m-3.5-3L8 10.5 11.5 7M3 13.5h10"/></svg>Save</button></div>
+    </section>
+  </aside>
+  <section id="panel-3d" role="tabpanel" aria-labelledby="tab-3d" tabindex="-1" hidden>
+    <div id="v3d-stage" data-testid="v3d-stage"><div id="v3d-root"></div></div>
+    <div id="v3d-controls" data-testid="v3d-controls"><p id="v3d-wait" class="msg" role="status">Loading the 3D view</p><div id="picker-root"></div><div id="v3d-status" aria-live="polite"></div></div>
   </section>
-</aside>
-
-<section class="main" aria-label="Sightline views" style="min-width:0;gap:0">
-  <div role="tablist" id="tabs" class="tabs" aria-label="Views"><button role="tab" id="tab-spectra" aria-controls="panel-spectra" aria-selected="true" tabindex="0" type="button">Spectra</button><button role="tab" id="tab-3d" aria-controls="panel-3d" aria-selected="false" tabindex="-1" type="button">3D</button></div>
-  <div role="tabpanel" id="panel-spectra" aria-labelledby="tab-spectra" tabindex="-1">
-  <div class="fig" style="border-top-left-radius:0">
-    <div class="figbar"><div class="status" id="statusline" aria-live="polite">loading…</div></div>
-    <canvas id="cv" height="560" role="img" aria-label="Twelve spectrum panels: rows O VI, H I Lyβ, C III; columns four resolution and S/N settings"></canvas>
-    <div class="readouts" id="readouts"></div>
-    <div class="cap" id="cap"><strong>Thick curve:</strong> noiseless spectrum after the Gaussian line-spread function (FWHM = λ<sub>0</sub>/R), sampled at 5 pixels per resolution element. <strong>Thin curve:</strong> one noisy realisation at the column’s S/N per resolution element. x is the line-of-sight velocity relative to the galaxy’s systemic velocity (0 = the galaxy).</div>
-  </div>
-  </div>
-  <div role="tabpanel" id="panel-3d" aria-labelledby="tab-3d" tabindex="-1" hidden>
-  <div class="fig" style="border-top-left-radius:0">
-    <div class="figbar"><div class="status" id="v3d-status" aria-live="polite">Gas and stars around the galaxy in 3D: drag to orbit, scroll or pinch to zoom, click a line to select its sightline, or pick a new ray. Shift+F or the button on the stage goes fullscreen.</div></div>
-    <div id="v3d-root"><p class="msg" style="padding:14px">loading the 3D view…</p></div>
-    <div id="picker-root"></div>
-  </div>
-  </div>
-</section>
 </div>
 
-<section aria-labelledby="h-about">
-  <h2 id="h-about">How to read this</h2>
-  <div class="about">
-    <p><strong>Rows</strong> are three far-UV transitions: O VI λ1032 (warm-hot gas), H I Lyβ and C III λ977 (cooler gas). <strong>Columns</strong> are four spectrograph setups: two resolving powers crossed with two S/N values.</p>
-    <p><strong>Higher R</strong> narrows the line-spread function and splits blended velocity components. <strong>Lower S/N</strong> buries weak components in the noise. The intrinsic overlay shows the spectrum before any instrument.</p>
-    <p id="aboutgal"><strong>Galaxy:</strong> TNG50-1 subhalo 488530, a central Milky-Way-mass disc galaxy at z = 0. Sightlines are labelled by orientation (face-on, edge-on or random), impact parameter b and azimuth Φ from the projected major axis.</p>
-    <p><strong>Noise</strong> is drawn in the browser, so it matches the publication figure only statistically; the model curves match the Python pipeline to 10<sup>−6</sup>. “Publication figure” renders the matplotlib version on the server.</p>
-    <p><strong>3D</strong> shows every gas cell and star particle of the simulation deposited into nested cubes (±400, ±100 and ±25 kpc, 256<sup>3</sup> each; the finest is ≈ 0.2 kpc, the scale of the disc). The default <em>integral</em> view sums the gas along each line of sight into a column density (or an n<sub>H</sub>-weighted mean temperature or metallicity) and adds the stars as a true-colour g, r, i composite (Lupton et al. 2004 asinh stretch); <em>volume</em> mode renders the gas with a transfer function instead. Each line is a sightline: click one to open its spectra. <em>Pick ray</em> places two endpoints on the plane facing you (or type them in kpc) and generates that ray on the sightline server. The cubes are downloaded from a public Hugging Face dataset only when you open this tab.</p>
-    <p><strong>Find</strong> searches the fitted Voigt components of every sightline: for example two O VI components 50–150 km/s apart, a column-density or Doppler-b range, or an impact-parameter range. Results are ranked and open like gallery entries.</p>
-    <p><strong>Ask</strong> is an optional chat that drives the page through the same tools (search, select, instrument, 3D, new sightlines). The local model runs entirely in your browser after a one-off ~1 GB download from cdn.jsdelivr.net, raw.githubusercontent.com and huggingface.co. The Claude backend, when this site's server offers it, sends your messages and the tool results through that server to Anthropic; on a server set with <code>?api=</code> they go to that server instead. Numbers in an answer that do not appear in a tool result are marked unverified.</p>
+<div class="pop" id="pop-read" role="dialog" aria-label="How to read" hidden><h3>How to read</h3><ul class="plain">
+  <li>Rows are lines, cool to hot. Columns are instrument cases (Layout).</li>
+  <li>Flux is normalised to the continuum; v is the velocity relative to the galaxy's systemic velocity.</li>
+  <li>Stepped line: the degraded spectrum, a Gaussian line-spread function of FWHM c/R with 5 pixels and the given S/N per resolution element. Shading: the noiseless model. Intrinsic (dashed): the noiseless spectrum before the line-spread function.</li>
+  <li>Fitted components: the fitted model in ink, each component in the line colour and a tick at its centre. A hollow tick marks a component on a bound, cut by the time cap, or unconstrained (log N error above 1 dex); the readout gives the fitted values with their errors.</li>
+  <li>Drag or use the arrow keys to pan; ctrl or cmd with the wheel, or + and −, zoom; Home resets.</li>
+  <li>3D: drag to orbit, scroll to zoom, click a sightline to open its spectra.</li></ul></div>
+<div class="pop" id="pop-methods" role="dialog" aria-label="Data and methods" hidden><h3>Data and methods</h3>
+  <p id="about-gal">Sightlines through the circumgalactic medium of one TNG50-1 galaxy (subhalo 488530 at z = 0), labelled by orientation, impact parameter b and azimuth from the projected major axis.</p>
+  <p>Optical depths from Trident on a 0.25 km/s grid, stored at 1 km/s. Velocities are relative to the galaxy's systemic velocity.</p>
+  <p>The degradation and the Voigt fits run in your browser: Levenberg–Marquardt on (log N, b, v) through the line-spread function, seeded from the intrinsic component catalogue and pruned by ΔBIC. Noise matches the publication figure only statistically.</p>
+  <p>3D: every gas cell and star particle deposited into nested cubes (±400, ±100 and ±25 kpc), fetched from a public Hugging Face dataset. Find searches the fitted components of every sightline. Ask is an optional chat that drives the page through the same tools; its local model downloads about 1 GB, and the Claude backend sends your messages through the sightline server.</p></div>
+<div class="pop" id="pop-licence" role="dialog" aria-label="Licence and credits" hidden><h3>Licence and credits</h3>
+  <p>Simulation: IllustrisTNG, TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), used under the IllustrisTNG data policy. Spectra: Trident (Hummels, Smith and Silvia 2017) on yt (Turk et al. 2011); ion table HM2012.</p>
+  <p>Code MIT; yt and the patched Trident BSD-3; three.js MIT; WebLLM and the Qwen2.5-1.5B-Instruct weights Apache-2.0 (loaded only for the chat's local model); TNG50-derived spectra under the IllustrisTNG data policy (see <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements/blob/main/THIRD_PARTY_LICENSES">THIRD_PARTY_LICENSES</a>).</p>
+  <p>Source: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>. Companion page: <a href="../">Detect and resolve</a>.</p></div>
+<div class="pop" id="gal-pop" role="dialog" aria-label="Sightlines" hidden>
+  <div class="fl"><input type="search" id="gal-search" data-testid="gallery-search" placeholder="search id" autocomplete="off" aria-controls="gal-list" aria-label="Search sightlines">
+    <select id="filter" aria-label="Filter"><option value="all">all</option><option value="face-on">face-on</option><option value="edge-on">edge-on</option><option value="random">random</option><option value="new">new</option></select></div>
+  <ul id="gal-list" role="listbox" aria-label="Sightlines"></ul>
+  <div class="galf"><label title="Multi-component, unsaturated absorbers"><input type="checkbox" id="showcase"> showcase</label><span id="galcount"></span></div></div>
+<div class="pop" id="ion-pop" role="dialog" aria-label="Lines" hidden><div id="ion-list"></div>
+  <div class="pbtns"><button id="ion-all" type="button">All</button><button id="ion-none" type="button" title="Keep only the first line">One</button><button id="ion-default" type="button">Default</button></div></div>
+<div class="pop" id="dl-menu" role="menu" hidden><button id="dlpng" type="button" role="menuitem">PNG</button><button id="dlpdf" type="button" role="menuitem">Publication PDF</button></div>
+<div class="pop" id="geo-pop" role="dialog" aria-label="New sightline" hidden><h3>New sightline</h3>
+  <form id="geo" novalidate>
+    <fieldset><legend>Orientation</legend><div class="radios">
+      <label><input type="radio" name="orient" value="face-on"> face-on</label><label><input type="radio" name="orient" value="edge-on" checked> edge-on</label><label><input type="radio" name="orient" value="random"> random</label></div></fieldset>
+    <div class="field"><label for="gb">b [kpc]</label><input id="gb" type="number" min="0" max="300" step="1" value="100" inputmode="numeric"></div>
+    <div class="field"><label for="gaz">Φ [deg]</label><input id="gaz" type="number" min="0" max="359" step="1" value="90" inputmode="numeric"></div>
+    <div class="field"><label for="gseed">seed</label><input id="gseed" type="number" min="0" max="4294967295" step="1" value="1" inputmode="numeric" disabled></div>
+    <button id="submit" class="go" type="submit">Load or generate</button>
+  </form>
+  <div class="prog" id="prog" hidden>
+    <div class="stagebar" id="stagebar" role="progressbar" aria-label="Generation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span></div>
+    <div class="stagenames" id="stagenames"><span>queued</span><span>load</span><span>ray</span><span>spectra</span><span>fit</span><span>save</span></div>
   </div>
-</section>
-
-<p class="foot">Simulation: IllustrisTNG, TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), used under the IllustrisTNG data policy. Spectra: Trident (Hummels, Smith &amp; Silvia 2017) on yt (Turk et al. 2011). Instrument model: Gaussian LSF with FWHM = λ<sub>0</sub>/R, white noise per pixel, 5 pixels per resolution element. Source code: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>. Code MIT; yt and the patched Trident BSD-3; three.js MIT; WebLLM and the Qwen2.5-1.5B-Instruct weights Apache-2.0 (loaded only when you open the chat's local model); TNG50-derived spectra under the IllustrisTNG data policy (see <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements/blob/main/THIRD_PARTY_LICENSES">THIRD_PARTY_LICENSES</a>). Companion page: <a href="../">Detect &amp; resolve</a>, the detectability and resolvability explainer.</p>
-</div>
-
+  <p class="msg" id="geomsg" data-code="idle" aria-live="polite">Library sightlines load at once; new ones are cast on the sightline server.</p>
+  <details id="bkd"><summary>Sightline server</summary>
+    <div class="field"><label for="apiurl">URL</label><input id="apiurl" type="url" placeholder="https://" aria-describedby="apihint"></div>
+    <div class="row"><button id="apisave" class="pbtn" type="button">Use</button><button id="apiclear" class="pbtn" type="button">Clear</button></div>
+    <p class="msg" id="apihint">Also settable with ?api=URL. Library sightlines always come from this site.</p>
+    <div class="backends" id="backends"></div>
+  </details></div>
+<div class="pop" id="find-pop" role="dialog" aria-label="Find by components" hidden><h3>Find by components</h3><div id="find-body"></div></div>
 <div id="chat-root" hidden></div>
-
-<script id="tngsight-degrade">
-/* Port of tngsight.degrade (noiseless model) + web-binary decoder. No DOM: tests/js/degrade_parity.mjs evals this block.
-   Model: astropy Gaussian1DKernel(sigma) ('center' mode: size ceil(8 sigma) rounded up to odd, point-sampled, normalised),
-   convolve(boundary='extend', normalize_kernel=True), numpy arange + interp(left=right=1). Noise: mulberry32 + Box-Muller. */
-const TNG = (() => {
-  const C_KMS = 299792.458, DLAMBDA = 0.002, PIX_PER_RESEL = 5, FWHM_TO_SIGMA = 1 / 2.35482, VSYS_SIGN = +1;
-  const LINE_KEYS = ["OVI", "HILyb", "CIII"];
-  const noLSF = R => !(R > 0) || !Number.isFinite(R);       // R None/0/inf => no LSF (tngsight contract)
-  function gaussKernel(sigma) {
-    let n = Math.ceil(8 * sigma); if (n % 2 === 0) n += 1;
-    const h = (n - 1) / 2, amp = 1 / (Math.sqrt(2 * Math.PI) * sigma), k = new Float64Array(n); let s = 0;
-    for (let j = 0; j < n; j++) { const x = j - h; k[j] = amp * Math.exp(-0.5 * x * x / (sigma * sigma)); s += k[j]; }
-    for (let j = 0; j < n; j++) k[j] /= s;
-    return k;
-  }
-  function convolveExtend(f, k) {                            // pad with edge values, direct sum, divide by kernel sum
-    const N = f.length, n = k.length, h = (n - 1) >> 1, out = new Float64Array(N); let ks = 0;
-    for (let j = 0; j < n; j++) ks += k[j];
-    for (let i = 0; i < N; i++) { let acc = 0;
-      for (let j = 0; j < n; j++) { let q = i + h - j; q = q < 0 ? 0 : q >= N ? N - 1 : q; acc += k[j] * f[q]; }
-      out[i] = acc / ks; }
-    return out;
-  }
-  function arange(start, stop, step) {                       // numpy float arange: len ceil((stop-start)/step), start + i*delta
-    const M = Math.max(0, Math.ceil((stop - start) / step)), v = new Float64Array(M);
-    if (M > 0) v[0] = start; if (M > 1) v[1] = start + step;
-    const d = (start + step) - start; for (let i = 2; i < M; i++) v[i] = start + i * d;
-    return v;
-  }
-  function interp(x, xp, fp, left, right) {                  // numpy.interp, xp increasing
-    const n = xp.length, out = new Float64Array(x.length), x0 = xp[0], xl = xp[n - 1];
-    for (let i = 0; i < x.length; i++) { const xv = x[i];
-      if (Number.isNaN(xv)) { out[i] = xv; continue; }
-      if (xv > xl) { out[i] = right; continue; } if (xv < x0) { out[i] = left; continue; }
-      if (xv === xl) { out[i] = fp[n - 1]; continue; }
-      let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (xp[m] <= xv) lo = m; else hi = m; }
-      if (xp[lo] === xv) { out[i] = fp[lo]; continue; }
-      const sl = (fp[lo + 1] - fp[lo]) / (xp[lo + 1] - xp[lo]); let r = sl * (xv - xp[lo]) + fp[lo];
-      if (Number.isNaN(r)) { r = sl * (xv - xp[lo + 1]) + fp[lo + 1]; if (Number.isNaN(r) && fp[lo] === fp[lo + 1]) r = fp[lo]; }
-      out[i] = r; }
-    return out;
-  }
-  function median(a) { const s = Float64Array.from(a).sort(), n = s.length, h = n >> 1; return n % 2 ? s[h] : 0.5 * (s[h - 1] + s[h]); }
-  function velocityAxis(lam, rest, vSys) { const v = new Float64Array(lam.length);
-    for (let i = 0; i < lam.length; i++) v[i] = C_KMS * (lam[i] / rest - 1.0) + VSYS_SIGN * vSys; return v; }
-  /* noiseless model; flux = exp(-tau) on the native grid. Returns {v, model (clipped >= 0), raw (unclipped), vHi, fLsf} */
-  function degradeModel(lam, flux, rest, R, vSys, o = {}) {
-    const dlam = o.dlam ?? DLAMBDA, pix = o.pix ?? PIX_PER_RESEL, vwin = o.vwin ?? null;
-    let fLsf, dvResel;
-    if (noLSF(R)) { fLsf = Float64Array.from(flux);
-      const d = new Float64Array(lam.length - 1); for (let i = 0; i < d.length; i++) d[i] = Math.abs(C_KMS * (lam[i + 1] / rest - 1) - C_KMS * (lam[i] / rest - 1));
-      dvResel = median(d) * pix;
-    } else { const sig = (rest / R) * FWHM_TO_SIGMA / dlam; fLsf = convolveExtend(flux, gaussKernel(Math.max(sig, 1e-3))); dvResel = C_KMS / R; }
-    const dvPix = dvResel / pix, vHi = velocityAxis(lam, rest, vSys);
-    let vlo = -vwin, vhi = vwin;
-    if (vwin === null) { vlo = Infinity; vhi = -Infinity; for (const x of vHi) { if (x < vlo) vlo = x; if (x > vhi) vhi = x; } }
-    const v = arange(vlo, vhi + dvPix, dvPix), raw = interp(v, vHi, fLsf, 1.0, 1.0), model = raw.map(x => x < 0 ? 0 : x);
-    return {v, model, raw, vHi, fLsf, dvPix};
-  }
-  function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-  function gauss(r) { return Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r()); }
-  function addNoise(raw, snr, seed, pix = PIX_PER_RESEL) {   // per-pixel sigma = sqrt(pix)/snr, clipped at 0 from below
-    const out = Float64Array.from(raw); if (!(snr > 0)) { for (let i = 0; i < out.length; i++) out[i] = Math.max(0, out[i]); return out; }
-    const r = rng(seed), s = Math.sqrt(pix) / snr; for (let i = 0; i < out.length; i++) out[i] = Math.max(0, raw[i] + s * gauss(r));
-    return out;
-  }
-  function degrade(lam, flux, rest, R, snr, vSys, o = {}) {
-    const m = degradeModel(lam, flux, rest, R, vSys, o); return {v: m.v, noisy: addNoise(m.raw, snr, o.seed ?? 0, o.pix ?? PIX_PER_RESEL), model: m.model};
-  }
-  /* web binary (design §4): "TNGS", u8 ver, u8 nlines, u16 0, per line u32 n, f64 lam0, f64 dlam_grid, f64 rest, f64 dlam_lsf, n x u16 */
-  function decodeWeb(buf, keys = LINE_KEYS) {
-    const dv = new DataView(buf instanceof ArrayBuffer ? buf : buf.buffer, buf.byteOffset || 0, buf.byteLength);
-    if (String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== "TNGS") throw new Error("not a TNGS sightline binary");
-    const ver = dv.getUint8(4), nl = dv.getUint8(5); if (ver !== 1) throw new Error("unsupported TNGS version " + ver);
-    if (nl !== keys.length) throw new Error(`expected ${keys.length} lines, got ${nl}`);
-    let o = 8; const lines = {};
-    for (const k of keys) {
-      const n = dv.getUint32(o, true), lam0 = dv.getFloat64(o + 4, true), dlg = dv.getFloat64(o + 12, true),
-        rest = dv.getFloat64(o + 20, true), dlam = dv.getFloat64(o + 28, true); o += 36;
-      if (o + 2 * n > dv.byteLength) throw new Error("truncated TNGS binary");
-      const lam = new Float64Array(n), flux = new Float64Array(n);
-      for (let i = 0; i < n; i++) { lam[i] = Math.fround(lam0 + i * dlg); flux[i] = dv.getUint16(o + 2 * i, true) / 65535; }   // float32 grid, as in the npz
-      o += 2 * n; lines[k] = {n, lam0, dlamGrid: dlg, rest, dlam, lam, flux};
-    }
-    return {version: ver, lines};
-  }
-  return {C_KMS, DLAMBDA, PIX_PER_RESEL, FWHM_TO_SIGMA, VSYS_SIGN, LINE_KEYS, gaussKernel, convolveExtend, arange, interp, median,
-    velocityAxis, degradeModel, addNoise, degrade, rng, gauss, decodeWeb};
-})();
-</script>
 
 <script>
 const DATA = /*__DATA__*/null;
-/* ---------------- config (injected by scripts/export_tng50_web.py; defaults let the bare template run) ---------------- */
-const CFG = Object.assign({
-  version: 1, catalog_url: "data/catalog.json", bin_dir: "data/s/",
-  backends: ["http://127.0.0.1:8787"],          // the exporter appends the public Space URL when it is given one
-  galaxy: {sim: "TNG50-1", snapshot: 99, redshift: 0, subhalo_id: 488530},
-  lines: {OVI: {label: "O VI λ1032", rest_A: 1031.912}, HILyb: {label: "H I Lyβ", rest_A: 1025.7222}, CIII: {label: "C III λ977", rest_A: 977.02}},
-  defaults: {id: "edge_b100_a090", R_lo: 20000, R_hi: 40000, sn_hi: 8, sn_lo: 5, vwin: 400, seed: 0, intrinsic: false},
-  R_opts: [20000, 30000, 40000, 60000, 80000, 100000],
-  viz: {manifest_url: "data/viz/manifest_v2.json", base: "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/",
-        fallback_base: "data/viz/", dataset: "tanmay-starslab/tng50-sub488530-viz"},
-  components_url: "data/components.json", three: "0.169.0", js_base: "js/",
-  chat: {enabled: false}, custom: {r_max_kpc: 395, l_min_kpc: 20, l_max_kpc: 800},
-  frame: {Lhat: [0.04170790684964916, -0.8403492677980035, -0.5404383023228281], xhat: [-0.9968862719846454, -0.07122981073705145, 0.03382417465245191],
-    yhat: [-0.0669194383925682, 0.5373447889146441, -0.8407034950513171], R200c_kpc: 246.35226737104722}
-}, DATA || {});
-const KEYS = TNG.LINE_KEYS, C = TNG.C_KMS;
-const ILAB = {OVI: "O VI λ1032", HILyb: "H I Lyβ", CIII: "C III λ977"}, ISHORT = {OVI: "O VI", HILyb: "H I", CIII: "C III"};
-const STAGES = ["queued", "load", "ray", "spectra", "fit", "save"];
-const $ = s => document.querySelector(s);
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const fmt = (x, d = 0) => Number.isFinite(x) ? x.toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d}) : "—";
-const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
-const ID_RE = /^((face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?|cust_[0-9a-f]{10})$/;
-const emit = (name, detail) => dispatchEvent(new CustomEvent(name, {detail}));
-const store = {get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} }};
-
-/* ---------------- state ---------------- */
-const D = CFG.defaults;
-const S = {id: null, Rlo: D.R_lo, Rhi: D.R_hi, snHi: D.sn_hi, snLo: D.sn_lo, vwin: D.vwin, seed: D.seed, intr: !!D.intrinsic, filter: "", showcase: false, tab: "spectra", comps: false};
-const CAT = new Map();          // id -> entry (+ _static, _seq)
-let SEQ = 0, VISIBLE = [], CATV = 0, catEmitted = -1;
-const SIGHT = new Map();        // id -> decoded binary
-const MODEL = new Map();        // id|key|R|vwin -> degradeModel result
-let API = null, HEALTH = null, PROBES = [];
-
-/* ---------------- theme ---------------- */
-const THEMES = ["auto", "light", "dark"];
-function applyTheme(t) { if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
-  $("#theme").textContent = "Theme: " + t; }
-let theme = THEMES.includes(store.get("tngsight.theme")) ? store.get("tngsight.theme") : "auto"; applyTheme(theme);
-$("#theme").onclick = () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; store.set("tngsight.theme", theme); applyTheme(theme); };
-
-/* ---------------- hash state ---------------- */
-function readHash() { const h = new URLSearchParams(location.hash.slice(1));
-  const id = h.get("id"); if (id && ID_RE.test(id)) S.id = id;
-  const R = (h.get("R") || "").split(",").map(Number); if (CFG.R_opts.includes(R[0])) S.Rlo = R[0]; if (CFG.R_opts.includes(R[1])) S.Rhi = R[1];
-  const sn = (h.get("sn") || "").split(",").map(Number); if (sn[0] >= 2 && sn[0] <= 20) S.snHi = Math.round(sn[0]); if (sn[1] >= 2 && sn[1] <= 20) S.snLo = Math.round(sn[1]);
-  const v = +h.get("v"); if (v >= 150 && v <= 800) S.vwin = Math.round(v / 50) * 50;
-  const sd = +h.get("seed"); if (Number.isInteger(sd) && sd >= 0) S.seed = sd % 100000;
-  if (h.get("intr") === "1") S.intr = true; S.tab = h.get("tab") === "3d" ? "3d" : "spectra"; }
-let pendingId = null;            // a deep-linked id not (yet) in the catalogue: kept in the URL until it appears or the user picks another
-function writeHash() { const h = `id=${pendingId || S.id || ""}&R=${S.Rlo},${S.Rhi}&sn=${S.snHi},${S.snLo}&v=${S.vwin}&seed=${S.seed}&intr=${S.intr ? 1 : 0}${S.tab === "3d" ? "&tab=3d" : ""}`;
-  try { history.replaceState(null, "", "#" + h); } catch {} }
-
-/* ---------------- IndexedDB cache for generated sightlines (optional) ---------------- */
-const IDB = (() => { let db = null, req = null, failed = false;
-  /* One open request for the session. A slow open (profiles on slow disks take > 20 s) only times out the CALL: the request
-     stays alive, so later calls get the connection once it lands instead of a memoised null. */
-  function open(ms) { if (db) return Promise.resolve(db); if (failed) return Promise.resolve(null);
-    if (!req) { try { req = indexedDB.open("tngsight", 1);
-        req.onupgradeneeded = () => req.result.createObjectStore("bins"); req.onsuccess = () => { db = req.result; }; req.onerror = () => { failed = true; };
-      } catch { failed = true; return Promise.resolve(null); } }
-    return new Promise(res => { const t = setTimeout(() => res(null), ms);
-      req.addEventListener("success", () => { clearTimeout(t); res(db); }); req.addEventListener("error", () => { clearTimeout(t); res(null); }); }); }
-  async function tx(mode, fn, ms = 3000) { const db = await open(ms); if (!db) return null; return new Promise(res => { try { const t = db.transaction("bins", mode), st = t.objectStore("bins");
-    const r = fn(st); t.oncomplete = () => res(r && "result" in r ? r.result : true); t.onerror = t.onabort = () => res(null); } catch { res(null); } }); }
-  return {get: id => tx("readonly", s => s.get(id)), put: (id, v) => tx("readwrite", s => s.put(v, id), 60000), all: () => tx("readonly", s => s.getAll())};
-})();
-
-/* ---------------- catalogue ---------------- */
-const tagOf = o => ({"face-on": "face", "edge-on": "edge", random: "rand"}[o] || o);
-const nShow = e => +e.n_showcase_ions || 0;
-function upsert(e, isStatic) { if (!e || !e.id || !ID_RE.test(e.id)) return;
-  const old = CAT.get(e.id); const ne = Object.assign({}, old || {}, e);
-  ne._static = (old && old._static) || !!isStatic; ne._seq = old ? old._seq : ++SEQ; CAT.set(e.id, ne); CATV++; }
-function sorted() {
-  const lib = [], gen = [];
-  for (const e of CAT.values()) (e.source === "generated" ? gen : lib).push(e);
-  lib.sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity) || (b.score ?? -1) - (a.score ?? -1) || (a.id < b.id ? -1 : 1));
-  gen.sort((a, b) => b._seq - a._seq);
-  return lib.concat(gen);
-}
-const fb = x => Number.isInteger(+x) ? String(+x) : (+x).toFixed(1);
-const isCust = e => e.orientation === "custom" || e.kind === "endpoints";
-function label(e) { const star = e.star ? "★" : nShow(e) >= 1 ? "☆" : " ";
-  const ln = KEYS.map(k => Number.isFinite(e.logN?.[k]) ? e.logN[k].toFixed(1) : "—").join("/");
-  if (isCust(e)) return `◆ new b=${fb(e.b_kpc)} θ=${Math.round(+e.angle_to_normal_deg)}° L=${Math.round(+e.length_kpc)} ${ln}`;   // "new" first: the row is clipped at the right
-  return `${star} ${tagOf(e.orientation)} b=${fb(e.b_kpc).padStart(3)} Φ=${fb(e.azimuth_deg).padStart(3)}° ${ln}${e.source === "generated" ? " new" : ""}`; }
-/* keep the selected row in view with whole rows at the top (no half-clipped first row); tune2 */
-function snapGallery() { requestAnimationFrame(() => { const g = $("#gallery"), o = g && g.options && g.selectedIndex >= 0 ? g.options[g.selectedIndex] : null; if (!o || !g.clientHeight) return;
-  const rh = o.offsetHeight; if (!rh) return; let top = g.scrollTop; const oy = o.offsetTop - (g.options[0]?.offsetTop || 0);
-  if (oy < top || oy + rh > top + g.clientHeight) top = oy - (g.clientHeight - rh) / 2;
-  g.scrollTop = Math.max(0, Math.round(top / rh) * rh); }); }
-function renderGallery() {
-  const q = S.filter.trim().toLowerCase();
-  VISIBLE = sorted().filter(e => (!S.showcase || nShow(e) >= 1) && (!q || e.id.toLowerCase().includes(q)));
-  const g = $("#gallery"); g.textContent = "";
-  for (const e of VISIBLE) { const o = document.createElement("option"); o.value = e.id; o.textContent = label(e);
-    o.title = `${e.id} · ${e.orientation}, b = ${e.b_kpc} kpc, Φ = ${e.azimuth_deg}°${e.seed != null ? ", seed " + e.seed : ""}${e.rank ? ", rank " + e.rank : ""}`; g.appendChild(o); }
-  if (S.id && VISIBLE.some(e => e.id === S.id)) { g.value = S.id; snapGallery(); }
-  $("#galcount").textContent = `${VISIBLE.length} of ${CAT.size} sightlines shown`;
-  if (CATV !== catEmitted) { catEmitted = CATV; emit("tng:catalog", {n: CAT.size}); }
-}
-function step(d) { if (!VISIBLE.length) return; let i = VISIBLE.findIndex(e => e.id === S.id);
-  i = i < 0 ? 0 : (i + d + VISIBLE.length) % VISIBLE.length; select(VISIBLE[i].id, false, "gallery"); }
-
-/* ---------------- sightline data ---------------- */
-async function fetchBin(url, ms = 20000) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
-  try { const r = await fetch(url, {signal: ac.signal}); if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`); return await r.arrayBuffer(); } finally { clearTimeout(t); } }
-async function getSight(id) {
-  if (SIGHT.has(id)) return SIGHT.get(id);
-  const e = CAT.get(id); let buf = null, err = null;
-  if (e && e._static) { try { buf = await fetchBin(CFG.bin_dir + id + ".bin"); } catch (x) { err = x; } }
-  if (!buf) { const c = await IDB.get(id); if (c && c.bin) buf = c.bin; }
-  if (!buf && API) { try { buf = await fetchBin(`${API}/api/sightline/${id}.bin`); if (e && !e._static) IDB.put(id, {entry: strip(e), bin: buf}); } catch (x) { err = x; backendFailed(); } }
-  if (!buf) throw err || new Error(`sightline ${id} is not in the static library and no server is online`);
-  const s = TNG.decodeWeb(buf); SIGHT.set(id, s); if (SIGHT.size > 40) SIGHT.delete(SIGHT.keys().next().value); return s;
-}
-const strip = e => { const o = {}; for (const k in e) if (k[0] !== "_") o[k] = e[k]; return o; };
-function model(id, k, R) { const key = `${id}|${k}|${R}|${S.vwin}`; let m = MODEL.get(key);
-  if (!m) { const s = SIGHT.get(id), L = s.lines[k], e = CAT.get(id);
-    m = TNG.degradeModel(L.lam, L.flux, L.rest, R, +e.v_sys || 0, {dlam: L.dlam || TNG.DLAMBDA, vwin: S.vwin}); MODEL.set(key, m);
-    if (MODEL.size > 72) MODEL.delete(MODEL.keys().next().value); }
-  return m; }
-
-let loadTok = 0;
-async function select(id, auto = false, source = "gallery") {
-  if (!CAT.has(id)) return; if (!auto || id === pendingId) pendingId = null; const changed = S.id !== id; S.id = id; const tok = ++loadTok;
-  if (changed) emit("tng:select", {id, source}); if (S.comps) loadComps(id);
-  const g = $("#gallery"); if ([...g.options].some(o => o.value === id)) { g.value = id; snapGallery(); }
-  syncGeom(CAT.get(id)); writeHash(); status();
-  try { await getSight(id); } catch (x) { if (tok === loadTok) { $("#statusline").innerHTML = `<span class="msg bad">Could not load <b>${esc(id)}</b>: ${esc(x.message)}</span>`; drawEmpty(); } return; }
-  if (tok !== loadTok) return; update();
-  const i = VISIBLE.findIndex(e => e.id === id);          // prefetch neighbours
-  for (const d of [1, -1]) { const n = VISIBLE[(i + d + VISIBLE.length) % VISIBLE.length]; if (n && n._static) getSight(n.id).catch(() => {}); }
-}
-function syncGeom(e) { if (!e || isCust(e)) return; for (const r of document.querySelectorAll('input[name="orient"]')) r.checked = r.value === e.orientation;
-  $("#gb").value = Math.round(+e.b_kpc); $("#gaz").value = Math.round(+e.azimuth_deg) % 360; if (e.seed != null) $("#gseed").value = e.seed; seedState(); }
-function status() { const e = CAT.get(S.id); if (!e) { $("#statusline").textContent = "no sightline selected"; return; }
-  const vs = +e.v_sys;
-  $("#statusline").innerHTML = `<b>${esc(e.id)}</b> | ` + (isCust(e) ? `custom ray, L = <span class="num">${fb(e.length_kpc)}</span> kpc, closest b = <span class="num">${fb(e.b_kpc)}</span> kpc, θ<sub>L</sub> = <span class="num">${fb(e.angle_to_normal_deg)}</span>°` :
-    `${esc(e.orientation)}, b = <span class="num">${fb(e.b_kpc)}</span> kpc, Φ = <span class="num">${fb(e.azimuth_deg)}</span>°`) +
-    (e.seed != null ? `, seed <span class="num">${esc(e.seed)}</span>` : "") + `, v<sub>sys</sub> = <span class="num">${vs >= 0 ? "+" : "−"}${fmt(Math.abs(vs), 1)}</span> km/s | log N [cm<sup>−2</sup>]: ` +
-    KEYS.map(k => `${ISHORT[k]} <span class="num">${fmt(e.logN?.[k], 2)}</span>`).join(", ") + (e.rank ? ` | rank <span class="num">${e.rank}</span>` : "") + (e.source === "generated" ? " | generated on demand" : "");
-}
-
-/* ---------------- drawing ---------------- */
-function setup(cv) {
-  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = +cv.dataset.h || +cv.getAttribute("height") || 560;   // logical px: the height attribute holds h*dpr
-  cv.dataset.h = h;
-  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + "px"; }
-  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, w, h); return {ctx, w, h};
-}
-function niceTicks(a, b) { const span = b - a, raw = span / 6, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
-  const st = (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p, out = []; for (let t = Math.ceil(a / st) * st; t <= b + 1e-9; t += st) out.push(Math.round(t)); return out; }
-const cols = () => [[S.Rlo, S.snHi], [S.Rhi, S.snHi], [S.Rlo, S.snLo], [S.Rhi, S.snLo]];
-function layout(w) {
-  const nc = w >= 640 ? 4 : 2, L = 52, Rm = 10, T = 26, B = 46, gx = nc === 4 ? 8 : 10, gy = 6, band = nc === 4 ? 0 : 46;
-  const pw = (w - L - Rm - gx * (nc - 1)) / nc, ph = Math.round(clamp(pw * (nc === 4 ? 0.66 : 0.7), 105, 175));
-  const nr = nc === 4 ? 3 : 6, H = T + nr * ph + (nr - 1) * gy + band + B, boxes = [];
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) {
-    const blk = nc === 4 ? 0 : c >> 1, cc = nc === 4 ? c : c & 1, rr = nc === 4 ? r : blk * 3 + r;
-    boxes.push({r, c, x: L + cc * (pw + gx), y: T + rr * (ph + gy) + blk * band, w: pw, h: ph, top: r === 0, bottom: r === 2, left: cc === 0, last: rr === nr - 1}); }
-  return {H: Math.round(H), boxes, nc};
-}
-function drawEmpty() { const cv = $("#cv"), {ctx, w, h} = setup(cv); ctx.fillStyle = css("--ink2"); ctx.font = `13px ${css("--body")}`; ctx.textAlign = "center";
-  ctx.fillText("no spectrum loaded", w / 2, h / 2); }
-let pending = false;
-function update() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; draw(); readouts(); }); }
-function draw() {
-  const cv = $("#cv"), s = SIGHT.get(S.id), e = CAT.get(S.id);
-  const lay = layout(cv.clientWidth); cv.dataset.h = lay.H;
-  const {ctx, w} = setup(cv); cv._lay = lay;
-  if (!s || !e) { ctx.fillStyle = css("--ink2"); ctx.font = `13px ${css("--body")}`; ctx.textAlign = "center"; ctx.fillText("loading…", w / 2, lay.H / 2); return; }
-  const ink2 = css("--ink2"), grid = css("--grid"), rule = css("--rule"), intr = css("--intr"), mono = css("--mono"), body = css("--body"), panel = css("--panel");
-  const vw = S.vwin, yr = [-0.08, 1.32], xt = niceTicks(-vw, vw), yt = [0, 0.5, 1], cl = cols();
-  for (const bx of lay.boxes) {
-    const k = KEYS[bx.r], [R, sn] = cl[bx.c], col = css("--ion-" + k), L = s.lines[k];
-    const X = v => bx.x + (v + vw) / (2 * vw) * bx.w, Y = f => bx.y + bx.h - (f - yr[0]) / (yr[1] - yr[0]) * bx.h;
-    ctx.save(); ctx.strokeStyle = grid; ctx.lineWidth = 1;
-    for (const t of xt) { ctx.beginPath(); ctx.moveTo(X(t), bx.y); ctx.lineTo(X(t), bx.y + bx.h); ctx.stroke(); }
-    for (const t of yt) { ctx.beginPath(); ctx.moveTo(bx.x, Y(t)); ctx.lineTo(bx.x + bx.w, Y(t)); ctx.stroke(); }
-    ctx.beginPath(); ctx.rect(bx.x, bx.y, bx.w, bx.h); ctx.clip();
-    const m = model(S.id, k, R), noisy = TNG.addNoise(m.raw, sn, S.seed + 17 * bx.c + 101 * bx.r), v = m.v, M = v.length;
-    ctx.globalAlpha = 0.22; ctx.fillStyle = col;                     // absorption fill between model and 1
-    for (let i = 0; i < M;) { if (!(m.model[i] < 1)) { i++; continue; } let j = i; while (j + 1 < M && m.model[j + 1] < 1) j++;
-      if (j > i) { ctx.beginPath(); ctx.moveTo(X(v[i]), Y(1)); for (let q = i; q <= j; q++) ctx.lineTo(X(v[q]), Y(m.model[q])); ctx.lineTo(X(v[j]), Y(1)); ctx.closePath(); ctx.fill(); } i = j + 1; }
-    ctx.globalAlpha = 0.7; ctx.strokeStyle = ink2; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
-    ctx.beginPath(); ctx.moveTo(bx.x, Y(1)); ctx.lineTo(bx.x + bx.w, Y(1)); ctx.stroke();
-    ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(X(0), bx.y); ctx.lineTo(X(0), bx.y + bx.h); ctx.stroke(); ctx.setLineDash([]);
-    ctx.globalAlpha = 0.5; ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath();   // noisy data, step(where="mid")
-    ctx.moveTo(X(v[0]), Y(noisy[0])); for (let i = 1; i < M; i++) { const xm = X(0.5 * (v[i - 1] + v[i])); ctx.lineTo(xm, Y(noisy[i - 1])); ctx.lineTo(xm, Y(noisy[i])); }
-    ctx.lineTo(X(v[M - 1]), Y(noisy[M - 1])); ctx.stroke();
-    if (S.intr) { const vh = m.vHi; ctx.globalAlpha = 0.55; ctx.strokeStyle = intr; ctx.lineWidth = 1.1; ctx.beginPath(); let first = true;
-      for (let i = 0; i < vh.length; i++) { if (vh[i] < -vw || vh[i] > vw) continue; first ? ctx.moveTo(X(vh[i]), Y(L.flux[i])) : ctx.lineTo(X(vh[i]), Y(L.flux[i])); first = false; } ctx.stroke(); }
-    ctx.globalAlpha = 1; ctx.strokeStyle = col; ctx.lineWidth = 2.2; ctx.lineJoin = "round"; ctx.beginPath();
-    for (let i = 0; i < M; i++) i ? ctx.lineTo(X(v[i]), Y(m.model[i])) : ctx.moveTo(X(v[i]), Y(m.model[i])); ctx.stroke();
-    const cp = S.comps && COMPS.get(S.id); if (cp && cp[k]) { ctx.lineWidth = 1.6;      // fitted component centres; dashed = saturated (logN is a lower limit)
-      for (const c of cp[k]) { if (c.v < -vw || c.v > vw) continue; ctx.setLineDash(c.flag & 1 ? [3, 2] : []); ctx.beginPath(); ctx.moveTo(X(c.v), Y(1.06)); ctx.lineTo(X(c.v), Y(1.24)); ctx.stroke(); }
-      ctx.setLineDash([]); }
-    ctx.restore();
-    ctx.strokeStyle = rule; ctx.lineWidth = 1; ctx.strokeRect(bx.x, bx.y, bx.w, bx.h);
-    ctx.font = `10.5px ${mono}`; ctx.fillStyle = ink2;
-    if (bx.left) { ctx.textAlign = "right"; ctx.textBaseline = "middle"; for (const t of yt) ctx.fillText(t.toFixed(1), bx.x - 5, Y(t)); }
-    if (bx.bottom) { ctx.textAlign = "center"; ctx.textBaseline = "top";   // thin labels by measured width; skip the end labels at panel joins
-      const n = xt.length - 1, mid = xt.indexOf(0), need = ctx.measureText("−" + vw).width + 8;
-      let step = Math.max(1, Math.ceil(need / (bx.w / Math.max(1, n)))); while (mid > 0 && step < n && mid % step) step++;
-      const lastCol = lay.nc === 4 ? bx.c === 3 : (bx.c & 1) === 1;
-      xt.forEach((t, i) => { if (i % step || (i === 0 && !bx.left) || (i === n && !lastCol)) return;
-        ctx.fillText(t < 0 ? "−" + (-t) : String(t), X(t), bx.y + bx.h + 4); }); }
-    if (bx.top) { ctx.font = `500 12px ${body}`; ctx.fillStyle = css("--ink"); ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-      ctx.fillText(`R = ${fmt(R)} · S/N = ${sn}`, bx.x + bx.w / 2, bx.y - 8); }
-    if (bx.left) { ctx.font = `600 11.5px ${body}`; const t = ILAB[k], tw = ctx.measureText(t).width, lx = bx.x + 7, ly = bx.y + bx.h - 24;
-      ctx.fillStyle = panel; ctx.globalAlpha = 0.92; ctx.fillRect(lx, ly, tw + 12, 18); ctx.globalAlpha = 1; ctx.strokeStyle = col; ctx.lineWidth = 1.3; ctx.strokeRect(lx, ly, tw + 12, 18);
-      ctx.fillStyle = col; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(t, lx + 6, ly + 9.5); }
-  }
-  const b0 = lay.boxes[0], bl = lay.boxes[lay.boxes.length - 1];
-  ctx.font = `12px ${body}`; ctx.fillStyle = ink2; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-  subText(ctx, [["V", 0], ["LOS", 1], [" − V", 0], ["sys", 1], ["  [km s⁻¹]", 0]], (b0.x + bl.x + bl.w) / 2, bl.y + bl.h + 36, body);
-  ctx.save(); ctx.translate(14, (b0.y + bl.y + bl.h) / 2); ctx.rotate(-Math.PI / 2); ctx.fillText("normalized flux", 0, 0); ctx.restore();
-  cv.setAttribute("aria-label", `Spectra of ${e.id}: rows O VI, H I Lyβ, C III; columns R = ${cl.map(x => fmt(x[0]) + " at S/N " + x[1]).join("; ")}; window ±${vw} km/s`);
-}
-function subText(ctx, parts, cx, y, fam) {   // centred text with subscript runs: parts = [[text, isSub], ...]
-  const f = s => (ctx.font = s ? `9px ${fam}` : `12px ${fam}`), ws = parts.map(([s, sub]) => (f(sub), ctx.measureText(s).width));
-  let x = cx - ws.reduce((a, b) => a + b, 0) / 2; ctx.textAlign = "left";
-  parts.forEach(([s, sub], i) => { f(sub); ctx.fillText(s, x, y + (sub ? 3 : 0)); x += ws[i]; }); ctx.textAlign = "center"; ctx.font = `12px ${fam}`; }
-function readouts(hover) {
-  const e = CAT.get(S.id), out = [];
-  if (e) { out.push(["v_sys", `${(+e.v_sys >= 0 ? "+" : "−") + fmt(Math.abs(+e.v_sys), 1)} km/s`]);
-    for (const R of [...new Set([S.Rlo, S.Rhi])]) out.push([`Δv at R = ${fmt(R)}`, `${fmt(C / R, 2)} km/s (pixel ${fmt(C / R / TNG.PIX_PER_RESEL, 2)})`]);
-    for (const k of KEYS) { const ion = e.ions?.[k]; if (ion) out.push([ISHORT[k], `${ion.n_comp ?? "—"} comp, min F ${fmt(ion.min_flux, 2)}${ion.showcase ? " ★" : ""}`]); } }
-  if (hover) out.unshift(...hover);
-  $("#readouts").innerHTML = out.map(([k, v]) => `<div><b>${esc(k)}</b><span class="num">${esc(v)}</span></div>`).join("");
-}
-$("#cv").addEventListener("mousemove", ev => { const cv = $("#cv"), lay = cv._lay, s = SIGHT.get(S.id); if (!lay || !s) return;
-  const r = cv.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
-  const bx = lay.boxes.find(b => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h); if (!bx) return readouts();
-  const [R, sn] = cols()[bx.c], k = KEYS[bx.r], m = model(S.id, k, R), v = -S.vwin + (x - bx.x) / bx.w * 2 * S.vwin;
-  const f = TNG.interp([v], m.v, m.model, 1, 1)[0];
-  readouts([["cursor", `${ISHORT[k]}, R ${fmt(R)}, S/N ${sn}: V = ${fmt(v, 0)} km/s, model F = ${fmt(f, 3)}`]]); });
-$("#cv").addEventListener("mouseleave", () => readouts());
-
-/* ---------------- instrument controls ---------------- */
-for (const id of ["#rlo", "#rhi"]) for (const R of CFG.R_opts) { const o = document.createElement("option"); o.value = R; o.textContent = fmt(R); $(id).appendChild(o); }
-function syncControls() { $("#rlo").value = S.Rlo; $("#rhi").value = S.Rhi; $("#snhi").value = S.snHi; $("#snlo").value = S.snLo; $("#vwin").value = S.vwin; $("#intr").checked = S.intr;
-  $("#snhi_o").textContent = S.snHi; $("#snlo_o").textContent = S.snLo; $("#vwin_o").textContent = "±" + S.vwin; }
-const instr = () => ({R_lo: S.Rlo, R_hi: S.Rhi, sn_hi: S.snHi, sn_lo: S.snLo, vwin: S.vwin});
-function ctl(sel, key, conv, evt = "input") { $(sel).addEventListener(evt, ev => { S[key] = conv(ev.target); syncControls(); writeHash(); update(); if (key !== "intr") emit("tng:instrument", {state: instr()}); }); }
-ctl("#rlo", "Rlo", t => +t.value, "change"); ctl("#rhi", "Rhi", t => +t.value, "change");
-ctl("#snhi", "snHi", t => +t.value); ctl("#snlo", "snLo", t => +t.value); ctl("#vwin", "vwin", t => +t.value); ctl("#intr", "intr", t => t.checked, "change");
-$("#reroll").onclick = () => { S.seed = (S.seed + 1) % 100000; writeHash(); update(); };
-$("#gallery").addEventListener("change", ev => select(ev.target.value, false, "gallery"));
-$("#prev").onclick = () => step(-1); $("#next").onclick = () => step(1);
-$("#filter").addEventListener("input", ev => { S.filter = ev.target.value; renderGallery(); });
-$("#showcase").addEventListener("change", ev => { S.showcase = ev.target.checked; renderGallery();
-  if (VISIBLE.length && !VISIBLE.some(e => e.id === S.id)) select(VISIBLE[0].id); });
-addEventListener("keydown", ev => { if (ev.target.closest("input,select,textarea,canvas,[role=tab]")) return; if (ev.key === "ArrowRight" || ev.key === "j") step(1); if (ev.key === "ArrowLeft" || ev.key === "k") step(-1); });
-
-/* ---------------- backends ---------------- */
-const normUrl = s => String(s || "").trim().replace(/\/+$/, "");
-function candidates() { const out = [];
-  const q = new URLSearchParams(location.search).get("api"); if (q) out.push(...q.split(","));
-  const ls = store.get("tngsight.api"); if (ls) out.push(...ls.split(","));
-  /* tune2: this build's loopback backends are probed only from a loopback page (a public page cannot reach them, and
-     each failed probe logs a CORS error); explicit ?api= or stored URLs are always probed */
-  const loopPage = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === "file:";
-  out.push(...(CFG.backends || []).filter(u => loopPage || !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(u)));
-  return [...new Set(out.map(normUrl).filter(u => /^https?:\/\/[^\s/]+/.test(u)))]; }
-/* tune3: a build's own server answers CORS only for the origins in its allow-list (server/settings.py DEFAULT_CORS, mirrored
-   here unless the config carries api_origins). From any other page origin (a local static server on another port, a
-   preview host) a CORS request is refused and the browser logs an error that JS cannot silence, so such a probe is sent
-   as an opaque no-cors request instead: it shows only whether the server is reachable, and logs nothing when it is.
-   Same-origin servers and explicit ?api= / stored URLs always get the full probe. */
-const API_ORIGINS = new Set(CFG.api_origins || ["https://tanmay-starslab.github.io", "http://localhost:8000", "http://127.0.0.1:8000"]);
-function corsOk(url) { try { if (new URL(url).origin === location.origin || API_ORIGINS.has(location.origin)) return true; } catch { return false; }
-  const ex = [new URLSearchParams(location.search).get("api"), store.get("tngsight.api")].filter(Boolean).flatMap(s => s.split(",")).map(normUrl);
-  return ex.includes(normUrl(url)); }
-async function probe(url, ms = 8000) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms), t0 = performance.now();
-  try { if (!corsOk(url)) { await fetch(url + "/api/health", {signal: ac.signal, cache: "no-store", mode: "no-cors"});
-      return {url, err: `reachable, but its CORS allow-list does not include ${location.origin}`}; }
-    const r = await fetch(url + "/api/health", {signal: ac.signal, cache: "no-store"}); if (!r.ok) throw new Error("HTTP " + r.status);
-    const h = await r.json(); if (!h || h.status !== "ok") throw new Error("not ok"); return {url, h, ms: performance.now() - t0};
-  } catch (x) { return {url, err: x.name === "AbortError" ? "timeout" : (x.message || "unreachable")}; } finally { clearTimeout(t); } }
-let probing = null, probeGen = 0, probedOnce = false, retryN = 0, retryT = null;
-const RETRY_MS = [2000, 5000, 15000];                     // then the 60 s interval
-/* fresh=true starts a new probe round even if one is in flight (submit uses a long timeout so a sleeping Space can wake). */
-function discover(ms = 8000, fresh = false) { if (probing && !fresh) return probing; const gen = ++probeGen;
-  const run = (async () => {
-    const res = await Promise.all(candidates().map(u => probe(u, ms))), ok = res.filter(p => p.h);
-    const pick = ok.find(p => p.h.warm) || ok[0] || null, prev = API;
-    if (gen !== probeGen && !pick) return;                 // a superseded round that found nothing must not undo a newer one
-    PROBES = res; probedOnce = true; API = pick ? pick.url : null; HEALTH = pick ? pick.h : null; pill(); renderBackends(); setGeoEnabled(); banner();
-    if (API !== prev) emit("tng:backend", {api: API, warm: !!(HEALTH && HEALTH.warm)});
-    clearTimeout(retryT); if (API) retryN = 0; else if (retryN < RETRY_MS.length) retryT = setTimeout(() => discover(), RETRY_MS[retryN++]);
-    if (API && API !== prev) await mergeBackendCatalog();
-  })().finally(() => { if (probing === run) probing = null; });
-  probing = run; return run; }
-function backendFailed() { HEALTH = null; setTimeout(discover, 0); }
-function pill() { const p = $("#pill");
-  if (!API && !probedOnce) { p.className = "pill warn"; p.textContent = "probing backends…"; return; }
-  if (!API) { p.className = "pill bad"; p.textContent = "offline – library only"; p.title = PUBLIC ? "" : "this build has no public sightline server configured"; return; }
-  const warm = !!HEALTH.warm, node = HEALTH.node || new URL(API).host; p.className = "pill " + (warm ? "good" : "warn");
-  p.textContent = `live · ${node} · ${warm ? "warm" : "warming"}`; p.title = `${API}; queue ${HEALTH.queue?.queued ?? 0} queued, ${HEALTH.queue?.running ?? 0} running`; }
-function renderBackends() { $("#backends").innerHTML = PROBES.length ? PROBES.map(p => `<span>${p.url === API ? "● " : "○ "}${esc(p.url)} – ${p.h ? (p.h.warm ? "warm" : "warming") + (p.h.node ? " · " + esc(p.h.node) : "") : esc(p.err)}</span>`).join("") : "<span>no candidate URLs</span>"; }
-async function mergeBackendCatalog() { if (!API) return;
-  try { const r = await fetch(API + "/api/catalog"); if (!r.ok) throw new Error(); const c = await r.json();
-    for (const e of c.entries || []) upsert(e, false); renderGallery(); status();
-    if (pendingId && CAT.has(pendingId)) select(pendingId, true, "hash"); } catch { backendFailed(); } }
-/* An override (?api= or the stored URL) that is not one of this build's servers gets a persistent banner: its catalogue and
-   spectra are shown on this page, so the visitor must be able to see whose data it is and drop it. */
-const DEFAULTS = new Set((CFG.backends || []).map(normUrl));
-const PUBLIC = [...DEFAULTS].some(u => /^https:\/\//.test(u));
-function overrides() { const q = new URLSearchParams(location.search).get("api"), ls = store.get("tngsight.api");
-  return [...new Set([q, ls].filter(Boolean).flatMap(s => s.split(",")).map(normUrl).filter(u => /^https?:\/\/[^\s/]+/.test(u) && !DEFAULTS.has(u)))]; }
-function banner() { const o = overrides(), b = $("#apibanner"); b.hidden = !o.length; if (!o.length) return;
-  const host = u => { try { return new URL(u).host; } catch { return u; } }, inUse = API && o.includes(API);
-  $("#apibanner_t").innerHTML = `${inUse ? "Using" : "Configured to try"} a non-default sightline server: <b>${o.map(u => esc(host(u))).join(", ")}</b>. ` +
-    (inUse ? "Generated sightlines and their catalogue entries come from it, not from this site." : "It is probed before this site's servers."); }
-$("#apireset").onclick = () => { store.set("tngsight.api", null); const u = new URL(location.href); u.searchParams.delete("api"); location.replace(u.href); };
-$("#apisave").onclick = () => { const u = normUrl($("#apiurl").value); if (u && !/^https?:\/\//.test(u)) { geomsg("Server URL must start with http:// or https://", "bad"); return; }
-  store.set("tngsight.api", u || null); banner(); discover(8000, true); };
-$("#apiclear").onclick = () => { $("#apiurl").value = ""; store.set("tngsight.api", null); banner(); discover(8000, true); };
-$("#apiurl").value = store.get("tngsight.api") || ""; banner();
-/* tune2: re-probe every 60 s while a server is up; after failures back off 60 s → 2 → 4 → … ≤ 15 min, and skip hidden tabs */
-let idleN = 0;
-(function reprobe() { setTimeout(async () => { if (!document.hidden) { await discover(); idleN = API ? 0 : idleN + 1; } reprobe(); },
-  API ? 60000 : Math.min(900000, 60000 * 2 ** idleN)); })();
-
-/* ---------------- geometry form, submit, job tracking ---------------- */
-const orient = () => (document.querySelector('input[name="orient"]:checked') || {}).value;
-function seedState() { $("#gseed").disabled = orient() !== "random"; }
-for (const r of document.querySelectorAll('input[name="orient"]')) r.addEventListener("change", seedState);
-function geomsg(t, cls = "") { const m = $("#geomsg"); m.className = "msg " + cls; m.textContent = t; }
-let JOB = null, busy = false;
-function setGeoEnabled() { $("#submit").disabled = !!JOB || busy; $("#submit").title = API ? `generate on ${API}` : "offline: only library sightlines can be loaded"; }
-function readGeom() {
-  const o = orient(), b = +$("#gb").value, az = +$("#gaz").value, sd = $("#gseed").value;
-  if (!o) throw new Error("choose an orientation");
-  if (!Number.isFinite(b) || b < 0 || b > 300) throw new Error("b must be between 0 and 300 kpc");
-  if (!Number.isFinite(az) || az < 0 || az >= 360) throw new Error("Φ must be between 0 and 359°");
-  let seed = null; if (o === "random") { seed = Number(sd); if (sd === "" || !Number.isInteger(seed) || seed < 0 || seed > 4294967295) throw new Error("random orientation needs an integer seed (0 to 4294967295)"); }
-  return {orientation: o, b_kpc: b, azimuth_deg: az, seed};
-}
-function findLocal(g) {   // offline: match the numbers against the catalogue (ids are built only by the server)
-  const az = ((Math.round(g.azimuth_deg) % 360) + 360) % 360;
-  return [...CAT.values()].find(e => e.orientation === g.orientation && Math.round(+e.b_kpc) === Math.round(g.b_kpc) && (Math.round(+e.azimuth_deg) % 360) === az && (g.orientation !== "random" || +e.seed === g.seed)); }
-function progress(stage, frac, extra) {
-  const P = $("#prog"); P.hidden = stage == null; if (stage == null) return;
-  const st = String(stage).startsWith("spectrum") ? "spectra" : stage, i = Math.max(0, STAGES.indexOf(st));
-  let f = clamp(+frac || 0, 0, 1); if (st === "spectra") { const sub = {"spectrum:OVI": 0, "spectrum:HILyb": 1, "spectrum:CIII": 2}[stage]; if (sub != null) f = (sub + f) / 3; }
-  const pct = Math.round(100 * (i + f) / STAGES.length), sb = $("#stagebar");
-  sb.setAttribute("aria-valuenow", pct); sb.setAttribute("aria-valuetext", `${st}, ${pct}%`);
-  sb.querySelectorAll("span").forEach((s, j) => { s.className = j < i ? "done" : ""; s.firstChild.style.width = j === i ? (f * 100).toFixed(0) + "%" : ""; });
-  $("#stagenames").querySelectorAll("span").forEach((s, j) => { s.className = j === i ? "on" : ""; s.textContent = j === 0 && extra != null ? `queued #${extra}` : STAGES[j]; });
-}
-/* POST a geometry ("geometry", /api/sightlines) or endpoints ("custom", /api/sightlines/custom) request -> SubmitResult
-   {status: "ready"|"queued"|"error", id?, job_id?, position?, message?}. One job at a time; messages also go to #geomsg. */
-async function submitJob(kind, body, fromBridge) {
-  if (JOB || busy) return {status: "error", message: "another sightline is being generated"};
-  busy = true; setGeoEnabled();
-  try {
-    if (!API) { geomsg("Contacting the sightline server…"); await discover(15000, true); }
-    if (!API) return {status: "error", offline: true, message: "no sightline server is online"};
-    geomsg("Submitting…");
-    let r, j;
-    try { r = await fetch(API + (kind === "custom" ? "/api/sightlines/custom" : "/api/sightlines"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-      j = await r.json().catch(() => ({})); }
-    catch { geomsg("Could not reach the sightline server; retrying discovery.", "bad"); backendFailed(); return {status: "error", message: "could not reach the sightline server"}; }
-    const d = j.detail, det = typeof d === "string" ? d : Array.isArray(d) ? d.map(x => x.msg).join("; ") : "";
-    if (r.status === 429 || r.status === 503) { const ra = +r.headers.get("Retry-After");
-      const m = `${r.status === 429 ? "Rate limit reached" : det ? "Server busy: " + det : "Server busy (queue full)"}${ra ? `; try again in ${ra < 120 ? ra + " s" : Math.ceil(ra / 60) + " min"}` : ""}.`;
-      geomsg(m, "bad"); return {status: "error", message: m}; }
-    if (!r.ok) { const m = "Rejected: " + (det || `HTTP ${r.status}`); geomsg(m, "bad"); return {status: "error", message: m}; }
-    if (j.status === "ready") { upsert(j.entry || {id: j.id}, false); renderGallery(); geomsg(`Loaded ${j.id} (already computed).`, "good");
-      await select(j.id, false, "job"); if (fromBridge) showTab("spectra"); return {status: "ready", id: j.id}; }
-    busy = false; track(j, kind, fromBridge);
-    return {status: "queued", id: j.id, job_id: j.job_id, position: j.position ?? null};
-  } finally { busy = false; setGeoEnabled(); }
-}
-async function submitGeom(ev) {
-  ev.preventDefault(); if (JOB || busy) return;
-  let g; try { g = readGeom(); } catch (x) { geomsg(x.message, "bad"); return; }
-  const r = await submitJob("geometry", g, false); if (!r.offline) return;
-  const e = findLocal(g); if (e) { geomsg(`Loaded ${e.id} from the library (server offline).`, "good"); select(e.id, false, "gallery"); }
-  else geomsg(PUBLIC || overrides().length ? "No sightline server is online, and this geometry is not in the library. Pick a gallery entry, or try again later."
-    : "This build of the page has no public sightline server, and this geometry is not in the library. Pick a gallery entry, or run the server locally (deploy/laptop).", "bad");
-}
-$("#geo").addEventListener("submit", submitGeom);
-function track(j, kind = "geometry", fromBridge = false) {
-  JOB = {job_id: j.job_id, id: j.id, kind, done: false}; setGeoEnabled(); progress("queued", 0, j.position); geomsg(`Queued ${j.id}${j.position ? " at position " + j.position : ""}.`);
-  emit("tng:submitted", {job_id: j.job_id, id: j.id, kind}); emit("tng:job", {job_id: j.job_id, id: j.id, status: "queued", stage: "queued", frac: 0});
-  const job = JOB, base = `${API}/api/jobs/${encodeURIComponent(j.job_id)}`, api = API; let es = null, pollT = null, slowT = null;
-  const finish = () => { job.done = true; es && es.close(); clearTimeout(pollT); clearInterval(slowT); JOB = null; setGeoEnabled(); };
-  let lastStage = null;                                   // #geomsg is the live region: announce once per stage, not per sub-step
-  const onProg = d => { const stg = d.stage || "load"; progress(stg, d.frac, null); if (d.msg && stg !== lastStage) geomsg(d.msg); lastStage = stg;
-    emit("tng:job", {job_id: job.job_id, id: job.id, status: "running", stage: stg, frac: +d.frac || 0}); };
-  const onDone = async d => { if (job.done) return; finish(); progress("save", 1); const id = d.id || job.id;
-    upsert(d.entry || {id}, false); if (d.components) COMPS.set(id, d.components); renderGallery();
-    try { const buf = await fetchBin(`${api}/api/sightline/${id}.bin`); IDB.put(id, {entry: strip(CAT.get(id)), bin: buf}); SIGHT.set(id, TNG.decodeWeb(buf)); } catch {}
-    geomsg(`Generated ${id}.`, "good"); setTimeout(() => progress(null), 1500);
-    emit("tng:done", {job_id: job.job_id, id, entry: strip(CAT.get(id) || {id})});
-    await select(id, false, "job"); if (kind === "custom" || fromBridge) showTab("spectra"); };
-  const onErr = m => { if (job.done) return; finish(); progress(null); geomsg("Generation failed: " + (m || "unknown error"), "bad");
-    emit("tng:error", {job_id: job.job_id, id: job.id, message: m || "unknown error"}); };
-  const fromJob = s => { if (s.status === "done") onDone({id: s.id, entry: s.entry, components: s.components}); else if (s.status === "error") onErr(s.error || s.msg);
-    else if (s.status === "queued") progress("queued", 0, s.position); else onProg(s); };
-  async function poll() { if (job.done) return;
-    try { const r = await fetch(base, {cache: "no-store"}); if (r.status === 404) return onErr("job not found on the server"); if (r.ok) fromJob(await r.json()); } catch {}
-    if (!job.done) pollT = setTimeout(poll, 2000); }
-  const fallback = () => { if (job.done || pollT) return; es && es.close(); es = null; poll(); };
-  try { es = new EventSource(base + "/events");
-    es.addEventListener("queued", ev => { try { progress("queued", 0, JSON.parse(ev.data).position); } catch {} });
-    es.addEventListener("progress", ev => { try { onProg(JSON.parse(ev.data)); } catch {} });
-    es.addEventListener("done", ev => { try { onDone(JSON.parse(ev.data)); } catch { fallback(); } });
-    es.addEventListener("error", ev => { if (ev.data) { try { onErr(JSON.parse(ev.data).message); } catch { onErr(ev.data); } } else fallback(); });
-  } catch { fallback(); }
-  slowT = setInterval(async () => { if (job.done || pollT) return;      // safety net if a proxy buffers the event stream
-    try { const r = await fetch(base, {cache: "no-store"}); if (r.ok) { const s = await r.json(); if (s.status === "done" || s.status === "error") fromJob(s); } } catch {} }, 10000);
-}
-
-/* ---------------- downloads ---------------- */
-function save(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
-async function download(fmtx) {
-  if (!S.id) return; const name = `tng50_${S.id}_R${S.Rlo}-${S.Rhi}_SN${S.snHi}-${S.snLo}`;
-  if (API) { const btn = fmtx === "pdf" ? $("#dlpdf") : $("#dlpng"), txt = btn.textContent; btn.disabled = true; btn.textContent = "rendering…";
-    try { const r = await fetch(API + "/api/figure", {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({id: S.id, R_lo: S.Rlo, R_hi: S.Rhi, sn_hi: S.snHi, sn_lo: S.snLo, vwin: S.vwin, intrinsic: S.intr, seed: S.seed, fmt: fmtx})});
-      if (!r.ok) throw new Error(r.status === 429 ? "rate limit reached" : "HTTP " + r.status);
-      save(await r.blob(), `${name}.${fmtx}`); geomsg(`Publication figure (${fmtx.toUpperCase()}) rendered by ${HEALTH?.node || "the server"}; its noise draw differs from the screen.`, "good"); return;
-    } catch (x) { geomsg(`Server figure failed (${x.message}); saving the on-screen PNG instead.`, "bad"); } finally { btn.disabled = false; btn.textContent = txt; } }
-  else geomsg("Offline: saved the on-screen canvas as PNG (the vector publication figure needs the sightline server).");
-  $("#cv").toBlob(b => b && save(b, `${name}_screen.png`), "image/png");
-}
-$("#dlpdf").onclick = () => download("pdf"); $("#dlpng").onclick = () => download("png");
-
-/* ---------------- phase 2: components, tabs, 3D view, Find, chat, bridge (design-2 §7) ---------------- */
-const COMPS = new Map();          // id -> {OVI, HILyb, CIII} fitted Voigt components
-let CIX = null;
-function componentsIndex() {      // static components.json merged with GET /api/components; fetched on first use only
-  if (CIX) return CIX;
-  CIX = (async () => { const ix = {params: null, fitter: null, params_tag: null, entries: {}}; let ok = false;
-    try { const r = await fetch(CFG.components_url); if (r.ok) { const j = await r.json(); Object.assign(ix, {params: j.params || null, fitter: j.fitter, params_tag: j.params_tag}); Object.assign(ix.entries, j.entries || {}); ok = true; } } catch {}
-    if (API) try { const r = await fetch(API + "/api/components"); if (r.ok) { const j = await r.json(); Object.assign(ix.entries, j.entries || {}); ix.params ||= j.params || null; ok = true; } } catch {}
-    if (!ok) { CIX = null; throw new Error("no components catalogue is available"); }
-    for (const [id, c] of COMPS) ix.entries[id] ||= c; for (const [id, c] of Object.entries(ix.entries)) COMPS.set(id, c); return ix; })();
-  return CIX;
-}
-async function components(id) {
-  if (COMPS.has(id)) return COMPS.get(id); const e = CAT.get(id); if (!e) return null;
-  if (!e._static && API) try { const r = await fetch(`${API}/api/components/${encodeURIComponent(id)}.json`); if (r.ok) { const j = await r.json(); COMPS.set(id, j.components); return j.components; } } catch {}
-  try { return (await componentsIndex()).entries[id] ?? null; } catch { return null; }
-}
-async function loadComps(id) { const c = await components(id); if (id === S.id) { if (!c && S.comps) $("#statusline").insertAdjacentHTML("beforeend", " | no fitted components"); update(); } }
-$("#comps").addEventListener("change", ev => { S.comps = ev.target.checked; if (S.comps && S.id) loadComps(S.id); update(); });
-
-const TABS = ["spectra", "3d"], modUrl = f => new URL(CFG.js_base + f, location.href).href;
-function showTab(t, focus) { if (!TABS.includes(t)) return; const prev = S.tab; S.tab = t;
-  for (const k of TABS) { const on = k === t, b = $("#tab-" + k); b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1; $("#panel-" + k).hidden = !on; }
-  $("#app").dataset.tab = t; placeSide(t); snapGallery();
-  $("#controls").hidden = t !== "spectra"; if (focus) $("#tab-" + t).focus();
-  writeHash(); if (t === "3d") open3d().catch(() => {}); else update();
-  if (prev !== t) emit("tng:tab", {tab: t}); }
-for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", () => showTab(k));
-  b.addEventListener("keydown", ev => { const i = TABS.indexOf(S.tab), n = {ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1}[ev.key];
-    if (n == null) return; ev.preventDefault(); showTab(TABS[(n + TABS.length) % TABS.length], true); }); }
-/* fix-ui FE-13: on the 3D tab the sidebar follows the main section in the DOM (moving the sidebar, never .main, so the
-   focused tab button keeps focus; a focused control inside the sidebar gets its focus back) */
-function placeSide(t) { const app = $("#app"), side = app.querySelector(":scope > .side"), main = app.querySelector(":scope > .main"); if (!side || !main) return;
-  const want3d = t === "3d"; if (want3d === (main.nextElementSibling === side)) return;
-  const a = document.activeElement; if (want3d) main.after(side); else app.insertBefore(side, main);
-  if (a && side.contains(a) && document.activeElement !== a) a.focus({preventScroll: true}); }
-let V3P = null;
-function vizCfg() {   // CFG.viz (null -> "3D data not published"); dev override ?viz=<base> for the page origin, huggingface.co or a local port
-  if (!CFG.viz) return null;
-  const q = new URLSearchParams(location.search).get("viz");
-  if (q) { try { const u = new URL(q.replace(/\/?$/, "/"), location.href);
-    const ok = u.origin === location.origin || u.origin === "https://huggingface.co" || /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(u.origin);
-    if (ok) return {...CFG.viz, base: u.href, fallback_base: null, manifest_override: u.href + "manifest_v2.json"}; } catch {} }
-  return {...CFG.viz}; }
-function open3d() {    // lazy: viewer3d.js + picker.js (and through them three.js + volumes) only on the first 3D open
-  if (V3P) return V3P;
-  V3P = (async () => { try { const [V, P] = await Promise.all([import(modUrl("viewer3d.js")), import(modUrl("picker.js"))]);
-      $("#v3d-root").textContent = ""; const v = await V.mount($("#v3d-root"), window.tngApp, {viz: vizCfg()});
-      if (!v.webgl2) $("#v3d-status").textContent = "The interactive 3D view is not available here (see the note below). Type a ray's endpoints in the form below to generate it.";
-      else { const cap = $("#v3d-status");   // tune3: the caption says when the stars layer is off (phones)
-        /* fix-ui V9: touch screens get touch instructions (no Shift+F, no scroll wheel) */
-        if (matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches)
-          cap.textContent = "Gas and stars around the galaxy in 3D: drag to orbit, pinch to zoom, tap a line to select its sightline, or pick a new ray. The Fullscreen button on the stage fills the screen.";
-        const full = cap.textContent;
-        v.hooks.starsChanged = on => { cap.textContent = on || !v.manifest?.stars ? full : full.replace(/^Gas and stars around the galaxy in 3D/, "Gas around the galaxy in 3D (stars are off: switch on \u201cstars\u201d under the stage)"); };
-        v.hooks.starsChanged(v.stars); }
-      window.tngPicker = P.attachPicker(v.webgl2 ? v : null, $("#picker-root"), window.tngApp); window.tngViewer3d = v; return v;   // tngViewer3d/tngPicker: debugging + tests
-    } catch (x) { $("#v3d-root").innerHTML = `<p class="msg bad" style="padding:14px">The 3D view failed to load: ${esc(x.message)}</p>`; V3P = null; throw x; } })();
-  return V3P; }
-let FINDP = null;
-$("#find-toggle").addEventListener("click", () => { const b = $("#find-toggle"), on = b.getAttribute("aria-expanded") !== "true";
-  b.setAttribute("aria-expanded", String(on)); $("#find-body").hidden = !on;
-  if (on && !FINDP) FINDP = import(modUrl("search.js")).then(m => m.mountFind($("#find-body"), window.tngApp))
-    .catch(x => { FINDP = null; $("#find-body").insertAdjacentHTML("beforeend", `<p class="msg bad">Search failed to load: ${esc(x.message)}</p>`); }); });
-let CHAT = null;
-$("#chat-open").hidden = !(CFG.chat && CFG.chat.enabled);
-$("#chat-open").addEventListener("click", async () => { try { if (!CHAT) { const m = await import(modUrl("chat.js")), root = $("#chat-root"); root.hidden = false;
-    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; geomsg("The chat could not be loaded: " + x.message, "bad"); } });
-
-const fail = message => ({status: "error", message});
-window.tngApp = {
-  version: 2, config: Object.freeze(JSON.parse(JSON.stringify(CFG))),
-  getState: () => ({id: S.id, R_lo: S.Rlo, R_hi: S.Rhi, sn_hi: S.snHi, sn_lo: S.snLo, vwin: S.vwin, seed: S.seed, intrinsic: S.intr, tab: S.tab,
-    api: API, warm: !!(HEALTH && HEALTH.warm), job: JOB ? {job_id: JOB.job_id, id: JOB.id, kind: JOB.kind} : null}),
-  entries: () => sorted().map(strip),
-  entry: id => (CAT.has(id) ? strip(CAT.get(id)) : null),
-  async select(id, {source = "chat"} = {}) { if (!CAT.has(id)) return false; if (id !== S.id) await select(id, false, source); return true; },
-  setInstrument(o = {}) {
-    const R = k => { if (o[k] !== undefined && !CFG.R_opts.includes(o[k])) throw new RangeError(`${k} must be one of ${CFG.R_opts.join(", ")}`); };
-    const N = k => { if (o[k] !== undefined && !(Number.isInteger(o[k]) && o[k] >= 2 && o[k] <= 20)) throw new RangeError(`${k} must be an integer from 2 to 20`); };
-    R("R_lo"); R("R_hi"); N("sn_hi"); N("sn_lo");
-    if (o.vwin !== undefined && !(Number.isInteger(o.vwin) && o.vwin >= 150 && o.vwin <= 800 && o.vwin % 50 === 0)) throw new RangeError("vwin must be 150 to 800 in steps of 50");
-    for (const [k, s] of [["R_lo", "Rlo"], ["R_hi", "Rhi"], ["sn_hi", "snHi"], ["sn_lo", "snLo"], ["vwin", "vwin"]]) if (o[k] !== undefined) S[s] = o[k];
-    syncControls(); writeHash(); update(); emit("tng:instrument", {state: instr()}); return this.getState(); },
-  async submitGeometry(g = {}) {
-    const o = {face: "face-on", "face-on": "face-on", edge: "edge-on", "edge-on": "edge-on", rand: "random", random: "random"}[String(g.orientation || "").toLowerCase()];
-    const b = Number(g.b_kpc), az = Number(g.azimuth_deg), seed = g.seed == null ? null : Number(g.seed);
-    if (!o) return fail("orientation must be face-on, edge-on or random");
-    if (!(b >= 0 && b <= 300)) return fail("b_kpc must be between 0 and 300");
-    if (!(az >= 0 && az <= 360)) return fail("azimuth_deg must be between 0 and 360");
-    if (o === "random" && !(Number.isInteger(seed) && seed >= 0 && seed <= 4294967295)) return fail("random orientation needs an integer seed (0 to 4294967295)");
-    const body = {orientation: o, b_kpc: b, azimuth_deg: az % 360, seed: o === "random" ? seed : null}, r = await submitJob("geometry", body, true);
-    if (!r.offline) return r; const e = findLocal(body);
-    if (e) { await select(e.id, false, "job"); showTab("spectra"); return {status: "ready", id: e.id}; }
-    return fail("no sightline server is online and this geometry is not in the library"); },
-  async submitCustom({p0_kpc, p1_kpc} = {}) { const r = await submitJob("custom", {p0_kpc, p1_kpc}, true);
-    return r.offline ? fail("generating a custom ray needs a sightline server (none is online)") : r; },
-  components, componentsIndex, showTab: t => showTab(t),
-  async show3d({species, preset} = {}) { showTab("3d"); let v; try { v = await open3d(); } catch (x) { return {ok: false, webgl2: false, message: x.message}; }
-    if (!v.webgl2) return {ok: false, webgl2: false, species: null, preset: null, message: v.message};
-    if (species && !(await v.setSpecies(species))) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: v.loadError && v.loadError.key === species ? `the ${species} volume could not be loaded: ${v.loadError.message}` : v.wanted !== species ? "superseded by a later 3D request" : `the ${species} volume is not available`};
-    if (preset && !v.setPreset(preset)) return {ok: false, webgl2: true, species: v.species, preset, mode: v.mode, message: v.presetError || "select a sightline first"};
-    return {ok: true, webgl2: true, species: v.species, preset: preset || null, mode: v.mode}; }
-};
-
-/* ---------------- orchestration ---------------- */
-addEventListener("hashchange", () => { const prev = S.id, tab = S.tab; readHash(); syncControls(); const want = S.id;   // writeHash uses replaceState: no loop
-  if (S.tab !== tab) { const t = S.tab; S.tab = tab; showTab(t); }
-  if (want && want !== prev) { S.id = prev; if (CAT.has(want)) { select(want, false, "hash"); return; } pendingId = want; writeHash(); }
-  update(); });
-new MutationObserver(() => update()).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => update());
-let rzT = null; addEventListener("resize", () => { clearTimeout(rzT); rzT = setTimeout(update, 60); });
-(async function init() {
-  readHash(); const hashId = S.id; syncControls(); seedState(); setGeoEnabled(); S.id = null; $("#app").dataset.tab = "spectra"; if (S.tab === "3d") { S.tab = "spectra"; showTab("3d"); }
-  const g = CFG.galaxy || {}; if (g.R200c_kpc) $("#aboutgal").innerHTML = `<strong>Galaxy:</strong> ${esc(g.sim || "TNG50-1")} subhalo ${esc(g.subhalo_id)} at z = ${esc(g.redshift ?? 0)}: a central disc galaxy with R<sub>200c</sub> = ${fmt(+g.R200c_kpc)} kpc` +
-    (g.M200c_Msun ? `, M<sub>200c</sub> = ${(+g.M200c_Msun / 1e12).toFixed(2)}×10<sup>12</sup> M<sub>☉</sub>` : "") + (g.Mstar_Msun ? `, M<sub>★</sub> = ${(+g.Mstar_Msun / 1e11).toFixed(2)}×10<sup>11</sup> M<sub>☉</sub>` : "") +
-    `. Sightlines are labelled by orientation (face-on, edge-on or random), impact parameter b and azimuth Φ from the projected major axis.`;
-  const disc = discover();
-  try { const r = await fetch(CFG.catalog_url); if (!r.ok) throw new Error("HTTP " + r.status); const c = await r.json(); for (const e of c.entries || []) upsert(e, true); }
-  catch (x) { $("#galcount").textContent = `static catalogue unavailable (${x.message})`; }
-  const cached = await IDB.all(); if (Array.isArray(cached)) for (const c of cached) if (c && c.entry && !CAT.has(c.entry.id)) upsert(c.entry, false);
-  renderGallery();
-  if (hashId && !CAT.has(hashId)) pendingId = hashId;     // a generated id may only be known to the server: keep it in the URL
-  const first = (hashId && CAT.has(hashId)) ? hashId : CAT.has(CFG.defaults.id) ? CFG.defaults.id : VISIBLE[0]?.id;
-  if (first) select(first, true, hashId === first ? "hash" : "init"); else drawEmpty();
-  emit("tng:ready", {version: 2});
-  await disc;                                              // mergeBackendCatalog selects pendingId when the server knows it
-  if (pendingId && CAT.has(pendingId)) select(pendingId, true, "hash");
-  else if (!S.id && VISIBLE.length) select(VISIBLE[0].id, true, "init");
-})();
+window.TNG_DATA = DATA;
 </script>
+<script type="module" src="js/app.js"></script>
+</body>
 </html>

@@ -1,7 +1,8 @@
 """scripts/export_tng50_web.py (design-2 §7.6, §7.9; design-2b §6.4, §6.5): p0/p1 from the npz geom, components copy,
 has_components, custom ids only with --include-generated, page config keys, js copy, and the Phase-2b viz manifest:
 only manifest_v2.json is copied, CFG.viz shape, invalid/missing manifest -> viz null, --viz-local (refused for
-docs/tng50), vol/vol_url gone, --prune removes data/vol. Output always into tmp."""
+docs/tng50), vol/vol_url gone, --prune removes data/vol; Phase 3: CFG v3 from the ion registry, catalog v2
+passthrough, check_bin v1/v2, --allow-v1 and the mixed v1/v2 refusal. Output always into tmp."""
 from __future__ import annotations
 import gzip, hashlib, importlib.util, json, struct, sys
 from pathlib import Path
@@ -28,8 +29,17 @@ def _page_config(out: Path) -> dict:
     return json.loads(html[start:html.index(";\n", start)])
 
 
-def _bin() -> bytes:
-    """smallest valid TNGS web binary (3 lines of 4 pixels)"""
+def _bin(keys=("HI", "OVI", "OVII"), v_sys=12.5) -> bytes:
+    """small valid TNGS v2 web binary (lines of 5 pixels, u = -2..2)"""
+    out = b"TNGS" + struct.pack("<BBHd", 2, len(keys), 0, v_sys)
+    for k in keys:
+        out += struct.pack("<8sIIddd", k.encode().ljust(8, b"\0"), 5, 0, -2.0, 1.0, 1000.0) + \
+            struct.pack("<5H", 65535, 30000, 20000, 65535, 65535)
+    return out
+
+
+def _bin_v1() -> bytes:
+    """smallest valid TNGS v1 web binary (3 lines of 4 pixels)"""
     out = b"TNGS" + struct.pack("<BBH", 1, 3, 0)
     for rest in (1031.912, 1025.7222, 977.02):
         out += struct.pack("<Idddd", 4, rest - 0.004, 0.002, rest, 0.002) + struct.pack("<4H", 65535, 30000, 65535, 65535)
@@ -52,14 +62,15 @@ def fake_lib(tmp_path):
             {"id": "cust_35277e0469", "orientation": "custom", "b_kpc": 0.0, "azimuth_deg": 0.0, "seed": None, "source": "generated",
              "kind": "endpoints", "p0": [-100.0, 0.0, 0.0], "p1": [100.0, 0.0, 0.0]},
             {"id": "face_b050_a000", "orientation": "face-on", "b_kpc": 50.0, "azimuth_deg": 0.0, "seed": None, "source": "library", "rank": 2}]
-    (lib / "catalog.json").write_text(json.dumps({"version": 1, "galaxy": {"R200c_kpc": 246.35}, "lines": {}, "entries": ents}))
+    (lib / "catalog.json").write_text(json.dumps({"version": 2, "registry_tag": "abc", "scoring": "s", "generation": {"min_tau": 1e-8},
+                                                  "galaxy": {"R200c_kpc": 246.35}, "ions": ["HI"], "entries": ents}))
     (lib / "web" / "edge_b100_a090.bin").write_bytes(_bin()); (lib / "web" / "face_b050_a000.bin").write_bytes(_bin())
     (lib / "generated" / "rand_b075_a000_s12345.bin").write_bytes(_bin()); (lib / "generated" / "cust_35277e0469.bin").write_bytes(_bin())
     _geom_npz(lib / "sightlines" / "cgm_sid488530_edge_b100_a090.npz", [10.123, -200.456, 30.0], [-10.0, 180.004, -25.5])
     _geom_npz(lib / "generated" / "rand_b075_a000_s12345.npz", [-300.0, 1.0, 2.0], [250.0, -3.0, 4.0])
     # face_b050_a000 deliberately has no npz -> p0/p1 absent and reported
     comps = {"version": 1, "fitter": "tngsight.vpfit/1", "params_tag": "x", "params": {},
-             "entries": {"edge_b100_a090": {"OVI": [], "HILyb": [], "CIII": []}, "cust_35277e0469": {"OVI": [], "HILyb": [], "CIII": []}}}
+             "entries": {"edge_b100_a090": {"OVI": [], "HI": [], "CIII": []}, "cust_35277e0469": {"OVI": [], "HI": [], "CIII": []}}}
     (lib / "components.json").write_text(json.dumps(comps, separators=(",", ":")))
     return lib
 
@@ -85,10 +96,18 @@ def test_fake_library_export(fake_lib, tmp_path, capsys):
     assert cfg["three"] == "0.169.0" and cfg["chat"] == {"enabled": False, "webllm": "0.2.85", "model": "Qwen2.5-1.5B-Instruct-q4f16_1-MLC"}
     assert cfg["custom"] == {"r_max_kpc": 395, "l_min_kpc": 20, "l_max_kpc": 800}
     assert set(cfg["frame"]) == {"Lhat", "xhat", "yhat", "R200c_kpc"} and cfg["frame"]["Lhat"] == GAL["Lhat"]
+    assert {k: v for k, v in cat.items() if k != "entries"} == {"version": 2, "registry_tag": "abc", "scoring": "s",
+                                                               "generation": {"min_tau": 1e-8},
+                                                               "galaxy": {"R200c_kpc": 246.35}, "ions": ["HI"]}
     js = sorted(p.name for p in (out / "js").glob("*.js"))
     assert {"viewer3d.js", "picker.js", "search.js"} <= set(js)
     for name in js:
         assert (out / "js" / name).read_bytes() == (ROOT / "docs" / "tng50" / "js" / name).read_bytes()
+    assert {"app.js", "state.js", "spectra.js", "gallery.js", "instrument.js", "fit.js", "fitworker.js"} <= set(js)   # Phase-3 page modules
+    css = sorted(p.name for p in (out / "css").glob("*.css"))
+    assert "page.css" in css and all((out / "css" / n).read_bytes() == (ROOT / "docs" / "tng50" / "css" / n).read_bytes() for n in css)
+    html = (out / "index.html").read_text(encoding="utf-8")
+    assert 'href="css/page.css"' in html and 'src="js/app.js"' in html and "Interactive companion" not in html
     assert not (out / "data" / "vol").exists() and not (out / "data" / "viz").exists()
     luts = ROOT / "docs" / "tng50" / "data" / "luts" / "luts.json"       # U_view's file; copied when --out is elsewhere
     if luts.is_file():
@@ -107,6 +126,54 @@ def test_include_generated_and_custom(fake_lib, tmp_path):
     assert ids["cust_35277e0469"]["has_components"] and not ids["rand_b075_a000_s12345"]["has_components"]
     assert _page_config(out)["chat"]["enabled"] is True
     assert (out / "data" / "s" / "cust_35277e0469.bin").is_file()
+
+
+def test_cfg_v3_from_registry(fake_lib, tmp_path):
+    from tngsight import ions as I
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(tmp_path / "noviz")) == 0
+    cfg = _page_config(out)
+    assert cfg["version"] == 3 and "lines" not in cfg and "R_opts" not in cfg
+    assert cfg["ions"] == I.page_ions() and [i["key"] for i in cfg["ions"]] == list(I.KEYS)
+    assert cfg["bands"] == I.BANDS and cfg["snr"] == I.SNR and cfg["grid"] == {"dv_web": 1.0}
+    assert cfg["registry_tag"] == I.registry_tag()
+    assert cfg["fitter"] == {"worker": "js/fitworker.js", "budget_ms": 300, "cap_ms": 1500, "version": "fit/1"}
+    assert cfg["defaults"] == {"id": "edge_b100_a090", "ions": ["HI", "MgII", "CIV", "OVI", "OVII"], "layout": "1",   # page opens on one case
+                               "R": {"uv": [15000, 50000], "euv": [15000, 50000], "xray": [300, 3000]},
+                               "sn": [20, 5], "vc": 0, "vhw": 400, "seed": 0, "intrinsic": False, "fit": False}
+    for k in ("catalog_url", "bin_dir", "n_static", "backends", "galaxy", "frame", "viz", "components_url", "js_base",
+              "three", "chat", "custom"):
+        assert k in cfg, k
+    html = (out / "index.html").read_text(encoding="utf-8")
+    assert "\u00b7" not in json.dumps(cfg["ions"], ensure_ascii=False) and "·" not in json.dumps(cfg["ions"], ensure_ascii=False)
+    assert "/Users/" not in html and "/Volumes/" not in json.dumps(cfg)
+
+
+def test_check_bin_v1_v2():
+    assert EXP.check_bin(_bin(), "x") == 2
+    assert EXP.check_bin(_bin(("NeVIII",)), "x") == 2
+    assert EXP.check_bin(_bin_v1(), "x", allow_v1=True) == 1
+    for blob, msg in ((_bin_v1(), "pass --allow-v1"), (_bin() + b"\0", "length"), (_bin()[:-1], "length"),
+                      (_bin(("HILyb",)), "unknown or repeated"), (_bin(("OVI", "OVI")), "unknown or repeated"),
+                      (b"XXXX" + _bin()[4:], "bad magic"), (_bin()[:4] + bytes([3]) + _bin()[5:], "version 3")):
+        with pytest.raises(ValueError, match=msg):
+            EXP.check_bin(blob, "x")
+
+
+def test_v1_bins_need_allow_v1_and_mixed_export_refused(fake_lib, tmp_path, capsys):
+    (fake_lib / "web" / "face_b050_a000.bin").write_bytes(_bin_v1())
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(tmp_path / "noviz")) == 0          # v1 bin skipped without --allow-v1
+    ids = {e["id"] for e in json.loads((out / "data" / "catalog.json").read_text())["entries"]}
+    assert ids == {"edge_b100_a090"} and "pass --allow-v1" in capsys.readouterr().out
+    out2 = tmp_path / "site2"
+    with pytest.raises(SystemExit, match="mix TNGS v1"):
+        _run(fake_lib, out2, "--viz-dir", str(tmp_path / "noviz"), "--allow-v1")
+    assert not list((out2 / "data" / "s").glob("*.bin"))                          # refused before any write
+    (fake_lib / "web" / "edge_b100_a090.bin").write_bytes(_bin_v1())
+    out3 = tmp_path / "site3"
+    assert _run(fake_lib, out3, "--viz-dir", str(tmp_path / "noviz"), "--allow-v1") == 0   # all-v1 is fine with the flag
+    assert len(list((out3 / "data" / "s").glob("*.bin"))) == 2
 
 
 def test_id_regex_matches_server():
@@ -274,7 +341,9 @@ def test_real_library_p0_p1(tmp_path):
     from tngsight.library import load_npz
     ids = ["face_b050_a090", "edge_b100_a090", "edge_b050_a000", "rand_b052_a069", "rand_b031_a334_s175141482"]
     out = tmp_path / "site"
-    assert _run(LIB, out, "--ids", ",".join(ids), "--viz-dir", str(tmp_path / "noviz"), "--components", str(tmp_path / "none.json")) == 0
+    v1 = (LIB / "web" / f"{ids[0]}.bin").read_bytes()[4] == 1                   # the v1 library until the switch-over
+    assert _run(LIB, out, "--ids", ",".join(ids), "--viz-dir", str(tmp_path / "noviz"),
+                "--components", str(tmp_path / "none.json"), *(["--allow-v1"] if v1 else [])) == 0
     ents = {e["id"]: e for e in json.loads((out / "data" / "catalog.json").read_text())["entries"]}
     assert set(ents) == set(ids)
     for sid in ids:

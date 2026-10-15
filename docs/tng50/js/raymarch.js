@@ -121,7 +121,7 @@ void main() {
   float bp[6]; bp[0] = t0; bp[1] = clamp(s1.x, t0, t1); bp[2] = clamp(s2.x, bp[1], t1); bp[3] = clamp(s2.y, bp[2], t1); bp[4] = clamp(s1.y, bp[3], t1); bp[5] = t1;
   /* tune2: interleaved-gradient ray jitter (decorrelated per refine frame, averaged by the accumulation) */
   float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy + 5.588238 * float(uFrame & 63), vec2(0.06711056, 0.00583715)))), sumG = 0.0, num = 0.0, den = 0.0; vec3 sumS = vec3(0.0), C = vec3(0.0); float A = 0.0;
-  /* tune3: kappa = uVolK · opacity² per kpc (was 0.25 · opacity²), so the disk and the inner CGM reach mid-to-high LUT
+  /* tune3: kappa = uVolK * opacity² per kpc (was 0.25 * opacity²), so the disk and the inner CGM reach mid-to-high LUT
      brightness at the default opacity; uVolGain scales the emitted colour */
   float span = max(uWin.y - uWin.x, 1e-6), kappa = uVolK * uOpacity * uOpacity;
   int it = 0;

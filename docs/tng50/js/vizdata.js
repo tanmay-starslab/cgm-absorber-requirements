@@ -2,7 +2,37 @@
 // bytes, gzip, SHA-256, u8 decoding, the LOD policy and the Lupton et al. (2004) asinh composite.
 // No DOM and no three.js: everything here also runs in node (tests/js/viz_decode.mjs, lod_policy.mjs, lupton_parity.mjs).
 export const SCHEMA = "tng50-viz/2";
-export const VOL_KEYS = ["nH", "T", "Z", "OVI", "HI", "CIII"];
+/* Phase 3: the gas fields are nH, T, Z plus the 12 registry ions in ladder order (tngsight.vizpack.VOL_KEYS) */
+export const ION_KEYS = ["HI", "MgII", "SiII", "CII", "SiIII", "CIII", "SiIV", "CIV", "NV", "OVI", "NeVIII", "OVII"];
+export const GAS_KEYS = ["nH", "T", "Z"];
+export const VOL_KEYS = [...GAS_KEYS, ...ION_KEYS];
+/* Fallback copy of the registry fields the 3D menu needs (tngsight/ions.json: key, ion, label, color, color_dark), used
+   only when the page config carries no CFG.ions (a v2 page); tests/js/viz_decode.mjs checks it against ions.json */
+export const ION_FALLBACK = [
+  ["HI", "H I", "H I 1216", "#4338CA", "#9293F8"], ["MgII", "Mg II", "Mg II 2796", "#1D4ED8", "#6EA8FE"],
+  ["SiII", "Si II", "Si II 1260", "#0369A1", "#4FB3E8"], ["CII", "C II", "C II 1335", "#0E7490", "#3CC5D9"],
+  ["SiIII", "Si III", "Si III 1206", "#0F766E", "#34C4B0"], ["CIII", "C III", "C III 977", "#15803D", "#4ADE80"],
+  ["SiIV", "Si IV", "Si IV 1403", "#4D7C0F", "#A3D63F"], ["CIV", "C IV", "C IV 1548", "#8A6A00", "#E5C33A"],
+  ["NV", "N V", "N V 1239", "#B45309", "#F5A524"], ["OVI", "O VI", "O VI 1032", "#C2410C", "#FB7A3C"],
+  ["NeVIII", "Ne VIII", "Ne VIII 770", "#B91C1C", "#F26363"], ["OVII", "O VII", "O VII 21.6", "#7F1D1D", "#E07A7A"],
+].map(([key, ion, label, color, color_dark]) => ({key, ion, label, color, color_dark}));
+const GAS_META = {nH: {label: "nH", long: "hydrogen density nH"}, T: {label: "T", long: "temperature (nH-weighted)"}, Z: {label: "Z", long: "metallicity (nH-weighted)"}};
+
+/* The 3D species menu: nH, T, Z, then the ions in registry (ladder) order with their registry colours. `ions` is the
+   page's CFG.ions (any order; sorted by `order` when present) or null for the fallback copy. A species is `available`
+   only when the manifest has its cubes; the others carry the reason (shown as the disabled button's tooltip). Pure. */
+export function speciesList(ions, manifest) {
+  const reg = Array.isArray(ions) && ions.length ? [...ions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) : ION_FALLBACK;
+  const have = k => !!manifest?.gas?.fields?.[k]?.cubes;
+  const why = k => (!manifest ? "no 3D data in this build" : have(k) ? "" : `the ${k} cubes are not built yet`);
+  const out = GAS_KEYS.map(k => ({key: k, group: "gas", label: GAS_META[k].label, long: GAS_META[k].long, color: null, color_dark: null,
+    available: have(k), reason: why(k)}));
+  for (const i of reg) { if (!ION_KEYS.includes(i.key)) continue;
+    const ion = i.ion || ION_FALLBACK.find(f => f.key === i.key)?.ion || i.key;
+    out.push({key: i.key, group: "ion", label: ion, long: `${ion} density (the ${i.label || ion} line in the spectra)`, color: i.color || null,
+      color_dark: i.color_dark || i.color || null, available: have(i.key), reason: have(i.key) ? "" : !manifest ? why(i.key) : `${ion} cubes are not built yet`}); }
+  return out;
+}
 export const GAS_LEVELS = {L0: 400.0, L1: 100.0, L2: 25.0};
 export const STAR_LEVELS = {S0: 400.0, S1: 100.0, S2: 25.0};
 export const MU_ZERO = 36.57212566588;                 // mag arcsec^-2 of 1 L_AB0 per kpc^2 (design §2.7)
@@ -59,14 +89,14 @@ export function validateManifestV2(m) {
   for (const L of levelKeys) {
     if (!/^[LS][012]$/.test(L)) bad(`levels.${L}`, "unknown level");
     need(m.levels[L], `levels.${L}`, [["half_kpc", isNum], ["n", x => isInt(x) && x > 0], ["voxel_kpc", isNum], ["r_mask_kpc", x => x === null || isNum(x)]]);
-    const v = m.levels[L]; if (Math.abs(v.voxel_kpc - 2 * v.half_kpc / v.n) > 1e-9 * v.half_kpc) bad(`levels.${L}.voxel_kpc`, "≠ 2·half_kpc/n");
+    const v = m.levels[L]; if (Math.abs(v.voxel_kpc - 2 * v.half_kpc / v.n) > 1e-9 * v.half_kpc) bad(`levels.${L}.voxel_kpc`, "≠ 2*half_kpc/n");
   }
   const cube = (c, where, kind, L, vmin, vmax) => {
     need(c, where, [["vmin", isNum], ["vmax", isNum], ["raw_bytes", isInt], ["raw_sha256", x => isHex(x, 64)], ["webp", isObj], ["gz", isObj], ["stats", isObj], ["deposit", isObj]]);
     if (!(c.vmax > c.vmin)) bad(where, "vmax ≤ vmin");
     if (vmin !== undefined && (c.vmin !== vmin || c.vmax !== vmax)) bad(where, "cube vmin/vmax differ from the field's");
     const n = m.levels[L]?.n; if (!n) bad(where, `level ${L} not in levels`);
-    if (c.raw_bytes !== (kind === "stars" ? 4 : 1) * n * n * n) bad(`${where}.raw_bytes`, `expected ${(kind === "stars" ? "4·" : "") + n}³`);
+    if (c.raw_bytes !== (kind === "stars" ? 4 : 1) * n * n * n) bad(`${where}.raw_bytes`, `expected ${(kind === "stars" ? "4*" : "") + n}³`);
     need(c.webp, `${where}.webp`, [["paths", x => Array.isArray(x) && x.length === 4 && x.every(isStr)], ["bytes", x => Array.isArray(x) && x.length === 4 && x.every(isInt)],
       ["sha256", x => Array.isArray(x) && x.length === 4 && x.every(s => isHex(s, 64))]]);
     need(c.gz, `${where}.gz`, [["path", isStr], ["bytes", isInt], ["sha256", x => isHex(x, 64)]]);
@@ -206,7 +236,7 @@ export function lupton(Si, Sr, Sg, {Q = 8.0, mu0 = 21.5, balance = [1, 1, 1]} = 
 /* tune2 display prefilter (viewer only; the hosted bytes and their sha256 are unchanged). Decodes a log10-u8 cube to
    linear values, applies `passes` separable [1, 2, 1]/4 passes along x, y and z (σ = sqrt(passes / 2) voxels; mirrored
    edges, so the sum is kept) and re-encodes with the same vmin/vmax; values below half the vmin value become empty
-   (q = 0). ch = 1: a gas cube (n³ bytes); ch = 4: a star cube (RGBA, n³·4 bytes, R/G/B smoothed independently,
+   (q = 0). ch = 1: a gas cube (n³ bytes); ch = 4: a star cube (RGBA, 4n³ bytes, R/G/B smoothed independently,
    A = 255 where any of them is > 0). Returns a new Uint8Array. */
 export function smoothCube(q, n, vmin, vmax, passes = 2, ch = 1) {
   const N = n * n * n, span = vmax - vmin, dec = new Float32Array(256);

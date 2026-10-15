@@ -1,20 +1,14 @@
 // Deterministic sightline search over fitted Voigt components (design-2 §6). JS mirror of tngsight/search.py.
 // validateQuery / runQuery / rankAll are pure (no DOM; node-testable). mountFind builds the page's Find panel and is
 // the only function that touches the DOM.
-export const ION_SHORT = {OVI: "O VI", HILyb: "H I", CIII: "C III"};
-export const QUERY_SCHEMA = {
-  type: "object", additionalProperties: false, required: ["ion"],
-  properties: {
-    ion: {type: "string", enum: ["OVI", "HILyb", "CIII"]},
-    n_min: {type: "integer", minimum: 0, maximum: 30},
-    n_max: {type: "integer", minimum: 0, maximum: 30},
-    sep_kms: {type: "array", items: {type: "number", minimum: 0, maximum: 3000}, minItems: 2, maxItems: 2},
-    logN_min: {type: "number", minimum: 10, maximum: 19}, logN_max: {type: "number", minimum: 10, maximum: 19},
-    b_min: {type: "number", minimum: 0, maximum: 150}, b_max: {type: "number", minimum: 0, maximum: 150},
-    b_kpc: {type: "array", items: {type: "number", minimum: 0, maximum: 400}, minItems: 2, maxItems: 2},
-    orientation: {type: "string", enum: ["face-on", "edge-on", "random", "custom"]},
-    sort: {type: "string", enum: ["score", "b_kpc", "n"]},
-    limit: {type: "integer", minimum: 1, maximum: 200}}};
+/* Generated from tngsight/ions.json and tngsight.search.QUERY_SCHEMA by `python -m server.make_chat_tools`.
+   Do not edit between the markers. */
+/*__GEN:QUERY__*/
+export const ION_SHORT = {"HI":"H I","MgII":"Mg II","SiII":"Si II","CII":"C II","SiIII":"Si III","CIII":"C III","SiIV":"Si IV","CIV":"C IV","NV":"N V","OVI":"O VI","NeVIII":"Ne VIII","OVII":"O VII"};
+export const ION_LABEL = {"HI":"H I 1216","MgII":"Mg II 2796","SiII":"Si II 1260","CII":"C II 1335","SiIII":"Si III 1206","CIII":"C III 977","SiIV":"Si IV 1403","CIV":"C IV 1548","NV":"N V 1239","OVI":"O VI 1032","NeVIII":"Ne VIII 770","OVII":"O VII 21.6"};
+export const ION_LOGN_MAX = {"HI":22.5,"MgII":19.0,"SiII":19.0,"CII":19.0,"SiIII":19.0,"CIII":19.0,"SiIV":19.0,"CIV":19.0,"NV":19.0,"OVI":19.0,"NeVIII":19.0,"OVII":19.0};
+export const QUERY_SCHEMA = {"type":"object","additionalProperties":false,"required":["ion"],"properties":{"ion":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"n_min":{"type":"integer","minimum":0,"maximum":30},"n_max":{"type":"integer","minimum":0,"maximum":30},"sep_kms":{"type":"array","items":{"type":"number","minimum":0,"maximum":3000},"minItems":2,"maxItems":2},"logN_min":{"type":"number","minimum":10,"maximum":22.5},"logN_max":{"type":"number","minimum":10,"maximum":22.5},"b_min":{"type":"number","minimum":0,"maximum":150},"b_max":{"type":"number","minimum":0,"maximum":150},"b_kpc":{"type":"array","items":{"type":"number","minimum":0,"maximum":400},"minItems":2,"maxItems":2},"orientation":{"type":"string","enum":["face-on","edge-on","random","custom"]},"sort":{"type":"string","enum":["score","b_kpc","n"]},"limit":{"type":"integer","minimum":1,"maximum":200}}};
+/*__END__*/
 export const DEFAULTS = {n_min: 1, sort: "score", limit: 50};   // n_max: unbounded
 
 /* §2 shared number format: round half away from zero at d decimals, printed with exactly d decimals (never "-0"). */
@@ -47,6 +41,8 @@ export function validateQuery(q) {
     if (!("ion" in q)) throw "ion: required";
     const out = {};
     for (const [k, spec] of Object.entries(props)) if (k in q) out[k] = checkValue(k, q[k], spec);
+    for (const k of ["logN_min", "logN_max"])            // per-ion logN bound (tngsight.search.LOGN_MAX)
+      if (k in out && out[k] > ION_LOGN_MAX[out.ion]) throw `${k}: must be <= ${numTxt(ION_LOGN_MAX[out.ion])} for ${out.ion}`;
     for (const [lo, hi] of [["n_min", "n_max"], ["logN_min", "logN_max"], ["b_min", "b_max"]]) {
       const a = out[lo] ?? DEFAULTS[lo];
       if (a != null && hi in out && a > out[hi]) throw `${lo}: exceeds ${hi}`; }
@@ -115,7 +111,7 @@ export function mountFind(root, app, opts = {}) {
   const sel = (id, lab, opts) => { const s = h("select", {id}); for (const [v, t] of opts) s.appendChild(h("option", {value: v, text: t}));
     return h("div", {class: "field"}, h("label", {for: id, text: lab}), s); };
   const form = h("form", {id: "find-form", novalidate: ""},
-    sel("fq_ion", "ion", [["OVI", "O VI"], ["HILyb", "H I Lyβ"], ["CIII", "C III"]]),
+    sel("fq_ion", "ion", Object.keys(ION_SHORT).map(k => [k, ION_LABEL[k]])),
     pair("fq_n", "components", {min: "0", max: "30", step: "1"}),
     pair("fq_sep", "pair Δv [km/s]", {min: "0", max: "3000", step: "1"}),
     pair("fq_logN", "log N", {min: "10", max: "19", step: "0.1"}),
@@ -144,7 +140,7 @@ export function mountFind(root, app, opts = {}) {
     const shown = res.slice(0, 50); msg.className = "msg";
     msg.textContent = (res.length ? `showing ${shown.length} of ${res.length} matching sightlines` : "no sightline matches this query") + ` (${coverage()})`;
     for (const r of shown) { const b = h("button", {type: "button", class: "btn", "data-id": r.id});
-      b.textContent = `${r.id} · ${r.reason} · ${r.score.toFixed(2)}`; b.addEventListener("click", () => app.select(r.id, {source: "find"}));
+      b.textContent = `${r.id}  ${r.reason}  score ${r.score.toFixed(2)}`; b.addEventListener("click", () => app.select(r.id, {source: "find"}));
       list.appendChild(h("li", {}, b)); } mark(); }
   form.addEventListener("submit", async ev => { ev.preventDefault(); await ready; if (!IX) return;
     const q = query(); render(rankAll(q, app.entries(), IX.entries || {}), q); });
