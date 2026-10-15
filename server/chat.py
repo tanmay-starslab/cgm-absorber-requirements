@@ -33,17 +33,9 @@ API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 TOOLS: list = json.loads((Path(__file__).with_name("chat_tools.json")).read_text(encoding="utf-8"))
 TOOL_NAMES: tuple = tuple(t["name"] for t in TOOLS)
-SYSTEM_PROMPT = (
-    "You are the assistant of the TNG50 sightline explorer, a web page showing mock quasar absorption "
-    "spectra (O VI 1032, H I Ly-beta, C III 977) through the circumgalactic medium of one simulated "
-    "Milky-Way-mass galaxy (TNG50-1 subhalo 488530, z = 0). You act only by calling the provided tools; "
-    "the page executes them and returns JSON results. Every number, id or property you state must come "
-    "from a tool result in this conversation or from the user; if the tools cannot answer, say so. Never "
-    "invent sightline ids. Prefer search_sightlines to find sightlines, select_sightline to show one, "
-    "set_instrument to change resolution and S/N, show_3d for the gas distribution, and request_sightline "
-    "or request_custom_ray only when the user asks for a new sightline (generation takes about a minute "
-    "and the page opens it when ready). Velocities are km/s relative to the galaxy's systemic velocity; "
-    "column densities are log10 cm^-2; distances are kpc. Keep answers short.")
+# Generated from tngsight/ions.json by `python -m server.make_chat_tools` (design.md §4.3); the page's
+# docs/tng50/js/chat.js carries the same text (tests/js/chat_tools_sync.mjs).
+SYSTEM_PROMPT: str = (Path(__file__).with_name("chat_system_prompt.txt")).read_text(encoding="utf-8").strip()
 
 MAX_TEXT = 4000                 # user text / text block
 MAX_ASSISTANT_TEXT = 6000       # assistant text: a 1024-token reply is ~4-5 k characters; leaves headroom

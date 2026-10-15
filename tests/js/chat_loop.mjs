@@ -15,10 +15,10 @@ const J = JSON.stringify;
 function fakeApp() {
   const comp = (v, logN, b, flag = 0) => ({v, dv: 0.1, logN, dlogN: 0.01, b, db: 0.2, region: 0, flag, EW: 10});
   const entries = [
-    {id: "edge_b100_a090", orientation: "edge-on", b_kpc: 100, azimuth_deg: 90, v_sys: 12.3456, logN: {OVI: 14.2345, HILyb: 15.01, CIII: 13.1}},
-    {id: "face_b050_a000", orientation: "face-on", b_kpc: 50, azimuth_deg: 0, v_sys: -3.2, logN: {OVI: 13.5, HILyb: 14.0, CIII: 12.7}}];
-  const comps = {edge_b100_a090: {OVI: [comp(-42.17, 13.912, 23.4), comp(61.5, 13.4, 30.2), comp(140, 14.6, 12, 1)], HILyb: [], CIII: []},
-    face_b050_a000: {OVI: [comp(0, 14.0, 20)], HILyb: [], CIII: []}};
+    {id: "edge_b100_a090", orientation: "edge-on", b_kpc: 100, azimuth_deg: 90, v_sys: 12.3456, logN: {OVI: 14.2345, HI: 15.01, CIII: 13.1}},
+    {id: "face_b050_a000", orientation: "face-on", b_kpc: 50, azimuth_deg: 0, v_sys: -3.2, logN: {OVI: 13.5, HI: 14.0, CIII: 12.7}}];
+  const comps = {edge_b100_a090: {OVI: [comp(-42.17, 13.912, 23.4), comp(61.5, 13.4, 30.2), comp(140, 14.6, 12, 1)], HI: [], CIII: []},
+    face_b050_a000: {OVI: [comp(0, 14.0, 20)], HI: [], CIII: []}};
   const log = [];
   const state = {id: "face_b050_a000", R_lo: 20000, R_hi: 40000, sn_hi: 8, sn_lo: 5, vwin: 400, api: "http://127.0.0.1:8899"};
   const app = {
@@ -44,11 +44,14 @@ function fakeApp() {
 {
   const app = fakeApp(), sub = [];
   const ex = C.createToolExecutor(app, {loadSearch: () => import(searchUrl), onSubmitted: j => sub.push(j)});
-  let r = await ex("set_instrument", {R: 60000, snr: [12, 4], vwin: 300});
-  check(J(r) === J({ok: true, R_lo: 60000, R_hi: 60000, sn_hi: 12, sn_lo: 4, vwin: 300}), `set_instrument scalar R -> R_lo = R_hi; [sn_hi, sn_lo] (${J(r)})`);
-  check(J(app.log[0]) === J(["setInstrument", {R_lo: 60000, R_hi: 60000, sn_hi: 12, sn_lo: 4, vwin: 300}]), "set_instrument passes the bridge state object");
-  r = await ex("set_instrument", {vwin: 425});
-  check(r.ok === false && r.error.startsWith("invalid arguments: args.vwin"), "executor re-validates arguments");
+  // set_instrument v3 arguments validate against the registry schema; the bridge mapping onto tngApp.setInstrument
+  // v3 (design.md §6.5) is part B, so only the call itself is checked here.
+  let r = await ex("set_instrument", {snr: [12, 4]});
+  check(r.ok === true && app.log[0][0] === "setInstrument", `set_instrument with v3 arguments reaches the bridge (${J(r)})`);
+  r = await ex("set_instrument", {vhw: 5});
+  check(r.ok === false && r.error.startsWith("invalid arguments: args.vhw"), "executor re-validates arguments");
+  check(C.validateToolCall("set_instrument", {R: {uv: 25000, euv: [5000, 150000], xray: [100, 5000]}, snr: 100, ions: ["OVII"],
+    layout: "1", vc: 30, vhw: 20, fit: true}) === null, "set_instrument schema accepts every v3 field");
   r = await ex("select_sightline", {id: "edge_b100_a090"});
   check(r.ok && r.id === "edge_b100_a090" && r.v_sys === 12.35 && r.logN.OVI === 14.23 && r.components.OVI.length === 3
     && J(Object.keys(r.components.OVI[0])) === J(["v", "logN", "b", "flag"]), `select_sightline result shape (${J(r).slice(0, 120)}…)`);
@@ -172,7 +175,7 @@ function claudeScript(responses) {
   check(r.answer === "ok", "claude: answer after the cap");
 }
 {
-  const {post} = claudeScript([{content: [{type: "tool_use", id: "tb", name: "set_instrument", input: {vwin: 425}}], stop_reason: "tool_use", usage: {}},
+  const {post} = claudeScript([{content: [{type: "tool_use", id: "tb", name: "set_instrument", input: {vhw: 5}}], stop_reason: "tool_use", usage: {}},
     {content: [{type: "text", text: "Sorry."}], stop_reason: "end_turn", usage: {}}]);
   const state = {messages: []}, calls = [];
   const exec = async name => { calls.push(name); return {ok: false, error: "unknown sightline id"}; };
@@ -182,12 +185,12 @@ function claudeScript(responses) {
 }
 {
   const ex = C.createToolExecutor(fakeApp());
-  const {post} = claudeScript([{content: [{type: "tool_use", id: "tb", name: "set_instrument", input: {vwin: 425}}], stop_reason: "tool_use", usage: {}},
+  const {post} = claudeScript([{content: [{type: "tool_use", id: "tb", name: "set_instrument", input: {vhw: 5}}], stop_reason: "tool_use", usage: {}},
     {content: [{type: "text", text: "Sorry."}], stop_reason: "end_turn", usage: {}}]);
   const state = {messages: []};
   await C.runClaudeTurn({post, state, userText: "x", exec: ex});
   const b = state.messages[2].content[0];
-  check(b.is_error === true && JSON.parse(b.content).error.startsWith("invalid arguments: args.vwin: must be a multiple of 50"), "claude: schema violation -> is_error with 'invalid arguments: <path>: <reason>'");
+  check(b.is_error === true && JSON.parse(b.content).error.startsWith("invalid arguments: args.vhw: must be >= 10"), "claude: schema violation -> is_error with 'invalid arguments: <path>: <reason>'");
 }
 {
   const {post} = claudeScript([{content: [{type: "tool_use", id: "tr", name: "show_3d", input: {}}], stop_reason: "refusal", usage: {}}]);

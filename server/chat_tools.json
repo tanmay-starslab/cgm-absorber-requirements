@@ -1,66 +1,137 @@
 [
  {
   "name": "set_instrument",
-  "description": "Set the spectrograph settings of the 4-column figure. R: resolving power for both R menus (one value) or [R_lo, R_hi]. snr: S/N per resolution element for both S/N sliders or [sn_hi, sn_lo]. vwin: half-width of the velocity window in km/s.",
+  "description": "Set the spectrograph and view. R: resolving power per band (one value, or two for the two R cases). snr: S/N per resolution element (one value, or two for the two S/N cases). layout: 1 case, 2 cases varying R, 2 cases varying S/N, or the 2x2 grid. ions: the ions to plot. vhw: half-width of the velocity window (km/s). vc: window centre (km/s). fit: overplot on-the-fly component fits.",
   "input_schema": {
    "type": "object",
    "additionalProperties": false,
    "properties": {
     "R": {
-     "anyOf": [
-      {
-       "type": "integer",
-       "enum": [
-        20000,
-        30000,
-        40000,
-        60000,
-        80000,
-        100000
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "uv": {
+       "anyOf": [
+        {
+         "type": "integer",
+         "minimum": 5000,
+         "maximum": 150000
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "integer",
+          "minimum": 5000,
+          "maximum": 150000
+         },
+         "minItems": 2,
+         "maxItems": 2
+        }
        ]
       },
-      {
-       "type": "array",
-       "items": {
-        "type": "integer",
-        "enum": [
-         20000,
-         30000,
-         40000,
-         60000,
-         80000,
-         100000
-        ]
-       },
-       "minItems": 2,
-       "maxItems": 2
+      "euv": {
+       "anyOf": [
+        {
+         "type": "integer",
+         "minimum": 5000,
+         "maximum": 150000
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "integer",
+          "minimum": 5000,
+          "maximum": 150000
+         },
+         "minItems": 2,
+         "maxItems": 2
+        }
+       ]
+      },
+      "xray": {
+       "anyOf": [
+        {
+         "type": "integer",
+         "minimum": 100,
+         "maximum": 5000
+        },
+        {
+         "type": "array",
+         "items": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 5000
+         },
+         "minItems": 2,
+         "maxItems": 2
+        }
+       ]
       }
-     ]
+     }
     },
     "snr": {
      "anyOf": [
       {
        "type": "integer",
        "minimum": 2,
-       "maximum": 20
+       "maximum": 100
       },
       {
        "type": "array",
        "items": {
         "type": "integer",
         "minimum": 2,
-        "maximum": 20
+        "maximum": 100
        },
        "minItems": 2,
        "maxItems": 2
       }
      ]
     },
-    "vwin": {
+    "layout": {
+     "type": "string",
+     "enum": [
+      "1",
+      "2R",
+      "2SN",
+      "4"
+     ]
+    },
+    "ions": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "enum": [
+       "HI",
+       "MgII",
+       "SiII",
+       "CII",
+       "SiIII",
+       "CIII",
+       "SiIV",
+       "CIV",
+       "NV",
+       "OVI",
+       "NeVIII",
+       "OVII"
+      ]
+     },
+     "minItems": 1,
+     "maxItems": 12,
+     "uniqueItems": true
+    },
+    "vhw": {
      "type": "integer",
-     "minimum": 150,
-     "maximum": 800,
-     "multipleOf": 50
+     "minimum": 10,
+     "maximum": 1500
+    },
+    "vc": {
+     "type": "number",
+     "minimum": -1500,
+     "maximum": 1500
+    },
+    "fit": {
+     "type": "boolean"
     }
    }
   }
@@ -102,9 +173,18 @@
       "ion": {
        "type": "string",
        "enum": [
+        "HI",
+        "MgII",
+        "SiII",
+        "CII",
+        "SiIII",
+        "CIII",
+        "SiIV",
+        "CIV",
+        "NV",
         "OVI",
-        "HILyb",
-        "CIII"
+        "NeVIII",
+        "OVII"
        ]
       },
       "n_min": {
@@ -130,12 +210,12 @@
       "logN_min": {
        "type": "number",
        "minimum": 10,
-       "maximum": 19
+       "maximum": 22.5
       },
       "logN_max": {
        "type": "number",
        "minimum": 10,
-       "maximum": 19
+       "maximum": 22.5
       },
       "b_min": {
        "type": "number",
@@ -269,9 +349,18 @@
       "nH",
       "T",
       "Z",
-      "OVI",
       "HI",
-      "CIII"
+      "MgII",
+      "SiII",
+      "CII",
+      "SiIII",
+      "CIII",
+      "SiIV",
+      "CIV",
+      "NV",
+      "OVI",
+      "NeVIII",
+      "OVII"
      ]
     },
     "preset": {

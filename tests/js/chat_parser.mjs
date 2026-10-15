@@ -25,8 +25,11 @@ okAnswer('{"answer":"Use {curly} braces and a \\"quote\\" and a } inside"}', 'Us
 okTool('{"tool":"search_sightlines","args":{"query":{"ion":"CIII","sep_kms":[50,150],"b_kpc":[0,100],"sort":"b_kpc"}}} {"answer":"x"}',
   "search_sightlines", {query: {ion: "CIII", sep_kms: [50, 150], b_kpc: [0, 100], sort: "b_kpc"}}, "7 two objects: the first balanced one wins");
 okTool('{"tool":"show_3d"}', "show_3d", {}, "8 missing args treated as {}");
-okTool('{"tool":"set_instrument","args":{"R":[20000,100000],"snr":10,"vwin":450}}', "set_instrument",
-  {R: [20000, 100000], snr: 10, vwin: 450}, "9 anyOf: array R and scalar snr");
+okTool('{"tool":"set_instrument","args":{"R":{"uv":[15000,50000],"xray":1000},"snr":10,"vhw":450}}', "set_instrument",
+  {R: {uv: [15000, 50000], xray: 1000}, snr: 10, vhw: 450}, "9 anyOf: array R per band, scalar R and scalar snr");
+okTool('{"tool":"set_instrument","args":{"ions":["HI","MgII","OVII"],"layout":"2SN","vc":-120.5,"fit":true,"snr":[100,2]}}', "set_instrument",
+  {ions: ["HI", "MgII", "OVII"], layout: "2SN", vc: -120.5, fit: true, snr: [100, 2]}, "9b ions, layout, vc, fit and S/N at the range ends");
+okTool('{"tool":"show_3d","args":{"species":"NeVIII"}}', "show_3d", {species: "NeVIII"}, "9c show_3d accepts a registry ion");
 okTool('{"tool":"request_custom_ray","args":{"p0_kpc":[-100,0,0.5],"p1_kpc":[100,20.25,-395]}}', "request_custom_ray",
   {p0_kpc: [-100, 0, 0.5], p1_kpc: [100, 20.25, -395]}, "10 numeric arrays at the bounds");
 okTool('{"tool":"select_sightline","args":{"id":"cust_0123456789"}}', "select_sightline", {id: "cust_0123456789"}, "11 custom id pattern");
@@ -40,10 +43,14 @@ bad('{"tool":"show_3d","args":{},}', "invalid JSON", "16 trailing comma");
 bad('{"tool":"delete_everything","args":{}}', "unknown tool", "17 unknown tool name");
 bad('{"tool":"show_3d","args":{"species":"OVI","colour":"red"}}', 'unknown key "colour"', "18 additionalProperties:false");
 bad('{"tool":"show_3d","args":{"species":"O6"}}', "must be one of", "19 enum violation");
-bad('{"tool":"set_instrument","args":{"vwin":425}}', "multiple of 50", "20 multipleOf violation");
-bad('{"tool":"set_instrument","args":{"snr":25}}', "matches none of the allowed forms", "21 anyOf: out-of-range scalar matches neither branch");
-bad('{"tool":"set_instrument","args":{"R":[20000]}}', "matches none", "22 anyOf: array too short");
-bad('{"tool":"set_instrument","args":{"R":25000}}', "must be one of", "23 anyOf: R not in the menu");
+bad('{"tool":"set_instrument","args":{"vhw":5}}', "args.vhw: must be >= 10", "20 minimum violation (half-window)");
+bad('{"tool":"set_instrument","args":{"snr":101}}', "matches none of the allowed forms", "21 anyOf: out-of-range scalar matches neither branch");
+bad('{"tool":"set_instrument","args":{"R":{"uv":[20000]}}}', "matches none", "22 anyOf: array too short");
+bad('{"tool":"set_instrument","args":{"R":{"far":1000}}}', 'unknown key "far"', "23 R: unknown band");
+bad('{"tool":"set_instrument","args":{"R":{"xray":20000}}}', "matches none", "23b R above the band range");
+bad('{"tool":"set_instrument","args":{"layout":"3"}}', "must be one of", "23c layout enum");
+bad('{"tool":"set_instrument","args":{"ions":["HILyb"]}}', "must be one of", "23d retired key HILyb is not an alias");
+bad('{"tool":"set_instrument","args":{"ions":[]}}', "at least 1 item", "23e at least one ion");
 bad('{"tool":"request_sightline","args":{"orientation":"face-on","b_kpc":301,"azimuth_deg":0}}', "args.b_kpc: must be <= 300", "24 maximum violation");
 bad('{"tool":"request_sightline","args":{"orientation":"random","b_kpc":50}}', 'missing required "azimuth_deg"', "25 required missing");
 bad('{"tool":"request_sightline","args":{"orientation":"random","b_kpc":50,"azimuth_deg":10,"seed":1.5}}', "expected integer", "26 integer type");

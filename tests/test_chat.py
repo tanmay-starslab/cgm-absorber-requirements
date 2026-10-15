@@ -459,3 +459,61 @@ def test_debug_logs_tool_names_only(caplog):
         c.post("/api/chat", json=user(SECRET_TEXT))
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert "show_3d" in text and SECRET_TEXT not in text and "face-on" not in text and KEY not in text
+
+
+# ------------------------------------------------------------------------------ registry-derived artefacts
+def test_tools_and_prompt_follow_the_registry():
+    """design.md §4.3: enums cover the 12 registry keys, set_instrument bounds come from the bands, the
+    prompt names the 12 ions and holds no dot separator."""
+    from tngsight import ions
+    from tngsight.search import QUERY_SCHEMA
+    keys = list(ions.KEYS)
+    assert len(keys) == 12
+    t = {x["name"]: x for x in chat.TOOLS}
+    si = t["set_instrument"]["input_schema"]
+    assert si["additionalProperties"] is False and set(si["properties"]) == {"R", "snr", "layout", "ions", "vhw",
+                                                                             "vc", "fit"}
+    p = si["properties"]
+    assert set(p["R"]["properties"]) == set(ions.BANDS) and p["R"]["additionalProperties"] is False
+    for b, d in ions.BANDS.items():
+        one, two = p["R"]["properties"][b]["anyOf"]
+        assert one == {"type": "integer", "minimum": d["R"]["min"], "maximum": d["R"]["max"]}
+        assert two == {"type": "array", "items": one, "minItems": 2, "maxItems": 2}
+    assert p["snr"]["anyOf"][0] == {"type": "integer", "minimum": 2, "maximum": 100}
+    assert p["layout"]["enum"] == ["1", "2R", "2SN", "4"]
+    assert p["ions"] == {"type": "array", "items": {"type": "string", "enum": keys}, "minItems": 1, "maxItems": 12,
+                         "uniqueItems": True}
+    assert p["vhw"] == {"type": "integer", "minimum": 10, "maximum": 1500}
+    assert p["vc"] == {"type": "number", "minimum": -1500, "maximum": 1500} and p["fit"] == {"type": "boolean"}
+    assert t["search_sightlines"]["input_schema"]["properties"]["query"] == QUERY_SCHEMA
+    assert QUERY_SCHEMA["properties"]["ion"]["enum"] == keys
+    assert t["show_3d"]["input_schema"]["properties"]["species"]["enum"] == ["nH", "T", "Z", *keys]
+    for name in ("select_sightline", "request_sightline", "request_custom_ray"):
+        assert t[name]["input_schema"]["additionalProperties"] is False
+    prompt = chat.SYSTEM_PROMPT
+    assert all(ions.get(k)["label"] in prompt for k in keys) and "12 ions" in prompt and "HILyb" not in prompt
+    assert not any(c in prompt for c in ("·", "•", "‧", "⋅", "・", " . "))
+    assert "\n" not in prompt                     # one paragraph
+
+
+def test_make_chat_tools_check(monkeypatch, capsys):
+    """--check exits 0 on the committed files and 1 once the registry changes (nothing is written)."""
+    import copy as _copy
+    from server import make_chat_tools as M
+    from tngsight import ions
+    assert M.main(["--check"]) == 0
+    before = {p: p.read_bytes() for p in (M.TOOLS_JSON, M.PROMPT_TXT, M.CHAT_JS, M.SEARCH_JS)}
+    bands = _copy.deepcopy(ions.BANDS)
+    bands["uv"]["R"]["max"] = 160000
+    monkeypatch.setattr(ions, "BANDS", bands)
+    assert M.main(["--check"]) == 1
+    assert "server/chat_tools.json" in capsys.readouterr().out
+    assert {p: p.read_bytes() for p in before} == before
+
+
+def test_make_chat_tools_splice_is_local():
+    from server import make_chat_tools as M
+    text = "head\n/*__GEN:X__*/\nold\n/*__END__*/\ntail\n/*__END__*/\n"
+    assert M.splice(text, {"X": "new"}) == "head\n/*__GEN:X__*/\nnew\n/*__END__*/\ntail\n/*__END__*/\n"
+    with pytest.raises(ValueError, match="found 0 times"):
+        M.splice("no markers", {"X": "new"})

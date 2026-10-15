@@ -17,17 +17,42 @@ import numpy as np
 
 log = logging.getLogger("tngsight.server")
 ID_RE = re.compile(r"^((face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?|cust_[0-9a-f]{10})$")
-LINE_KEYS = ("OVI", "HILyb", "CIII")
-NPZ_KEYS = ["geom", "v_sys"] + [f"logN_{k}" for k in LINE_KEYS] + \
-    [f"{k}_{s}" for k in LINE_KEYS for s in ("lambda", "tau", "rest")]
+NPZ_FORMAT = "tngsight-npz/2"
 COMPONENTS_MEMBER = "components_json"          # optional extra npz member of a worker result
 COMPONENTS_SUFFIX = ".components.json"
+COMPONENTS_DOC_VERSION = 2
 DOWNLOAD_IGNORE = ("vol/*", "components/*")   # dataset backups of Phase-2 builds the server never reads
-_ROW_KEYS = ("p0", "p1", "has_components", "logN_aod")   # a generated row lacking one is rebuilt by reconcile()
+# a generated row lacking one of these is rebuilt by reconcile() (Phase-1 rows; pre-v2 rows)
+_ROW_KEYS = ("p0", "p1", "has_components", "logN_aod", "data_version", "lines")
 MAX_UNZIPPED = 50 * 1024 * 1024
-MAX_COMPONENTS_JSON = 512 * 1024
-_COMP_KEYS = ("v", "dv", "logN", "dlogN", "b", "db", "region", "flag", "EW")
+MAX_COMPONENTS_JSON = 1024 * 1024
+COMP_KEYS = ("v", "dv", "logN", "dlogN", "b", "db", "region", "flag", "EW")
 _COMP_NULLABLE = ("dv", "dlogN", "db")
+_FLAG_MAX = 255                                # vpfit FLAGS + BUDGET 128 (design.md §2.6)
+_LEGACY_DROPPED = ("HILyb",)                  # v1 H I Lyβ: not a registry line, dropped (as tngsight.components)
+_V1_HINT = ("OVI_lambda.npy", "HILyb_tau.npy", "CIII_rest.npy")
+
+
+def _ions():
+    from tngsight import ions
+    return ions
+
+
+def KEYS() -> tuple:
+    """The registry line keys, in order (tngsight.ions.KEYS)."""
+    return tuple(_ions().KEYS)
+
+
+def NPZ_KEYS(lines) -> list:
+    """npz v2 members, in order, for a list of line keys (design.md §2.3)."""
+    out = ["format", "geom", "v_sys", "lines", "generation"]
+    for k in lines:
+        out += [f"logN_{k}", f"{k}_tau", f"{k}_lam0", f"{k}_dlam", f"{k}_rest", f"{k}_W"]
+    return out
+
+
+def registry_tag() -> str:
+    return _ions().registry_tag()
 
 
 def check_id(sid: str) -> str:
@@ -42,7 +67,7 @@ def _lib():
 
 
 def _components_mod():
-    """tngsight.components (U_fit) or None when it is not installed yet."""
+    """tngsight.components, or None when it is not importable."""
     try:
         from tngsight import components
         return components
@@ -50,45 +75,113 @@ def _components_mod():
         return None
 
 
-_LOGN_HI = {"HILyb": 22.5}       # damped H I (tngsight.vpfit PARAMS logN_hi_ion); other ions ≤ 19
+def _components_v2():
+    """tngsight.components when it implements catalogue v2 (rows, any subset of KEYS), else None."""
+    mod = _components_mod()
+    return mod if mod is not None and getattr(mod, "CATALOGUE_VERSION", 1) >= 2 else None
+
+
+# ------------------------------------------------------------------------------ components (v2)
+def _logn_max(k) -> float:
+    return float(_ions().atomic(k)["logN_max"])
+
+
+def rows_to_dicts(rows) -> list:
+    return [c if isinstance(c, dict) else dict(zip(COMP_KEYS, c)) for c in rows]
+
+
+def dicts_to_rows(comps) -> list:
+    """Rows (COMP_KEYS order); a malformed dict keeps its gaps as None so the receiver rejects it."""
+    return [list(c) if not isinstance(c, dict) else [c.get(k) for k in COMP_KEYS] for c in comps]
 
 
 def _basic_validate_components(obj) -> dict:
-    """Fallback for tngsight.components.validate_components (same §5.3 rules) when that module is absent."""
-    if not isinstance(obj, dict) or sorted(obj) != sorted(LINE_KEYS):
-        raise ValueError(f"components must have exactly the keys {list(LINE_KEYS)}")
+    """Registry-driven fallback for tngsight.components.validate_components (v2), same rules: a rows object
+    {k: [[v, dv, logN, dlogN, b, db, region, flag, EW], ...]} or dict-of-dicts {k: [{...}]}, keys a
+    non-empty subset of the registry KEYS (legacy HILyb dropped), logN <= logN_max, b in [1, 150],
+    |v| <= 11000, flag 0..255. Returns the normalised dict form."""
+    keys = KEYS()
+    if isinstance(obj, dict):
+        obj = {k: v for k, v in obj.items() if k not in _LEGACY_DROPPED}
+    if not isinstance(obj, dict) or not obj or not set(obj) <= set(keys):
+        raise ValueError(f"components must have a non-empty subset of the keys {list(keys)}")
     out = {}
-    for ion in LINE_KEYS:
+    for ion in [k for k in keys if k in obj]:
         comps = obj[ion]
         if not isinstance(comps, list) or len(comps) > 30:
             raise ValueError(f"components[{ion}] must be a list of at most 30 components")
+        res = []
         for i, c in enumerate(comps):
             where = f"components[{ion}][{i}]"
-            if not isinstance(c, dict) or set(c) != set(_COMP_KEYS):
-                raise ValueError(f"{where}: keys must be {list(_COMP_KEYS)}")
-            for k in _COMP_KEYS:
+            if isinstance(c, list):
+                if len(c) != len(COMP_KEYS):
+                    raise ValueError(f"{where}: a row must have {len(COMP_KEYS)} values {list(COMP_KEYS)}")
+                c = dict(zip(COMP_KEYS, c))
+            if not isinstance(c, dict) or set(c) != set(COMP_KEYS):
+                raise ValueError(f"{where}: keys must be {list(COMP_KEYS)}")
+            for k in COMP_KEYS:
                 x = c[k]
                 if x is None and k in _COMP_NULLABLE:
                     continue
                 if isinstance(x, bool) or not isinstance(x, (int, float)) or not np.isfinite(x):
                     raise ValueError(f"{where}.{k}: not a finite number")
-            n_hi = _LOGN_HI.get(ion, 19)
-            if not 10 <= c["logN"] <= n_hi or not 1 <= c["b"] <= 150 or abs(c["v"]) > 2000:
+            if not 10 <= c["logN"] <= _logn_max(ion) or not 1 <= c["b"] <= 150 or abs(c["v"]) > 11000:
                 raise ValueError(f"{where}: logN/b/v out of range")
-            if isinstance(c["flag"], bool) or not isinstance(c["flag"], int) or not 0 <= c["flag"] <= 127:
-                raise ValueError(f"{where}.flag: must be an int in 0..127")
-            if not isinstance(c["region"], int) or c["region"] < 0:
+            if isinstance(c["flag"], bool) or not isinstance(c["flag"], int) or not 0 <= c["flag"] <= _FLAG_MAX:
+                raise ValueError(f"{where}.flag: must be an int in 0..{_FLAG_MAX}")
+            if isinstance(c["region"], bool) or not isinstance(c["region"], int) or c["region"] < 0:
                 raise ValueError(f"{where}.region: must be a non-negative int")
-        out[ion] = comps
+            res.append({k: c[k] for k in COMP_KEYS})
+        out[ion] = res
     return out
 
 
 def validate_components(obj) -> dict:
-    """tngsight.components.validate_components when available, else the same rules locally."""
-    mod = _components_mod()
+    """tngsight.components.validate_components (v2) when available, else the same rules locally.
+    Accepts the rows object or dict-of-dicts; returns the dict form {k: [{...}]}."""
+    mod = _components_v2()
     if mod is not None and hasattr(mod, "validate_components"):
         return mod.validate_components(obj)
     return _basic_validate_components(obj)
+
+
+def _opt_num(x, where):
+    if x is None:
+        return None
+    if isinstance(x, bool) or not isinstance(x, (int, float)) or not np.isfinite(x):
+        raise ValueError(f"{where}: not a finite number")
+    return x
+
+
+def normalize_aod(obj, keys=None) -> dict:
+    """AOD record -> v2 form {k: [logN_aod_total|null, [[region, v_lo, v_hi, logN_aod|null], ...]]}.
+    Accepts the v2 form and the v1 dict form {k: {"logN_aod", "regions": [{region, v_lo, v_hi, logN_aod}]}}."""
+    if not isinstance(obj, dict):
+        raise ValueError("aod must be an object")
+    allowed = set(KEYS()) if keys is None else set(keys)
+    out = {}
+    for k, a in obj.items():
+        if k not in allowed:
+            raise ValueError(f"aod: unknown line {str(k)[:12]!r}")
+        if isinstance(a, dict):
+            if set(a) != {"logN_aod", "regions"}:
+                raise ValueError(f"aod.{k}: expected [logN_aod, regions]")
+            a = [a["logN_aod"], [[r.get("region"), r.get("v_lo"), r.get("v_hi"), r.get("logN_aod")]
+                                 if isinstance(r, dict) else r for r in a["regions"]]]
+        if not isinstance(a, list) or len(a) != 2 or not isinstance(a[1], list) or len(a[1]) > 200:
+            raise ValueError(f"aod.{k}: expected [logN_aod, regions]")
+        regions = []
+        for i, r in enumerate(a[1]):
+            w = f"aod.{k}[{i}]"
+            if not isinstance(r, list) or len(r) != 4:
+                raise ValueError(f"{w}: expected [region, v_lo, v_hi, logN_aod]")
+            if isinstance(r[0], bool) or not isinstance(r[0], int) or r[0] < 0:
+                raise ValueError(f"{w}.region: must be a non-negative int")
+            if _opt_num(r[1], f"{w}.v_lo") is None or _opt_num(r[2], f"{w}.v_hi") is None:
+                raise ValueError(f"{w}: v_lo/v_hi required")
+            regions.append([r[0], r[1], r[2], _opt_num(r[3], f"{w}.logN_aod")])
+        out[k] = [_opt_num(a[0], f"aod.{k}.logN_aod"), regions]
+    return out
 
 
 def fitter_info() -> dict:
@@ -103,9 +196,57 @@ def fitter_info() -> dict:
         return {"fitter": getattr(mod, "FITTER_TAG", None), "params_tag": None}
 
 
+def _component_doc(sid, comps_dicts, aod, info) -> dict:
+    """The per-sightline v2 document (design.md §4.1), components as rows."""
+    return {"version": COMPONENTS_DOC_VERSION, "id": sid, "fitter": info.get("fitter"),
+            "params_tag": info.get("params_tag"), "comp_keys": list(COMP_KEYS),
+            "components": {k: dicts_to_rows(v) for k, v in comps_dicts.items()},
+            "aod": aod or {}}
+
+
+def _read_component_doc(sid, doc) -> dict:
+    """A stored doc (v1 {"id","fitter","params_tag","components": {ion: [dict]}} or v2) -> v2 doc;
+    v1 HILyb (Lyβ, not a registry line) is dropped. Raises ValueError when unusable."""
+    if not isinstance(doc, dict) or not isinstance(doc.get("components"), dict):
+        raise ValueError("not a components document")
+    comps = {k: v for k, v in doc["components"].items() if k in KEYS()}
+    dicts = validate_components({k: rows_to_dicts(v) if isinstance(v, list) else v for k, v in comps.items()})
+    aod = doc.get("aod") if doc.get("version") == COMPONENTS_DOC_VERSION else None
+    aod = normalize_aod({k: v for k, v in (aod or {}).items() if k in dicts})
+    return _component_doc(sid, dicts, aod, {"fitter": doc.get("fitter"), "params_tag": doc.get("params_tag")})
+
+
+def n_fit(doc_or_components) -> dict:
+    comps = doc_or_components.get("components", doc_or_components) if isinstance(doc_or_components, dict) else {}
+    return {k: len(v or []) for k, v in comps.items()}
+
+
+def npz_like(payload) -> dict:
+    """The save_npz(path, payload_like) dict (design.md §2.3) of a load_npz-style v2 payload: lam0/dlam
+    from the payload when present, else from its wavelength arrays."""
+    lines = list(payload["lines"])
+    lam0, dlam = dict(payload.get("lam0") or {}), dict(payload.get("dlam") or {})
+    for k in lines:
+        if k not in lam0 or k not in dlam:
+            lam = np.asarray(payload["lam"][k], np.float64)
+            lam0[k] = float(lam[0])
+            dlam[k] = float((lam[-1] - lam[0]) / (lam.size - 1))
+    gen = dict(payload.get("generation") or {})
+    return {"geom": payload["geom"], "v_sys": float(payload["v_sys"]), "lines": lines, "generation": gen,
+            "logN": {k: float(payload["logN"][k]) for k in lines}, "tau": {k: payload["tau"][k] for k in lines},
+            "lam0": lam0, "dlam": dlam, "rest": {k: float(payload["rest"][k]) for k in lines},
+            "W": {k: float(payload["W"][k]) for k in lines}}
+
+
+def _bin_version(blob: bytes):
+    return blob[4] if len(blob) >= 16 and blob[:4] == b"TNGS" else None
+
+
 class LibraryStore:
     """<root>/catalog.json, <root>/sightlines/*.npz (library), <root>/generated/<id>.npz|.bin,
-    <root>/web/<id>.bin. Generated sightlines are persisted here and mirrored by `hf` if set."""
+    <root>/web/<id>.bin. Generated sightlines are persisted here and mirrored by `hf` if set.
+    npz files may be v1 or v2 (tngsight.library.load_npz reads both); web binaries are always served as
+    TNGS v2 (a cached v1 .bin is re-encoded from its npz on first read and replaced)."""
 
     def __init__(self, root, hf=None):
         self.root = Path(root)
@@ -115,7 +256,7 @@ class LibraryStore:
         self.hf = hf
         self._lock = threading.RLock()
         self._doc = None
-        self._comp_cache: dict = {}            # sid -> components doc (validated)
+        self._comp_cache: dict = {}            # sid -> components doc v2 (validated)
         self._comp_doc = None                  # cached GET /api/components body + ETag
         self._backfill = None
         self.reload()
@@ -166,14 +307,32 @@ class LibraryStore:
 
     def load_payload(self, sid) -> dict | None:
         p = self.npz_path(sid)
-        return None if p is None else _lib().load_npz(p)
+        if p is None:
+            return None
+        payload = _lib().load_npz(p, id=sid)
+        payload["id"] = sid
+        return payload
 
     def bin_bytes(self, sid) -> bytes | None:
-        """Web binary; built from the npz (and cached under web/) when no .bin exists yet."""
+        """TNGS v2 web binary. A cached .bin (web/ or generated/) is served as is when it is v2; a v1 one is
+        re-encoded from the npz (v1 npz -> 2 lines) and the v2 bytes replace it. Without any .bin, the
+        binary is built from the npz and cached under web/."""
         check_id(sid)
         for p in (self.web_dir / f"{sid}.bin", self.gen_dir / f"{sid}.bin"):
             if p.is_file():
-                return p.read_bytes()
+                blob = p.read_bytes()
+                if _bin_version(blob) == 2:
+                    return blob
+                payload = self.load_payload(sid)
+                if payload is None:
+                    log.warning("%s: cached web binary is v%s and no npz exists to re-encode it",
+                                p.name, _bin_version(blob))
+                    return blob
+                new = _lib().encode_web(payload)
+                _atomic_write(p, new)
+                if self.hf is not None and p.parent == self.gen_dir:
+                    self.hf.upload(p, f"generated/{p.name}")
+                return new
         payload = self.load_payload(sid)
         if payload is None:
             return None
@@ -186,7 +345,9 @@ class LibraryStore:
         return self.gen_dir / f"{check_id(sid)}{COMPONENTS_SUFFIX}"
 
     def components(self, sid) -> dict | None:
-        """Stored {"id","fitter","params_tag","components"} of a generated sightline (validated, cached)."""
+        """Stored per-sightline v2 doc {"version": 2, "id", "fitter", "params_tag", "comp_keys",
+        "components": {k: rows}, "aod": {k: ...}} of a generated sightline (validated, cached; a v1 file is
+        read and converted)."""
         check_id(sid)
         with self._lock:
             if sid in self._comp_cache:
@@ -195,8 +356,7 @@ class LibraryStore:
         if not p.is_file():
             return None
         try:
-            doc = json.loads(p.read_text())
-            doc["components"] = validate_components(doc["components"])
+            doc = _read_component_doc(sid, json.loads(p.read_text()))
         except Exception as e:
             log.warning("components file %s unusable: %s", p.name, e)
             return None
@@ -205,10 +365,11 @@ class LibraryStore:
         return doc
 
     def components_index(self) -> tuple[bytes, str]:
-        """GET /api/components body {"version":1,"fitter","params_tag","entries":{id:{ion:[...]}}} + ETag."""
+        """GET /api/components body {"version": 2, "fitter", "params_tag", "comp_keys", "entries": {id: {k: rows}},
+        "aod": {id: {k: ...}}} + ETag."""
         with self._lock:
             if self._comp_doc is None:
-                entries, info = {}, fitter_info()
+                entries, aod, info = {}, {}, fitter_info()
                 for p in sorted(self.gen_dir.glob(f"*{COMPONENTS_SUFFIX}")):
                     sid = p.name[: -len(COMPONENTS_SUFFIX)]
                     if not ID_RE.fullmatch(sid):
@@ -216,29 +377,34 @@ class LibraryStore:
                     d = self.components(sid)
                     if d is not None:
                         entries[sid] = d["components"]
+                        aod[sid] = d["aod"]
                         if info["fitter"] is None:
                             info = {"fitter": d.get("fitter"), "params_tag": d.get("params_tag")}
-                doc = {"version": 1, **info, "entries": entries}
+                doc = {"version": COMPONENTS_DOC_VERSION, **info, "comp_keys": list(COMP_KEYS),
+                       "entries": entries, "aod": aod}
                 body = json.dumps(doc, separators=(",", ":"), allow_nan=False, sort_keys=True).encode()
                 self._comp_doc = (body, '"' + hashlib.sha1(body).hexdigest()[:20] + '"')
             return self._comp_doc
 
-    def _fit(self, payload) -> dict | None:
+    def _fit(self, payload) -> tuple | None:
+        """(components dicts, aod v2) from the installed fitter, or None."""
         mod = _components_mod()
         if mod is None:
             return None
         try:
-            return mod.fit_payload(payload)
+            aod: dict = {}
+            comps = mod.fit_payload(payload, aod=aod)
+            return comps, (normalize_aod(aod) if aod else {})
         except Exception as e:          # components are optional; never lose a sightline over them
             log.warning("fit %s failed: %s", payload.get("id"), e)
             return None
 
-    def _write_components(self, sid, comps, upload=True) -> bool:
-        """Validate + persist <gen>/<id>.components.json (atomic) and queue its HF upload."""
+    def _write_components(self, sid, comps, aod=None, upload=True) -> bool:
+        """Validate + persist <gen>/<id>.components.json (v2 doc, atomic) and queue its HF upload."""
         try:
-            comps = validate_components(comps)
-            info = fitter_info()
-            doc = {"id": sid, "fitter": info["fitter"], "params_tag": info["params_tag"], "components": comps}
+            dicts = validate_components(comps)
+            aod = normalize_aod({k: v for k, v in (aod or {}).items() if k in dicts})
+            doc = _component_doc(sid, dicts, aod, fitter_info())
             _atomic_write(self.components_path(sid),
                           json.dumps(doc, separators=(",", ":"), allow_nan=False, sort_keys=True).encode())
         except Exception as e:
@@ -253,18 +419,21 @@ class LibraryStore:
 
     # ------------------------------------------------------------------ generated
     def add_generated(self, payload: dict, scores=None, components=None) -> dict:
-        """Persist a generated payload: npz + web bin (+ components json) + catalog upsert (+ HF upload).
-        components: argument, else payload["components"], else a best-effort fit in this thread — but only
-        when the generator never attempted one (a Phase-1 worker): payload["components_skipped"] marks a fit
-        that was attempted and failed, which is deterministic, so it is left to the background backfill
-        instead of being repeated while the job is finishing."""
+        """Persist a generated v2 payload: npz v2 + TNGS v2 bin (+ components json) + catalog upsert
+        (+ HF upload). components: argument, else payload["components"] (with payload["components_aod"]),
+        else a best-effort fit in this thread, but only when the generator never attempted one:
+        payload["components_skipped"] marks a fit that was attempted and failed, which is deterministic, so
+        it is left to the background backfill instead of being repeated while the job is finishing."""
         lib = _lib()
         sid = check_id(payload["id"])
+        aod = payload.get("components_aod")
         if components is None:
             components = payload.get("components")
         if components is None and not payload.get("components_skipped"):
-            components = self._fit(payload)
-        if components is not None and not self._write_components(sid, components, upload=False):
+            fitted = self._fit(payload)
+            if fitted is not None:
+                components, aod = fitted
+        if components is not None and not self._write_components(sid, components, aod, upload=False):
             components = None
         if scores is None:
             try:
@@ -274,12 +443,12 @@ class LibraryStore:
                 log.warning("scoring %s failed: %s", sid, e)
                 scores = None
         npz = self.gen_dir / f"{sid}.npz"
-        lib.save_npz(npz, payload["geom"], payload["logN"], payload["tau"])     # atomic (tmp + replace)
+        lib.save_npz(npz, npz_like(payload))         # atomic (tmp + replace), npz v2
         blob = lib.encode_web(payload)
         _atomic_write(self.gen_dir / f"{sid}.bin", blob)
         stored = self.components(sid) if components is not None else None
         entry = lib.catalog_entry(payload, scores, "generated",
-                                  components=stored["components"] if stored else None)
+                                  components=validate_components(stored["components"]) if stored else None)
         with self._lock:
             self.catalog.upsert(entry)
             self.catalog.save()
@@ -293,9 +462,10 @@ class LibraryStore:
 
     def reconcile(self, backfill=True) -> int:
         """Re-register generated/*.npz missing from the catalog (after a restart + HF download), rebuild
-        generated rows written before the current row schema (no p0/p1, has_components or logN_aod — e.g.
-        Phase-1 rows), then (background thread, best effort) fit components for generated sightlines that
-        lack them. Returns the number of rows added or rebuilt."""
+        generated rows written before the current row schema (no p0/p1, has_components, logN_aod,
+        data_version or lines: Phase-1 and pre-v2 rows; a v1 npz gives a data_version 1 row), then
+        (background thread, best effort) fit components for generated sightlines that lack them. Returns
+        the number of rows added or rebuilt."""
         n = 0
         for p in sorted(self.gen_dir.glob("*.npz")):
             sid = p.stem
@@ -305,13 +475,19 @@ class LibraryStore:
             if old is not None and all(k in old for k in _ROW_KEYS):
                 continue
             try:
-                payload = _lib().load_npz(p)
-                from tngsight.scoring import score_payload
+                payload = _lib().load_npz(p, id=sid)
+                payload["id"] = sid
+                try:
+                    from tngsight.scoring import score_payload
+                    scores = score_payload(payload)
+                except Exception as e:
+                    log.warning("reconcile scoring %s failed: %s", sid, e)
+                    scores = None
                 d = self.components(sid)
-                entry = _lib().catalog_entry(payload, score_payload(payload), "generated",
-                                             components=d["components"] if d else None)
+                entry = _lib().catalog_entry(payload, scores, "generated",
+                                             components=validate_components(d["components"]) if d else None)
                 if old is not None:          # keep anything the old row had that the new schema lacks
-                    entry = {**old, **entry}
+                    entry = {**{k: v for k, v in old.items() if k not in ("logN", "ions", "n_fit")}, **entry}
                 with self._lock:
                     self.catalog.upsert(entry)
                     self._doc = None
@@ -337,15 +513,15 @@ class LibraryStore:
         n = 0
         for sid in self.missing_components():
             try:
-                payload = _lib().load_npz(self.gen_dir / f"{sid}.npz")
+                payload = _lib().load_npz(self.gen_dir / f"{sid}.npz", id=sid)
                 payload["id"] = sid
-                comps = self._fit(payload)
-                if comps is None or not self._write_components(sid, comps):
+                fitted = self._fit(payload)
+                if fitted is None or not self._write_components(sid, *fitted):
                     continue
                 with self._lock:
                     e = self.catalog.get(sid)
                     if e is not None:
-                        e.update(has_components=True, n_fit=_lib()._n_fit(self.components(sid)["components"]))
+                        e.update(has_components=True, n_fit=n_fit(self.components(sid)))
                         self.catalog.upsert(e)
                         self.catalog.save()
                         self._doc = None
@@ -368,8 +544,8 @@ class LibraryStore:
 
     # ------------------------------------------------------------------ worker results
     def validate_result(self, blob: bytes, geom: dict, max_bytes: int) -> dict:
-        """Check an uploaded npz without unpickling anything, then return load_npz() of it.
-        Raises ValueError with a message suitable for the HTTP 422 body."""
+        """Check an uploaded npz v2 without unpickling anything, then return load_npz() of it.
+        Raises ValueError with a message suitable for the HTTP 422 body (design.md §4.1)."""
         if len(blob) > max_bytes:
             raise ValueError(f"result too large ({len(blob)} > {max_bytes} bytes)")
         try:
@@ -379,18 +555,52 @@ class LibraryStore:
                 raise ValueError("result decompresses too large")
         except zipfile.BadZipFile:
             raise ValueError("result is not an npz archive")
-        base = sorted(k + ".npy" for k in NPZ_KEYS)
-        has_comp = sorted(names) == sorted(base + [COMPONENTS_MEMBER + ".npy"])
-        if sorted(names) != base and not has_comp:
-            raise ValueError(f"npz keys {sorted(n[:-4] for n in names)} != expected")
-        keys = NPZ_KEYS + ([COMPONENTS_MEMBER] if has_comp else [])
+        if "format.npy" not in names:
+            if any(n in names for n in _V1_HINT) or any(n.endswith("_lambda.npy") for n in names):
+                raise ValueError("worker result is npz v1; update the worker")
+            raise ValueError("npz has no format member (not an npz v2 result)")
+
+        def member(z, k, kind):
+            a = z[k]
+            if a.shape != () or a.dtype.kind != kind:
+                raise ValueError(f"{k} must be a 0-d {'unicode string' if kind == 'U' else 'number'}")
+            return a
         try:
             with np.load(io.BytesIO(blob), allow_pickle=False) as z:
-                a = {k: z[k] for k in keys}
+                head = {k: member(z, k, "U") for k in ("format", "lines", "generation") if k + ".npy" in names}
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"unreadable npz ({e.__class__.__name__}: {e})")
-        components = None
-        skipped = False
+        if str(head.get("format")) != NPZ_FORMAT:
+            raise ValueError(f"npz format {str(head.get('format'))[:40]!r} != {NPZ_FORMAT!r}")
+        try:
+            gen = json.loads(str(head["generation"]))
+            lines = json.loads(str(head["lines"]))
+        except (KeyError, ValueError):
+            raise ValueError("npz lines/generation must be JSON")
+        if not isinstance(gen, dict):
+            raise ValueError("generation is not a JSON object")
+        mine = registry_tag()
+        if gen.get("registry_tag") != mine:
+            raise ValueError(f"registry mismatch (worker {str(gen.get('registry_tag'))[:16]}, server {mine})")
+        keys = list(KEYS())
+        if lines != keys:
+            missing = [k for k in keys if not isinstance(lines, list) or k not in lines]
+            raise ValueError(f"lines must be all {len(keys)} registry keys in order" +
+                             (f"; missing {', '.join(missing)}" if missing else f"; got {str(lines)[:200]}"))
+        base = sorted(k + ".npy" for k in NPZ_KEYS(keys))
+        has_comp = sorted(names) == sorted(base + [COMPONENTS_MEMBER + ".npy"])
+        if sorted(names) != base and not has_comp:
+            extra = sorted(set(n[:-4] for n in names) - set(NPZ_KEYS(keys)) - {COMPONENTS_MEMBER})
+            miss = sorted(set(NPZ_KEYS(keys)) - set(n[:-4] for n in names))
+            raise ValueError(f"npz members differ from npz v2 (missing {miss[:6]}, unexpected {extra[:6]})")
+        try:
+            with np.load(io.BytesIO(blob), allow_pickle=False) as z:
+                a = {k: z[k] for k in NPZ_KEYS(keys) + ([COMPONENTS_MEMBER] if has_comp else [])}
+        except Exception as e:
+            raise ValueError(f"unreadable npz ({e.__class__.__name__}: {e})")
+        components, aod, skipped = None, None, False
         if has_comp:
             c = a[COMPONENTS_MEMBER]
             if c.dtype.kind != "U" or c.shape != () or len(str(c)) > MAX_COMPONENTS_JSON:
@@ -398,23 +608,43 @@ class LibraryStore:
             try:
                 obj = json.loads(str(c), parse_constant=_no_constant)
                 skipped = obj is None               # JSON null: the worker's fit was attempted and failed
-                components = None if skipped else validate_components(obj)
+                if not skipped:
+                    if not isinstance(obj, dict):
+                        raise ValueError("components must be an object")
+                    obj = dict(obj)
+                    aod_obj = obj.pop("aod", None)
+                    components = validate_components(obj)
+                    aod = normalize_aod(aod_obj, keys=components) if aod_obj is not None else None
             except ValueError as e:
                 raise ValueError(f"invalid components: {e}")
             except Exception as e:
                 raise ValueError(f"invalid components ({e.__class__.__name__})")
-        lib = _lib()
-        for k in LINE_KEYS:
-            lam, tau = a[f"{k}_lambda"], a[f"{k}_tau"]
-            ref = lib.wavelength_grid(k)
-            if lam.shape != ref.shape or tau.shape != ref.shape:
-                raise ValueError(f"{k}: shape {lam.shape}/{tau.shape} != {ref.shape}")
-            if not np.allclose(lam.astype(np.float64), ref.astype(np.float64), rtol=1e-6, atol=0):
+        lib, ions = _lib(), _ions()
+        for k in keys:
+            lg = a[f"logN_{k}"]
+            if lg.shape != () or lg.dtype.kind != "f" or np.isnan(lg) or lg == np.inf:
+                raise ValueError(f"logN_{k} not a finite scalar (or -inf for a zero column)")
+            W = a[f"{k}_W"]
+            if W.shape != () or W.dtype.kind != "f" or not np.isfinite(W):
+                raise ValueError(f"{k}_W not a finite scalar")
+            want_W = float(ions.gen_window(k, float(lg)))
+            if abs(float(W) - want_W) > 1e-9 * want_W:
+                raise ValueError(f"{k}: window W {float(W):g} != {want_W:g} km/s for logN {float(lg):.3f}")
+            lam0, dlam, n = lib.native_grid(k, want_W)
+            tau = a[f"{k}_tau"]
+            for m in (f"{k}_lam0", f"{k}_dlam", f"{k}_rest"):
+                if a[m].shape != () or a[m].dtype.kind != "f" or not np.isfinite(a[m]):
+                    raise ValueError(f"{m} not a finite scalar")
+            rest = float(ions.get(k)["lam0_A"])
+            if abs(float(a[f"{k}_rest"]) - rest) > 1e-9 * rest:
+                raise ValueError(f"{k}: rest wavelength {float(a[f'{k}_rest'])} != registry {rest}")
+            if tau.ndim != 1 or tau.size != n or tau.dtype.kind != "f":
+                raise ValueError(f"{k}: tau shape {tau.shape} != native grid ({n},)")
+            if abs(float(a[f"{k}_lam0"]) - lam0) > 1e-9 * rest or \
+                    (n - 1) * abs(float(a[f"{k}_dlam"]) - dlam) > 1e-9 * rest:
                 raise ValueError(f"{k}: wavelength grid mismatch")
-            if not np.all(np.isfinite(tau)) or tau.min() < -1e-6:
+            if not np.all(np.isfinite(tau)) or (tau.size and tau.min() < -1e-6):
                 raise ValueError(f"{k}: tau not finite/non-negative")
-            if a[f"logN_{k}"].shape != () or not np.isfinite(a[f"logN_{k}"]):
-                raise ValueError(f"logN_{k} not a finite scalar")
         if a["geom"].dtype.kind != "U" or a["geom"].shape != ():
             raise ValueError("geom must be a 0-d unicode string")
         try:
@@ -441,6 +671,8 @@ class LibraryStore:
         payload["id"] = geom["id"]
         if components is not None:
             payload["components"] = components
+            if aod:
+                payload["components_aod"] = aod
         elif skipped:
             payload["components_skipped"] = True
         return payload
