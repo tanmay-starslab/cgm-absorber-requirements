@@ -1,5 +1,6 @@
-"""Tests for tngsight.search (phase-2 design §6): validation, exact semantics on hand-checked cases, the committed
-fixture/golden files (which the JS mirror docs/tng50/js/search.js is tested against), and speed."""
+"""Tests for tngsight.search (phase-2 design §6; Phase-3: the 12 registry ions): validation, exact semantics on
+hand-checked cases, the committed fixture/golden files (which the JS mirror docs/tng50/js/search.js is tested
+against), and speed."""
 import json
 import math
 import time
@@ -7,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tngsight import search as S
+from tngsight import ions as I, search as S
 
 ROOT = Path(__file__).resolve().parent
 FIXTURE = ROOT / "data" / "search_fixture.json"
@@ -27,7 +28,7 @@ def test_fixture_is_reproducible():
 def test_golden_is_current():
     g = json.loads(GOLDEN.read_text())
     assert g == json.loads(json.dumps(S.golden(), ensure_ascii=False))
-    assert len(g["cases"]) == 20 and g["query_schema"] == S.QUERY_SCHEMA
+    assert len(g["cases"]) == 23 and g["query_schema"] == S.QUERY_SCHEMA
     assert all(c["ids"] for c in g["cases"])                       # every case selects something
 
 
@@ -36,6 +37,33 @@ def test_invalid_queries(q, msg):
     with pytest.raises(ValueError) as e:
         S.validate_query(q)
     assert str(e.value) == msg
+
+
+def test_registry_ions_and_per_ion_logN_bound():
+    assert S.ION_KEYS == I.KEYS and S.QUERY_SCHEMA["properties"]["ion"]["enum"] == list(I.KEYS)
+    assert S.ION_SHORT == {k: I.get(k)["ion"] for k in I.KEYS}
+    assert S.QUERY_SCHEMA["properties"]["logN_max"]["maximum"] == 22.5 == S.QUERY_SCHEMA["properties"]["logN_min"]["maximum"]
+    assert S.validate_query({"ion": "HI", "logN_max": 22.5})["logN_max"] == 22.5
+    assert S.validate_query({"ion": "OVII", "logN_max": 19})["logN_max"] == 19.0
+    for q, msg in (({"ion": "OVI", "logN_max": 19.01}, "logN_max: must be <= 19 for OVI"),
+                   ({"ion": "NeVIII", "logN_min": 20, "logN_max": 21}, "logN_min: must be <= 19 for NeVIII"),
+                   ({"ion": "HILyb"}, "ion: must be one of HI, MgII, SiII, CII, SiIII, CIII, SiIV, CIV, NV, OVI, "
+                                      "NeVIII, OVII")):
+        with pytest.raises(ValueError) as e:
+            S.validate_query(q)
+        assert str(e.value) == msg
+
+
+def test_v1_entries_are_never_matched_on_new_ions():
+    """A catalogue row fitted only for O VI and C III (v1) is 'not fitted' for the other ions."""
+    f = fx()
+    v1 = [sid for sid, c in f["components"].items() if set(c) == {"OVI", "CIII"}]
+    assert v1
+    for k in ("HI", "MgII", "CIV", "OVII"):
+        got = {r["id"] for r in S.run_query({"ion": k, "n_min": 0}, f["entries"], f["components"], limit=200)}
+        assert not got & set(v1), k
+    assert set(v1) & {r["id"] for r in S.run_query({"ion": "OVI", "n_min": 0}, f["entries"], f["components"],
+                                                   limit=200)}
 
 
 def test_validate_defaults_and_integral_floats():

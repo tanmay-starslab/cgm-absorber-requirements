@@ -7,8 +7,9 @@ three nested 256³ disk-frame cubes by the conservative `tngsight.deposit.scatte
 
 Per cell (slim-cutout order, `cell_arrays`): disk-frame position d = (x − center_kpc) @ Rᵀ, smoothing length
 h = 2.0·(3V/4π)^{1/3} with V = Masses/Density (yt's Arepo `smoothing_length`, the kernel of every Trident ray), the
-yt/Trident fields n_H, n(O VI), n(H I), n(C III), T and Z/Z_sun of `tngsight.generate.Generator`. One scatter per
-level deposits the 7 extensive quantities (`extensive`) N_nH, N_OVI, N_HI, N_CIII = n·V, m, m·T and m·Z, so
+yt/Trident fields n_H, the 12 registry ion densities n(ion) (tngsight.ions), T and Z/Z_sun of
+`tngsight.generate.Generator`. One scatter per level deposits the extensive quantities (`extensive`) N_nH,
+N_<ion> = n·V, m, m·T and m·Z (only those the requested fields need, `quantities_for`), so
 
     density = Σ N / V_vox           (cm⁻³; conserves every atom/ion in the box, sub-voxel cells included)
     T, Z    = Σ m·X / Σ m           (mass-weighted; 0 = empty where Σ m = 0)
@@ -37,6 +38,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from . import deposit as D
+from . import ions as _ions
 from .config import GALAXY
 
 VOL_VERSION = 2
@@ -47,7 +49,12 @@ TNG_H = GALAXY["TNG_H"]
 N = 256
 GAS_LEVELS = {"L0": 400.0, "L1": 100.0, "L2": 25.0}
 R_MASK_KPC = {"L0": 400.0}                       # gas part of design §2.7 R_MASK_KPC
-VOL_KEYS = ("nH", "T", "Z", "OVI", "HI", "CIII")
+ION_KEYS = tuple(_ions.KEYS)
+VOL_KEYS = ("nH", "T", "Z") + ION_KEYS
+# design §3.5: unchanged maps for HI/OVI/CIII; cool ions ice, intermediate viridis, hot magma
+ION_CMAP = {"HI": "tng_ice", "MgII": "tng_ice", "SiII": "tng_ice", "CII": "tng_ice", "SiIII": "tng_ice",
+            "CIII": "viridis", "SiIV": "viridis", "CIV": "viridis", "NV": "viridis",
+            "OVI": "magma", "NeVIII": "magma", "OVII": "magma"}
 
 FIELDS: dict = {
     "nH": {"label": "n_H", "units": "cm^-3", "kind": "density", "cmap": "tng_dusk",
@@ -56,19 +63,15 @@ FIELDS: dict = {
           "yt_field": ("gas", "temperature")},
     "Z": {"label": "Z", "units": "Zsun", "kind": "mass_weighted", "cmap": "cividis",
           "yt_field": ("gas", "metallicity")},
-    "OVI": {"label": "n(O VI)", "units": "cm^-3", "kind": "density", "cmap": "magma",
-            "yt_field": ("gas", "O_p5_number_density")},
-    "HI": {"label": "n(H I)", "units": "cm^-3", "kind": "density", "cmap": "tng_ice",
-           "yt_field": ("gas", "H_p0_number_density")},
-    "CIII": {"label": "n(C III)", "units": "cm^-3", "kind": "density", "cmap": "viridis",
-             "yt_field": ("gas", "C_p2_number_density")},
 }
-_YT_UNITS = {"nH": "cm**-3", "OVI": "cm**-3", "HI": "cm**-3", "CIII": "cm**-3", "T": "K", "Z": ""}
+for _k in ION_KEYS:
+    FIELDS[_k] = {"label": f"n({_ions.get(_k)['ion']})", "units": "cm^-3", "kind": "density",
+                  "cmap": ION_CMAP[_k], "yt_field": ("gas", _ions.get(_k)["field"]),
+                  "color": _ions.get(_k)["color"]}
+_YT_UNITS = {"nH": "cm**-3", "T": "K", "Z": "", **{k: "cm**-3" for k in ION_KEYS}}
 SOURCES = {
     "nH": "('gas','H_nuclei_density') * V_cell",
-    "OVI": "('gas','O_p5_number_density') * V_cell",
-    "HI": "('gas','H_p0_number_density') * V_cell",
-    "CIII": "('gas','C_p2_number_density') * V_cell",
+    **{k: f"('gas','{_ions.get(k)['field']}') * V_cell" for k in ION_KEYS},
     "T": "mass-weighted ('gas','temperature')",
     "Z": "mass-weighted ('gas','metallicity') / Z_SUN",
 }
@@ -77,9 +80,10 @@ SOURCES = {
 # lands in a 2×2×2 stamp, which the trilinear ray march draws as a square tile (cold H I / C III / O VI clumps in the
 # outer CGM); a 2 Δ floor gives round, overlapping footprints. Columns and conservation are unchanged by the floor.
 GAS_H_MIN_VOX = 2.0
-QUANTITIES = ("N_nH", "N_OVI", "N_HI", "N_CIII", "m", "mT", "mZ")
-PRIMARY = {"nH": "N_nH", "OVI": "N_OVI", "HI": "N_HI", "CIII": "N_CIII", "T": "m", "Z": "m"}
-CELL_NAMES = ("pos_disk", "h", "V_cm3", "m", "nH", "OVI", "HI", "CIII", "T", "Z")
+DENSITY_KEYS = ("nH",) + ION_KEYS
+QUANTITIES = ("N_nH",) + tuple(f"N_{k}" for k in ION_KEYS) + ("m", "mT", "mZ")
+PRIMARY = {"nH": "N_nH", **{k: f"N_{k}" for k in ION_KEYS}, "T": "m", "Z": "m"}
+CELL_NAMES = ("pos_disk", "h", "V_cm3", "m", "nH") + ION_KEYS + ("T", "Z")
 # expected encoding ranges (design §3.4 as amended at integration: nH and HI vmin are the masked p0.5 of the
 # r <= 400 kpc data, measured -6.00 and -12.29): field -> ((vmin, tol), (vmax, tol)); T/Z are measured
 EXPECTED_RANGE = {"nH": ((-6.0, 0.3), (0.5, 0.2)), "OVI": ((-16.2, 0.4), (-5.6, 0.2)),
@@ -309,7 +313,7 @@ def cell_arrays(ds) -> dict:
            "h": 2.0 * (3.0 * V_cm3 / (4.0 * math.pi)) ** (1.0 / 3.0) / CM_PER_KPC,
            "V_cm3": V_cm3,
            "m": ad["PartType0", "Masses"].to("Msun").d.astype(np.float64)}
-    for k in ("nH", "OVI", "HI", "CIII", "T", "Z"):
+    for k in DENSITY_KEYS + ("T", "Z"):
         f = FIELDS[k]["yt_field"]
         if k == "nH" and f not in ds.derived_field_list:          # older yt: no H_nuclei_density
             f = ("gas", "H_number_density")
@@ -344,28 +348,50 @@ def load_cells(cache, names=CELL_NAMES):
     return {k: np.load(p) for k, p in paths.items()}
 
 
-def extensive(cells) -> dict:
-    """The 7 extensive per-cell quantities deposited by one scatter (design §4.1)."""
+def quantities_for(keys) -> tuple:
+    """The extensive quantities a set of fields needs, in QUANTITIES order. N_nH and m are always included (the
+    conservation checks use them)."""
+    need = {"N_nH", "m"}
+    for k in keys:
+        if k in ("T", "Z"):
+            need |= {"m", f"m{k}"}
+        else:
+            need.add(PRIMARY[k])
+    return tuple(q for q in QUANTITIES if q in need)
+
+
+def extensive(cells, quantities=QUANTITIES) -> dict:
+    """The extensive per-cell quantities deposited by one scatter (design §4.1): N_x = n_x·V, m, m·T, m·Z."""
     V = np.asarray(cells["V_cm3"], dtype=np.float64)
     m = np.asarray(cells["m"], dtype=np.float64)
-    return {"N_nH": cells["nH"] * V, "N_OVI": cells["OVI"] * V, "N_HI": cells["HI"] * V,
-            "N_CIII": cells["CIII"] * V, "m": m, "mT": m * cells["T"], "mZ": m * cells["Z"]}
+    out = {}
+    for q in quantities:
+        if q == "m":
+            out[q] = m
+        elif q in ("mT", "mZ"):
+            out[q] = m * cells[q[1:]]
+        else:
+            out[q] = cells[q[2:]] * V
+    return out
 
 
 # ============================================================================== deposition
 def level_cubes(dep, level) -> dict:
-    """Deposited totals -> the 6 shipped fields (float64 [i,j,k]): densities N/V_vox [cm⁻³], T = mT/m, Z = mZ/m
-    (0 where Σ m = 0); L0 voxel centres at r > 400 kpc → 0."""
+    """Deposited totals -> the shipped fields present (float64 [i,j,k]): densities N/V_vox [cm⁻³], T = mT/m,
+    Z = mZ/m (0 where Σ m = 0); L0 voxel centres at r > 400 kpc → 0."""
     g = dep.grids
     n = g["m"].shape[0]
     dx = 2.0 * GAS_LEVELS[level] / n
     vvox = (dx * CM_PER_KPC) ** 3
     out = {}
-    for k in ("nH", "OVI", "HI", "CIII"):
-        out[k] = g[f"N_{k}"] / vvox
+    for k in DENSITY_KEYS:
+        if f"N_{k}" in g:
+            out[k] = g[f"N_{k}"] / vvox
     m = g["m"]
     pos = m > 0
     for k, q in (("T", "mT"), ("Z", "mZ")):
+        if q not in g:
+            continue
         a = np.zeros_like(m)
         np.divide(g[q], m, out=a, where=pos)
         out[k] = a
@@ -373,7 +399,7 @@ def level_cubes(dep, level) -> dict:
     if msk is not None:
         for k in out:
             out[k] = np.where(msk, out[k], 0.0)
-    return {k: out[k] for k in VOL_KEYS}
+    return {k: out[k] for k in VOL_KEYS if k in out}
 
 
 def deposit_numbers(dep) -> dict:
@@ -390,12 +416,13 @@ def deposit_numbers(dep) -> dict:
             "deposit_generator": dep.meta.get("generator", D.GENERATOR)}
 
 
-def build_level(cells, level, workers=1, n=N, progress=None):
-    """ONE scatter of all 7 extensive quantities on level `level` -> (cubes dict, DepositResult)."""
-    q = extensive(cells)
+def build_level(cells, level, workers=1, n=N, progress=None, keys=VOL_KEYS):
+    """ONE scatter of the extensive quantities the fields `keys` need on level `level` -> (cubes, DepositResult)."""
+    qn = quantities_for(keys)
+    q = extensive(cells, qn)
     g = grid(level, n)
     h = np.maximum(np.asarray(cells["h"], dtype=np.float64), GAS_H_MIN_VOX * g.dx)
-    dep = D.scatter(cells["pos_disk"], h, {k: q[k] for k in QUANTITIES}, g,
+    dep = D.scatter(cells["pos_disk"], h, {k: q[k] for k in qn}, g,
                     workers=int(workers), progress=progress)
     return level_cubes(dep, level), dep
 

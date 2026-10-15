@@ -1,9 +1,11 @@
 """On-demand sightline generation from the slim cutout (port of tng50/scripts/gen_cgm_sightlines.py).
 
-Recipe (generation.md §1.4–1.8, §6): yt.load(cutout, index_filename=<writable>) → add O VI/H I/C III
-ion fields → trident.make_simple_ray between the ±R200c endpoints (ckpc/h) → ion columns from the ray
-HDF5 → per line SpectrumGenerator(rest(1∓1500/c), dλ=0.002).make_spectrum(use_peculiar_velocity=True,
-use_doppler_redshift_only=True [trident fork], ly_continuum=False) → float32. yt/trident import lazily.
+Recipe (generation.md §1.4–1.8, §6; Phase-3 design §2.1): yt.load(cutout, index_filename=<writable>) → add the
+ion fields of the 12 registry ions (tngsight.ions) → trident.make_simple_ray between the ±R200c endpoints (ckpc/h) →
+ion columns from the ray HDF5 → per line, with W = ions.gen_window(key, logN) (1500 km/s; wider for damped H I),
+SpectrumGenerator(λ0(1∓W/c), dλ = λ0·0.25/c, line_database = lines.txt + the O VII supplement)
+.make_spectrum(use_peculiar_velocity=True, use_doppler_redshift_only=True [trident fork], ly_continuum=False,
+min_tau=SPEC_MIN_TAU) → float32 τ on the native grid (library.native_grid, checked). yt/trident import lazily.
 Geometry: a canonicalize() dict (orientation/b/azimuth), a canonicalize_endpoints() dict (custom ray
 p0 -> p1, kind "endpoints") or a full stored geom. Optional "fit" stage (Voigt components) after the
 spectra, guarded so a computed sightline is never lost over the fit.
@@ -15,20 +17,22 @@ import os
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 import h5py
 import numpy as np
 from . import config
-from .config import C_KMS, DLAMBDA, VWIN_GEN_KMS, LINE_KEYS, LINES
+from . import ions as I
+from .config import C_KMS, SPEC_MIN_TAU
 from .geometry import make_sightline, make_endpoints, custom_id, geom_id, _ALIASES
-from .library import wavelength_grid, save_npz, load_npz
+from .library import native_grid, save_npz, load_npz, generation_record
 
 ION_TABLE_FILE = "hm2012_ss_hr.h5"
 RAY_FIELDS = [("gas", "density"), ("gas", "temperature"), ("gas", "metallicity"),
-              ("gas", "H_number_density")] + [("gas", LINES[k]["field"]) for k in LINE_KEYS]
+              ("gas", "H_number_density")] + [("gas", I.get(k)["field"]) for k in I.KEYS]
 GEOM_KEYS = ("orientation", "b_kpc", "azimuth_deg", "inclination_deg", "n_los", "v_sys_kms", "half_kpc",
              "b_perp_check_kpc", "anchor_kpc", "start_kpc", "end_kpc", "start_ckpch", "end_ckpch")
-STAGES = ("load", "ray") + tuple(f"spectrum:{k}" for k in LINE_KEYS) + ("fit", "save")
+STAGES = ("load", "ray") + tuple(f"spectrum:{k}" for k in I.KEYS) + ("fit", "save")
 _IMPORT_LOCK = threading.Lock()
 log = logging.getLogger("tngsight.generate")
 
@@ -77,8 +81,8 @@ def ray_columns(tmp) -> dict:
     with h5py.File(tmp, "r") as h:
         grid = h["grid"]
         dl = grid["dl"][()]
-        for key in LINE_KEYS:
-            fld = LINES[key]["field"]
+        for key in I.KEYS:
+            fld = I.get(key)["field"]
             n = grid[fld][()] if fld in grid else np.zeros_like(dl)
             N = float(np.sum(n * dl))
             out[key] = np.log10(N) if N > 0 else -np.inf
@@ -86,22 +90,37 @@ def ray_columns(tmp) -> dict:
 
 
 # Trident's per-cell deposition window starts at 2 coarse bins and only widens while τ at its edge is ≥ min_tau,
-# so a cell whose peak τ is already < min_tau is deposited over ~1.2 km/s only (a few % of its column). With the
-# Trident default 1e-3 (which the 672-sightline library was made with) weak, diffuse absorbers carry up to ~2 dex
-# less column in τ than the ray holds (catalog logN vs logN_aod). 1e-8 deposits them in full but makes new
-# spectra inconsistent with the library until it is regenerated (owner decision), so the default stays 1e-3.
-SPEC_MIN_TAU = float(os.environ.get("TNG_SPEC_MIN_TAU") or 1e-3)
+# so a cell whose peak τ is already < min_tau is deposited over ~1 bin only (a few % of its column). The v1 library
+# was made with Trident's default 1e-3 (deficits up to ~0.2 dex for weak, diffuse absorbers); v2 uses
+# config.SPEC_MIN_TAU = 1e-8 (≤ 0.0005 dex), recorded in every npz (generation.min_tau).
+GRID_RTOL = 1e-9
 
 
-def make_line_spectrum(trident, ray, key, min_tau=None):
-    L = LINES[key]; rest = L["rest_A"]
-    lam_min = rest * (1 - VWIN_GEN_KMS / C_KMS); lam_max = rest * (1 + VWIN_GEN_KMS / C_KMS)
-    sg = trident.SpectrumGenerator(lambda_min=lam_min, lambda_max=lam_max, dlambda=DLAMBDA)
-    sg.make_spectrum(ray, lines=[L["trident_line"]], use_peculiar_velocity=True,
+def line_database(trident):
+    """Trident's lines.txt plus the registry's supplement lines (O VII)."""
+    ld = trident.LineDatabase("lines.txt")
+    I.add_supplement_lines(ld)
+    return ld
+
+
+def make_line_spectrum(trident, ray, key, W, line_db, min_tau=None):
+    """(lam0, dlam, tau f4) of one line on its native grid (design §2.1). Raises RuntimeError when Trident's grid
+    differs from library.native_grid(key, W) (no silent resampling)."""
+    rest = float(I.get(key)["lam0_A"])
+    lam0, dlam, n = native_grid(key, W)
+    sg = trident.SpectrumGenerator(lambda_min=rest * (1 - W / C_KMS), lambda_max=rest * (1 + W / C_KMS),
+                                   dlambda=rest * config.DV_NATIVE / C_KMS, bin_space="wavelength",
+                                   line_database=line_db)
+    sg.make_spectrum(ray, lines=[I.get(key)["trident_line"]], use_peculiar_velocity=True,
                      use_doppler_redshift_only=True, ly_continuum=False, njobs=1,
                      min_tau=SPEC_MIN_TAU if min_tau is None else float(min_tau))
-    lam = np.array(sg.lambda_field); tau = np.array(sg.tau_field)
-    return lam.astype(np.float32), tau.astype(np.float32)
+    lam = np.asarray(sg.lambda_field, np.float64); tau = np.asarray(sg.tau_field)
+    if lam.size != n or tau.size != n:
+        raise RuntimeError(f"{key}: Trident grid has {lam.size} samples, native_grid {n}")
+    dev = float(np.max(np.abs(lam - (lam0 + np.arange(n) * dlam))))
+    if dev > GRID_RTOL * rest:
+        raise RuntimeError(f"{key}: Trident wavelength grid differs from native_grid by {dev:.3g} Å")
+    return lam0, dlam, tau.astype(np.float32)
 
 
 def resolve_geometry(geom: dict):
@@ -142,7 +161,8 @@ def fit_stage(payload: dict, progress=None) -> dict:
     progress("fit", 0.0, "fitting Voigt components")
     try:
         from . import components as _components          # built by U_fit; absent before integration
-        comps = _components.fit_payload(payload, progress)
+        aod = {}
+        comps = _components.fit_payload(payload, progress, aod=aod)
     except ImportError as e:
         log.warning("fit stage skipped: tngsight.components unavailable (%s)", e)
         progress("fit", 1.0, "skipped")
@@ -154,6 +174,7 @@ def fit_stage(payload: dict, progress=None) -> dict:
         payload["components_skipped"] = True                # attempted and failed: the coordinator won't redo it
         return payload
     payload["components"] = comps
+    payload["components_aod"] = aod                         # fit regions: the browser fitter's windows (§5.3)
     progress("fit", 1.0, "components fitted")
     return payload
 
@@ -162,7 +183,8 @@ class Generator:
     """Warm generator: one cached yt dataset; ray casts serialised by a lock (yt is not thread-safe)."""
 
     def __init__(self, cutout=None, ion_table_dir=None, index_filename=None, workdir=None,
-                 fit_components=True):
+                 fit_components=True, min_tau=None):
+        self.min_tau = float(SPEC_MIN_TAU if min_tau is None else min_tau)
         self.fit_components = bool(fit_components)
         self.cutout = Path(cutout) if cutout else config.cutout_path()
         self.ion_table_dir = Path(ion_table_dir) if ion_table_dir else config.ion_table_dir()
@@ -194,8 +216,9 @@ class Generator:
                 ds.add_field(("gas", "metallicity"), function=_Z, sampling_type="local",
                              units="", force_override=True)
             progress("load", 0.6, "adding ion fields")
-            trident.add_ion_fields(ds, ions=[LINES[k]["ion"] for k in LINE_KEYS], ftype="gas",
+            trident.add_ion_fields(ds, ions=[I.get(k)["ion"] for k in I.KEYS], ftype="gas",
                                    ionization_table=str(self.ion_table_dir / ION_TABLE_FILE))
+            self._ld = line_database(trident)
             self.ds, self._trident = ds, trident
             progress("load", 1.0, "dataset ready")
 
@@ -209,28 +232,37 @@ class Generator:
             progress("ray", 0.0, f"casting ray {gid}")
             self.workdir.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=self.workdir, prefix="_cgmray_", suffix=".h5"); os.close(fd)
-            ray, taus = None, {}
+            ray = None
+            pl = {"geom": sl, "lines": list(I.KEYS), "generation": generation_record(self.min_tau),
+                  "logN": {}, "tau": {}, "lam0": {}, "dlam": {}, "rest": {}, "W": {}}
+            self.timings = {}
             try:
+                t0 = time.perf_counter()
                 ray = cast_ray(tr, self.ds, sl, tmp)
                 cols = ray_columns(tmp)
+                self.timings["ray"] = time.perf_counter() - t0
                 progress("ray", 1.0, "ray done")
-                for key in LINE_KEYS:
-                    progress(f"spectrum:{key}", 0.0, f"depositing {LINES[key]['trident_line']}")
-                    lam, tau = make_line_spectrum(tr, ray, key)
-                    if not np.array_equal(lam, wavelength_grid(key)):
-                        raise RuntimeError(f"{key}: Trident wavelength grid differs from library.wavelength_grid")
-                    taus[key] = tau
+                t0 = time.perf_counter()
+                for key in I.KEYS:
+                    W = I.gen_window(key, cols[key])
+                    progress(f"spectrum:{key}", 0.0, f"depositing {I.get(key)['trident_line']} (±{W:.0f} km/s)")
+                    lam0, dlam, tau = make_line_spectrum(tr, ray, key, W, self._ld, self.min_tau)
+                    pl["logN"][key] = cols[key]; pl["tau"][key] = tau; pl["lam0"][key] = lam0
+                    pl["dlam"][key] = dlam; pl["rest"][key] = float(I.get(key)["lam0_A"]); pl["W"][key] = W
                     progress(f"spectrum:{key}", 1.0, "done")
+                self.timings["spectra"] = time.perf_counter() - t0
             finally:
                 del ray
                 if os.path.exists(tmp):
                     os.remove(tmp)
         buf = io.BytesIO()                      # round trip through the npz writer (exact stored dtypes)
-        save_npz(buf, sl, cols, taus)
+        save_npz(buf, pl)
         buf.seek(0)
         payload = load_npz(buf, id=gid)
         if self.fit_components:
-            fit_stage(payload, progress)        # stage "fit" (skipped cleanly without tngsight.components)
+            t0 = time.perf_counter()
+            fit_stage(payload, progress)
+            self.timings["fit"] = time.perf_counter() - t0        # stage "fit" (skipped cleanly without tngsight.components)
         progress("save", 0.0, "packing npz")
         progress("save", 1.0, "done")
         return payload

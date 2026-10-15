@@ -35,6 +35,7 @@ from pathlib import Path
 import numpy as np
 
 from .config import GALAXY
+from . import ions as _ions
 
 SCHEMA = "tng50-viz/2"
 VIZPACK_VERSION = 1
@@ -43,7 +44,7 @@ N = 256
 GAS_LEVELS = {"L0": 400.0, "L1": 100.0, "L2": 25.0}
 STAR_LEVELS = {"S0": 400.0, "S1": 100.0, "S2": 25.0}
 R_MASK_KPC = {"L0": 400.0, "S0": 400.0}
-VOL_KEYS = ("nH", "T", "Z", "OVI", "HI", "CIII")
+VOL_KEYS = ("nH", "T", "Z") + tuple(_ions.KEYS)          # gas fields: nH, T, Z + the 12 registry ions
 Z_SUN = 0.0127
 M_P_G = 1.67262192369e-24
 CM_PER_KPC = GALAXY["CM_PER_KPC"]
