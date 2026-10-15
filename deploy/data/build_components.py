@@ -3,14 +3,18 @@
 
     python deploy/data/build_components.py [--library DIR] [--out FILE] [--cache DIR] [--jobs N] [--ids a,b]
            [--include-generated] [--copy-to docs/tng50/data/components.json] [--lock FILE] [--force]
+           [--rows]
 
 Reads `<library>/catalog.json` for the ids (source "library"; plus "generated" with --include-generated) and
-`<library>/sightlines/<id>.npz` (generated: `<library>/generated/<id>.npz`). Per sightline the fit
+`<library>/sightlines/<id>.npz` (generated: `<library>/generated/<id>.npz`; npz v2 or v1, every registry line
+present). Per sightline the fit
 (tngsight.components.fit_payload) is cached as `<cache>/<id>.json` = {"id","fitter","params_tag","components",
 "aod","seconds"}; a cache file with the current params_tag (and an "aod" record) is reused, so an interrupted run
 resumes. Writes the catalogue (tngsight.components.make_catalogue, compact sorted JSON, with the per-sightline
 AOD columns under "aod") to `--out` (default <library>/components.json) and optionally byte-copies it to
-`--copy-to`. The heavy-I/O lock (design §1) is held for the whole run. Prints totals, wall time and
+`--copy-to`. With --rows the cache files use the regen_library.py layout ({"id","fitter","params_tag",
+"components": {k: rows},"aod"}), so `--cache <out>/components` refits a regenerated library into a separate
+directory (the library itself is only read). The heavy-I/O lock (design §1) is held for the whole run. Prints totals, wall time and
 POORFIT/SAT/MAXCOMP/DAMPED counts per ion.
 """
 from __future__ import annotations
@@ -30,7 +34,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(1, str(ROOT))
 from tngsight import components as C  # noqa: E402
 from tngsight import vpfit  # noqa: E402
-from tngsight.config import LINE_KEYS, library_dir  # noqa: E402
+from tngsight import ions as I  # noqa: E402
+from tngsight.config import library_dir  # noqa: E402
 
 ID_RE = re.compile(r"^((face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?|cust_[0-9a-f]{10})$")
 LOCK = os.environ.get("TNG_HEAVY_LOCK", "")   # opt-in heavy-I/O lock file
@@ -66,7 +71,7 @@ def _init_worker():
 
 def fit_one(args):
     """(sid, npz path, cache path, tag) -> (sid, components, aod, seconds, cached)."""
-    sid, npz, cache, tag = args
+    sid, npz, cache, tag, rows = (tuple(args) + (False,))[:5]
     cp = Path(cache)
     if cp.is_file():
         try:
@@ -82,8 +87,12 @@ def fit_one(args):
     dt = time.perf_counter() - t0
     C.validate_components(comps)
     C.validate_aod(aod)
-    rec = {"id": sid, "fitter": C.FITTER_TAG, "params_tag": tag, "components": comps, "aod": aod,
-           "seconds": round(dt, 3)}
+    if rows:                                                  # regen_library.py per-id layout
+        rec = {"id": sid, "fitter": C.FITTER_TAG, "params_tag": tag,
+               "components": {k: C.dicts_to_rows(v) for k, v in comps.items()}, "aod": aod}
+    else:
+        rec = {"id": sid, "fitter": C.FITTER_TAG, "params_tag": tag, "components": comps, "aod": aod,
+               "seconds": round(dt, 3)}
     _atomic_write(cp, json.dumps(rec, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
     return sid, comps, aod, dt, False
 
@@ -121,6 +130,7 @@ def main(argv=None):
     ap.add_argument("--copy-to", type=Path, default=None)
     ap.add_argument("--lock", default=LOCK, help="heavy-I/O lock file ('' disables)")
     ap.add_argument("--force", action="store_true", help="ignore the per-sightline cache")
+    ap.add_argument("--rows", action="store_true", help="write cache files in the regen_library.py layout")
     a = ap.parse_args(argv)
     lib = a.library or library_dir()
     out = a.out or lib / "components.json"
@@ -135,7 +145,7 @@ def main(argv=None):
         cache.mkdir(parents=True, exist_ok=True)
         print(f"{len(ids)} sightlines, params_tag {tag}, jobs {a.jobs}, cache {cache}", flush=True)
         t0 = time.time()
-        work = [(s, str(p), str(cache / f"{s}.json"), tag) for s, p in ids.items()]
+        work = [(s, str(p), str(cache / f"{s}.json"), tag, a.rows) for s, p in ids.items()]
         entries, aods, secs, n_cached = {}, {}, [], 0
         ctx = mp.get_context("spawn")
         with ctx.Pool(max(1, a.jobs), initializer=_init_worker) as pool:
@@ -159,9 +169,11 @@ def main(argv=None):
     print(f"wrote {out} ({len(blob) / 1e6:.3f} MB, {len(entries)} entries) in {wall:.0f} s; "
           f"{n_cached} cached, {len(secs)} fitted"
           + (f", fit s/sightline median {sorted(secs)[len(secs) // 2]:.2f} max {max(secs):.2f}" if secs else ""))
-    for k in LINE_KEYS:
-        n = [len(e[k]) for e in entries.values()]
-        fl = [c["flag"] for e in entries.values() for c in e[k]]
+    for k in I.KEYS:
+        n = [len(e[k]) for e in entries.values() if k in e]
+        if not n:
+            continue
+        fl = [c["flag"] for e in entries.values() for c in e.get(k, [])]
         cnt = {f: sum(1 for x in fl if x & vpfit.FLAGS[f]) for f in ("SAT", "POORFIT", "MAXCOMP", "BOUND", "NOERR",
                                                                     "EDGE", "DAMPED")}
         print(f"  {k:5s} comps {sum(n):6d}  per sightline mean {sum(n) / max(1, len(n)):.2f} max {max(n or [0])}"

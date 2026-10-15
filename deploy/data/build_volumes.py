@@ -2,14 +2,15 @@
 """Build the nested raw-resolution gas cubes of the 3D viewer (Phase-2b design §4.1–4.3).
 
     python deploy/data/build_volumes.py [--viz DIR] [--cache DIR] [--index FILE] [--levels L0,L1,L2]
-                                        [--fields nH,T,Z,OVI,HI,CIII] [--workers 4] [--deposit-workers 1]
+                                        [--fields nH,T,Z,<ion keys>] [--workers 4] [--deposit-workers 1]
                                         [--lock FILE] [--force] [--check]
 
 Stages (each resumable from --cache):
   1. cells   — every gas cell of the slim cutout through `Generator.load()` (yt + trident, same metallicity override
                and ion table as the rays), order-checked against the h5py file, cached as cells_<name>.npy.
-  2. deposit — per level ONE `tngsight.deposit.scatter` of the 7 extensive quantities; float32 cubes
-               <L>_<field>.npy + <L>.json (DepositResult numbers). A cached level is reused unless --force.
+  2. deposit — per level ONE `tngsight.deposit.scatter` of the extensive quantities the --fields need (N_nH and m
+               always); float32 cubes <L>_<field>.npy + <L>.json (DepositResult numbers). A level whose cubes for
+               --fields are cached is reused unless --force (so the 9 Phase-3 ions can be added to an existing cache).
   3. encode  — shared full-range log10 → u8 per field (L0 masked at r > 400 kpc), proj/vol windows, WebP atlases
                (process pool, --workers) + gzip raw, content-hashed, under <viz>/gas/<L>/; <viz>/gas/manifest_gas.json.
                Unchanged cubes (same raw sha256, files intact) are not re-encoded.
@@ -40,12 +41,12 @@ from tngsight import config, deposit as D, volume as V  # noqa: E402
 
 DEFAULT_LOCK = Path(os.environ["TNG_HEAVY_LOCK"]) if os.environ.get("TNG_HEAVY_LOCK") else None
 CM = V.CM_PER_KPC
-IONS = (("OVI", "OVI"), ("HI", "HILyb"), ("CIII", "CIII"))       # (VOL key, npz LINE key)
+IONS = tuple((k, k) for k in V.ION_KEYS)                         # (VOL key, npz line key): the registry keys
 CHECKS = {"L1": ("face_b050_a090", "rand_b031_a334_s175141482", "rand_b008_a049_s51205422"),
           "L2": ("rand_b010_a020_s339575117", "rand_b008_a049_s51205422", "rand_b006_a031_s708179283"),
           "L0": ("face_b050_a090", "edge_b100_a090", "rand_b031_a334_s175141482")}
 INFO_L1 = ("rand_b010_a020_s339575117",)
-TOL = {"OVI": 0.10, "CIII": 0.10, "HI": 0.15}                    # L1/L2 segment checks; L0 full ray: 0.15 all
+TOL = {k: 0.15 for k in V.ION_KEYS} | {"OVI": 0.10, "CIII": 0.10}    # L1/L2 segment checks; L0 full ray: 0.15 all
 SIDE_VERSION = 2                     # 2: gas h floor GAS_H_MIN_VOX = 2 Δ (tune1)
 
 
@@ -109,9 +110,10 @@ def level_paths(cache: Path, L):
     return {k: cache / f"{L}_{k}.npy" for k in V.VOL_KEYS}, cache / f"{L}.json"
 
 
-def level_cached(cache, L) -> bool:
+def level_cached(cache, L, keys=V.VOL_KEYS) -> bool:
+    """True when the level's side file is current and the cubes of every field in `keys` (+ nH) exist."""
     npys, side = level_paths(cache, L)
-    if not side.is_file() or not all(p.is_file() for p in npys.values()):
+    if not side.is_file() or not all(npys[k].is_file() for k in set(keys) | {"nH"}):
         return False
     try:
         s = json.loads(side.read_text())
@@ -121,7 +123,8 @@ def level_cached(cache, L) -> bool:
         return False
 
 
-def deposit_level(cells, L, cache: Path, workers) -> dict:
+def deposit_level(cells, L, cache: Path, workers, keys=V.VOL_KEYS) -> dict:
+    """Deposit the fields `keys` (+ nH; only the quantities they need) of level L into the cache."""
     t = time.time()
     last = [0.0]
 
@@ -129,7 +132,8 @@ def deposit_level(cells, L, cache: Path, workers) -> dict:
         if time.time() - last[0] > 20:
             last[0] = time.time()
             print(f"[deposit] {L} {done / max(total, 1):6.1%} of {total / 1e6:.0f} M pairs", flush=True)
-    cubes, dep = V.build_level(cells, L, workers=workers, progress=prog)
+    keys = tuple(k for k in V.VOL_KEYS if k in set(keys) | {"nH"})
+    cubes, dep = V.build_level(cells, L, workers=workers, progress=prog, keys=keys)
     nums = V.deposit_numbers(dep)
     for q in ("N_nH", "m"):
         if nums["conservation_rel"][q] > 1e-6:
@@ -139,6 +143,14 @@ def deposit_level(cells, L, cache: Path, workers) -> dict:
     for k, a in cubes.items():
         tmp = npys[k].with_name(npys[k].name + ".part.npy")
         np.save(tmp, a.astype(np.float32)); tmp.replace(npys[k])
+    if side.is_file():                                          # fields deposited by earlier (subset) runs
+        try:
+            prev = json.loads(side.read_text())
+            if prev.get("side_version") == SIDE_VERSION and prev.get("n") == V.N:
+                for d in ("conservation_rel", "lost_fraction", "q_in", "q_full_inside", "q_lost"):
+                    nums[d] = {**(prev.get(d) or {}), **nums[d]}
+        except ValueError:
+            pass
     nums.update({"side_version": SIDE_VERSION, "volume": V.GENERATOR, "level": L, "n": V.N,
                  "gas_h_min_vox": V.GAS_H_MIN_VOX,
                  "half_kpc": V.GAS_LEVELS[L], "wall_s": round(time.time() - t, 1)})
@@ -238,6 +250,7 @@ def clip_box(p0, p1, half):
 
 
 def sightline(lib: Path, sid):
+    """(p0, p1, {line: ray logN}) of a library sightline (npz v2 or v1; a v1 file has no H I Lyα column)."""
     from tngsight import library as Lb
     p = lib / "sightlines" / f"{sid}.npz"
     if not p.is_file():
@@ -247,12 +260,20 @@ def sightline(lib: Path, sid):
             pay["logN"])
 
 
+def check_ions(cache: Path, keys=None):
+    """The (VOL key, npz key) pairs to column-check: requested ions whose cubes are cached on every level."""
+    want = [k for k, _ in IONS if keys is None or k in keys]
+    return [(k, lk) for k, lk in IONS if k in want
+            and all(level_paths(cache, L)[0][k].is_file() for L in CHECKS)]
+
+
 def log10s(x):
     return math.log10(x) if x > 0 else -math.inf
 
 
-def column_checks(cells, cache: Path, frag, lib: Path, viz: Path) -> dict:
-    ext = {k: cells[k] * cells["V_cm3"] for k, _ in IONS}
+def column_checks(cells, cache: Path, frag, lib: Path, viz: Path, keys=None) -> dict:
+    ions = check_ions(cache, keys)
+    ext = {k: cells[k] * cells["V_cm3"] for k, _ in ions}
     pos, h = cells["pos_disk"], cells["h"]
     fields = frag["gas"]["fields"] if frag else {}
     sl = {sid: sightline(lib, sid) for sid in {s for v in CHECKS.values() for s in v} | set(INFO_L1)}
@@ -263,7 +284,7 @@ def column_checks(cells, cache: Path, frag, lib: Path, viz: Path) -> dict:
 
     for L in ("L1", "L2", "L0"):
         half = V.GAS_LEVELS[L]
-        cub = load_level(cache, L, [k for k, _ in IONS])
+        cub = load_level(cache, L, [k for k, _ in ions])
         ids = CHECKS[L] + (INFO_L1 if L == "L1" else ())
         for sid in ids:
             if sl.get(sid) is None:
@@ -277,9 +298,11 @@ def column_checks(cells, cache: Path, frag, lib: Path, viz: Path) -> dict:
                     print(f"[check] {L} {sid}: misses the box"); continue
             a, b = seg
             info = sid in INFO_L1 and L == "L1"
-            for k, lk in IONS:
+            for k, lk in ions:
                 cube4 = log10s(D.cube_column(cub[k], half, a, b, 4.0) * CM)
                 cube8 = log10s(D.cube_column(cub[k], half, a, b, 8.0) * CM)
+                if L == "L0" and lk not in logN:
+                    continue                                    # v1 library npz: no column for this line
                 target = logN[lk] if L == "L0" else ref(a, b, k)
                 d = cube4 - target
                 tol = 0.15 if L == "L0" else TOL[k]
@@ -305,7 +328,9 @@ def column_checks(cells, cache: Path, frag, lib: Path, viz: Path) -> dict:
         if sl.get(sid) is None:
             continue
         p0, p1, logN = sl[sid]
-        for k, lk in IONS:
+        for k, lk in ions:
+            if lk not in logN:
+                continue
             r_ = ref(p0, p1, k)
             dd = r_ - logN[lk]
             full.append({"sid": sid, "ion": k, "line_integral": round(r_, 3), "npz": round(logN[lk], 3),
@@ -389,11 +414,11 @@ def main(argv=None):
     if not a.check:
         nums = {}
         for L in V.GAS_LEVELS:
-            if L in levels and (a.force or not level_cached(a.cache, L)):
+            if L in levels and (a.force or not level_cached(a.cache, L, keys)):
                 t = time.time()
-                nums[L] = deposit_level(cells, L, a.cache, a.deposit_workers)
+                nums[L] = deposit_level(cells, L, a.cache, a.deposit_workers, keys)
                 timings[f"deposit_{L}_s"] = round(time.time() - t, 1)
-            elif level_cached(a.cache, L):
+            elif level_cached(a.cache, L, keys):
                 nums[L] = side_numbers(a.cache, L)
                 print(f"[deposit] {L}: cached ({nums[L]['seconds']:.1f}s scatter when built)", flush=True)
         missing = [L for L in V.GAS_LEVELS if L not in nums]
@@ -433,7 +458,7 @@ def main(argv=None):
         print(f"[mass] {L}: conservation N_nH {cons[L]['conservation_N_nH']:.1e}, m {cons[L]['conservation_m']:.1e}; "
               f"lost m {cons[L]['lost_m']:.3%}, N_nH {cons[L]['lost_N_nH']:.3%}", flush=True)
     t = time.time()
-    chk = column_checks(cells, a.cache, frag, lib, a.viz)
+    chk = column_checks(cells, a.cache, frag, lib, a.viz, keys=[k for k in keys if k in V.ION_KEYS] or None)
     timings["checks_s"] = round(time.time() - t, 1)
     timings["total_s"] = round(time.time() - T0, 1)
     rs, rc = rss_gb()
