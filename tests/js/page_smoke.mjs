@@ -43,7 +43,7 @@ if (!process.env.TNG_BROWSER) { console.log("browser part skipped (set TNG_BROWS
 /* ---------------------------------------------------------------- browser */
 const srv = await serve({dir: DIR, page: PAGE, port: opt.port, viz: opt.viz || process.env.TNG_VIZ, apiUds: opt["api-uds"] || null});
 if (opt["api-uds"]) api = srv.origin;
-const P = await launch({profile: opt.profile, edge: opt.edge, inject: readInjects(opt.inject), block: BLOCK});
+const P = await launch({profile: opt.profile, edge: opt.edge, inject: readInjects(opt.inject), block: BLOCK, hover: true});   // hover: a desktop mouse (C10 hover)
 const st = () => P.eval("tngApp.getState()");
 const PENDING = "rand_b199_a359_s1";   // a deep-linked id no catalogue has: kept in the URL while the default is shown (offline)
 const url = (hash = "") => srv.base + (srv.query || (api ? "?" : "")) + (api ? (srv.query ? "&" : "") + "api=" + encodeURIComponent(api) : "") + hash;
@@ -224,7 +224,8 @@ try {
       const after = rest(await st());
       check(res.every(x => x === null) && before === after, `setInstrument rejects ${bads.length} invalid inputs with a RangeError naming the field, and applies nothing${res.filter(Boolean).length ? ": " + res.filter(Boolean).join("; ") : ""}${before !== after ? "; state changed" : ""}`);
       const t0 = await P.now();
-      const s = await P.eval(`tngApp.setInstrument({snr: [30, 7], R: {uv: [20000, 60000]}, vhw: 300})`); await sleep(400);
+      const s = await P.eval(`tngApp.setInstrument({snr: [30, 7], R: {uv: [20000, 60000]}, vhw: 300})`);
+      await P.waitFor(`/(^#|&)vw=300(&|$)/.test(location.hash) && /(^#|&)sn=30,7(&|$)/.test(location.hash)`, 15000, 100);   // the hash write is debounced
       const h = await P.eval("location.hash"), ev = await P.events("tng:instrument", t0);
       check(s.sn[0] === 30 && s.sn[1] === 7 && s.R.uv[0] === 20000 && s.R.uv[1] === 60000 && s.vhw === 300 && /(^#|&)vw=300(&|$)/.test(h) && /(^#|&)sn=30,7(&|$)/.test(h) && ev.length >= 1,
         `setInstrument applies snr, R and vhw, writes the v3 hash and fires tng:instrument (${ev.length}): ${h.slice(0, 110)}`);
@@ -259,7 +260,8 @@ try {
       check(shown.length >= 1 && shown.every(i => i.toLowerCase().includes(q.toLowerCase())) && shown.includes(target), `C6 search "${q}" leaves ${shown.length} matching options incl. ${target}`);
       const t0 = await P.now();
       await P.key("ArrowDown"); await sleep(150);
-      await P.key("Enter"); await sleep(700); const s2 = await st(), ev = await P.events("tng:select", t0);
+      await P.key("Enter"); await P.waitFor(`tngApp.getState().id === ${JSON.stringify(target)} && !__ui.vis(document.getElementById("gal-pop"))`, 15000, 100);
+      const s2 = await st(), ev = await P.events("tng:select", t0);
       check(s2.id === target && ev.some(e => e.detail && e.detail.id === target) && !(await P.eval(`__ui.vis(document.getElementById("gal-pop"))`)),
         `C6 search, ArrowDown + Enter picks ${target}: state ${s2.id}, tng:select ${ev.map(e => e.detail && e.detail.id + "/" + e.detail.source).join(",") || "none"}, popover closed`);
       await P.key("Escape");
@@ -281,8 +283,8 @@ try {
         res.push(okBtn && a.open && a.exp === "true" && a.tid === "info-" + k && !b.open && b.exp === "false" ? null : `${k}: click ${okBtn} open ${a.open}/${a.exp}, Esc ${b.open}/${b.exp}`);
       }
       check(res.every(x => x === null), `C10 #info-read, #info-methods, #info-licence open #pop-* on click (aria-expanded) and Esc closes them${res.filter(Boolean).length ? ": " + res.filter(Boolean).join("; ") : ""}`);
-      const r = await P.eval(`__ui.rect("#info-read")`); await P.hover(r.x + r.w / 2, r.y + r.h / 2); await sleep(700);
-      const hv = await P.eval(`__ui.vis(document.getElementById("pop-read"))`); await P.hover(5, 600); await P.key("Escape"); await sleep(200);
+      const r = await P.eval(`__ui.rect("#info-read")`); await P.hover(r.x + r.w / 2, r.y + r.h / 2);
+      const hv = (await P.waitFor(`__ui.vis(document.getElementById("pop-read"))`, 10000, 100)) >= 0; await P.hover(5, 600); await P.key("Escape"); await sleep(200);
       check(hv, "C10 hovering #info-read opens #pop-read after the delay"); }
   });
 
@@ -319,9 +321,70 @@ try {
       await P.fn(`const f = document.getElementById("fit"); if (f.checked) f.click();`); await P.eval(`tngApp.setInstrument({layout: "1"})`); }
   });
 
+  /* ---- C2: lower limits (owner decision 2), readout flags (code 2), server figure body (code 3), boot clamp of a
+     deep-linked damped window (code 6), degraded-data cache by bytes (code 7) ---- */
+  await section('C2 lower limits, readout flags, figure body, wide windows, cache', async () => {
+    const LIM = ["edge_b050_a045", "edge_b050_a150", "edge_b050_a090"];             // H I SAT|NOERR in logN 15-19
+    const DAMP = "rand_b007_a199_s561358242";                                        // damped H I, W 10000 km/s
+    const ids = (await P.eval(`tngApp.entries().map(e => e.id)`)).filter(i => LIM.includes(i));
+    if (!ids.length) { note(`C2 lower-limit checks skipped: none of ${LIM.join(", ")} is in this export`); return; }
+    // the catalogue: every lower limit carries logN_lo, and a component-logN search never returns a limit as a value
+    const cat = await P.fn(`const c = await tngApp.components(${JSON.stringify(ids[0])}), H = c.HI || [];
+      const lim = H.filter(x => (x.flag & 32) || ((x.flag & 1) && !(x.flag & 64)));
+      const m = await import(new URL("js/search.js", location.href).href), ix = await tngApp.componentsIndex();
+      const r = m.rankAll({ion: "HI", logN_min: 15, logN_max: 17}, tngApp.entries(), ix.entries);
+      const bad = r.flatMap(x => x.components).filter(x => (x.flag & 32) || ((x.flag & 1) && !(x.flag & 64)));
+      const r2 = m.rankAll({ion: "HI", logN_min: 15}, tngApp.entries(), ix.entries);
+      return {lim: lim.length, lo: lim.every(x => Number.isFinite(x.logN_lo) && x.logN_lo <= x.logN + 1e-9), lims: lim.slice(0, 3).map(x => [x.logN, x.logN_lo]),
+        nres: r.length, bad: bad.length, nres2: r2.length, why: r2.slice(0, 2).map(x => x.reason)};`);
+    check(cat.lim > 0 && cat.lo && cat.bad === 0 && cat.why.some(w => /lower limit/.test(w)),
+      `C2 search: ${ids[0]} H I has ${cat.lim} lower limits with logN_lo ${JSON.stringify(cat.lims)}; HI 15 to 17 gives ${cat.nres} sightlines with no limit among their components; HI >= 15 gives ${cat.nres2} (${JSON.stringify(cat.why)})`);
+    // the browser fit: a saturated or degenerate component reads "fit log N > x sat" (x <= the fitted log N), no errors
+    let lc = null, used = null;
+    for (const id of ids) {
+      await P.eval(`tngApp.select(${JSON.stringify(id)})`); await P.waitFor(`tngApp.getState().id === ${JSON.stringify(id)} && tngApp.panels().length > 0`, 30000);
+      await P.eval(`tngApp.setInstrument({ions: ["HI"], layout: "1", R: {uv: 20000}, snr: 20, vhw: 400, vc: 0, fit: true})`);
+      await P.waitFor(`["done", "budget"].includes(document.getElementById("fitstatus")?.dataset.state)`, 60000, 100);
+      const q = await P.fn(`await tngApp.fit("HI", 0); return tngApp._debug.quality("HI", 0);`);
+      lc = (q || []).find(c => c.limit); if (lc) { used = id; break; }
+    }
+    if (!check(!!lc, `C2 an H I browser fit at R 20,000 S/N 20 on ${ids.join(" or ")} has a lower-limit component`)) return;
+    const vc = Math.max(-1000, Math.min(1000, Math.round(lc.v)));
+    await P.eval(`tngApp.setView({vc: ${vc}, vhw: 400})`); await sleep(600);
+    const pn = (await P.eval("tngApp.panels()"))[0];
+    await P.hover(pn.rect.x + pn.rect.w / 2 + (lc.v - vc) / 800 * pn.rect.w, pn.rect.y + pn.rect.h / 2); await sleep(500);
+    const ro = await P.eval(`document.getElementById("readouts").textContent`), fitPart = (ro.split("fit log N")[1] || "").split("  b ")[0];
+    const m = ro.match(/fit log N > (\d+\.\d) sat/);
+    check(!!m && +m[1] <= lc.logN + 0.05 && Math.abs(+m[1] - lc.lo) < 0.051 && !/±/.test(fitPart) && !sepHits(ro).length,
+      `C2 readout presents the saturated H I component of ${used} as a lower limit, no errors: "${ro}" (fitted ${lc.logN.toFixed(2)}, limit ${lc.lo.toFixed(2)}, tags ${lc.tags.join("+")})`);
+    if (opt.shots) await P.shot(join(resolve(opt.shots), "c2_limit_readout.png"));
+    await P.hover(5, 5);
+    // figure body: an in-cap window always; the layout only for a server that announces it in /api/health
+    await P.eval(`tngApp.setInstrument({layout: "2R"})`);
+    const fb = await P.eval(`tngApp._debug.figureBody("png")`), live = !!(await st()).api;
+    check(fb.vhw >= 10 && fb.vhw <= (live ? 10000 : 1500) && Math.abs(fb.vc) <= (live ? 10000 : 1500) && fb.ions.join() === "HI" && (live ? fb.layout === "2R" : !("layout" in fb)),
+      `C2 server figure body (${live ? "server announces figure caps" : "no server: legacy caps, no layout"}): ${JSON.stringify(fb)}`);
+    // a deep-linked damped H I window wider than 1500 km/s survives the boot clamp and the decode (code 6)
+    if (await P.eval(`!!tngApp.entry(${JSON.stringify(DAMP)})`)) {
+      await load(`#id=${DAMP}&ions=HI&lay=1&vw=6000&vc=2000&fit=0`, "C2 damped deep link");
+      await P.waitFor(`tngApp.getState().id === ${JSON.stringify(DAMP)} && tngApp.panels().length > 0`, 30000); await sleep(800);
+      const s2 = await st(), fb2 = await P.eval(`tngApp._debug.figureBody("pdf")`);
+      check(s2.vhw === 6000 && s2.vc === 2000 && fb2.vhw === (s2.api ? 6000 : 1500) && fb2.vc === (s2.api ? 2000 : 1500),
+        `C2 deep link vw 6000 vc 2000 on damped ${DAMP} kept after the decode (state ${s2.vhw}/${s2.vc}; figure body ${fb2.vhw}/${fb2.vc})`);
+      if (opt.shots) await P.shot(join(resolve(opt.shots), "c2_damped_wide.png"));
+    } else note(`C2 damped deep link skipped: ${DAMP} is not in this export`);
+    // the degraded-data cache is capped by bytes (about 64 MB): many damped and high-R panels never exceed it
+    const all = JSON.stringify(KEYS);
+    for (const R of [150000, 120000, 100000, 80000, 60000]) { await P.eval(`tngApp.setInstrument({ions: ${all}, layout: "4", R: {uv: [${R}, ${R - 5000}], euv: [${R}, ${R - 5000}], xray: [5000, 3000]}, snr: [100, 50], fit: false})`);
+      await P.fn(`tngApp._debug.draw(); return 1;`); await sleep(400); }
+    const dg = await P.fn(`return {b: tngApp._debug.dgBytes, n: tngApp._debug.dgSize, max: tngApp._debug.dgMax};`);
+    check(dg.n > 0 && dg.max === 64 * 1024 * 1024 && dg.b <= dg.max, `C2 degraded-data cache: ${dg.n} entries, ${(dg.b / 1048576).toFixed(1)} MB (cap ${(dg.max / 1048576).toFixed(0)} MB)`);
+    await load("", "C2 reset");
+  });
+
   /* ---- tabs ---- */
   await section('tabs', async () => {
-    { await P.eval(`tngApp.showTab("3d")`); await sleep(500);
+    { await P.eval(`tngApp.showTab("3d")`); await P.waitFor(`/(^#|&)tab=3d(&|$)/.test(location.hash)`, 15000, 100);   // the hash write is debounced
       const a = await P.fn(`return {tab: tngApp.getState().tab, p3: __ui.vis(document.getElementById("panel-3d")), ps: __ui.vis(document.getElementById("panel-spectra")), sel: document.getElementById("tab-3d").getAttribute("aria-selected"), h: location.hash};`);
       await P.eval(`tngApp.showTab("spectra")`); await sleep(300);
       const b = await P.fn(`return {tab: tngApp.getState().tab, p3: __ui.vis(document.getElementById("panel-3d")), ps: __ui.vis(document.getElementById("panel-spectra")), sel: document.getElementById("tab-spectra").getAttribute("aria-selected")};`);
@@ -361,6 +424,11 @@ try {
   /* ---- with a backend ---- */
   await section('with a backend', async () => {
     if (api) {
+      /* the picker shows the first 300 rows (library first), so with the full 672-sightline catalogue a new ray is
+         found under the "new" filter, where a user looks for it; the filter is reset afterwards */
+      const listed = (kind, id) => P.fn(`const f = document.getElementById("filter"), q = 'li[data-kind="${kind}"][data-id="${id}"]';
+        let ok = !!document.querySelector("#gal-list " + q); f.value = "new"; f.dispatchEvent(new Event("change", {bubbles: true}));
+        ok = ok || !!document.querySelector("#gal-list " + q); f.value = "all"; f.dispatchEvent(new Event("change", {bubbles: true})); return ok;`);
       await load("", "backend load");
       const tl = await P.waitFor(`document.getElementById("pill")?.dataset.state === "live"`, 60000, 250);
       check(tl >= 0, `#pill[data-state] live with ${api}`);
@@ -371,7 +439,7 @@ try {
       const td = await P.waitFor(`(__tng.events.find(e => e.t >= ${t0} && (e.type === "tng:done" || e.type === "tng:error")))`, 300000, 500);
       const done = (await P.events("tng:done", t0))[0]; await sleep(800);
       check(td >= 0 && done && done.detail.id === r.id && (await code()) === "job_done" && (await st()).id === r.id, `job done in ${(td / 1000).toFixed(1)} s: #geomsg[data-code] ${await code()}, selected ${(await st()).id}`);
-      check(await P.eval(`!!document.querySelector('#gal-list li[data-kind="generated"][data-id="${r.id}"]')`), `generated entry listed as li[data-kind=generated][data-id=${r.id}]`);
+      check(await listed("generated", r.id), `generated entry listed as li[data-kind=generated][data-id=${r.id}]`);
       const r2 = await P.eval(`tngApp.submitGeometry({orientation: "random", b_kpc: 77, azimuth_deg: 123, seed: ${seed}})`); await sleep(500);
       check(r2.status === "ready" && (await code()) === "ready", `resubmit the same geometry -> ready, #geomsg[data-code] ${await code()}`);
       await P.click("#geo-open"); await sleep(300);
@@ -383,8 +451,10 @@ try {
         const r6 = () => Math.round(Math.random() * 1000) / 10, p0 = [-150 - r6(), 20 + r6(), -10], p1 = [140 + r6(), -30, 25 - r6()], t1 = await P.now();
         const c1 = await P.eval(`tngApp.submitCustom({p0_kpc: ${JSON.stringify(p0)}, p1_kpc: ${JSON.stringify(p1)}})`);
         check(c1.status === "queued" && /^cust_[0-9a-f]{10}$/.test(c1.id), "submitCustom -> queued " + JSON.stringify(c1));
-        const c2 = await P.eval(`tngApp.submitCustom({p0_kpc: ${JSON.stringify(p0)}, p1_kpc: [0, 0, 0]})`);
-        check(c2.status === "error" && (await code()) === "busy", `second submit while busy -> error, #geomsg[data-code] ${await code()}`);
+        /* the result and #geomsg are read in one evaluation: a progress event of the running job may replace the message
+           (data-code "progress") before a second evaluation reads it */
+        const c2 = await P.fn(`const r = await tngApp.submitCustom({p0_kpc: ${JSON.stringify(p0)}, p1_kpc: [0, 0, 0]}); return {...r, code: document.getElementById("geomsg")?.dataset.code};`);
+        check(c2.status === "error" && c2.code === "busy", `second submit while busy -> error, #geomsg[data-code] ${c2.code}`);
         const tc = await P.waitFor(`(__tng.events.find(e => e.t >= ${t1} && (e.type === "tng:done" || e.type === "tng:error")))`, 300000, 500); await sleep(800);
         const ev = await P.events(null, t1), stages = [...new Set(ev.filter(e => e.type === "tng:job").map(e => e.detail && e.detail.stage))];
         /* the progress stream reports the stages it sees: a warm generator can finish the middle ones between two events,
@@ -392,7 +462,7 @@ try {
         check(tc >= 0 && ev.some(e => e.type === "tng:done" && e.detail.id === c1.id) && ev.some(e => e.type === "tng:submitted" && e.detail.kind === "custom") && stages.includes("save"),
           `custom job done, tng:submitted kind custom, stages ${stages.join(" ")}`);
         if (!stages.includes("fit")) note("the progress stream skipped the fit stage of the custom job (fast generator)");
-        const s = await st(); check(s.id === c1.id && s.tab === "spectra" && await P.eval(`!!document.querySelector('#gal-list li[data-kind="custom"][data-id="${c1.id}"]')`),
+        const s = await st(); check(s.id === c1.id && s.tab === "spectra" && await listed("custom", c1.id),
           `custom ray selected, Spectra tab, li[data-kind=custom][data-id=${c1.id}] listed`);
         const c3 = await P.eval(`tngApp.submitCustom({p0_kpc: [500, 0, 0], p1_kpc: [0, 0, 0]})`); await sleep(300);
         check(c3.status === "error" && (await code()) === "server_422", `out-of-range endpoint -> #geomsg[data-code] ${await code()}`);

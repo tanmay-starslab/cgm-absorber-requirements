@@ -1,6 +1,10 @@
 // Deterministic sightline search over fitted Voigt components (design-2 §6). JS mirror of tngsight/search.py.
 // validateQuery / runQuery / rankAll are pure (no DOM; node-testable). mountFind builds the page's Find panel and is
 // the only function that touches the DOM.
+// Lower limits (owner decision 2): a NOERR, or SAT but not DAMPED, component is a lower limit at col = min(logN,
+// logN_lo) (state.js; the page annotates every catalogue it loads). It meets logN_min when col does, and logN_max only
+// when logN_max is absent or at the ion's ceiling; score and reason use col and the reason counts the limits.
+import {isLowerLimit, columnOf} from "./state.js";
 /* Generated from tngsight/ions.json and tngsight.search.QUERY_SCHEMA by `python -m server.make_chat_tools`.
    Do not edit between the markers. */
 /*__GEN:QUERY__*/
@@ -50,11 +54,13 @@ export function validateQuery(q) {
     return out;
   } catch (e) { if (typeof e === "string") return {error: e}; throw e; }
 }
+function logNOk(c, lo, hi, cap) { return isLowerLimit(c) ? hi >= cap && columnOf(c) >= lo : lo <= c.logN && c.logN <= hi; }
 function reason(ion, n, matching, pairs, sep, bKpc) {
   let s = `${n} ${ION_SHORT[ion]} component${n !== 1 ? "s" : ""}`;
   if (matching.length) {
-    const lN = matching.map(c => c.logN), bb = matching.map(c => c.b);
-    s += `, logN ${fmt(Math.min(...lN), 1)}–${fmt(Math.max(...lN), 1)}, b ${fmt(Math.min(...bb), 0)}–${fmt(Math.max(...bb), 0)} km/s`;
+    const lN = matching.map(columnOf), bb = matching.map(c => c.b), nl = matching.filter(isLowerLimit).length;
+    s += `, logN ${fmt(Math.min(...lN), 1)}–${fmt(Math.max(...lN), 1)}${nl ? ` (${nl} lower limit${nl !== 1 ? "s" : ""})` : ""}`;
+    s += `, b ${fmt(Math.min(...bb), 0)}–${fmt(Math.max(...bb), 0)} km/s`;
   }
   if (sep && pairs.length) s += `, Δv ${fmt(Math.min(...pairs.map(p => p[2])), 0)} km/s`;
   return s + (isNum(bKpc) ? `, ${fmt(bKpc, 0)} kpc` : "");
@@ -69,7 +75,8 @@ export function rankAll(q, entries, components) {
     const list = components?.[e.id]?.[ion]; if (!Array.isArray(list)) continue;
     if (o.orientation && o.orientation !== e.orientation) continue;
     if (o.b_kpc && !(isNum(e.b_kpc) && o.b_kpc[0] <= e.b_kpc && e.b_kpc <= o.b_kpc[1])) continue;
-    const M = []; list.forEach((c, idx) => { if (lo <= c.logN && c.logN <= hi && bl <= c.b && c.b <= bh) M.push(Object.assign({}, c, {idx})); });
+    const cap = ION_LOGN_MAX[ion], M = [];
+    list.forEach((c, idx) => { if (logNOk(c, lo, hi, cap) && bl <= c.b && c.b <= bh) M.push(Object.assign({}, c, {idx})); });
     const n = M.length; if (n < o.n_min || (o.n_max != null && n > o.n_max)) continue;
     let matching = M, P = [];
     if (o.sep_kms) {
@@ -80,7 +87,7 @@ export function rankAll(q, entries, components) {
       matching = M.filter(c => used.has(c.idx));
     }
     let score = 0, sat = 0;
-    for (const c of matching) { score += 1 + Math.min(4, Math.max(0, c.logN - 12)) / 4; if (c.flag & 1) sat++; }
+    for (const c of matching) { score += 1 + Math.min(4, Math.max(0, columnOf(c) - 12)) / 4; if (c.flag & 1) sat++; }
     score += -0.5 * sat + (o.sep_kms ? 0.25 * Math.min(P.length, 4) : 0);
     const pairs = P.map(([a, b, dv]) => [a.idx, b.idx, dv]).sort((x, y) => x[2] - y[2] || x[0] - y[0] || x[1] - y[1])
       .slice(0, 10).map(([i, j, dv]) => [i, j, roundAway(dv, 1)]);

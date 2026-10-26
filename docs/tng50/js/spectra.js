@@ -10,6 +10,7 @@ const LBL_FONT = "600 11px", HDR = 20, PAD_L = 24, PAD_R = 6, AXIS_H = 30, GAP_X
 const FIT_FLAG_HOLLOW = 2 | 128;                       // BOUND | BUDGET: hollow ticks (and unconstrained ones, state.js fitLoose)
 
 /* P: {S, reg, data(ion, ci) -> {v, flux, model, dvp, line, vSys} | null, fit(ion, ci) -> result | null,
+       quality(comp, ion, result, data) -> {limit, hollow} (app.js compQuality; absent: flags and fitLoose),
        caseRS(ion, ci) -> [R, sn], vmax() -> km/s, color(key) -> css colour, onView({vc, vhw}, why), onReadout(text)} */
 export function createSpectra({box, cv, hitboxes, axis, axisCv, more}, P) {
   const ctx = cv.getContext("2d"), actx = axisCv ? axisCv.getContext("2d") : null;
@@ -131,7 +132,11 @@ export function createSpectra({box, cv, hitboxes, axis, axisCv, more}, P) {
             ctx.strokeStyle = fitInk; ctx.lineWidth = 1.5; stroke(mod, eps, 1);
             for (const c of r.comps || []) { const x = X(c.v); if (x < p.x - 4 || x > p.x + p.w + 4) continue; const yt = Y(1.05);
               ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.beginPath();
-              if ((c.flag & FIT_FLAG_HOLLOW) || fitLoose(c)) { ctx.arc(x, yt - 4, 2.8, 0, 7); ctx.stroke(); } else { ctx.moveTo(x, yt); ctx.lineTo(x, yt - 7); ctx.stroke(); } } } }
+              /* C2 (owner decision 2): a lower limit (saturated or degenerate) gets an upward arrow, the usual mark
+                 of a lower limit, never the plain tick of a measurement */
+              const q = P.quality ? P.quality(c, p.ion, r, d) : {limit: false, hollow: !!(c.flag & FIT_FLAG_HOLLOW) || fitLoose(c)};
+              if (q.limit) { ctx.moveTo(x, yt); ctx.lineTo(x, yt - 9); ctx.moveTo(x - 3, yt - 6); ctx.lineTo(x, yt - 9.5); ctx.lineTo(x + 3, yt - 6); ctx.stroke(); }
+              else if (q.hollow) { ctx.arc(x, yt - 4, 2.8, 0, 7); ctx.stroke(); } else { ctx.moveTo(x, yt); ctx.lineTo(x, yt - 7); ctx.stroke(); } } } }
       }
       if (hoverV !== null && hoverV > v0 && hoverV < v1) { ctx.strokeStyle = muted; ctx.globalAlpha = .55; ctx.lineWidth = 1; ctx.beginPath(); const x = Math.round(X(hoverV)) + .5; ctx.moveTo(x, p.y); ctx.lineTo(x, p.y + p.h); ctx.stroke(); ctx.globalAlpha = 1; }
       ctx.restore();

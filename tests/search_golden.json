@@ -108,12 +108,14 @@
   "Query: validate_query per QUERY_SCHEMA; integers may arrive as integral floats (JSON 3.0); booleans are not numbers. Check order: object, unknown keys (sorted), ion required, properties in schema order, then the per-ion bound (logN_min, then logN_max, each <= LOGN_MAX[ion] = the registry logN_max, 22.5 for HI and 19 otherwise; message '<field>: must be <= 19 for OVI'), then cross-field n_min<=n_max (n_min default 1 applies), logN_min<=logN_max, b_min<=b_max. Error text '<field>: <reason>' exactly as in invalid_cases. Defaults: n_min 1, n_max none (infinite), sort 'score', limit 50.",
   "Entries: duplicates by id are collapsed, the LATER entry wins (backend after static); iterate ids in ascending code-point order.",
   "1. Skip unless components[id][ion] exists (an empty list exists; a missing id or ion key does not). Skip if orientation given and != entry.orientation. Skip if b_kpc=[lo,hi] given and not (entry.b_kpc is a finite number and lo<=b_kpc<=hi).",
-  "2. M = components (original list index idx kept) with logN_min<=logN<=logN_max and b_min<=b<=b_max, inclusive, absent bound unbounded. n=|M|; require n_min<=n (and n<=n_max if given).",
+  "2. M = components (original list index idx kept) passing the logN bounds (2a) and b_min<=b<=b_max, inclusive, absent bound unbounded. n=|M|; require n_min<=n (and n<=n_max if given).",
+  "2a. Lower limits (owner decision 2): a component with flag&32 (NOERR), or flag&1 (SAT) without flag&64 (DAMPED), is a lower limit, never a measurement; its column is col = min(logN, logN_lo) (logN_lo absent: logN). Every other component has col = logN. A limit passes the logN bounds iff col>=logN_min (absent: always) and logN_max is absent or >= LOGN_MAX[ion]: a lower limit can never show N<=logN_max. A measurement passes iff logN_min<=logN<=logN_max.",
+  "2b. logN_lo (annotate_limits, applied by the page to every catalogue it loads): per fit region with AOD column A (components.json aod), N=10^A, M=sum 10^logN over its measured components, W=the same over its limits; pool=N-M if N-M>0 else N*W/(W+M); each limit gets logN_lo=round_half_away(log10(pool)+logN-log10(W),3). A limit in a region without an AOD value keeps no logN_lo. annotate_cases fixes it.",
   "3. If sep_kms=[lo,hi]: for a<b over M in idx order, dv=r6(|v_a-v_b|) with r6(x)=round_half_away(x,6); pair if lo<=dv<=hi. Require >=1 pair. matching = members of any pair (idx order); else matching = M.",
-  "4. score = sum over matching in idx order of (1 + clamp(logN-12,0,4)/4), then minus 0.5*count(matching with flag&1), then plus 0.25*min(npairs,4) when sep_kms given; score = r6(score). Evaluate in exactly this order with IEEE doubles.",
+  "4. score = sum over matching in idx order of (1 + clamp(col-12,0,4)/4), then minus 0.5*count(matching with flag&1), then plus 0.25*min(npairs,4) when sep_kms given; score = r6(score). Evaluate in exactly this order with IEEE doubles.",
   "5. Sort 'score': (-score, id); 'b_kpc': (b_kpc [non-number -> +inf], -score, id); 'n': (-n, -score, id). n_total = number of matches; results = first limit.",
   "6. Result {id, score, n, b_kpc, orientation, components: matching sorted by (v, idx), each the stored component plus 'idx'; pairs: sorted by (dv[r6], idx_a, idx_b), first 10, each [idx_a, idx_b, round_half_away(dv,1)]; reason}. pairs is [] without sep_kms.",
-  "7. reason = '{n} {ION_SHORT} component' + ('s' if n!=1) + (if matching: ', logN {fmt(min,1)}–{fmt(max,1)}, b {fmt(min,0)}–{fmt(max,0)} km/s' over matching) + (if pairs: ', Δv {fmt(dv_smallest,0)} km/s') + (if b_kpc is a number: ', {fmt(b_kpc,0)} kpc'). fmt(x,d) = round_half_away(x,d) printed with d decimals; round_half_away(x,d) = sign(x)*floor(|x|*10^d+0.5)/10^d, -0 -> 0. ION_SHORT = the registry ion names (HI:'H I', MgII:'Mg II', ..., OVII:'O VII')."
+  "7. reason = '{n} {ION_SHORT} component' + ('s' if n!=1) + (if matching: ', logN {fmt(min,1)}–{fmt(max,1)}' of col over matching + (if k lower limits among matching: ' ({k} lower limit' + ('s' if k!=1) + ')') + ', b {fmt(min,0)}–{fmt(max,0)} km/s' over matching) + (if pairs: ', Δv {fmt(dv_smallest,0)} km/s') + (if b_kpc is a number: ', {fmt(b_kpc,0)} kpc'). fmt(x,d) = round_half_away(x,d) printed with d decimals; round_half_away(x,d) = sign(x)*floor(|x|*10^d+0.5)/10^d, -0 -> 0. ION_SHORT = the registry ion names (HI:'H I', MgII:'Mg II', ..., OVII:'O VII')."
  ],
  "score_tolerance": 1e-09,
  "cases": [
@@ -133,8 +135,8 @@
     "cust_000000001b",
     "rand_b248_a178_s1034",
     "edge_b101_a121",
-    "rand_b080_a010_s1010",
     "face_b010_a000",
+    "rand_b080_a010_s1010",
     "face_b094_a084",
     "cust_0000000003",
     "rand_b052_a222_s1006",
@@ -224,7 +226,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 14.8–16.3, b 16–49 km/s, 279 kpc"
+     "reason": "5 O VI components, logN 14.8–16.3 (1 lower limit), b 16–49 km/s, 279 kpc"
     },
     {
      "id": "rand_b220_a030_s1030",
@@ -307,7 +309,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 O VI components, logN 12.1–15.8, b 6–72 km/s, 30 kpc"
+     "reason": "6 O VI components, logN 12.1–15.8 (1 lower limit), b 6–72 km/s, 30 kpc"
     },
     {
      "id": "rand_b276_a326_s1038",
@@ -390,7 +392,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 O VI components, logN 13.4–14.9, b 18–64 km/s, 257 kpc"
+     "reason": "6 O VI components, logN 13.4–14.9 (3 lower limits), b 18–64 km/s, 257 kpc"
     },
     {
      "id": "rand_b108_a158_s1014",
@@ -473,7 +475,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 O VI components, logN 11.8–14.7, b 4–88 km/s, 75 kpc"
+     "reason": "6 O VI components, logN 11.8–14.7 (1 lower limit), b 4–88 km/s, 75 kpc"
     },
     {
      "id": "face_b066_a296",
@@ -544,7 +546,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 12.1–15.5, b 6–73 km/s, 220 kpc"
+     "reason": "5 O VI components, logN 12.1–15.5 (1 lower limit), b 6–73 km/s, 220 kpc"
     },
     {
      "id": "cust_0000000007",
@@ -615,7 +617,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 11.9–16.4, b 4–82 km/s, 146 kpc"
+     "reason": "5 O VI components, logN 11.9–16.4 (2 lower limits), b 4–82 km/s, 146 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -686,7 +688,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 12.1–16.1, b 20–82 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 12.1–16.1 (2 lower limits), b 20–82 km/s, 100 kpc"
     },
     {
      "id": "rand_b248_a178_s1034",
@@ -745,7 +747,7 @@
       }
      ],
      "pairs": [],
-     "reason": "4 O VI components, logN 13.6–16.5, b 8–78 km/s, 156 kpc"
+     "reason": "4 O VI components, logN 13.6–16.5 (2 lower limits), b 8–78 km/s, 156 kpc"
     },
     {
      "id": "edge_b101_a121",
@@ -816,7 +818,80 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 12.2–16.3, b 15–87 km/s, 263 kpc"
+     "reason": "5 O VI components, logN 12.2–16.3 (3 lower limits), b 15–87 km/s, 263 kpc"
+    },
+    {
+     "id": "face_b010_a000",
+     "score": 5.7625,
+     "n": 5,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -157.99,
+       "dv": 0.5,
+       "logN": 13.5,
+       "dlogN": 0.01,
+       "b": 20.0,
+       "db": 0.3,
+       "region": 0,
+       "flag": 0,
+       "EW": 50.0,
+       "idx": 0
+      },
+      {
+       "v": -127.99,
+       "dv": 0.5,
+       "logN": 13.5,
+       "dlogN": 0.01,
+       "b": 20.0,
+       "db": 0.3,
+       "region": 0,
+       "flag": 1,
+       "EW": 50.0,
+       "idx": 1
+      },
+      {
+       "v": -127.99,
+       "dv": 0.5,
+       "logN": 12.25,
+       "dlogN": 0.01,
+       "b": 12.5,
+       "db": 0.3,
+       "region": 0,
+       "flag": 0,
+       "EW": 8.0,
+       "idx": 2
+      },
+      {
+       "v": 77.7,
+       "dv": 0.5,
+       "logN": 16.4,
+       "dlogN": 0.01,
+       "b": 35.5,
+       "db": 0.3,
+       "region": 1,
+       "flag": 9,
+       "EW": 300.0,
+       "logN_lo": 15.2,
+       "idx": 3
+      },
+      {
+       "v": 140.0,
+       "dv": null,
+       "logN": 17.9,
+       "dlogN": null,
+       "b": 9.0,
+       "db": null,
+       "region": 2,
+       "flag": 33,
+       "EW": 120.0,
+       "logN_lo": 14.6,
+       "idx": 4
+      }
+     ],
+     "pairs": [],
+     "reason": "5 O VI components, logN 12.3–15.2 (3 lower limits), b 9–36 km/s, 100 kpc"
     },
     {
      "id": "rand_b080_a010_s1010",
@@ -887,66 +962,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 11.7–15.9, b 4–88 km/s, 299 kpc"
-    },
-    {
-     "id": "face_b010_a000",
-     "score": 4.8125,
-     "n": 4,
-     "b_kpc": 100.0,
-     "orientation": "face-on",
-     "components": [
-      {
-       "v": -157.99,
-       "dv": 0.5,
-       "logN": 13.5,
-       "dlogN": 0.01,
-       "b": 20.0,
-       "db": 0.3,
-       "region": 0,
-       "flag": 0,
-       "EW": 50.0,
-       "idx": 0
-      },
-      {
-       "v": -127.99,
-       "dv": 0.5,
-       "logN": 13.5,
-       "dlogN": 0.01,
-       "b": 20.0,
-       "db": 0.3,
-       "region": 0,
-       "flag": 1,
-       "EW": 50.0,
-       "idx": 1
-      },
-      {
-       "v": -127.99,
-       "dv": 0.5,
-       "logN": 12.25,
-       "dlogN": 0.01,
-       "b": 12.5,
-       "db": 0.3,
-       "region": 0,
-       "flag": 0,
-       "EW": 8.0,
-       "idx": 2
-      },
-      {
-       "v": 77.7,
-       "dv": 0.5,
-       "logN": 16.4,
-       "dlogN": 0.01,
-       "b": 35.5,
-       "db": 0.3,
-       "region": 1,
-       "flag": 9,
-       "EW": 300.0,
-       "idx": 3
-      }
-     ],
-     "pairs": [],
-     "reason": "4 O VI components, logN 12.3–16.4, b 13–36 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 11.7–15.9 (2 lower limits), b 4–88 km/s, 299 kpc"
     },
     {
      "id": "face_b094_a084",
@@ -993,7 +1009,7 @@
       }
      ],
      "pairs": [],
-     "reason": "3 O VI components, logN 13.0–15.4, b 38–90 km/s, 42 kpc"
+     "reason": "3 O VI components, logN 13.0–15.4 (1 lower limit), b 38–90 km/s, 42 kpc"
     },
     {
      "id": "cust_0000000003",
@@ -1040,7 +1056,7 @@
       }
      ],
      "pairs": [],
-     "reason": "3 O VI components, logN 11.7–16.5, b 27–79 km/s, 20 kpc"
+     "reason": "3 O VI components, logN 11.7–16.5 (1 lower limit), b 27–79 km/s, 20 kpc"
     },
     {
      "id": "rand_b052_a222_s1006",
@@ -1099,7 +1115,7 @@
       }
      ],
      "pairs": [],
-     "reason": "4 O VI components, logN 12.0–15.9, b 13–88 km/s, 105 kpc"
+     "reason": "4 O VI components, logN 12.0–15.9 (3 lower limits), b 13–88 km/s, 105 kpc"
     },
     {
      "id": "face_b150_a020",
@@ -1239,7 +1255,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 O VI components, logN 11.9–16.5, b 5–48 km/s, 111 kpc"
+     "reason": "2 O VI components, logN 11.9–16.5 (1 lower limit), b 5–48 km/s, 111 kpc"
     },
     {
      "id": "face_b206_a316",
@@ -1377,7 +1393,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 14.8–14.8, b 8–8 km/s, 298 kpc"
+     "reason": "1 O VI component, logN 14.8–14.8 (1 lower limit), b 8–8 km/s, 298 kpc"
     },
     {
      "id": "cust_0000000027",
@@ -1492,7 +1508,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 11.7–11.7, b 68–68 km/s, 268 kpc"
+     "reason": "1 O VI component, logN 11.7–11.7 (1 lower limit), b 68–68 km/s, 268 kpc"
     }
    ]
   },
@@ -1509,12 +1525,12 @@
    "ids": [
     "rand_b108_a158_s1014",
     "face_b066_a296",
+    "face_b010_a000",
     "cust_000000001b",
     "rand_b220_a030_s1030",
     "rand_b080_a010_s1010",
     "rand_b276_a326_s1038",
     "edge_b101_a121",
-    "face_b010_a000",
     "cust_000000000f",
     "cust_0000000003"
    ],
@@ -1631,7 +1647,7 @@
        79.8
       ]
      ],
-     "reason": "6 O VI components, logN 11.8–14.7, b 4–88 km/s, Δv 50 km/s, 75 kpc"
+     "reason": "6 O VI components, logN 11.8–14.7 (1 lower limit), b 4–88 km/s, Δv 50 km/s, 75 kpc"
     },
     {
      "id": "face_b066_a296",
@@ -1706,7 +1722,96 @@
        59.8
       ]
      ],
-     "reason": "5 O VI components, logN 13.0–15.5, b 6–73 km/s, Δv 35 km/s, 220 kpc"
+     "reason": "5 O VI components, logN 13.0–15.5 (1 lower limit), b 6–73 km/s, Δv 35 km/s, 220 kpc"
+    },
+    {
+     "id": "face_b010_a000",
+     "score": 6.5125,
+     "n": 5,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -157.99,
+       "dv": 0.5,
+       "logN": 13.5,
+       "dlogN": 0.01,
+       "b": 20.0,
+       "db": 0.3,
+       "region": 0,
+       "flag": 0,
+       "EW": 50.0,
+       "idx": 0
+      },
+      {
+       "v": -127.99,
+       "dv": 0.5,
+       "logN": 13.5,
+       "dlogN": 0.01,
+       "b": 20.0,
+       "db": 0.3,
+       "region": 0,
+       "flag": 1,
+       "EW": 50.0,
+       "idx": 1
+      },
+      {
+       "v": -127.99,
+       "dv": 0.5,
+       "logN": 12.25,
+       "dlogN": 0.01,
+       "b": 12.5,
+       "db": 0.3,
+       "region": 0,
+       "flag": 0,
+       "EW": 8.0,
+       "idx": 2
+      },
+      {
+       "v": 77.7,
+       "dv": 0.5,
+       "logN": 16.4,
+       "dlogN": 0.01,
+       "b": 35.5,
+       "db": 0.3,
+       "region": 1,
+       "flag": 9,
+       "EW": 300.0,
+       "logN_lo": 15.2,
+       "idx": 3
+      },
+      {
+       "v": 140.0,
+       "dv": null,
+       "logN": 17.9,
+       "dlogN": null,
+       "b": 9.0,
+       "db": null,
+       "region": 2,
+       "flag": 33,
+       "EW": 120.0,
+       "logN_lo": 14.6,
+       "idx": 4
+      }
+     ],
+     "pairs": [
+      [
+       0,
+       1,
+       30.0
+      ],
+      [
+       0,
+       2,
+       30.0
+      ],
+      [
+       3,
+       4,
+       62.3
+      ]
+     ],
+     "reason": "5 O VI components, logN 12.3–15.2 (3 lower limits), b 9–36 km/s, Δv 30 km/s, 100 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -1786,7 +1891,7 @@
        78.2
       ]
      ],
-     "reason": "5 O VI components, logN 12.1–16.1, b 20–82 km/s, Δv 30 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 12.1–16.1 (2 lower limits), b 20–82 km/s, Δv 30 km/s, 100 kpc"
     },
     {
      "id": "rand_b220_a030_s1030",
@@ -1914,7 +2019,7 @@
        53.9
       ]
      ],
-     "reason": "5 O VI components, logN 11.7–15.9, b 4–88 km/s, Δv 45 km/s, 299 kpc"
+     "reason": "5 O VI components, logN 11.7–15.9 (2 lower limits), b 4–88 km/s, Δv 45 km/s, 299 kpc"
     },
     {
      "id": "rand_b276_a326_s1038",
@@ -1972,7 +2077,7 @@
        71.7
       ]
      ],
-     "reason": "6 O VI components, logN 13.4–14.6, b 18–64 km/s, Δv 62 km/s, 257 kpc"
+     "reason": "6 O VI components, logN 13.4–14.6 (1 lower limit), b 18–64 km/s, Δv 62 km/s, 257 kpc"
     },
     {
      "id": "edge_b101_a121",
@@ -2030,65 +2135,7 @@
        62.2
       ]
      ],
-     "reason": "5 O VI components, logN 12.6–15.8, b 57–87 km/s, Δv 55 km/s, 263 kpc"
-    },
-    {
-     "id": "face_b010_a000",
-     "score": 3.8125,
-     "n": 4,
-     "b_kpc": 100.0,
-     "orientation": "face-on",
-     "components": [
-      {
-       "v": -157.99,
-       "dv": 0.5,
-       "logN": 13.5,
-       "dlogN": 0.01,
-       "b": 20.0,
-       "db": 0.3,
-       "region": 0,
-       "flag": 0,
-       "EW": 50.0,
-       "idx": 0
-      },
-      {
-       "v": -127.99,
-       "dv": 0.5,
-       "logN": 13.5,
-       "dlogN": 0.01,
-       "b": 20.0,
-       "db": 0.3,
-       "region": 0,
-       "flag": 1,
-       "EW": 50.0,
-       "idx": 1
-      },
-      {
-       "v": -127.99,
-       "dv": 0.5,
-       "logN": 12.25,
-       "dlogN": 0.01,
-       "b": 12.5,
-       "db": 0.3,
-       "region": 0,
-       "flag": 0,
-       "EW": 8.0,
-       "idx": 2
-      }
-     ],
-     "pairs": [
-      [
-       0,
-       1,
-       30.0
-      ],
-      [
-       0,
-       2,
-       30.0
-      ]
-     ],
-     "reason": "4 O VI components, logN 12.3–13.5, b 13–20 km/s, Δv 30 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 12.6–15.8 (2 lower limits), b 57–87 km/s, Δv 55 km/s, 263 kpc"
     },
     {
      "id": "cust_000000000f",
@@ -2191,7 +2238,7 @@
     {
      "id": "face_b010_a000",
      "score": 3.8125,
-     "n": 4,
+     "n": 5,
      "b_kpc": 100.0,
      "orientation": "face-on",
      "components": [
@@ -2244,7 +2291,7 @@
        30.0
       ]
      ],
-     "reason": "4 O VI components, logN 12.3–13.5, b 13–20 km/s, Δv 30 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 12.3–13.5 (1 lower limit), b 13–20 km/s, Δv 30 km/s, 100 kpc"
     }
    ]
   },
@@ -2265,7 +2312,7 @@
     {
      "id": "face_b010_a000",
      "score": 2.1875,
-     "n": 4,
+     "n": 5,
      "b_kpc": 100.0,
      "orientation": "face-on",
      "components": [
@@ -2301,7 +2348,7 @@
        0.0
       ]
      ],
-     "reason": "4 O VI components, logN 12.3–13.5, b 13–20 km/s, Δv 0 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 12.3–13.5 (1 lower limit), b 13–20 km/s, Δv 0 km/s, 100 kpc"
     }
    ]
   },
@@ -2312,7 +2359,7 @@
     "n_min": 2,
     "n_max": 3
    },
-   "n_total": 12,
+   "n_total": 13,
    "ids": [
     "face_b178_a168",
     "edge_b213_a353",
@@ -2322,6 +2369,7 @@
     "edge_b157_a057",
     "cust_0000000023",
     "rand_b052_a222_s1006",
+    "face_b010_a000",
     "face_b262_a252",
     "rand_b024_a074_s1002",
     "rand_b276_a326_s1038",
@@ -2490,7 +2538,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 15.6–16.2, b 38–45 km/s, 100 kpc"
+     "reason": "2 H I components, logN 15.6–16.2 (1 lower limit), b 38–45 km/s, 100 kpc"
     },
     {
      "id": "rand_b080_a010_s1010",
@@ -2525,7 +2573,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 15.3–16.2, b 13–71 km/s, 299 kpc"
+     "reason": "2 H I components, logN 15.3–16.2 (1 lower limit), b 13–71 km/s, 299 kpc"
     },
     {
      "id": "edge_b157_a057",
@@ -2595,7 +2643,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 16.3–16.4, b 53–53 km/s, 279 kpc"
+     "reason": "2 H I components, logN 16.3–16.4 (2 lower limits), b 53–53 km/s, 279 kpc"
     },
     {
      "id": "rand_b052_a222_s1006",
@@ -2633,6 +2681,42 @@
      "reason": "2 H I components, logN 12.2–15.2, b 84–88 km/s, 105 kpc"
     },
     {
+     "id": "face_b010_a000",
+     "score": 2.775,
+     "n": 2,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -60.0,
+       "dv": null,
+       "logN": 17.91,
+       "dlogN": null,
+       "b": 20.0,
+       "db": null,
+       "region": 0,
+       "flag": 33,
+       "EW": 400.0,
+       "logN_lo": 15.1,
+       "idx": 0
+      },
+      {
+       "v": 10.0,
+       "dv": 0.4,
+       "logN": 20.3,
+       "dlogN": 0.02,
+       "b": 30.0,
+       "db": 1.0,
+       "region": 1,
+       "flag": 65,
+       "EW": 2600.0,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 H I components, logN 15.1–20.3 (1 lower limit), b 20–30 km/s, 100 kpc"
+    },
+    {
      "id": "face_b262_a252",
      "score": 2.759,
      "n": 2,
@@ -2665,7 +2749,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 14.4–14.6, b 26–87 km/s, 100 kpc"
+     "reason": "2 H I components, logN 14.4–14.6 (1 lower limit), b 26–87 km/s, 100 kpc"
     },
     {
      "id": "rand_b024_a074_s1002",
@@ -2735,7 +2819,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 13.0–14.2, b 7–76 km/s, 257 kpc"
+     "reason": "2 H I components, logN 13.0–14.2 (1 lower limit), b 7–76 km/s, 257 kpc"
     },
     {
      "id": "face_b206_a316",
@@ -2770,7 +2854,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 12.6–12.6, b 26–54 km/s, 16 kpc"
+     "reason": "2 H I components, logN 12.6–12.6 (1 lower limit), b 26–54 km/s, 16 kpc"
     }
    ]
   },
@@ -2904,103 +2988,20 @@
     "logN_min": 13.5,
     "logN_max": 14.5
    },
-   "n_total": 11,
+   "n_total": 10,
    "ids": [
-    "rand_b276_a326_s1038",
-    "face_b010_a000",
     "cust_000000001b",
     "cust_000000000f",
+    "rand_b276_a326_s1038",
     "cust_0000000003",
     "edge_b129_a269",
     "rand_b108_a158_s1014",
     "rand_b220_a030_s1030",
     "face_b178_a168",
     "rand_b248_a178_s1034",
-    "face_b066_a296"
+    "face_b010_a000"
    ],
    "results": [
-    {
-     "id": "rand_b276_a326_s1038",
-     "score": 3.47725,
-     "n": 3,
-     "b_kpc": 256.8,
-     "orientation": "random",
-     "components": [
-      {
-       "v": -144.16,
-       "dv": 0.58,
-       "logN": 14.189,
-       "dlogN": 0.187,
-       "b": 46.14,
-       "db": 1.87,
-       "region": 0,
-       "flag": 1,
-       "EW": 178.58,
-       "idx": 0
-      },
-      {
-       "v": -52.6,
-       "dv": 0.42,
-       "logN": 14.143,
-       "dlogN": 0.052,
-       "b": 18.49,
-       "db": 2.09,
-       "region": 1,
-       "flag": 0,
-       "EW": 217.33,
-       "idx": 3
-      },
-      {
-       "v": 147.35,
-       "dv": 0.91,
-       "logN": 13.577,
-       "dlogN": 0.123,
-       "b": 35.11,
-       "db": 3.49,
-       "region": 2,
-       "flag": 9,
-       "EW": 374.65,
-       "idx": 4
-      }
-     ],
-     "pairs": [],
-     "reason": "3 O VI components, logN 13.6–14.2, b 18–46 km/s, 257 kpc"
-    },
-    {
-     "id": "face_b010_a000",
-     "score": 2.25,
-     "n": 2,
-     "b_kpc": 100.0,
-     "orientation": "face-on",
-     "components": [
-      {
-       "v": -157.99,
-       "dv": 0.5,
-       "logN": 13.5,
-       "dlogN": 0.01,
-       "b": 20.0,
-       "db": 0.3,
-       "region": 0,
-       "flag": 0,
-       "EW": 50.0,
-       "idx": 0
-      },
-      {
-       "v": -127.99,
-       "dv": 0.5,
-       "logN": 13.5,
-       "dlogN": 0.01,
-       "b": 20.0,
-       "db": 0.3,
-       "region": 0,
-       "flag": 1,
-       "EW": 50.0,
-       "idx": 1
-      }
-     ],
-     "pairs": [],
-     "reason": "2 O VI components, logN 13.5–13.5, b 20–20 km/s, 100 kpc"
-    },
     {
      "id": "cust_000000001b",
      "score": 1.6015,
@@ -3046,6 +3047,29 @@
      ],
      "pairs": [],
      "reason": "1 O VI component, logN 14.3–14.3, b 77–77 km/s, 272 kpc"
+    },
+    {
+     "id": "rand_b276_a326_s1038",
+     "score": 1.53575,
+     "n": 1,
+     "b_kpc": 256.8,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -52.6,
+       "dv": 0.42,
+       "logN": 14.143,
+       "dlogN": 0.052,
+       "b": 18.49,
+       "db": 2.09,
+       "region": 1,
+       "flag": 0,
+       "EW": 217.33,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.1–14.1, b 18–18 km/s, 257 kpc"
     },
     {
      "id": "cust_0000000003",
@@ -3186,27 +3210,27 @@
      "reason": "1 O VI component, logN 13.6–13.6, b 78–78 km/s, 156 kpc"
     },
     {
-     "id": "face_b066_a296",
-     "score": 1.07375,
+     "id": "face_b010_a000",
+     "score": 1.375,
      "n": 1,
-     "b_kpc": 219.6,
+     "b_kpc": 100.0,
      "orientation": "face-on",
      "components": [
       {
-       "v": 213.98,
-       "dv": 1.52,
-       "logN": 14.295,
-       "dlogN": 0.181,
-       "b": 43.95,
-       "db": 0.53,
-       "region": 1,
-       "flag": 1,
-       "EW": 322.93,
-       "idx": 3
+       "v": -157.99,
+       "dv": 0.5,
+       "logN": 13.5,
+       "dlogN": 0.01,
+       "b": 20.0,
+       "db": 0.3,
+       "region": 0,
+       "flag": 0,
+       "EW": 50.0,
+       "idx": 0
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 14.3–14.3, b 44–44 km/s, 220 kpc"
+     "reason": "1 O VI component, logN 13.5–13.5, b 20–20 km/s, 100 kpc"
     }
    ]
   },
@@ -3274,7 +3298,7 @@
       }
      ],
      "pairs": [],
-     "reason": "3 O VI components, logN 12.3–13.5, b 13–20 km/s, 100 kpc"
+     "reason": "3 O VI components, logN 12.3–13.5 (1 lower limit), b 13–20 km/s, 100 kpc"
     },
     {
      "id": "edge_b129_a269",
@@ -3343,7 +3367,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 16.3–16.3, b 16–16 km/s, 279 kpc"
+     "reason": "1 O VI component, logN 16.3–16.3 (1 lower limit), b 16–16 km/s, 279 kpc"
     },
     {
      "id": "cust_0000000007",
@@ -3412,7 +3436,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 12.7–12.7, b 13–13 km/s, 105 kpc"
+     "reason": "1 O VI component, logN 12.7–12.7 (1 lower limit), b 13–13 km/s, 105 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -3435,7 +3459,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 12.5–12.5, b 20–20 km/s, 100 kpc"
+     "reason": "1 O VI component, logN 12.5–12.5 (1 lower limit), b 20–20 km/s, 100 kpc"
     }
    ]
   },
@@ -3524,7 +3548,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 12.2–16.3, b 15–87 km/s, 263 kpc"
+     "reason": "5 O VI components, logN 12.2–16.3 (3 lower limits), b 15–87 km/s, 263 kpc"
     },
     {
      "id": "edge_b129_a269",
@@ -3594,7 +3618,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 O VI components, logN 11.9–16.5, b 5–48 km/s, 111 kpc"
+     "reason": "2 O VI components, logN 11.9–16.5 (1 lower limit), b 5–48 km/s, 111 kpc"
     },
     {
      "id": "edge_b185_a205",
@@ -3640,7 +3664,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 14.8–14.8, b 8–8 km/s, 298 kpc"
+     "reason": "1 O VI component, logN 14.8–14.8 (1 lower limit), b 8–8 km/s, 298 kpc"
     },
     {
      "id": "edge_b157_a057",
@@ -3767,7 +3791,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 H I components, logN 11.9–16.3, b 11–80 km/s, 272 kpc"
+     "reason": "6 H I components, logN 11.9–16.3 (1 lower limit), b 11–80 km/s, 272 kpc"
     },
     {
      "id": "cust_0000000017",
@@ -3850,7 +3874,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 H I components, logN 12.4–15.6, b 32–80 km/s, 84 kpc"
+     "reason": "6 H I components, logN 12.4–15.6 (2 lower limits), b 32–80 km/s, 84 kpc"
     },
     {
      "id": "cust_0000000003",
@@ -3921,7 +3945,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 H I components, logN 13.5–14.4, b 9–68 km/s, 20 kpc"
+     "reason": "5 H I components, logN 13.5–14.4 (1 lower limit), b 9–68 km/s, 20 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -3992,7 +4016,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 H I components, logN 12.9–16.4, b 11–70 km/s, 100 kpc"
+     "reason": "5 H I components, logN 12.9–16.4 (3 lower limits), b 11–70 km/s, 100 kpc"
     },
     {
      "id": "cust_0000000027",
@@ -4051,7 +4075,7 @@
       }
      ],
      "pairs": [],
-     "reason": "4 H I components, logN 12.4–16.2, b 3–80 km/s, 264 kpc"
+     "reason": "4 H I components, logN 12.4–16.2 (2 lower limits), b 3–80 km/s, 264 kpc"
     },
     {
      "id": "cust_0000000013",
@@ -4110,7 +4134,7 @@
       }
      ],
      "pairs": [],
-     "reason": "4 H I components, logN 12.2–16.5, b 16–89 km/s, 180 kpc"
+     "reason": "4 H I components, logN 12.2–16.5 (2 lower limits), b 16–89 km/s, 180 kpc"
     },
     {
      "id": "cust_0000000023",
@@ -4145,7 +4169,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 16.3–16.4, b 53–53 km/s, 279 kpc"
+     "reason": "2 H I components, logN 16.3–16.4 (2 lower limits), b 53–53 km/s, 279 kpc"
     },
     {
      "id": "cust_000000000b",
@@ -4298,7 +4322,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 O VI components, logN 11.8–14.7, b 4–88 km/s, 75 kpc"
+     "reason": "6 O VI components, logN 11.8–14.7 (1 lower limit), b 4–88 km/s, 75 kpc"
     },
     {
      "id": "cust_0000000017",
@@ -4392,12 +4416,12 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 12.1–16.1, b 20–82 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 12.1–16.1 (2 lower limits), b 20–82 km/s, 100 kpc"
     },
     {
      "id": "face_b010_a000",
-     "score": 4.8125,
-     "n": 4,
+     "score": 5.7625,
+     "n": 5,
      "b_kpc": 100.0,
      "orientation": "face-on",
      "components": [
@@ -4447,11 +4471,25 @@
        "region": 1,
        "flag": 9,
        "EW": 300.0,
+       "logN_lo": 15.2,
        "idx": 3
+      },
+      {
+       "v": 140.0,
+       "dv": null,
+       "logN": 17.9,
+       "dlogN": null,
+       "b": 9.0,
+       "db": null,
+       "region": 2,
+       "flag": 33,
+       "EW": 120.0,
+       "logN_lo": 14.6,
+       "idx": 4
       }
      ],
      "pairs": [],
-     "reason": "4 O VI components, logN 12.3–16.4, b 13–36 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 12.3–15.2 (3 lower limits), b 9–36 km/s, 100 kpc"
     },
     {
      "id": "rand_b052_a222_s1006",
@@ -4510,7 +4548,7 @@
       }
      ],
      "pairs": [],
-     "reason": "4 O VI components, logN 12.0–15.9, b 13–88 km/s, 105 kpc"
+     "reason": "4 O VI components, logN 12.0–15.9 (3 lower limits), b 13–88 km/s, 105 kpc"
     },
     {
      "id": "edge_b017_a037",
@@ -4545,7 +4583,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 O VI components, logN 11.9–16.5, b 5–48 km/s, 111 kpc"
+     "reason": "2 O VI components, logN 11.9–16.5 (1 lower limit), b 5–48 km/s, 111 kpc"
     },
     {
      "id": "face_b178_a168",
@@ -4639,7 +4677,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 11.9–16.4, b 4–82 km/s, 146 kpc"
+     "reason": "5 O VI components, logN 11.9–16.4 (2 lower limits), b 4–82 km/s, 146 kpc"
     }
    ]
   },
@@ -4657,8 +4695,8 @@
    "ids": [
     "cust_000000001b",
     "edge_b073_a333",
-    "face_b262_a252",
-    "face_b010_a000"
+    "face_b010_a000",
+    "face_b262_a252"
    ],
    "results": [
     {
@@ -4730,7 +4768,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 H I components, logN 12.9–16.4, b 11–70 km/s, 100 kpc"
+     "reason": "5 H I components, logN 12.9–16.4 (3 lower limits), b 11–70 km/s, 100 kpc"
     },
     {
      "id": "edge_b073_a333",
@@ -4765,7 +4803,43 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 15.6–16.2, b 38–45 km/s, 100 kpc"
+     "reason": "2 H I components, logN 15.6–16.2 (1 lower limit), b 38–45 km/s, 100 kpc"
+    },
+    {
+     "id": "face_b010_a000",
+     "score": 2.775,
+     "n": 2,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -60.0,
+       "dv": null,
+       "logN": 17.91,
+       "dlogN": null,
+       "b": 20.0,
+       "db": null,
+       "region": 0,
+       "flag": 33,
+       "EW": 400.0,
+       "logN_lo": 15.1,
+       "idx": 0
+      },
+      {
+       "v": 10.0,
+       "dv": 0.4,
+       "logN": 20.3,
+       "dlogN": 0.02,
+       "b": 30.0,
+       "db": 1.0,
+       "region": 1,
+       "flag": 65,
+       "EW": 2600.0,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 H I components, logN 15.1–20.3 (1 lower limit), b 20–30 km/s, 100 kpc"
     },
     {
      "id": "face_b262_a252",
@@ -4800,17 +4874,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 14.4–14.6, b 26–87 km/s, 100 kpc"
-    },
-    {
-     "id": "face_b010_a000",
-     "score": 0.0,
-     "n": 0,
-     "b_kpc": 100.0,
-     "orientation": "face-on",
-     "components": [],
-     "pairs": [],
-     "reason": "0 H I components, 100 kpc"
+     "reason": "2 H I components, logN 14.4–14.6 (1 lower limit), b 26–87 km/s, 100 kpc"
     }
    ]
   },
@@ -4913,7 +4977,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 C III components, logN 12.0–15.4, b 7–67 km/s, 84 kpc"
+     "reason": "6 C III components, logN 12.0–15.4 (1 lower limit), b 7–67 km/s, 84 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -4996,7 +5060,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 C III components, logN 13.0–16.4, b 18–75 km/s, 100 kpc"
+     "reason": "6 C III components, logN 13.0–16.4 (3 lower limits), b 18–75 km/s, 100 kpc"
     },
     {
      "id": "cust_0000000007",
@@ -5079,7 +5143,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 C III components, logN 12.8–16.0, b 21–81 km/s, 146 kpc"
+     "reason": "6 C III components, logN 12.8–16.0 (1 lower limit), b 21–81 km/s, 146 kpc"
     },
     {
      "id": "rand_b024_a074_s1002",
@@ -5245,7 +5309,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 C III components, logN 12.4–15.5, b 7–88 km/s, 279 kpc"
+     "reason": "6 C III components, logN 12.4–15.5 (4 lower limits), b 7–88 km/s, 279 kpc"
     },
     {
      "id": "face_b234_a104",
@@ -5328,7 +5392,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 C III components, logN 12.5–15.5, b 6–88 km/s, 119 kpc"
+     "reason": "6 C III components, logN 12.5–15.5 (4 lower limits), b 6–88 km/s, 119 kpc"
     },
     {
      "id": "edge_b157_a057",
@@ -5411,7 +5475,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 C III components, logN 11.6–15.9, b 26–83 km/s, 162 kpc"
+     "reason": "6 C III components, logN 11.6–15.9 (3 lower limits), b 26–83 km/s, 162 kpc"
     }
    ]
   },
@@ -5495,7 +5559,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 O VI components, logN 14.8–16.3, b 16–49 km/s, 279 kpc"
+     "reason": "5 O VI components, logN 14.8–16.3 (1 lower limit), b 16–49 km/s, 279 kpc"
     }
    ]
   },
@@ -5597,7 +5661,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 H I components, logN 11.9–16.3, b 11–80 km/s, 272 kpc"
+     "reason": "6 H I components, logN 11.9–16.3 (1 lower limit), b 11–80 km/s, 272 kpc"
     },
     {
      "id": "face_b122_a232",
@@ -5680,7 +5744,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 H I components, logN 12.7–15.6, b 8–73 km/s, 298 kpc"
+     "reason": "6 H I components, logN 12.7–15.6 (1 lower limit), b 8–73 km/s, 298 kpc"
     },
     {
      "id": "cust_0000000017",
@@ -5763,7 +5827,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 H I components, logN 12.4–15.6, b 32–80 km/s, 84 kpc"
+     "reason": "6 H I components, logN 12.4–15.6 (2 lower limits), b 32–80 km/s, 84 kpc"
     },
     {
      "id": "cust_0000000003",
@@ -5834,7 +5898,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 H I components, logN 13.5–14.4, b 9–68 km/s, 20 kpc"
+     "reason": "5 H I components, logN 13.5–14.4 (1 lower limit), b 9–68 km/s, 20 kpc"
     },
     {
      "id": "face_b038_a148",
@@ -5905,7 +5969,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 H I components, logN 12.7–16.4, b 9–87 km/s, 300 kpc"
+     "reason": "5 H I components, logN 12.7–16.4 (3 lower limits), b 9–87 km/s, 300 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -5976,7 +6040,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 H I components, logN 12.9–16.4, b 11–70 km/s, 100 kpc"
+     "reason": "5 H I components, logN 12.9–16.4 (3 lower limits), b 11–70 km/s, 100 kpc"
     },
     {
      "id": "edge_b185_a205",
@@ -6047,7 +6111,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 H I components, logN 11.8–13.5, b 9–72 km/s, 164 kpc"
+     "reason": "5 H I components, logN 11.8–13.5 (2 lower limits), b 9–72 km/s, 164 kpc"
     }
    ]
   },
@@ -6276,7 +6340,7 @@
        185.0
       ]
      ],
-     "reason": "5 C III components, logN 13.3–16.4, b 18–73 km/s, Δv 42 km/s, 100 kpc"
+     "reason": "5 C III components, logN 13.3–16.4 (2 lower limits), b 18–73 km/s, Δv 42 km/s, 100 kpc"
     },
     {
      "id": "edge_b129_a269",
@@ -6431,7 +6495,7 @@
        131.4
       ]
      ],
-     "reason": "4 C III components, logN 14.5–15.4, b 7–67 km/s, Δv 92 km/s, 84 kpc"
+     "reason": "4 C III components, logN 14.5–15.4 (1 lower limit), b 7–67 km/s, Δv 92 km/s, 84 kpc"
     },
     {
      "id": "face_b234_a104",
@@ -6516,7 +6580,7 @@
        134.0
       ]
      ],
-     "reason": "4 C III components, logN 13.7–15.5, b 6–81 km/s, Δv 16 km/s, 119 kpc"
+     "reason": "4 C III components, logN 13.7–15.5 (2 lower limits), b 6–81 km/s, Δv 16 km/s, 119 kpc"
     },
     {
      "id": "cust_0000000007",
@@ -6691,7 +6755,7 @@
        124.8
       ]
      ],
-     "reason": "5 C III components, logN 13.3–15.3, b 7–88 km/s, Δv 32 km/s, 279 kpc"
+     "reason": "5 C III components, logN 13.3–15.3 (2 lower limits), b 7–88 km/s, Δv 32 km/s, 279 kpc"
     },
     {
      "id": "edge_b185_a205",
@@ -6776,7 +6840,7 @@
        173.1
       ]
      ],
-     "reason": "4 C III components, logN 13.1–15.5, b 37–83 km/s, Δv 71 km/s, 164 kpc"
+     "reason": "4 C III components, logN 13.1–15.5 (2 lower limits), b 37–83 km/s, Δv 71 km/s, 164 kpc"
     },
     {
      "id": "edge_b213_a353",
@@ -6839,7 +6903,7 @@
        35.7
       ]
      ],
-     "reason": "4 C III components, logN 13.7–14.6, b 35–85 km/s, Δv 17 km/s, 83 kpc"
+     "reason": "4 C III components, logN 13.7–14.6 (2 lower limits), b 35–85 km/s, Δv 17 km/s, 83 kpc"
     },
     {
      "id": "rand_b024_a074_s1002",
@@ -6921,7 +6985,7 @@
        125.8
       ]
      ],
-     "reason": "2 C III components, logN 15.5–16.2, b 10–55 km/s, Δv 126 km/s, 272 kpc"
+     "reason": "2 C III components, logN 15.5–16.2 (1 lower limit), b 10–55 km/s, Δv 126 km/s, 272 kpc"
     },
     {
      "id": "edge_b157_a057",
@@ -7208,7 +7272,7 @@
        404.8
       ]
      ],
-     "reason": "6 H I components, logN 11.9–16.3, b 11–80 km/s, Δv 242 km/s, 272 kpc"
+     "reason": "6 H I components, logN 11.9–16.3 (1 lower limit), b 11–80 km/s, Δv 242 km/s, 272 kpc"
     },
     {
      "id": "face_b122_a232",
@@ -7342,7 +7406,7 @@
        410.7
       ]
      ],
-     "reason": "6 H I components, logN 12.7–15.6, b 8–73 km/s, Δv 147 km/s, 298 kpc"
+     "reason": "6 H I components, logN 12.7–15.6 (1 lower limit), b 8–73 km/s, Δv 147 km/s, 298 kpc"
     },
     {
      "id": "cust_0000000017",
@@ -7476,7 +7540,7 @@
        353.7
       ]
      ],
-     "reason": "6 H I components, logN 12.4–15.6, b 32–80 km/s, Δv 137 km/s, 84 kpc"
+     "reason": "6 H I components, logN 12.4–15.6 (2 lower limits), b 32–80 km/s, Δv 137 km/s, 84 kpc"
     },
     {
      "id": "cust_0000000003",
@@ -7588,7 +7652,7 @@
        450.6
       ]
      ],
-     "reason": "5 H I components, logN 13.5–14.4, b 9–68 km/s, Δv 155 km/s, 20 kpc"
+     "reason": "5 H I components, logN 13.5–14.4 (1 lower limit), b 9–68 km/s, Δv 155 km/s, 20 kpc"
     },
     {
      "id": "face_b038_a148",
@@ -7690,7 +7754,7 @@
        340.3
       ]
      ],
-     "reason": "5 H I components, logN 12.7–16.4, b 9–87 km/s, Δv 114 km/s, 300 kpc"
+     "reason": "5 H I components, logN 12.7–16.4 (3 lower limits), b 9–87 km/s, Δv 114 km/s, 300 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -7792,7 +7856,7 @@
        309.4
       ]
      ],
-     "reason": "5 H I components, logN 12.9–16.4, b 11–70 km/s, Δv 134 km/s, 100 kpc"
+     "reason": "5 H I components, logN 12.9–16.4 (3 lower limits), b 11–70 km/s, Δv 134 km/s, 100 kpc"
     },
     {
      "id": "edge_b185_a205",
@@ -7894,7 +7958,7 @@
        465.5
       ]
      ],
-     "reason": "5 H I components, logN 11.8–13.5, b 9–72 km/s, Δv 128 km/s, 164 kpc"
+     "reason": "5 H I components, logN 11.8–13.5 (2 lower limits), b 9–72 km/s, Δv 128 km/s, 164 kpc"
     },
     {
      "id": "face_b066_a296",
@@ -7979,7 +8043,7 @@
        337.6
       ]
      ],
-     "reason": "4 H I components, logN 13.8–16.4, b 23–77 km/s, Δv 101 km/s, 220 kpc"
+     "reason": "4 H I components, logN 13.8–16.4 (1 lower limit), b 23–77 km/s, Δv 101 km/s, 220 kpc"
     },
     {
      "id": "edge_b129_a269",
@@ -8144,7 +8208,7 @@
        332.4
       ]
      ],
-     "reason": "4 H I components, logN 12.2–16.5, b 16–89 km/s, Δv 104 km/s, 180 kpc"
+     "reason": "4 H I components, logN 12.2–16.5 (2 lower limits), b 16–89 km/s, Δv 104 km/s, 180 kpc"
     },
     {
      "id": "face_b178_a168",
@@ -8306,7 +8370,7 @@
        192.3
       ]
      ],
-     "reason": "2 H I components, logN 15.6–16.2, b 38–45 km/s, Δv 192 km/s, 100 kpc"
+     "reason": "2 H I components, logN 15.6–16.2 (1 lower limit), b 38–45 km/s, Δv 192 km/s, 100 kpc"
     },
     {
      "id": "edge_b157_a057",
@@ -8388,7 +8452,7 @@
        148.5
       ]
      ],
-     "reason": "2 H I components, logN 16.3–16.4, b 53–53 km/s, Δv 149 km/s, 279 kpc"
+     "reason": "2 H I components, logN 16.3–16.4 (2 lower limits), b 53–53 km/s, Δv 149 km/s, 279 kpc"
     },
     {
      "id": "rand_b052_a222_s1006",
@@ -8470,7 +8534,7 @@
        481.1
       ]
      ],
-     "reason": "2 H I components, logN 14.4–14.6, b 26–87 km/s, Δv 481 km/s, 100 kpc"
+     "reason": "2 H I components, logN 14.4–14.6 (1 lower limit), b 26–87 km/s, Δv 481 km/s, 100 kpc"
     },
     {
      "id": "rand_b024_a074_s1002",
@@ -8552,7 +8616,7 @@
        332.9
       ]
      ],
-     "reason": "2 H I components, logN 13.0–14.2, b 7–76 km/s, Δv 333 km/s, 257 kpc"
+     "reason": "2 H I components, logN 13.0–14.2 (1 lower limit), b 7–76 km/s, Δv 333 km/s, 257 kpc"
     }
    ]
   },
@@ -8610,7 +8674,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 C III components, logN 13.2–14.4, b 40–66 km/s, 30 kpc"
+     "reason": "2 C III components, logN 13.2–14.4 (1 lower limit), b 40–66 km/s, 30 kpc"
     },
     {
      "id": "rand_b024_a074_s1002",
@@ -8819,7 +8883,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 C III components, logN 11.8–13.3, b 13–71 km/s, 156 kpc"
+     "reason": "6 C III components, logN 11.8–13.3 (2 lower limits), b 13–71 km/s, 156 kpc"
     },
     {
      "id": "rand_b276_a326_s1038",
@@ -8890,7 +8954,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 C III components, logN 12.5–14.8, b 32–73 km/s, 257 kpc"
+     "reason": "5 C III components, logN 12.5–14.8 (2 lower limits), b 32–73 km/s, 257 kpc"
     },
     {
      "id": "rand_b192_a242_s1026",
@@ -8934,7 +8998,7 @@
     "b_max": 10,
     "n_min": 1
    },
-   "n_total": 10,
+   "n_total": 11,
    "ids": [
     "rand_b220_a030_s1030",
     "edge_b017_a037",
@@ -8944,6 +9008,7 @@
     "face_b066_a296",
     "edge_b269_a289",
     "rand_b248_a178_s1034",
+    "face_b010_a000",
     "cust_0000000027",
     "rand_b108_a158_s1014"
    ],
@@ -8981,7 +9046,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 O VI components, logN 12.1–14.5, b 6–7 km/s, 30 kpc"
+     "reason": "2 O VI components, logN 12.1–14.5 (1 lower limit), b 6–7 km/s, 30 kpc"
     },
     {
      "id": "edge_b017_a037",
@@ -9062,7 +9127,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 O VI components, logN 12.5–12.7, b 4–8 km/s, 299 kpc"
+     "reason": "2 O VI components, logN 12.5–12.7 (1 lower limit), b 4–8 km/s, 299 kpc"
     },
     {
      "id": "face_b178_a168",
@@ -9131,7 +9196,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 14.8–14.8, b 8–8 km/s, 298 kpc"
+     "reason": "1 O VI component, logN 14.8–14.8 (1 lower limit), b 8–8 km/s, 298 kpc"
     },
     {
      "id": "rand_b248_a178_s1034",
@@ -9154,7 +9219,31 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 14.8–14.8, b 8–8 km/s, 156 kpc"
+     "reason": "1 O VI component, logN 14.8–14.8 (1 lower limit), b 8–8 km/s, 156 kpc"
+    },
+    {
+     "id": "face_b010_a000",
+     "score": 1.15,
+     "n": 1,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 140.0,
+       "dv": null,
+       "logN": 17.9,
+       "dlogN": null,
+       "b": 9.0,
+       "db": null,
+       "region": 2,
+       "flag": 33,
+       "EW": 120.0,
+       "logN_lo": 14.6,
+       "idx": 4
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.6–14.6 (1 lower limit), b 9–9 km/s, 100 kpc"
     },
     {
      "id": "cust_0000000027",
@@ -9200,7 +9289,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 O VI component, logN 12.5–12.5, b 4–4 km/s, 75 kpc"
+     "reason": "1 O VI component, logN 12.5–12.5 (1 lower limit), b 4–4 km/s, 75 kpc"
     }
    ]
   },
@@ -9354,12 +9443,12 @@
        409.8
       ]
      ],
-     "reason": "5 O VI components, logN 12.1–15.5, b 6–73 km/s, Δv 35 km/s, 220 kpc"
+     "reason": "5 O VI components, logN 12.1–15.5 (1 lower limit), b 6–73 km/s, Δv 35 km/s, 220 kpc"
     },
     {
      "id": "face_b010_a000",
-     "score": 5.8125,
-     "n": 4,
+     "score": 6.7625,
+     "n": 5,
      "b_kpc": 100.0,
      "orientation": "face-on",
      "components": [
@@ -9409,7 +9498,21 @@
        "region": 1,
        "flag": 9,
        "EW": 300.0,
+       "logN_lo": 15.2,
        "idx": 3
+      },
+      {
+       "v": 140.0,
+       "dv": null,
+       "logN": 17.9,
+       "dlogN": null,
+       "b": 9.0,
+       "db": null,
+       "region": 2,
+       "flag": 33,
+       "EW": 120.0,
+       "logN_lo": 14.6,
+       "idx": 4
       }
      ],
      "pairs": [
@@ -9429,6 +9532,11 @@
        30.0
       ],
       [
+       3,
+       4,
+       62.3
+      ],
+      [
        1,
        3,
        205.7
@@ -9442,9 +9550,24 @@
        0,
        3,
        235.7
+      ],
+      [
+       1,
+       4,
+       268.0
+      ],
+      [
+       2,
+       4,
+       268.0
+      ],
+      [
+       0,
+       4,
+       298.0
       ]
      ],
-     "reason": "4 O VI components, logN 12.3–16.4, b 13–36 km/s, Δv 0 km/s, 100 kpc"
+     "reason": "5 O VI components, logN 12.3–15.2 (3 lower limits), b 9–36 km/s, Δv 0 km/s, 100 kpc"
     },
     {
      "id": "face_b094_a084",
@@ -9507,7 +9630,7 @@
        293.8
       ]
      ],
-     "reason": "3 O VI components, logN 13.0–15.4, b 38–90 km/s, Δv 116 km/s, 42 kpc"
+     "reason": "3 O VI components, logN 13.0–15.4 (1 lower limit), b 38–90 km/s, Δv 116 km/s, 42 kpc"
     },
     {
      "id": "face_b150_a020",
@@ -9710,7 +9833,7 @@
        108.0
       ]
      ],
-     "reason": "6 C IV components, logN 12.6–16.2, b 15–73 km/s, Δv 27 km/s, 257 kpc"
+     "reason": "6 C IV components, logN 12.6–16.2 (1 lower limit), b 15–73 km/s, Δv 27 km/s, 257 kpc"
     },
     {
      "id": "edge_b073_a333",
@@ -9824,7 +9947,7 @@
        96.3
       ]
      ],
-     "reason": "6 C IV components, logN 12.4–15.9, b 8–84 km/s, Δv 37 km/s, 100 kpc"
+     "reason": "6 C IV components, logN 12.4–15.9 (2 lower limits), b 8–84 km/s, Δv 37 km/s, 100 kpc"
     },
     {
      "id": "edge_b157_a057",
@@ -9943,7 +10066,7 @@
        108.8
       ]
      ],
-     "reason": "6 C IV components, logN 11.9–16.2, b 7–72 km/s, Δv 26 km/s, 162 kpc"
+     "reason": "6 C IV components, logN 11.9–16.2 (1 lower limit), b 7–72 km/s, Δv 26 km/s, 162 kpc"
     },
     {
      "id": "edge_b129_a269",
@@ -10035,7 +10158,7 @@
        52.9
       ]
      ],
-     "reason": "6 C IV components, logN 13.0–15.7, b 26–79 km/s, Δv 33 km/s, 216 kpc"
+     "reason": "6 C IV components, logN 13.0–15.7 (2 lower limits), b 26–79 km/s, Δv 33 km/s, 216 kpc"
     },
     {
      "id": "edge_b101_a121",
@@ -10122,7 +10245,7 @@
        93.1
       ]
      ],
-     "reason": "5 C IV components, logN 11.7–15.4, b 38–79 km/s, Δv 27 km/s, 263 kpc"
+     "reason": "5 C IV components, logN 11.7–15.4 (3 lower limits), b 38–79 km/s, Δv 27 km/s, 263 kpc"
     },
     {
      "id": "face_b150_a020",
@@ -10202,7 +10325,7 @@
        87.1
       ]
      ],
-     "reason": "6 C IV components, logN 12.5–16.3, b 14–71 km/s, Δv 60 km/s, 73 kpc"
+     "reason": "6 C IV components, logN 12.5–16.3 (2 lower limits), b 14–71 km/s, Δv 60 km/s, 73 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -10374,7 +10497,7 @@
        49.9
       ]
      ],
-     "reason": "6 C IV components, logN 11.6–15.4, b 63–89 km/s, Δv 32 km/s, 111 kpc"
+     "reason": "6 C IV components, logN 11.6–15.4 (3 lower limits), b 63–89 km/s, Δv 32 km/s, 111 kpc"
     },
     {
      "id": "face_b178_a168",
@@ -10454,7 +10577,7 @@
        114.6
       ]
      ],
-     "reason": "4 C IV components, logN 12.2–13.8, b 6–84 km/s, Δv 37 km/s, 115 kpc"
+     "reason": "4 C IV components, logN 12.2–13.8 (1 lower limit), b 6–84 km/s, Δv 37 km/s, 115 kpc"
     },
     {
      "id": "rand_b220_a030_s1030",
@@ -10529,7 +10652,7 @@
        115.3
       ]
      ],
-     "reason": "5 C IV components, logN 11.6–15.8, b 45–67 km/s, Δv 102 km/s, 30 kpc"
+     "reason": "5 C IV components, logN 11.6–15.8 (2 lower limits), b 45–67 km/s, Δv 102 km/s, 30 kpc"
     },
     {
      "id": "face_b234_a104",
@@ -10587,7 +10710,7 @@
        94.1
       ]
      ],
-     "reason": "6 C IV components, logN 14.1–15.0, b 10–20 km/s, Δv 93 km/s, 119 kpc"
+     "reason": "6 C IV components, logN 14.1–15.0 (1 lower limit), b 10–20 km/s, Δv 93 km/s, 119 kpc"
     },
     {
      "id": "rand_b248_a178_s1034",
@@ -10783,7 +10906,7 @@
        97.7
       ]
      ],
-     "reason": "5 C IV components, logN 11.8–13.7, b 35–80 km/s, Δv 20 km/s, 100 kpc"
+     "reason": "5 C IV components, logN 11.8–13.7 (3 lower limits), b 35–80 km/s, Δv 20 km/s, 100 kpc"
     },
     {
      "id": "face_b066_a296",
@@ -10865,7 +10988,7 @@
        64.9
       ]
      ],
-     "reason": "4 C IV components, logN 14.7–16.4, b 6–77 km/s, Δv 65 km/s, 20 kpc"
+     "reason": "4 C IV components, logN 14.7–16.4 (1 lower limit), b 6–77 km/s, Δv 65 km/s, 20 kpc"
     },
     {
      "id": "edge_b185_a205",
@@ -10947,7 +11070,7 @@
        38.2
       ]
      ],
-     "reason": "3 C IV components, logN 13.5–13.8, b 88–89 km/s, Δv 38 km/s, 105 kpc"
+     "reason": "3 C IV components, logN 13.5–13.8 (1 lower limit), b 88–89 km/s, Δv 38 km/s, 105 kpc"
     }
    ]
   },
@@ -11058,7 +11181,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 Mg II components, logN 12.2–16.3, b 8–89 km/s, 16 kpc"
+     "reason": "6 Mg II components, logN 12.2–16.3 (1 lower limit), b 8–89 km/s, 16 kpc"
     },
     {
      "id": "cust_0000000027",
@@ -11141,7 +11264,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 Mg II components, logN 11.9–16.2, b 4–85 km/s, 264 kpc"
+     "reason": "6 Mg II components, logN 11.9–16.2 (2 lower limits), b 4–85 km/s, 264 kpc"
     },
     {
      "id": "face_b066_a296",
@@ -11212,7 +11335,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 Mg II components, logN 14.4–16.2, b 26–71 km/s, 220 kpc"
+     "reason": "5 Mg II components, logN 14.4–16.2 (1 lower limit), b 26–71 km/s, 220 kpc"
     },
     {
      "id": "cust_0000000017",
@@ -11295,7 +11418,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 Mg II components, logN 12.2–16.3, b 4–39 km/s, 84 kpc"
+     "reason": "6 Mg II components, logN 12.2–16.3 (1 lower limit), b 4–39 km/s, 84 kpc"
     },
     {
      "id": "edge_b269_a289",
@@ -11378,7 +11501,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 Mg II components, logN 11.6–15.9, b 23–90 km/s, 298 kpc"
+     "reason": "6 Mg II components, logN 11.6–15.9 (2 lower limits), b 23–90 km/s, 298 kpc"
     },
     {
      "id": "face_b234_a104",
@@ -11461,7 +11584,7 @@
       }
      ],
      "pairs": [],
-     "reason": "6 Mg II components, logN 11.7–16.2, b 17–54 km/s, 119 kpc"
+     "reason": "6 Mg II components, logN 11.7–16.2 (5 lower limits), b 17–54 km/s, 119 kpc"
     },
     {
      "id": "edge_b101_a121",
@@ -11591,7 +11714,7 @@
       }
      ],
      "pairs": [],
-     "reason": "5 Mg II components, logN 12.3–16.0, b 16–46 km/s, 164 kpc"
+     "reason": "5 Mg II components, logN 12.3–16.0 (2 lower limits), b 16–46 km/s, 164 kpc"
     },
     {
      "id": "edge_b073_a333",
@@ -11650,7 +11773,7 @@
       }
      ],
      "pairs": [],
-     "reason": "4 Mg II components, logN 12.9–15.8, b 9–88 km/s, 100 kpc"
+     "reason": "4 Mg II components, logN 12.9–15.8 (1 lower limit), b 9–88 km/s, 100 kpc"
     },
     {
      "id": "rand_b220_a030_s1030",
@@ -11709,7 +11832,7 @@
       }
      ],
      "pairs": [],
-     "reason": "4 Mg II components, logN 11.5–16.4, b 21–82 km/s, 30 kpc"
+     "reason": "4 Mg II components, logN 11.5–16.4 (1 lower limit), b 21–82 km/s, 30 kpc"
     },
     {
      "id": "cust_000000000f",
@@ -11768,7 +11891,7 @@
       }
      ],
      "pairs": [],
-     "reason": "4 Mg II components, logN 11.9–15.2, b 16–83 km/s, 272 kpc"
+     "reason": "4 Mg II components, logN 11.9–15.2 (1 lower limit), b 16–83 km/s, 272 kpc"
     },
     {
      "id": "face_b038_a148",
@@ -11815,7 +11938,7 @@
       }
      ],
      "pairs": [],
-     "reason": "3 Mg II components, logN 14.1–16.4, b 6–76 km/s, 300 kpc"
+     "reason": "3 Mg II components, logN 14.1–16.4 (1 lower limit), b 6–76 km/s, 300 kpc"
     },
     {
      "id": "face_b122_a232",
@@ -11909,7 +12032,7 @@
       }
      ],
      "pairs": [],
-     "reason": "3 Mg II components, logN 11.8–14.9, b 43–83 km/s, 100 kpc"
+     "reason": "3 Mg II components, logN 11.8–14.9 (1 lower limit), b 43–83 km/s, 100 kpc"
     },
     {
      "id": "face_b094_a084",
@@ -11956,7 +12079,7 @@
       }
      ],
      "pairs": [],
-     "reason": "3 Mg II components, logN 12.1–15.5, b 20–63 km/s, 42 kpc"
+     "reason": "3 Mg II components, logN 12.1–15.5 (1 lower limit), b 20–63 km/s, 42 kpc"
     },
     {
      "id": "face_b150_a020",
@@ -12003,7 +12126,7 @@
       }
      ],
      "pairs": [],
-     "reason": "3 Mg II components, logN 11.8–13.2, b 36–70 km/s, 73 kpc"
+     "reason": "3 Mg II components, logN 11.8–13.2 (1 lower limit), b 36–70 km/s, 73 kpc"
     }
    ]
   },
@@ -12027,6 +12150,7 @@
     "cust_000000000f",
     "cust_0000000013",
     "cust_000000001b",
+    "face_b010_a000",
     "face_b038_a148",
     "cust_0000000003",
     "cust_000000000b",
@@ -12039,7 +12163,6 @@
     "edge_b213_a353",
     "edge_b241_a141",
     "edge_b269_a289",
-    "face_b010_a000",
     "face_b094_a084",
     "face_b122_a232",
     "face_b206_a316",
@@ -12087,7 +12210,7 @@
       }
      ],
      "pairs": [],
-     "reason": "2 H I components, logN 16.3–16.4, b 53–53 km/s, 279 kpc"
+     "reason": "2 H I components, logN 16.3–16.4 (2 lower limits), b 53–53 km/s, 279 kpc"
     },
     {
      "id": "cust_0000000027",
@@ -12248,7 +12371,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 H I component, logN 16.3–16.3, b 80–80 km/s, 272 kpc"
+     "reason": "1 H I component, logN 16.3–16.3 (1 lower limit), b 80–80 km/s, 272 kpc"
     },
     {
      "id": "cust_0000000013",
@@ -12271,7 +12394,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 H I component, logN 16.5–16.5, b 16–16 km/s, 180 kpc"
+     "reason": "1 H I component, logN 16.5–16.5 (1 lower limit), b 16–16 km/s, 180 kpc"
     },
     {
      "id": "cust_000000001b",
@@ -12294,7 +12417,30 @@
       }
      ],
      "pairs": [],
-     "reason": "1 H I component, logN 16.4–16.4, b 19–19 km/s, 100 kpc"
+     "reason": "1 H I component, logN 16.4–16.4 (1 lower limit), b 19–19 km/s, 100 kpc"
+    },
+    {
+     "id": "face_b010_a000",
+     "score": 1.5,
+     "n": 1,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 10.0,
+       "dv": 0.4,
+       "logN": 20.3,
+       "dlogN": 0.02,
+       "b": 30.0,
+       "db": 1.0,
+       "region": 1,
+       "flag": 65,
+       "EW": 2600.0,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 20.3–20.3, b 30–30 km/s, 100 kpc"
     },
     {
      "id": "face_b038_a148",
@@ -12317,7 +12463,7 @@
       }
      ],
      "pairs": [],
-     "reason": "1 H I component, logN 16.4–16.4, b 86–86 km/s, 300 kpc"
+     "reason": "1 H I component, logN 16.4–16.4 (1 lower limit), b 86–86 km/s, 300 kpc"
     },
     {
      "id": "cust_0000000003",
@@ -12428,16 +12574,6 @@
      "components": [],
      "pairs": [],
      "reason": "0 H I components, 298 kpc"
-    },
-    {
-     "id": "face_b010_a000",
-     "score": 0.0,
-     "n": 0,
-     "b_kpc": 100.0,
-     "orientation": "face-on",
-     "components": [],
-     "pairs": [],
-     "reason": "0 H I components, 100 kpc"
     },
     {
      "id": "face_b094_a084",
@@ -12558,6 +12694,2678 @@
      "components": [],
      "pairs": [],
      "reason": "0 H I components, 257 kpc"
+    }
+   ]
+  },
+  {
+   "name": "limits_meet_logN_min",
+   "query": {
+    "ion": "OVI",
+    "logN_min": 14.5
+   },
+   "n_total": 21,
+   "ids": [
+    "cust_0000000023",
+    "rand_b248_a178_s1034",
+    "cust_0000000007",
+    "face_b066_a296",
+    "face_b150_a020",
+    "cust_000000001b",
+    "rand_b220_a030_s1030",
+    "edge_b101_a121",
+    "rand_b276_a326_s1038",
+    "face_b094_a084",
+    "face_b010_a000",
+    "edge_b017_a037",
+    "edge_b129_a269",
+    "rand_b080_a010_s1010",
+    "rand_b052_a222_s1006",
+    "face_b206_a316",
+    "cust_000000000f",
+    "rand_b108_a158_s1014",
+    "face_b038_a148",
+    "cust_0000000003",
+    "edge_b269_a289"
+   ],
+   "results": [
+    {
+     "id": "cust_0000000023",
+     "score": 9.09875,
+     "n": 5,
+     "b_kpc": 278.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -173.49,
+       "dv": 0.46,
+       "logN": 16.271,
+       "dlogN": 0.077,
+       "b": 48.77,
+       "db": 1.21,
+       "region": 0,
+       "flag": 0,
+       "EW": 218.29,
+       "idx": 0
+      },
+      {
+       "v": -52.01,
+       "dv": 2.84,
+       "logN": 16.253,
+       "dlogN": 0.181,
+       "b": 16.33,
+       "db": 0.14,
+       "region": 0,
+       "flag": 9,
+       "EW": 251.64,
+       "idx": 1
+      },
+      {
+       "v": 36.03,
+       "dv": 1.54,
+       "logN": 15.864,
+       "dlogN": 0.132,
+       "b": 33.28,
+       "db": 3.65,
+       "region": 1,
+       "flag": 0,
+       "EW": 144.39,
+       "idx": 2
+      },
+      {
+       "v": 129.25,
+       "dv": 0.99,
+       "logN": 14.842,
+       "dlogN": 0.016,
+       "b": 46.97,
+       "db": 3.78,
+       "region": 1,
+       "flag": 16,
+       "EW": 310.17,
+       "idx": 3
+      },
+      {
+       "v": 146.6,
+       "dv": 0.23,
+       "logN": 15.689,
+       "dlogN": 0.024,
+       "b": 42.14,
+       "db": 2.8,
+       "region": 2,
+       "flag": 0,
+       "EW": 311.22,
+       "idx": 4
+      }
+     ],
+     "pairs": [],
+     "reason": "5 O VI components, logN 14.8–16.3 (1 lower limit), b 16–49 km/s, 279 kpc"
+    },
+    {
+     "id": "rand_b248_a178_s1034",
+     "score": 4.70775,
+     "n": 3,
+     "b_kpc": 155.5,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -217.9,
+       "dv": 0.58,
+       "logN": 16.289,
+       "dlogN": 0.033,
+       "b": 28.97,
+       "db": 1.01,
+       "region": 0,
+       "flag": 2,
+       "EW": 38.44,
+       "idx": 0
+      },
+      {
+       "v": -96.29,
+       "dv": 1.75,
+       "logN": 16.491,
+       "dlogN": 0.046,
+       "b": 60.86,
+       "db": 3.51,
+       "region": 0,
+       "flag": 9,
+       "EW": 199.83,
+       "idx": 1
+      },
+      {
+       "v": 172.03,
+       "dv": 1.73,
+       "logN": 14.831,
+       "dlogN": 0.152,
+       "b": 7.97,
+       "db": 3.7,
+       "region": 1,
+       "flag": 9,
+       "EW": 377.43,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "3 O VI components, logN 14.8–16.5 (2 lower limits), b 8–61 km/s, 156 kpc"
+    },
+    {
+     "id": "cust_0000000007",
+     "score": 3.953,
+     "n": 2,
+     "b_kpc": 146.3,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -68.23,
+       "dv": 1.08,
+       "logN": 16.417,
+       "dlogN": 0.155,
+       "b": 26.02,
+       "db": 0.95,
+       "region": 0,
+       "flag": 0,
+       "EW": 72.27,
+       "idx": 1
+      },
+      {
+       "v": 80.83,
+       "dv": 0.9,
+       "logN": 15.812,
+       "dlogN": 0.026,
+       "b": 4.16,
+       "db": 3.75,
+       "region": 1,
+       "flag": 0,
+       "EW": 254.59,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.8–16.4, b 4–26 km/s, 146 kpc"
+    },
+    {
+     "id": "face_b066_a296",
+     "score": 3.71425,
+     "n": 2,
+     "b_kpc": 219.6,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 116.1,
+       "dv": 0.68,
+       "logN": 15.402,
+       "dlogN": 0.147,
+       "b": 72.55,
+       "db": 2.21,
+       "region": 0,
+       "flag": 16,
+       "EW": 318.34,
+       "idx": 1
+      },
+      {
+       "v": 154.18,
+       "dv": 2.85,
+       "logN": 15.455,
+       "dlogN": 0.127,
+       "b": 60.48,
+       "db": 4.99,
+       "region": 1,
+       "flag": 0,
+       "EW": 209.78,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.4–15.5, b 60–73 km/s, 220 kpc"
+    },
+    {
+     "id": "face_b150_a020",
+     "score": 3.70775,
+     "n": 2,
+     "b_kpc": 72.7,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -121.31,
+       "dv": 2.76,
+       "logN": 15.568,
+       "dlogN": 0.162,
+       "b": 57.52,
+       "db": 2.73,
+       "region": 0,
+       "flag": 0,
+       "EW": 147.39,
+       "idx": 0
+      },
+      {
+       "v": 105.99,
+       "dv": 1.36,
+       "logN": 15.263,
+       "dlogN": 0.129,
+       "b": 75.44,
+       "db": 3.77,
+       "region": 0,
+       "flag": 0,
+       "EW": 336.53,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.3–15.6, b 58–75 km/s, 73 kpc"
+    },
+    {
+     "id": "cust_000000001b",
+     "score": 3.697,
+     "n": 2,
+     "b_kpc": 100.0,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -218.94,
+       "dv": 0.23,
+       "logN": 14.788,
+       "dlogN": 0.075,
+       "b": 49.69,
+       "db": 4.84,
+       "region": 0,
+       "flag": 16,
+       "EW": 355.22,
+       "idx": 0
+      },
+      {
+       "v": 150.98,
+       "dv": 0.43,
+       "logN": 16.109,
+       "dlogN": 0.155,
+       "b": 70.96,
+       "db": 2.97,
+       "region": 1,
+       "flag": 0,
+       "EW": 132.79,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.8–16.1, b 50–71 km/s, 100 kpc"
+    },
+    {
+     "id": "rand_b220_a030_s1030",
+     "score": 3.5755,
+     "n": 2,
+     "b_kpc": 29.6,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -207.26,
+       "dv": 2.38,
+       "logN": 15.758,
+       "dlogN": 0.165,
+       "b": 49.99,
+       "db": 1.35,
+       "region": 0,
+       "flag": 0,
+       "EW": 39.13,
+       "idx": 0
+      },
+      {
+       "v": -206.87,
+       "dv": 0.14,
+       "logN": 14.544,
+       "dlogN": 0.15,
+       "b": 7.23,
+       "db": 1.05,
+       "region": 0,
+       "flag": 16,
+       "EW": 2.48,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.5–15.8, b 7–50 km/s, 30 kpc"
+    },
+    {
+     "id": "edge_b101_a121",
+     "score": 3.4595,
+     "n": 2,
+     "b_kpc": 262.8,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -9.5,
+       "dv": 2.58,
+       "logN": 16.293,
+       "dlogN": 0.172,
+       "b": 62.56,
+       "db": 1.83,
+       "region": 0,
+       "flag": 1,
+       "EW": 121.53,
+       "idx": 1
+      },
+      {
+       "v": 108.04,
+       "dv": 2.4,
+       "logN": 15.838,
+       "dlogN": 0.152,
+       "b": 87.08,
+       "db": 0.36,
+       "region": 1,
+       "flag": 16,
+       "EW": 286.92,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.8–16.3 (1 lower limit), b 63–87 km/s, 263 kpc"
+    },
+    {
+     "id": "rand_b276_a326_s1038",
+     "score": 3.35775,
+     "n": 2,
+     "b_kpc": 256.8,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -124.33,
+       "dv": 0.17,
+       "logN": 14.559,
+       "dlogN": 0.055,
+       "b": 63.65,
+       "db": 4.69,
+       "region": 0,
+       "flag": 0,
+       "EW": 122.96,
+       "idx": 1
+      },
+      {
+       "v": 167.32,
+       "dv": 0.4,
+       "logN": 14.872,
+       "dlogN": 0.021,
+       "b": 52.67,
+       "db": 4.12,
+       "region": 2,
+       "flag": 0,
+       "EW": 256.95,
+       "idx": 5
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.6–14.9, b 53–64 km/s, 257 kpc"
+    },
+    {
+     "id": "face_b094_a084",
+     "score": 3.0715,
+     "n": 2,
+     "b_kpc": 42.3,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -151.52,
+       "dv": 1.91,
+       "logN": 15.423,
+       "dlogN": 0.166,
+       "b": 89.56,
+       "db": 1.45,
+       "region": 0,
+       "flag": 1,
+       "EW": 79.47,
+       "idx": 0
+      },
+      {
+       "v": -35.42,
+       "dv": 1.84,
+       "logN": 14.863,
+       "dlogN": 0.079,
+       "b": 38.04,
+       "db": 2.52,
+       "region": 0,
+       "flag": 2,
+       "EW": 361.84,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.9–15.4 (1 lower limit), b 38–90 km/s, 42 kpc"
+    },
+    {
+     "id": "face_b010_a000",
+     "score": 2.45,
+     "n": 2,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 77.7,
+       "dv": 0.5,
+       "logN": 16.4,
+       "dlogN": 0.01,
+       "b": 35.5,
+       "db": 0.3,
+       "region": 1,
+       "flag": 9,
+       "EW": 300.0,
+       "logN_lo": 15.2,
+       "idx": 3
+      },
+      {
+       "v": 140.0,
+       "dv": null,
+       "logN": 17.9,
+       "dlogN": null,
+       "b": 9.0,
+       "db": null,
+       "region": 2,
+       "flag": 33,
+       "EW": 120.0,
+       "logN_lo": 14.6,
+       "idx": 4
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.6–15.2 (2 lower limits), b 9–36 km/s, 100 kpc"
+    },
+    {
+     "id": "edge_b017_a037",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 111.0,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -83.0,
+       "dv": 0.17,
+       "logN": 16.45,
+       "dlogN": 0.068,
+       "b": 4.77,
+       "db": 3.74,
+       "region": 0,
+       "flag": 16,
+       "EW": 226.63,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.5–16.5, b 5–5 km/s, 111 kpc"
+    },
+    {
+     "id": "edge_b129_a269",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 215.9,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -76.22,
+       "dv": 1.6,
+       "logN": 16.482,
+       "dlogN": 0.072,
+       "b": 18.68,
+       "db": 3.22,
+       "region": 0,
+       "flag": 2,
+       "EW": 138.27,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.5–16.5, b 19–19 km/s, 216 kpc"
+    },
+    {
+     "id": "rand_b080_a010_s1010",
+     "score": 1.981,
+     "n": 1,
+     "b_kpc": 299.2,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -178.0,
+       "dv": 0.43,
+       "logN": 15.924,
+       "dlogN": 0.096,
+       "b": 61.63,
+       "db": 1.49,
+       "region": 0,
+       "flag": 16,
+       "EW": 276.36,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 62–62 km/s, 299 kpc"
+    },
+    {
+     "id": "rand_b052_a222_s1006",
+     "score": 1.9705,
+     "n": 1,
+     "b_kpc": 104.8,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -144.4,
+       "dv": 0.6,
+       "logN": 15.882,
+       "dlogN": 0.199,
+       "b": 88.38,
+       "db": 2.2,
+       "region": 0,
+       "flag": 0,
+       "EW": 271.88,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 88–88 km/s, 105 kpc"
+    },
+    {
+     "id": "face_b206_a316",
+     "score": 1.966,
+     "n": 1,
+     "b_kpc": 15.6,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -74.49,
+       "dv": 2.28,
+       "logN": 15.864,
+       "dlogN": 0.081,
+       "b": 59.11,
+       "db": 3.79,
+       "region": 0,
+       "flag": 16,
+       "EW": 18.33,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 59–59 km/s, 16 kpc"
+    },
+    {
+     "id": "cust_000000000f",
+     "score": 1.7185,
+     "n": 1,
+     "b_kpc": 271.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": 223.21,
+       "dv": 2.71,
+       "logN": 14.874,
+       "dlogN": 0.062,
+       "b": 63.74,
+       "db": 1.09,
+       "region": 0,
+       "flag": 2,
+       "EW": 70.13,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.9–14.9, b 64–64 km/s, 272 kpc"
+    },
+    {
+     "id": "rand_b108_a158_s1014",
+     "score": 1.675,
+     "n": 1,
+     "b_kpc": 75.2,
+     "orientation": "random",
+     "components": [
+      {
+       "v": 144.54,
+       "dv": 0.93,
+       "logN": 14.7,
+       "dlogN": 0.162,
+       "b": 53.87,
+       "db": 1.11,
+       "region": 1,
+       "flag": 0,
+       "EW": 182.52,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.7–14.7, b 54–54 km/s, 75 kpc"
+    },
+    {
+     "id": "face_b038_a148",
+     "score": 1.6335,
+     "n": 1,
+     "b_kpc": 300.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 179.64,
+       "dv": 0.61,
+       "logN": 14.534,
+       "dlogN": 0.062,
+       "b": 39.86,
+       "db": 2.88,
+       "region": 0,
+       "flag": 0,
+       "EW": 58.53,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.5–14.5, b 40–40 km/s, 300 kpc"
+    },
+    {
+     "id": "cust_0000000003",
+     "score": 1.5,
+     "n": 1,
+     "b_kpc": 20.0,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": 83.79,
+       "dv": 2.2,
+       "logN": 16.468,
+       "dlogN": 0.156,
+       "b": 29.29,
+       "db": 4.88,
+       "region": 1,
+       "flag": 9,
+       "EW": 27.25,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.5–16.5 (1 lower limit), b 29–29 km/s, 20 kpc"
+    },
+    {
+     "id": "edge_b269_a289",
+     "score": 1.21025,
+     "n": 1,
+     "b_kpc": 298.0,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": 234.61,
+       "dv": 2.33,
+       "logN": 14.841,
+       "dlogN": 0.065,
+       "b": 8.43,
+       "db": 4.21,
+       "region": 0,
+       "flag": 9,
+       "EW": 378.87,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.8–14.8 (1 lower limit), b 8–8 km/s, 298 kpc"
+    }
+   ]
+  },
+  {
+   "name": "limits_never_meet_logN_max",
+   "query": {
+    "ion": "OVI",
+    "logN_min": 14.5,
+    "logN_max": 18
+   },
+   "n_total": 18,
+   "ids": [
+    "cust_0000000023",
+    "cust_0000000007",
+    "face_b066_a296",
+    "face_b150_a020",
+    "cust_000000001b",
+    "rand_b220_a030_s1030",
+    "rand_b276_a326_s1038",
+    "edge_b017_a037",
+    "edge_b129_a269",
+    "rand_b248_a178_s1034",
+    "rand_b080_a010_s1010",
+    "rand_b052_a222_s1006",
+    "face_b206_a316",
+    "edge_b101_a121",
+    "cust_000000000f",
+    "face_b094_a084",
+    "rand_b108_a158_s1014",
+    "face_b038_a148"
+   ],
+   "results": [
+    {
+     "id": "cust_0000000023",
+     "score": 7.59875,
+     "n": 4,
+     "b_kpc": 278.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -173.49,
+       "dv": 0.46,
+       "logN": 16.271,
+       "dlogN": 0.077,
+       "b": 48.77,
+       "db": 1.21,
+       "region": 0,
+       "flag": 0,
+       "EW": 218.29,
+       "idx": 0
+      },
+      {
+       "v": 36.03,
+       "dv": 1.54,
+       "logN": 15.864,
+       "dlogN": 0.132,
+       "b": 33.28,
+       "db": 3.65,
+       "region": 1,
+       "flag": 0,
+       "EW": 144.39,
+       "idx": 2
+      },
+      {
+       "v": 129.25,
+       "dv": 0.99,
+       "logN": 14.842,
+       "dlogN": 0.016,
+       "b": 46.97,
+       "db": 3.78,
+       "region": 1,
+       "flag": 16,
+       "EW": 310.17,
+       "idx": 3
+      },
+      {
+       "v": 146.6,
+       "dv": 0.23,
+       "logN": 15.689,
+       "dlogN": 0.024,
+       "b": 42.14,
+       "db": 2.8,
+       "region": 2,
+       "flag": 0,
+       "EW": 311.22,
+       "idx": 4
+      }
+     ],
+     "pairs": [],
+     "reason": "4 O VI components, logN 14.8–16.3, b 33–49 km/s, 279 kpc"
+    },
+    {
+     "id": "cust_0000000007",
+     "score": 3.953,
+     "n": 2,
+     "b_kpc": 146.3,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -68.23,
+       "dv": 1.08,
+       "logN": 16.417,
+       "dlogN": 0.155,
+       "b": 26.02,
+       "db": 0.95,
+       "region": 0,
+       "flag": 0,
+       "EW": 72.27,
+       "idx": 1
+      },
+      {
+       "v": 80.83,
+       "dv": 0.9,
+       "logN": 15.812,
+       "dlogN": 0.026,
+       "b": 4.16,
+       "db": 3.75,
+       "region": 1,
+       "flag": 0,
+       "EW": 254.59,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.8–16.4, b 4–26 km/s, 146 kpc"
+    },
+    {
+     "id": "face_b066_a296",
+     "score": 3.71425,
+     "n": 2,
+     "b_kpc": 219.6,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 116.1,
+       "dv": 0.68,
+       "logN": 15.402,
+       "dlogN": 0.147,
+       "b": 72.55,
+       "db": 2.21,
+       "region": 0,
+       "flag": 16,
+       "EW": 318.34,
+       "idx": 1
+      },
+      {
+       "v": 154.18,
+       "dv": 2.85,
+       "logN": 15.455,
+       "dlogN": 0.127,
+       "b": 60.48,
+       "db": 4.99,
+       "region": 1,
+       "flag": 0,
+       "EW": 209.78,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.4–15.5, b 60–73 km/s, 220 kpc"
+    },
+    {
+     "id": "face_b150_a020",
+     "score": 3.70775,
+     "n": 2,
+     "b_kpc": 72.7,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -121.31,
+       "dv": 2.76,
+       "logN": 15.568,
+       "dlogN": 0.162,
+       "b": 57.52,
+       "db": 2.73,
+       "region": 0,
+       "flag": 0,
+       "EW": 147.39,
+       "idx": 0
+      },
+      {
+       "v": 105.99,
+       "dv": 1.36,
+       "logN": 15.263,
+       "dlogN": 0.129,
+       "b": 75.44,
+       "db": 3.77,
+       "region": 0,
+       "flag": 0,
+       "EW": 336.53,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.3–15.6, b 58–75 km/s, 73 kpc"
+    },
+    {
+     "id": "cust_000000001b",
+     "score": 3.697,
+     "n": 2,
+     "b_kpc": 100.0,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -218.94,
+       "dv": 0.23,
+       "logN": 14.788,
+       "dlogN": 0.075,
+       "b": 49.69,
+       "db": 4.84,
+       "region": 0,
+       "flag": 16,
+       "EW": 355.22,
+       "idx": 0
+      },
+      {
+       "v": 150.98,
+       "dv": 0.43,
+       "logN": 16.109,
+       "dlogN": 0.155,
+       "b": 70.96,
+       "db": 2.97,
+       "region": 1,
+       "flag": 0,
+       "EW": 132.79,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.8–16.1, b 50–71 km/s, 100 kpc"
+    },
+    {
+     "id": "rand_b220_a030_s1030",
+     "score": 3.5755,
+     "n": 2,
+     "b_kpc": 29.6,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -207.26,
+       "dv": 2.38,
+       "logN": 15.758,
+       "dlogN": 0.165,
+       "b": 49.99,
+       "db": 1.35,
+       "region": 0,
+       "flag": 0,
+       "EW": 39.13,
+       "idx": 0
+      },
+      {
+       "v": -206.87,
+       "dv": 0.14,
+       "logN": 14.544,
+       "dlogN": 0.15,
+       "b": 7.23,
+       "db": 1.05,
+       "region": 0,
+       "flag": 16,
+       "EW": 2.48,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.5–15.8, b 7–50 km/s, 30 kpc"
+    },
+    {
+     "id": "rand_b276_a326_s1038",
+     "score": 3.35775,
+     "n": 2,
+     "b_kpc": 256.8,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -124.33,
+       "dv": 0.17,
+       "logN": 14.559,
+       "dlogN": 0.055,
+       "b": 63.65,
+       "db": 4.69,
+       "region": 0,
+       "flag": 0,
+       "EW": 122.96,
+       "idx": 1
+      },
+      {
+       "v": 167.32,
+       "dv": 0.4,
+       "logN": 14.872,
+       "dlogN": 0.021,
+       "b": 52.67,
+       "db": 4.12,
+       "region": 2,
+       "flag": 0,
+       "EW": 256.95,
+       "idx": 5
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.6–14.9, b 53–64 km/s, 257 kpc"
+    },
+    {
+     "id": "edge_b017_a037",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 111.0,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -83.0,
+       "dv": 0.17,
+       "logN": 16.45,
+       "dlogN": 0.068,
+       "b": 4.77,
+       "db": 3.74,
+       "region": 0,
+       "flag": 16,
+       "EW": 226.63,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.5–16.5, b 5–5 km/s, 111 kpc"
+    },
+    {
+     "id": "edge_b129_a269",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 215.9,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -76.22,
+       "dv": 1.6,
+       "logN": 16.482,
+       "dlogN": 0.072,
+       "b": 18.68,
+       "db": 3.22,
+       "region": 0,
+       "flag": 2,
+       "EW": 138.27,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.5–16.5, b 19–19 km/s, 216 kpc"
+    },
+    {
+     "id": "rand_b248_a178_s1034",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 155.5,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -217.9,
+       "dv": 0.58,
+       "logN": 16.289,
+       "dlogN": 0.033,
+       "b": 28.97,
+       "db": 1.01,
+       "region": 0,
+       "flag": 2,
+       "EW": 38.44,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.3–16.3, b 29–29 km/s, 156 kpc"
+    },
+    {
+     "id": "rand_b080_a010_s1010",
+     "score": 1.981,
+     "n": 1,
+     "b_kpc": 299.2,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -178.0,
+       "dv": 0.43,
+       "logN": 15.924,
+       "dlogN": 0.096,
+       "b": 61.63,
+       "db": 1.49,
+       "region": 0,
+       "flag": 16,
+       "EW": 276.36,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 62–62 km/s, 299 kpc"
+    },
+    {
+     "id": "rand_b052_a222_s1006",
+     "score": 1.9705,
+     "n": 1,
+     "b_kpc": 104.8,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -144.4,
+       "dv": 0.6,
+       "logN": 15.882,
+       "dlogN": 0.199,
+       "b": 88.38,
+       "db": 2.2,
+       "region": 0,
+       "flag": 0,
+       "EW": 271.88,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 88–88 km/s, 105 kpc"
+    },
+    {
+     "id": "face_b206_a316",
+     "score": 1.966,
+     "n": 1,
+     "b_kpc": 15.6,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -74.49,
+       "dv": 2.28,
+       "logN": 15.864,
+       "dlogN": 0.081,
+       "b": 59.11,
+       "db": 3.79,
+       "region": 0,
+       "flag": 16,
+       "EW": 18.33,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 59–59 km/s, 16 kpc"
+    },
+    {
+     "id": "edge_b101_a121",
+     "score": 1.9595,
+     "n": 1,
+     "b_kpc": 262.8,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": 108.04,
+       "dv": 2.4,
+       "logN": 15.838,
+       "dlogN": 0.152,
+       "b": 87.08,
+       "db": 0.36,
+       "region": 1,
+       "flag": 16,
+       "EW": 286.92,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.8–15.8, b 87–87 km/s, 263 kpc"
+    },
+    {
+     "id": "cust_000000000f",
+     "score": 1.7185,
+     "n": 1,
+     "b_kpc": 271.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": 223.21,
+       "dv": 2.71,
+       "logN": 14.874,
+       "dlogN": 0.062,
+       "b": 63.74,
+       "db": 1.09,
+       "region": 0,
+       "flag": 2,
+       "EW": 70.13,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.9–14.9, b 64–64 km/s, 272 kpc"
+    },
+    {
+     "id": "face_b094_a084",
+     "score": 1.71575,
+     "n": 1,
+     "b_kpc": 42.3,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -35.42,
+       "dv": 1.84,
+       "logN": 14.863,
+       "dlogN": 0.079,
+       "b": 38.04,
+       "db": 2.52,
+       "region": 0,
+       "flag": 2,
+       "EW": 361.84,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.9–14.9, b 38–38 km/s, 42 kpc"
+    },
+    {
+     "id": "rand_b108_a158_s1014",
+     "score": 1.675,
+     "n": 1,
+     "b_kpc": 75.2,
+     "orientation": "random",
+     "components": [
+      {
+       "v": 144.54,
+       "dv": 0.93,
+       "logN": 14.7,
+       "dlogN": 0.162,
+       "b": 53.87,
+       "db": 1.11,
+       "region": 1,
+       "flag": 0,
+       "EW": 182.52,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.7–14.7, b 54–54 km/s, 75 kpc"
+    },
+    {
+     "id": "face_b038_a148",
+     "score": 1.6335,
+     "n": 1,
+     "b_kpc": 300.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 179.64,
+       "dv": 0.61,
+       "logN": 14.534,
+       "dlogN": 0.062,
+       "b": 39.86,
+       "db": 2.88,
+       "region": 0,
+       "flag": 0,
+       "EW": 58.53,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.5–14.5, b 40–40 km/s, 300 kpc"
+    }
+   ]
+  },
+  {
+   "name": "limits_at_ceiling",
+   "query": {
+    "ion": "OVI",
+    "logN_min": 14.5,
+    "logN_max": 19
+   },
+   "n_total": 21,
+   "ids": [
+    "cust_0000000023",
+    "rand_b248_a178_s1034",
+    "cust_0000000007",
+    "face_b066_a296",
+    "face_b150_a020",
+    "cust_000000001b",
+    "rand_b220_a030_s1030",
+    "edge_b101_a121",
+    "rand_b276_a326_s1038",
+    "face_b094_a084",
+    "face_b010_a000",
+    "edge_b017_a037",
+    "edge_b129_a269",
+    "rand_b080_a010_s1010",
+    "rand_b052_a222_s1006",
+    "face_b206_a316",
+    "cust_000000000f",
+    "rand_b108_a158_s1014",
+    "face_b038_a148",
+    "cust_0000000003",
+    "edge_b269_a289"
+   ],
+   "results": [
+    {
+     "id": "cust_0000000023",
+     "score": 9.09875,
+     "n": 5,
+     "b_kpc": 278.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -173.49,
+       "dv": 0.46,
+       "logN": 16.271,
+       "dlogN": 0.077,
+       "b": 48.77,
+       "db": 1.21,
+       "region": 0,
+       "flag": 0,
+       "EW": 218.29,
+       "idx": 0
+      },
+      {
+       "v": -52.01,
+       "dv": 2.84,
+       "logN": 16.253,
+       "dlogN": 0.181,
+       "b": 16.33,
+       "db": 0.14,
+       "region": 0,
+       "flag": 9,
+       "EW": 251.64,
+       "idx": 1
+      },
+      {
+       "v": 36.03,
+       "dv": 1.54,
+       "logN": 15.864,
+       "dlogN": 0.132,
+       "b": 33.28,
+       "db": 3.65,
+       "region": 1,
+       "flag": 0,
+       "EW": 144.39,
+       "idx": 2
+      },
+      {
+       "v": 129.25,
+       "dv": 0.99,
+       "logN": 14.842,
+       "dlogN": 0.016,
+       "b": 46.97,
+       "db": 3.78,
+       "region": 1,
+       "flag": 16,
+       "EW": 310.17,
+       "idx": 3
+      },
+      {
+       "v": 146.6,
+       "dv": 0.23,
+       "logN": 15.689,
+       "dlogN": 0.024,
+       "b": 42.14,
+       "db": 2.8,
+       "region": 2,
+       "flag": 0,
+       "EW": 311.22,
+       "idx": 4
+      }
+     ],
+     "pairs": [],
+     "reason": "5 O VI components, logN 14.8–16.3 (1 lower limit), b 16–49 km/s, 279 kpc"
+    },
+    {
+     "id": "rand_b248_a178_s1034",
+     "score": 4.70775,
+     "n": 3,
+     "b_kpc": 155.5,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -217.9,
+       "dv": 0.58,
+       "logN": 16.289,
+       "dlogN": 0.033,
+       "b": 28.97,
+       "db": 1.01,
+       "region": 0,
+       "flag": 2,
+       "EW": 38.44,
+       "idx": 0
+      },
+      {
+       "v": -96.29,
+       "dv": 1.75,
+       "logN": 16.491,
+       "dlogN": 0.046,
+       "b": 60.86,
+       "db": 3.51,
+       "region": 0,
+       "flag": 9,
+       "EW": 199.83,
+       "idx": 1
+      },
+      {
+       "v": 172.03,
+       "dv": 1.73,
+       "logN": 14.831,
+       "dlogN": 0.152,
+       "b": 7.97,
+       "db": 3.7,
+       "region": 1,
+       "flag": 9,
+       "EW": 377.43,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "3 O VI components, logN 14.8–16.5 (2 lower limits), b 8–61 km/s, 156 kpc"
+    },
+    {
+     "id": "cust_0000000007",
+     "score": 3.953,
+     "n": 2,
+     "b_kpc": 146.3,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -68.23,
+       "dv": 1.08,
+       "logN": 16.417,
+       "dlogN": 0.155,
+       "b": 26.02,
+       "db": 0.95,
+       "region": 0,
+       "flag": 0,
+       "EW": 72.27,
+       "idx": 1
+      },
+      {
+       "v": 80.83,
+       "dv": 0.9,
+       "logN": 15.812,
+       "dlogN": 0.026,
+       "b": 4.16,
+       "db": 3.75,
+       "region": 1,
+       "flag": 0,
+       "EW": 254.59,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.8–16.4, b 4–26 km/s, 146 kpc"
+    },
+    {
+     "id": "face_b066_a296",
+     "score": 3.71425,
+     "n": 2,
+     "b_kpc": 219.6,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 116.1,
+       "dv": 0.68,
+       "logN": 15.402,
+       "dlogN": 0.147,
+       "b": 72.55,
+       "db": 2.21,
+       "region": 0,
+       "flag": 16,
+       "EW": 318.34,
+       "idx": 1
+      },
+      {
+       "v": 154.18,
+       "dv": 2.85,
+       "logN": 15.455,
+       "dlogN": 0.127,
+       "b": 60.48,
+       "db": 4.99,
+       "region": 1,
+       "flag": 0,
+       "EW": 209.78,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.4–15.5, b 60–73 km/s, 220 kpc"
+    },
+    {
+     "id": "face_b150_a020",
+     "score": 3.70775,
+     "n": 2,
+     "b_kpc": 72.7,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -121.31,
+       "dv": 2.76,
+       "logN": 15.568,
+       "dlogN": 0.162,
+       "b": 57.52,
+       "db": 2.73,
+       "region": 0,
+       "flag": 0,
+       "EW": 147.39,
+       "idx": 0
+      },
+      {
+       "v": 105.99,
+       "dv": 1.36,
+       "logN": 15.263,
+       "dlogN": 0.129,
+       "b": 75.44,
+       "db": 3.77,
+       "region": 0,
+       "flag": 0,
+       "EW": 336.53,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.3–15.6, b 58–75 km/s, 73 kpc"
+    },
+    {
+     "id": "cust_000000001b",
+     "score": 3.697,
+     "n": 2,
+     "b_kpc": 100.0,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -218.94,
+       "dv": 0.23,
+       "logN": 14.788,
+       "dlogN": 0.075,
+       "b": 49.69,
+       "db": 4.84,
+       "region": 0,
+       "flag": 16,
+       "EW": 355.22,
+       "idx": 0
+      },
+      {
+       "v": 150.98,
+       "dv": 0.43,
+       "logN": 16.109,
+       "dlogN": 0.155,
+       "b": 70.96,
+       "db": 2.97,
+       "region": 1,
+       "flag": 0,
+       "EW": 132.79,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.8–16.1, b 50–71 km/s, 100 kpc"
+    },
+    {
+     "id": "rand_b220_a030_s1030",
+     "score": 3.5755,
+     "n": 2,
+     "b_kpc": 29.6,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -207.26,
+       "dv": 2.38,
+       "logN": 15.758,
+       "dlogN": 0.165,
+       "b": 49.99,
+       "db": 1.35,
+       "region": 0,
+       "flag": 0,
+       "EW": 39.13,
+       "idx": 0
+      },
+      {
+       "v": -206.87,
+       "dv": 0.14,
+       "logN": 14.544,
+       "dlogN": 0.15,
+       "b": 7.23,
+       "db": 1.05,
+       "region": 0,
+       "flag": 16,
+       "EW": 2.48,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.5–15.8, b 7–50 km/s, 30 kpc"
+    },
+    {
+     "id": "edge_b101_a121",
+     "score": 3.4595,
+     "n": 2,
+     "b_kpc": 262.8,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -9.5,
+       "dv": 2.58,
+       "logN": 16.293,
+       "dlogN": 0.172,
+       "b": 62.56,
+       "db": 1.83,
+       "region": 0,
+       "flag": 1,
+       "EW": 121.53,
+       "idx": 1
+      },
+      {
+       "v": 108.04,
+       "dv": 2.4,
+       "logN": 15.838,
+       "dlogN": 0.152,
+       "b": 87.08,
+       "db": 0.36,
+       "region": 1,
+       "flag": 16,
+       "EW": 286.92,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 15.8–16.3 (1 lower limit), b 63–87 km/s, 263 kpc"
+    },
+    {
+     "id": "rand_b276_a326_s1038",
+     "score": 3.35775,
+     "n": 2,
+     "b_kpc": 256.8,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -124.33,
+       "dv": 0.17,
+       "logN": 14.559,
+       "dlogN": 0.055,
+       "b": 63.65,
+       "db": 4.69,
+       "region": 0,
+       "flag": 0,
+       "EW": 122.96,
+       "idx": 1
+      },
+      {
+       "v": 167.32,
+       "dv": 0.4,
+       "logN": 14.872,
+       "dlogN": 0.021,
+       "b": 52.67,
+       "db": 4.12,
+       "region": 2,
+       "flag": 0,
+       "EW": 256.95,
+       "idx": 5
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.6–14.9, b 53–64 km/s, 257 kpc"
+    },
+    {
+     "id": "face_b094_a084",
+     "score": 3.0715,
+     "n": 2,
+     "b_kpc": 42.3,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -151.52,
+       "dv": 1.91,
+       "logN": 15.423,
+       "dlogN": 0.166,
+       "b": 89.56,
+       "db": 1.45,
+       "region": 0,
+       "flag": 1,
+       "EW": 79.47,
+       "idx": 0
+      },
+      {
+       "v": -35.42,
+       "dv": 1.84,
+       "logN": 14.863,
+       "dlogN": 0.079,
+       "b": 38.04,
+       "db": 2.52,
+       "region": 0,
+       "flag": 2,
+       "EW": 361.84,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.9–15.4 (1 lower limit), b 38–90 km/s, 42 kpc"
+    },
+    {
+     "id": "face_b010_a000",
+     "score": 2.45,
+     "n": 2,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 77.7,
+       "dv": 0.5,
+       "logN": 16.4,
+       "dlogN": 0.01,
+       "b": 35.5,
+       "db": 0.3,
+       "region": 1,
+       "flag": 9,
+       "EW": 300.0,
+       "logN_lo": 15.2,
+       "idx": 3
+      },
+      {
+       "v": 140.0,
+       "dv": null,
+       "logN": 17.9,
+       "dlogN": null,
+       "b": 9.0,
+       "db": null,
+       "region": 2,
+       "flag": 33,
+       "EW": 120.0,
+       "logN_lo": 14.6,
+       "idx": 4
+      }
+     ],
+     "pairs": [],
+     "reason": "2 O VI components, logN 14.6–15.2 (2 lower limits), b 9–36 km/s, 100 kpc"
+    },
+    {
+     "id": "edge_b017_a037",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 111.0,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -83.0,
+       "dv": 0.17,
+       "logN": 16.45,
+       "dlogN": 0.068,
+       "b": 4.77,
+       "db": 3.74,
+       "region": 0,
+       "flag": 16,
+       "EW": 226.63,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.5–16.5, b 5–5 km/s, 111 kpc"
+    },
+    {
+     "id": "edge_b129_a269",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 215.9,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -76.22,
+       "dv": 1.6,
+       "logN": 16.482,
+       "dlogN": 0.072,
+       "b": 18.68,
+       "db": 3.22,
+       "region": 0,
+       "flag": 2,
+       "EW": 138.27,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.5–16.5, b 19–19 km/s, 216 kpc"
+    },
+    {
+     "id": "rand_b080_a010_s1010",
+     "score": 1.981,
+     "n": 1,
+     "b_kpc": 299.2,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -178.0,
+       "dv": 0.43,
+       "logN": 15.924,
+       "dlogN": 0.096,
+       "b": 61.63,
+       "db": 1.49,
+       "region": 0,
+       "flag": 16,
+       "EW": 276.36,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 62–62 km/s, 299 kpc"
+    },
+    {
+     "id": "rand_b052_a222_s1006",
+     "score": 1.9705,
+     "n": 1,
+     "b_kpc": 104.8,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -144.4,
+       "dv": 0.6,
+       "logN": 15.882,
+       "dlogN": 0.199,
+       "b": 88.38,
+       "db": 2.2,
+       "region": 0,
+       "flag": 0,
+       "EW": 271.88,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 88–88 km/s, 105 kpc"
+    },
+    {
+     "id": "face_b206_a316",
+     "score": 1.966,
+     "n": 1,
+     "b_kpc": 15.6,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -74.49,
+       "dv": 2.28,
+       "logN": 15.864,
+       "dlogN": 0.081,
+       "b": 59.11,
+       "db": 3.79,
+       "region": 0,
+       "flag": 16,
+       "EW": 18.33,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 15.9–15.9, b 59–59 km/s, 16 kpc"
+    },
+    {
+     "id": "cust_000000000f",
+     "score": 1.7185,
+     "n": 1,
+     "b_kpc": 271.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": 223.21,
+       "dv": 2.71,
+       "logN": 14.874,
+       "dlogN": 0.062,
+       "b": 63.74,
+       "db": 1.09,
+       "region": 0,
+       "flag": 2,
+       "EW": 70.13,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.9–14.9, b 64–64 km/s, 272 kpc"
+    },
+    {
+     "id": "rand_b108_a158_s1014",
+     "score": 1.675,
+     "n": 1,
+     "b_kpc": 75.2,
+     "orientation": "random",
+     "components": [
+      {
+       "v": 144.54,
+       "dv": 0.93,
+       "logN": 14.7,
+       "dlogN": 0.162,
+       "b": 53.87,
+       "db": 1.11,
+       "region": 1,
+       "flag": 0,
+       "EW": 182.52,
+       "idx": 3
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.7–14.7, b 54–54 km/s, 75 kpc"
+    },
+    {
+     "id": "face_b038_a148",
+     "score": 1.6335,
+     "n": 1,
+     "b_kpc": 300.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 179.64,
+       "dv": 0.61,
+       "logN": 14.534,
+       "dlogN": 0.062,
+       "b": 39.86,
+       "db": 2.88,
+       "region": 0,
+       "flag": 0,
+       "EW": 58.53,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.5–14.5, b 40–40 km/s, 300 kpc"
+    },
+    {
+     "id": "cust_0000000003",
+     "score": 1.5,
+     "n": 1,
+     "b_kpc": 20.0,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": 83.79,
+       "dv": 2.2,
+       "logN": 16.468,
+       "dlogN": 0.156,
+       "b": 29.29,
+       "db": 4.88,
+       "region": 1,
+       "flag": 9,
+       "EW": 27.25,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 16.5–16.5 (1 lower limit), b 29–29 km/s, 20 kpc"
+    },
+    {
+     "id": "edge_b269_a289",
+     "score": 1.21025,
+     "n": 1,
+     "b_kpc": 298.0,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": 234.61,
+       "dv": 2.33,
+       "logN": 14.841,
+       "dlogN": 0.065,
+       "b": 8.43,
+       "db": 4.21,
+       "region": 0,
+       "flag": 9,
+       "EW": 378.87,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 O VI component, logN 14.8–14.8 (1 lower limit), b 8–8 km/s, 298 kpc"
+    }
+   ]
+  },
+  {
+   "name": "hi_limit_below_floor",
+   "query": {
+    "ion": "HI",
+    "logN_min": 15.5,
+    "n_min": 1
+   },
+   "n_total": 15,
+   "ids": [
+    "face_b066_a296",
+    "cust_000000000f",
+    "edge_b073_a333",
+    "cust_0000000023",
+    "cust_0000000027",
+    "face_b150_a020",
+    "face_b178_a168",
+    "rand_b080_a010_s1010",
+    "edge_b213_a353",
+    "face_b122_a232",
+    "cust_0000000013",
+    "cust_000000001b",
+    "face_b010_a000",
+    "face_b038_a148",
+    "cust_0000000017"
+   ],
+   "results": [
+    {
+     "id": "face_b066_a296",
+     "score": 3.99375,
+     "n": 2,
+     "b_kpc": 219.6,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -58.85,
+       "dv": 2.41,
+       "logN": 15.975,
+       "dlogN": 0.053,
+       "b": 23.34,
+       "db": 1.51,
+       "region": 0,
+       "flag": 0,
+       "EW": 70.89,
+       "idx": 1
+      },
+      {
+       "v": 131.16,
+       "dv": 1.02,
+       "logN": 16.357,
+       "dlogN": 0.11,
+       "b": 77.27,
+       "db": 4.12,
+       "region": 1,
+       "flag": 2,
+       "EW": 44.67,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "2 H I components, logN 16.0–16.4, b 23–77 km/s, 220 kpc"
+    },
+    {
+     "id": "cust_000000000f",
+     "score": 3.47075,
+     "n": 2,
+     "b_kpc": 271.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -202.58,
+       "dv": 1.45,
+       "logN": 16.338,
+       "dlogN": 0.121,
+       "b": 80.25,
+       "db": 2.34,
+       "region": 0,
+       "flag": 9,
+       "EW": 346.49,
+       "idx": 0
+      },
+      {
+       "v": -159.49,
+       "dv": 1.39,
+       "logN": 15.883,
+       "dlogN": 0.191,
+       "b": 10.54,
+       "db": 4.39,
+       "region": 0,
+       "flag": 0,
+       "EW": 345.98,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 H I components, logN 15.9–16.3 (1 lower limit), b 11–80 km/s, 272 kpc"
+    },
+    {
+     "id": "edge_b073_a333",
+     "score": 3.40225,
+     "n": 2,
+     "b_kpc": 100.0,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": -59.28,
+       "dv": 1.68,
+       "logN": 15.609,
+       "dlogN": 0.12,
+       "b": 38.22,
+       "db": 2.73,
+       "region": 0,
+       "flag": 9,
+       "EW": 24.77,
+       "idx": 0
+      },
+      {
+       "v": 133.02,
+       "dv": 0.1,
+       "logN": 16.17,
+       "dlogN": 0.198,
+       "b": 44.88,
+       "db": 2.73,
+       "region": 0,
+       "flag": 0,
+       "EW": 139.24,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 H I components, logN 15.6–16.2 (1 lower limit), b 38–45 km/s, 100 kpc"
+    },
+    {
+     "id": "cust_0000000023",
+     "score": 3.0,
+     "n": 2,
+     "b_kpc": 278.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -3.09,
+       "dv": 2.11,
+       "logN": 16.358,
+       "dlogN": 0.062,
+       "b": 52.92,
+       "db": 2.12,
+       "region": 0,
+       "flag": 9,
+       "EW": 76.05,
+       "idx": 0
+      },
+      {
+       "v": 145.43,
+       "dv": 2.29,
+       "logN": 16.336,
+       "dlogN": 0.056,
+       "b": 52.63,
+       "db": 1.06,
+       "region": 0,
+       "flag": 9,
+       "EW": 383.99,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 H I components, logN 16.3–16.4 (2 lower limits), b 53–53 km/s, 279 kpc"
+    },
+    {
+     "id": "cust_0000000027",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 264.1,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": 23.0,
+       "dv": 2.99,
+       "logN": 16.245,
+       "dlogN": 0.125,
+       "b": 42.24,
+       "db": 3.14,
+       "region": 1,
+       "flag": 16,
+       "EW": 265.95,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.2–16.2, b 42–42 km/s, 264 kpc"
+    },
+    {
+     "id": "face_b150_a020",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 72.7,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -119.57,
+       "dv": 2.32,
+       "logN": 16.394,
+       "dlogN": 0.128,
+       "b": 81.51,
+       "db": 4.72,
+       "region": 0,
+       "flag": 0,
+       "EW": 48.32,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.4–16.4, b 82–82 km/s, 73 kpc"
+    },
+    {
+     "id": "face_b178_a168",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 115.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -215.58,
+       "dv": 0.85,
+       "logN": 16.296,
+       "dlogN": 0.168,
+       "b": 88.82,
+       "db": 1.56,
+       "region": 0,
+       "flag": 16,
+       "EW": 168.41,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.3–16.3, b 89–89 km/s, 115 kpc"
+    },
+    {
+     "id": "rand_b080_a010_s1010",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 299.2,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -212.79,
+       "dv": 2.96,
+       "logN": 16.248,
+       "dlogN": 0.129,
+       "b": 13.17,
+       "db": 4.18,
+       "region": 0,
+       "flag": 0,
+       "EW": 343.72,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.2–16.2, b 13–13 km/s, 299 kpc"
+    },
+    {
+     "id": "edge_b213_a353",
+     "score": 1.98325,
+     "n": 1,
+     "b_kpc": 82.8,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": 242.24,
+       "dv": 1.14,
+       "logN": 15.933,
+       "dlogN": 0.057,
+       "b": 67.4,
+       "db": 2.53,
+       "region": 1,
+       "flag": 0,
+       "EW": 235.58,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 15.9–15.9, b 67–67 km/s, 83 kpc"
+    },
+    {
+     "id": "face_b122_a232",
+     "score": 1.90425,
+     "n": 1,
+     "b_kpc": 297.9,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 193.04,
+       "dv": 0.99,
+       "logN": 15.617,
+       "dlogN": 0.193,
+       "b": 20.07,
+       "db": 1.96,
+       "region": 2,
+       "flag": 16,
+       "EW": 76.81,
+       "idx": 5
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 15.6–15.6, b 20–20 km/s, 298 kpc"
+    },
+    {
+     "id": "cust_0000000013",
+     "score": 1.5,
+     "n": 1,
+     "b_kpc": 179.5,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": 84.95,
+       "dv": 1.97,
+       "logN": 16.451,
+       "dlogN": 0.179,
+       "b": 16.25,
+       "db": 2.09,
+       "region": 0,
+       "flag": 1,
+       "EW": 396.73,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.5–16.5 (1 lower limit), b 16–16 km/s, 180 kpc"
+    },
+    {
+     "id": "cust_000000001b",
+     "score": 1.5,
+     "n": 1,
+     "b_kpc": 100.0,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -94.35,
+       "dv": 2.91,
+       "logN": 16.4,
+       "dlogN": 0.063,
+       "b": 19.03,
+       "db": 2.59,
+       "region": 0,
+       "flag": 1,
+       "EW": 180.89,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.4–16.4 (1 lower limit), b 19–19 km/s, 100 kpc"
+    },
+    {
+     "id": "face_b010_a000",
+     "score": 1.5,
+     "n": 1,
+     "b_kpc": 100.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 10.0,
+       "dv": 0.4,
+       "logN": 20.3,
+       "dlogN": 0.02,
+       "b": 30.0,
+       "db": 1.0,
+       "region": 1,
+       "flag": 65,
+       "EW": 2600.0,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 20.3–20.3, b 30–30 km/s, 100 kpc"
+    },
+    {
+     "id": "face_b038_a148",
+     "score": 1.5,
+     "n": 1,
+     "b_kpc": 300.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -193.21,
+       "dv": 1.56,
+       "logN": 16.437,
+       "dlogN": 0.119,
+       "b": 85.92,
+       "db": 1.28,
+       "region": 0,
+       "flag": 1,
+       "EW": 271.76,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.4–16.4 (1 lower limit), b 86–86 km/s, 300 kpc"
+    },
+    {
+     "id": "cust_0000000017",
+     "score": 1.38875,
+     "n": 1,
+     "b_kpc": 83.5,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -227.2,
+       "dv": 1.08,
+       "logN": 15.555,
+       "dlogN": 0.093,
+       "b": 33.35,
+       "db": 1.05,
+       "region": 0,
+       "flag": 9,
+       "EW": 232.88,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 15.6–15.6 (1 lower limit), b 33–33 km/s, 84 kpc"
+    }
+   ]
+  },
+  {
+   "name": "hi_degenerate_window",
+   "query": {
+    "ion": "HI",
+    "logN_min": 15,
+    "logN_max": 19
+   },
+   "n_total": 10,
+   "ids": [
+    "face_b066_a296",
+    "face_b150_a020",
+    "cust_000000000f",
+    "cust_0000000027",
+    "edge_b073_a333",
+    "face_b178_a168",
+    "rand_b080_a010_s1010",
+    "edge_b213_a353",
+    "face_b122_a232",
+    "rand_b052_a222_s1006"
+   ],
+   "results": [
+    {
+     "id": "face_b066_a296",
+     "score": 5.817,
+     "n": 3,
+     "b_kpc": 219.6,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -159.8,
+       "dv": 1.51,
+       "logN": 15.293,
+       "dlogN": 0.098,
+       "b": 63.52,
+       "db": 2.74,
+       "region": 0,
+       "flag": 0,
+       "EW": 230.66,
+       "idx": 0
+      },
+      {
+       "v": -58.85,
+       "dv": 2.41,
+       "logN": 15.975,
+       "dlogN": 0.053,
+       "b": 23.34,
+       "db": 1.51,
+       "region": 0,
+       "flag": 0,
+       "EW": 70.89,
+       "idx": 1
+      },
+      {
+       "v": 131.16,
+       "dv": 1.02,
+       "logN": 16.357,
+       "dlogN": 0.11,
+       "b": 77.27,
+       "db": 4.12,
+       "region": 1,
+       "flag": 2,
+       "EW": 44.67,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "3 H I components, logN 15.3–16.4, b 23–77 km/s, 220 kpc"
+    },
+    {
+     "id": "face_b150_a020",
+     "score": 3.874,
+     "n": 2,
+     "b_kpc": 72.7,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -143.2,
+       "dv": 0.71,
+       "logN": 15.496,
+       "dlogN": 0.028,
+       "b": 75.24,
+       "db": 2.91,
+       "region": 0,
+       "flag": 2,
+       "EW": 261.15,
+       "idx": 0
+      },
+      {
+       "v": -119.57,
+       "dv": 2.32,
+       "logN": 16.394,
+       "dlogN": 0.128,
+       "b": 81.51,
+       "db": 4.72,
+       "region": 0,
+       "flag": 0,
+       "EW": 48.32,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "2 H I components, logN 15.5–16.4, b 75–82 km/s, 73 kpc"
+    },
+    {
+     "id": "cust_000000000f",
+     "score": 3.84175,
+     "n": 2,
+     "b_kpc": 271.8,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": -159.49,
+       "dv": 1.39,
+       "logN": 15.883,
+       "dlogN": 0.191,
+       "b": 10.54,
+       "db": 4.39,
+       "region": 0,
+       "flag": 0,
+       "EW": 345.98,
+       "idx": 1
+      },
+      {
+       "v": -133.36,
+       "dv": 1.37,
+       "logN": 15.484,
+       "dlogN": 0.092,
+       "b": 29.09,
+       "db": 3.88,
+       "region": 1,
+       "flag": 0,
+       "EW": 16.28,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "2 H I components, logN 15.5–15.9, b 11–29 km/s, 272 kpc"
+    },
+    {
+     "id": "cust_0000000027",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 264.1,
+     "orientation": "custom",
+     "components": [
+      {
+       "v": 23.0,
+       "dv": 2.99,
+       "logN": 16.245,
+       "dlogN": 0.125,
+       "b": 42.24,
+       "db": 3.14,
+       "region": 1,
+       "flag": 16,
+       "EW": 265.95,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.2–16.2, b 42–42 km/s, 264 kpc"
+    },
+    {
+     "id": "edge_b073_a333",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 100.0,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": 133.02,
+       "dv": 0.1,
+       "logN": 16.17,
+       "dlogN": 0.198,
+       "b": 44.88,
+       "db": 2.73,
+       "region": 0,
+       "flag": 0,
+       "EW": 139.24,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.2–16.2, b 45–45 km/s, 100 kpc"
+    },
+    {
+     "id": "face_b178_a168",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 115.0,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": -215.58,
+       "dv": 0.85,
+       "logN": 16.296,
+       "dlogN": 0.168,
+       "b": 88.82,
+       "db": 1.56,
+       "region": 0,
+       "flag": 16,
+       "EW": 168.41,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.3–16.3, b 89–89 km/s, 115 kpc"
+    },
+    {
+     "id": "rand_b080_a010_s1010",
+     "score": 2.0,
+     "n": 1,
+     "b_kpc": 299.2,
+     "orientation": "random",
+     "components": [
+      {
+       "v": -212.79,
+       "dv": 2.96,
+       "logN": 16.248,
+       "dlogN": 0.129,
+       "b": 13.17,
+       "db": 4.18,
+       "region": 0,
+       "flag": 0,
+       "EW": 343.72,
+       "idx": 0
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 16.2–16.2, b 13–13 km/s, 299 kpc"
+    },
+    {
+     "id": "edge_b213_a353",
+     "score": 1.98325,
+     "n": 1,
+     "b_kpc": 82.8,
+     "orientation": "edge-on",
+     "components": [
+      {
+       "v": 242.24,
+       "dv": 1.14,
+       "logN": 15.933,
+       "dlogN": 0.057,
+       "b": 67.4,
+       "db": 2.53,
+       "region": 1,
+       "flag": 0,
+       "EW": 235.58,
+       "idx": 2
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 15.9–15.9, b 67–67 km/s, 83 kpc"
+    },
+    {
+     "id": "face_b122_a232",
+     "score": 1.90425,
+     "n": 1,
+     "b_kpc": 297.9,
+     "orientation": "face-on",
+     "components": [
+      {
+       "v": 193.04,
+       "dv": 0.99,
+       "logN": 15.617,
+       "dlogN": 0.193,
+       "b": 20.07,
+       "db": 1.96,
+       "region": 2,
+       "flag": 16,
+       "EW": 76.81,
+       "idx": 5
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 15.6–15.6, b 20–20 km/s, 298 kpc"
+    },
+    {
+     "id": "rand_b052_a222_s1006",
+     "score": 1.8015,
+     "n": 1,
+     "b_kpc": 104.8,
+     "orientation": "random",
+     "components": [
+      {
+       "v": 248.03,
+       "dv": 0.07,
+       "logN": 15.206,
+       "dlogN": 0.064,
+       "b": 87.92,
+       "db": 0.79,
+       "region": 0,
+       "flag": 0,
+       "EW": 319.19,
+       "idx": 1
+      }
+     ],
+     "pairs": [],
+     "reason": "1 H I component, logN 15.2–15.2, b 88–88 km/s, 105 kpc"
     }
    ]
   }
@@ -12710,6 +15518,295 @@
   {
    "query": "OVI",
    "error": "query: must be an object"
+  }
+ ],
+ "annotate_cases": [
+  {
+   "name": "single_limit_takes_region_aod",
+   "components": {
+    "HI": [
+     {
+      "v": -60.0,
+      "logN": 17.91,
+      "b": 20.0,
+      "region": 0,
+      "flag": 33
+     }
+    ]
+   },
+   "aod": {
+    "HI": [
+     15.15,
+     [
+      [
+       0,
+       -200.0,
+       80.0,
+       15.15
+      ]
+     ]
+    ]
+   },
+   "expected": {
+    "HI": [
+     {
+      "v": -60.0,
+      "logN": 17.91,
+      "b": 20.0,
+      "region": 0,
+      "flag": 33,
+      "logN_lo": 15.15
+     }
+    ]
+   }
+  },
+  {
+   "name": "measured_neighbours_subtracted",
+   "components": {
+    "CIII": [
+     {
+      "v": -20.0,
+      "logN": 16.2,
+      "b": 8.0,
+      "region": 0,
+      "flag": 33
+     },
+     {
+      "v": 15.0,
+      "logN": 13.4,
+      "b": 20.0,
+      "region": 0,
+      "flag": 0
+     },
+     {
+      "v": 60.0,
+      "logN": 13.0,
+      "b": 15.0,
+      "region": 0,
+      "flag": 2
+     }
+    ]
+   },
+   "aod": {
+    "CIII": [
+     14.3,
+     [
+      [
+       0,
+       -80.0,
+       100.0,
+       14.3
+      ]
+     ]
+    ]
+   },
+   "expected": {
+    "CIII": [
+     {
+      "v": -20.0,
+      "logN": 16.2,
+      "b": 8.0,
+      "region": 0,
+      "flag": 33,
+      "logN_lo": 14.216
+     },
+     {
+      "v": 15.0,
+      "logN": 13.4,
+      "b": 20.0,
+      "region": 0,
+      "flag": 0
+     },
+     {
+      "v": 60.0,
+      "logN": 13.0,
+      "b": 15.0,
+      "region": 0,
+      "flag": 2
+     }
+    ]
+   }
+  },
+  {
+   "name": "two_limits_share_the_pool",
+   "components": {
+    "MgII": [
+     {
+      "v": -5.0,
+      "logN": 15.0,
+      "b": 4.0,
+      "region": 0,
+      "flag": 1
+     },
+     {
+      "v": 12.0,
+      "logN": 14.5,
+      "b": 5.0,
+      "region": 0,
+      "flag": 33
+     },
+     {
+      "v": 90.0,
+      "logN": 12.1,
+      "b": 6.0,
+      "region": 1,
+      "flag": 0
+     }
+    ]
+   },
+   "aod": {
+    "MgII": [
+     14.2,
+     [
+      [
+       0,
+       -40.0,
+       40.0,
+       14.1
+      ],
+      [
+       1,
+       60.0,
+       120.0,
+       12.1
+      ]
+     ]
+    ]
+   },
+   "expected": {
+    "MgII": [
+     {
+      "v": -5.0,
+      "logN": 15.0,
+      "b": 4.0,
+      "region": 0,
+      "flag": 1,
+      "logN_lo": 13.981
+     },
+     {
+      "v": 12.0,
+      "logN": 14.5,
+      "b": 5.0,
+      "region": 0,
+      "flag": 33,
+      "logN_lo": 13.481
+     },
+     {
+      "v": 90.0,
+      "logN": 12.1,
+      "b": 6.0,
+      "region": 1,
+      "flag": 0
+     }
+    ]
+   }
+  },
+  {
+   "name": "measured_exceed_region_share_all",
+   "components": {
+    "SiII": [
+     {
+      "v": 0.0,
+      "logN": 14.0,
+      "b": 5.0,
+      "region": 0,
+      "flag": 1
+     },
+     {
+      "v": 30.0,
+      "logN": 14.3,
+      "b": 9.0,
+      "region": 0,
+      "flag": 0
+     }
+    ]
+   },
+   "aod": {
+    "SiII": [
+     14.2,
+     [
+      [
+       0,
+       -30.0,
+       60.0,
+       14.2
+      ]
+     ]
+    ]
+   },
+   "expected": {
+    "SiII": [
+     {
+      "v": 0.0,
+      "logN": 14.0,
+      "b": 5.0,
+      "region": 0,
+      "flag": 1,
+      "logN_lo": 13.724
+     },
+     {
+      "v": 30.0,
+      "logN": 14.3,
+      "b": 9.0,
+      "region": 0,
+      "flag": 0
+     }
+    ]
+   }
+  },
+  {
+   "name": "damped_and_no_aod_untouched",
+   "components": {
+    "HI": [
+     {
+      "v": 10.0,
+      "logN": 20.3,
+      "b": 30.0,
+      "region": 1,
+      "flag": 65
+     },
+     {
+      "v": 400.0,
+      "logN": 16.0,
+      "b": 25.0,
+      "region": 7,
+      "flag": 33
+     }
+    ],
+    "OVI": []
+   },
+   "aod": {
+    "HI": [
+     20.3,
+     [
+      [
+       1,
+       -2000.0,
+       2000.0,
+       20.3
+      ]
+     ]
+    ]
+   },
+   "expected": {
+    "HI": [
+     {
+      "v": 10.0,
+      "logN": 20.3,
+      "b": 30.0,
+      "region": 1,
+      "flag": 65
+     },
+     {
+      "v": 400.0,
+      "logN": 16.0,
+      "b": 25.0,
+      "region": 7,
+      "flag": 33
+     }
+    ],
+    "OVI": []
+   }
   }
  ]
 }

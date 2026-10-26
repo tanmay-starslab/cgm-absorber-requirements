@@ -1,9 +1,10 @@
-// degradeV model parity with the Python v2 operator (fixture), LSF kernel, noise and the TNGS v1/v2 decoder of
-// docs/tng50/js/fit.js (design-3 sections 2.4, 3.4, 5.1 and 8 U_fit 2).
+// degradeV model parity with the Python v2 operator (fixture), the web-path LSF against the native 0.25 km/s path
+// (Phase-3 D1; tests/js/fixtures/fit_native_cases.json), noise and the TNGS v1/v2 decoder of docs/tng50/js/fit.js
+// (design-3 sections 2.4, 3.4, 5.1 and 8 U_fit 2). tests/js/fit_decode.mjs covers the crafted-blob decoder cases.
 import {readFileSync, existsSync, readdirSync} from "node:fs";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
-import {degradeV, lsfKernel, arange, decodeTNGS, seedFor, rng, gauss} from "../../docs/tng50/js/fit.js";
+import {degradeV, lsfKernel, lsfWidth, arange, decodeTNGS, seedFor, rng, gauss} from "../../docs/tng50/js/fit.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, "..", ".."), FIX = join(HERE, "fixtures");
 const fx = JSON.parse(readFileSync(join(FIX, "fit_cases.json"), "utf8"));
@@ -24,7 +25,7 @@ const bins = Object.fromEntries(fx.meta.ids.map(id => [id, decodeTNGS(ab(readFil
   }
   check(nOk === fx.degrade.length && fx.degrade.length === 24, `degradeV model, ${nOk}/${fx.degrade.length} cases (${[...new Set(fx.degrade.map(c => c.band))].join(", ")}; R ${[...new Set(fx.degrade.map(c => c.R ?? "none"))].join(", ")}): max |dF| ${worst.toExponential(2)}, max |dv| ${worstV.toExponential(2)} (tol 1e-9; model from ${fx.meta.degrade})`); }
 
-// 2. LSF kernel: normalised, symmetric, variance sigma_LSF^2 + 1/12 (pixel integration), h = max(1, ceil(4 sigma))
+// 2. the pre-D1 pixel-integrated kernel (kept for reference): normalised, symmetric, variance sigma_LSF^2 + 1/12, h = max(1, ceil(4 sigma))
 { let ok = true, msg = [];
   for (const R of [100, 300, 5000, 30000, 150000]) { const k = lsfKernel(R, 1), h = (k.length - 1) / 2, sp = 299792.458 / R / 2.35482;
     let s = 0, v = 0, asym = 0; for (let j = -h; j <= h; j++) { s += k[j + h]; v += j * j * k[j + h]; asym = Math.max(asym, Math.abs(k[j + h] - k[h - j])); }
@@ -33,6 +34,55 @@ const bins = Object.fromEntries(fx.meta.ids.map(id => [id, decodeTNGS(ab(readFil
     msg.push(`R=${R}: h=${h} var ${(v).toFixed(3)} vs ${want.toFixed(3)}`); }
   check(ok, `lsfKernel normalised, symmetric, variance = sigma^2 + 1/12: ${msg.join("; ")}`);
   check(lsfKernel(null, 1).length === 1 && lsfKernel(Infinity, 1)[0] === 1 && lsfKernel(0, 1)[0] === 1, "lsfKernel: R none/0/inf -> identity"); }
+
+// 2b. web-path LSF (Phase-3 D1): s^2 + box^2/12 = sigma_LSF^2 (box du by default, 0 for point samples), and the
+// checker's narrow-line measurement: a delta-like weak line box-averaged into one 1 km/s cell degrades to sigma_eff
+// within 3 % of sigma_LSF (second moment about the true centre, averaged over sub-pixel positions), UV and X-ray R.
+{ let ok = true; const msg = [];
+  for (const R of [150000, 100000, 50000, 20000, 5000, 1000, 300]) {
+    const sg = 299792.458 / R / 2.35482, {s, h} = lsfWidth(R, 1), p0 = lsfWidth(R, 1, 0);
+    if (Math.abs(s * s + 1 / 12 - sg * sg) > 1e-12 * sg * sg || h !== Math.max(1, Math.ceil(4 * s)) || Math.abs(p0.s - sg) > 1e-12 * sg) ok = false;
+    const W = Math.ceil(Math.max(150, 14 * sg)), n = 2 * W + 1, half = 9 * sg + 3, pix = (299792.458 / R) / (sg / 15), P = 16;
+    let m2 = 0;
+    for (let q = 0; q < P; q++) {
+      const x0 = q / P + 0.013, flux = new Float64Array(n).fill(1);
+      flux[Math.round(x0) + W] = 1 - 1e-3 * 0.05 * Math.sqrt(2 * Math.PI);   // the line's whole EW lands in one 1 km/s cell
+      const r = degradeV({n, u0: -W, du: 1, flux}, R, 0, 0, {vwin: half, pix});
+      let a = 0, b = 0; for (let i = 0; i < r.v.length; i++) { const D = 1 - r.model[i]; a += D; b += D * (r.v[i] - x0) ** 2; }
+      m2 += b / a / P;
+    }
+    const ratio = Math.sqrt(m2) / sg; if (Math.abs(ratio - 1) > 0.03) ok = false; msg.push(`R ${R}: ${ratio.toFixed(4)}`);
+  }
+  check(ok, `lsfWidth s^2 + 1/12 = sigma_LSF^2; delta-line sigma_eff/sigma_LSF ${msg.join(", ")} (tol 3 %)`); }
+
+// 2c. the web path against the native 0.25 km/s path on stored library lines: the u16 TNGS v2 blob of each zero-padded
+// line through degradeV, against an exact Gaussian LSF of the native point samples (make_fit_fixture.py native_cases),
+// R 150k to 20k for the UV lines and 150k to 300 for O VII. Max |dF| <= 2e-3 everywhere; on the narrow lines sigma_eff
+// (moments over the stored pixel window, minus the intrinsic second moment) within 3 % of the native path's. The
+// pre-D1 operator (lsfKernel taps on 1 km/s, then linear interpolation) fails both.
+{ const nf = JSON.parse(readFileSync(join(FIX, "fit_native_cases.json"), "utf8")), NARROW = new Set(["MgII", "SiII", "CII", "SiIV", "CIV"]);
+  const f4 = s => { const b = Buffer.from(s, "base64"); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
+  const dec = Object.fromEntries(Object.entries(nf.bins).map(([k, b]) => [k, decodeTNGS(ab(Buffer.from(b, "base64")))]));
+  const oldModel = (L, R, vSys, v) => {           // the pre-D1 web operator, written out
+    const k = lsfKernel(R, L.du), h = (k.length - 1) / 2, c = new Float64Array(L.n), out = new Float64Array(v.length);
+    for (let i = 0; i < L.n; i++) { let s = 0; for (let j = -h; j <= h; j++) s += k[j + h] * L.flux[Math.min(L.n - 1, Math.max(0, i + j))]; c[i] = s; }
+    for (let m = 0; m < v.length; m++) { const x = (v[m] - vSys - L.u0) / L.du, i = Math.floor(x); out[m] = i < 0 || i >= L.n - 1 ? 1 : c[i] + (c[i + 1] - c[i]) * (x - i); }
+    return out; };
+  const sigOf = (v, M, a, b, m2int, sg, o = 0) => { let s0 = 0, s1 = 0, s2 = 0; for (let i = a; i <= b; i++) { const D = 1 - M[i - o]; s0 += D; s1 += D * v[i]; }
+    const mu = s1 / s0; for (let i = a; i <= b; i++) s2 += (1 - M[i - o]) * (v[i] - mu) ** 2; return Math.sqrt(s2 / s0 - m2int) / sg; };
+  let worst = 0, worstOld150 = 0, sigBad = [], sigs = [], n = 0;
+  for (const c of nf.cases) {
+    const d = dec[c.ion], L = d.lines[c.ion], r = degradeV(L, c.R, 0, d.vSys), nat = f4(c.native), sg = 299792.458 / c.R / 2.35482;
+    if (r.v.length !== c.n) { check(false, `native case ${c.ion} R ${c.R}: ${r.v.length} pixels vs ${c.n}`); continue; }
+    let dF = 0; for (let i = c.a; i <= c.b; i++) dF = Math.max(dF, Math.abs(r.model[i] - nat[i - c.a])); worst = Math.max(worst, dF); n++;
+    if (dF > 2e-3) check(false, `native case ${c.ion} R ${c.R}: max |dF| ${dF.toExponential(2)} > 2e-3`);
+    const sn = sigOf(r.v, nat, c.a, c.b, c.m2_int, sg, c.a);
+    if (c.R === 150000 && NARROW.has(c.ion)) { const o = oldModel(L, c.R, d.vSys, r.v); let od = 0; for (let i = c.a; i <= c.b; i++) od = Math.max(od, Math.abs(o[i] - nat[i - c.a]));
+      worstOld150 = Math.max(worstOld150, od); sigs.push(`${c.ion} old ${(sigOf(r.v, o, c.a, c.b, c.m2_int, sg) / sn).toFixed(3)}`); }
+    if (NARROW.has(c.ion)) { const se = sigOf(r.v, r.model, c.a, c.b, c.m2_int, sg) / sn; if (c.R === 150000) sigs.push(`${c.ion} ${se.toFixed(3)}`); if (Math.abs(se - 1) > 0.03) sigBad.push(`${c.ion} R ${c.R}: ${se.toFixed(4)}`); }
+  }
+  check(n === nf.cases.length && worst <= 2e-3 && worstOld150 > 5e-3, `web path vs native 0.25 km/s path, ${n} cases (${[...new Set(nf.cases.map(c => c.ion))].join(", ")}): max |dF| ${worst.toExponential(2)} (tol 2e-3; pre-D1 operator ${worstOld150.toExponential(2)} at R 150k)`);
+  check(sigBad.length === 0, `sigma_eff web/native of the narrow lines within 3 % at every R (at 150k: ${sigs.join(", ")})${sigBad.length ? "; " + sigBad.join("; ") : ""}`); }
 
 // 3. no-LSF output step = du * 5; vwin window and numpy arange semantics
 { const d = bins[fx.meta.ids[0]], L = d.lines.OVI, r = degradeV(L, null, 0, d.vSys), r2 = degradeV(L, 30000, 10, d.vSys, {vwin: 100, vcenter: 20});

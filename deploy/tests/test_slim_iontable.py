@@ -3,6 +3,8 @@
     python -m pytest deploy/tests/test_slim_iontable.py -q                 (fast checks)
     python -m pytest deploy/tests/test_slim_iontable.py -q -m slow         (one real sightline, ~4 min)
 
+The real-table tests read sl.SRC and sl.OUT (under the work root, TNG_WORK) and skip when they are absent.
+
 The slow test generates edge_b100_a090 twice with tngsight.generate.Generator, once against the full
 hm2012_ss_hr.h5 and once against the slim table (each in its own process: trident reads config.tri at import),
 and requires bitwise-equal tau for Mg II, Si II, N V and Ne VIII (the elements the slim table gained).
@@ -22,9 +24,9 @@ DEPLOY = ROOT / "deploy"
 sys.path.insert(1, str(DEPLOY / "data"))
 sys.path.insert(1, str(ROOT))
 import slim_iontable as sl  # noqa: E402
+from tngsight import config  # noqa: E402
 
-WORK = Path("/Volumes/cgm_work")
-CUTOUT = WORK / "data/cutout_slim_R400_sub488530.hdf5"
+CUTOUT = config.cutout_path()        # TNG_CUTOUT, else <TNG_WORK>/data/cutout_slim_R400_sub488530.hdf5
 NEW_IONS = ("MgII", "SiII", "NV", "NeVIII")
 
 

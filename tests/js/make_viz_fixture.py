@@ -11,7 +11,7 @@ image data of every WebP part as decoded by PIL (<part>.rgba, because node canno
 
 --full writes a complete manifest_v2 viz dir (L0-L2 x 6 fields, S0-S2) of an analytic galaxy: a thin exponential
 gas disk with spiral arms inside a cored halo with clumps, and a red bulge + bluer star-forming stellar disk. It is
-a stand-in until the real /Volumes/cgm_work/data/library/viz exists; it is not simulation data.
+a stand-in until the real <library>/viz (default $TNG_WORK/data/library/viz) exists; it is not simulation data.
 
 Uses tngsight.vizpack (CORE) for quantize / dequantize / raw layout / atlas / WebP / gzip / Lupton when it is
 importable; otherwise the §2.3-§2.5 and §4.5 formulas written out below ("spec-fallback").

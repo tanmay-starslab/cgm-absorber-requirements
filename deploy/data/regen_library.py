@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Regenerate the sightline library as data v2 (12 registry lines, npz v2 + TNGS v2 + components v2): job J_regen.
 
-    python deploy/data/regen_library.py --out /Volumes/cgm_work/data/library_v3 \\
-           [--src /Volumes/cgm_work/data/library] [-j 4] [--ids a,b] [--limit N] [--no-fit] [--gate-only] [--force]
+    python deploy/data/regen_library.py --out $TNG_WORK/data/library_v3 \\
+           [--src $TNG_WORK/data/library] [-j 4] [--ids a,b] [--limit N] [--no-fit] [--gate-only] [--force]
            [--index FILE] [--cutout FILE]
+    (TNG_WORK is the work root, default /Volumes/cgm_work; the --src default is <work root>/data/library)
 
 Inputs (only read): the ids and sources of every entry of <src>/catalog.json (library and generated), and the stored
 `geom` member of <src>/sightlines/<id>.npz or <src>/generated/<id>.npz, passed with the id to
@@ -55,7 +56,7 @@ GATE_RAY_DEX = 0.02
 GATE_AOD_DEX = 0.01
 GATE_AOD_LOGN_MIN = 12.0
 GATE_LINES = (("OVI", "OVI"), ("CIII", "CIII"), ("HI", "HILyb"))     # (v3 key, v1 key)
-SRC_DEFAULT = Path("/Volumes/cgm_work/data/library")
+SRC_DEFAULT = config.work_root() / "data" / "library"     # the v1 library (TNG_WORK, default /Volumes/cgm_work)
 
 
 # ------------------------------------------------------------------------------------------ io helpers

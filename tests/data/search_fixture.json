@@ -245,7 +245,31 @@
  ],
  "components": {
   "face_b010_a000": {
-   "HI": [],
+   "HI": [
+    {
+     "v": -60.0,
+     "dv": null,
+     "logN": 17.91,
+     "dlogN": null,
+     "b": 20.0,
+     "db": null,
+     "region": 0,
+     "flag": 33,
+     "EW": 400.0,
+     "logN_lo": 15.1
+    },
+    {
+     "v": 10.0,
+     "dv": 0.4,
+     "logN": 20.3,
+     "dlogN": 0.02,
+     "b": 30.0,
+     "db": 1.0,
+     "region": 1,
+     "flag": 65,
+     "EW": 2600.0
+    }
+   ],
    "MgII": [],
    "SiII": [],
    "CII": [],
@@ -297,7 +321,20 @@
      "db": 0.3,
      "region": 1,
      "flag": 9,
-     "EW": 300.0
+     "EW": 300.0,
+     "logN_lo": 15.2
+    },
+    {
+     "v": 140.0,
+     "dv": null,
+     "logN": 17.9,
+     "dlogN": null,
+     "b": 9.0,
+     "db": null,
+     "region": 2,
+     "flag": 33,
+     "EW": 120.0,
+     "logN_lo": 14.6
     }
    ],
    "NeVIII": [],

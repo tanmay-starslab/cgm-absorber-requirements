@@ -38,7 +38,21 @@ _JOB_RE = re.compile(JOB_ID_RE)
 _NAME_RE = r"^[A-Za-z0-9._-]{1,64}$"
 SEED_MAX = 2**32 - 1
 # /api/figure accepts only what the page can send (design.md §4.2): ions from the registry (1-6), R per band
-# inside the band range, S/N 2-100, half-window 10-1500 km/s, centre +-1500 km/s, noise seed 0-99999.
+# inside the band range, S/N 2-100, half-window 10-FIG_V_MAX km/s, centre +-FIG_V_MAX km/s, noise seed 0-99999,
+# and the page layout. C2 (code 3): the cap follows the line windows. FIG_V_MAX is the widest window any line can
+# have (the damped H I cap, registry grid.damped_v_max_kms), and the renderer (tngsight.figure.clamp_window) then
+# moves and shrinks the window to the shown lines' own coverage, so a damped H I view no longer gets a 422 and a
+# narrow line never renders blank space. /api/health announces both under "figure".
+def _fig_v_max() -> int:
+    try:
+        from tngsight import ions as _i
+        return int(_i.GRID["damped_v_max_kms"])
+    except Exception:                                   # never fail the import over the registry
+        return 10000
+
+
+FIG_V_MAX = _fig_v_max()
+FIG_LAYOUTS = ("1", "2R", "2SN", "4")                  # tngsight.figure.LAYOUTS, the page layouts
 FIG_SEED_MAX = 99999
 FIG_MAX_IONS = 6
 LEASE_RE = r"^[0-9a-f]{32}$"
@@ -68,8 +82,9 @@ class FigureReq(_M):
     ions: Optional[list[str]] = Field(default=None, min_length=1, max_length=FIG_MAX_IONS)
     R: Optional[dict[str, list[int]]] = None
     sn: Optional[list[int]] = Field(default=None, min_length=2, max_length=2)
-    vhw: Optional[int] = Field(default=None, ge=10, le=1500)
-    vc: Optional[float] = Field(default=None, ge=-1500, le=1500, allow_inf_nan=False)
+    vhw: Optional[int] = Field(default=None, ge=10, le=FIG_V_MAX)
+    vc: Optional[float] = Field(default=None, ge=-FIG_V_MAX, le=FIG_V_MAX, allow_inf_nan=False)
+    layout: Optional[Literal["1", "2R", "2SN", "4"]] = None   # absent: the renderer's default, the 2x2 grid
     R_lo: Optional[int] = None                 # legacy (v2 page)
     R_hi: Optional[int] = None
     sn_hi: Optional[int] = None
@@ -153,7 +168,7 @@ class FigureReq(_M):
         vhw = self.vhw if self.vhw is not None else (self.vwin if self.vwin is not None
                                                       else int(reg.DEFAULTS["vhw_kms"]))
         return {"ions": list(self.ions) if self.ions else None, "R": R, "sn": sn, "vhw": int(vhw), "vc": float(self.vc or 0.0),
-                "intrinsic": bool(self.intrinsic), "seed": self.seed}
+                "intrinsic": bool(self.intrinsic), "seed": self.seed, "layout": self.layout}
 
 
 _Coord = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=-1e4, le=1e4)]
@@ -411,6 +426,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         d = {"status": "ok", "version": VERSION, "warm": warm, "workers": {"local": loc, "remote": remote},
              "queue": jobq.counts(), "library_size": lib_n, "generated_size": gen_n, "node": S.node_name}
         d["chat"] = chat.health_fragment(S)
+        d["figure"] = {"layouts": list(FIG_LAYOUTS), "v_max_kms": FIG_V_MAX}   # what /api/figure accepts (C2 code 3)
         try:
             from tngsight import ions as _ions
             d.update(registry_tag=_ions.registry_tag(), data_version=2, ions=list(_ions.KEYS))
@@ -618,7 +634,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             wait = limiter.check("figure_all", "*")
             if wait:
                 return _limited(wait, "figures (all users)")
-            kw = {k: params[k] for k in ("ions", "R", "sn", "vhw", "vc", "intrinsic") if params[k] is not None}
+            kw = {k: params[k] for k in ("ions", "R", "sn", "vhw", "vc", "intrinsic", "layout") if params[k] is not None}
             if params["seed"] is not None:
                 kw["seed"] = params["seed"]
 

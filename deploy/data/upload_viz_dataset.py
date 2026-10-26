@@ -35,10 +35,12 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(1, str(ROOT))
 
+from tngsight import config as _config  # noqa: E402  (paths: TNG_WORK, default /Volumes/cgm_work)
+
 REPO = "tanmay-starslab/tng50-sub488530-viz"
-HF_HOME = os.environ.get("HF_HOME", "/Volumes/cgm_work/cache/hf")
+HF_HOME = str(_config.hf_home())                       # HF_HOME, else $TNG_WORK/cache/hf
 DEFAULT_TOKEN_FILE = Path(HF_HOME) / "token"
-DEFAULT_VIZ = Path(os.environ.get("TNG_LIBRARY_DIR", "/Volumes/cgm_work/data/library")) / "viz"
+DEFAULT_VIZ = _config.library_dir() / "viz"            # TNG_LIBRARY_DIR, else $TNG_WORK/data/library
 CARD = ROOT / "deploy" / "data" / "viz_dataset_card.md"
 ORIGIN = "https://tanmay-starslab.github.io"
 PAGE_URL = "https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/"

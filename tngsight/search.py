@@ -3,6 +3,14 @@
 Python mirror of docs/tng50/js/search.js; the two must agree exactly (ids, order, n, pairs, reasons; score to
 1e-9). The exact semantics, with golden cases, are in tests/search_golden.json (written by `--golden`).
 
+Lower limits (Phase-3 owner decision 2): a saturated or degenerate component, flag NOERR (32), or SAT (1) without
+DAMPED (64), on any ion, is never a measurement. Its column is the lower limit col = min(logN, logN_lo), where
+logN_lo (annotate_limits) is the AOD column of its fit region minus the measured components of that region,
+shared among the region's limit components in proportion to their fitted N; so the limits of one region never add
+up to more than the region's exact column. A limit meets logN_min when col does, and meets logN_max only when
+logN_max is absent or at the ion's ceiling LOGN_MAX (a lower limit can never show N <= x). The page applies the
+same rule (docs/tng50/js/state.js isLowerLimit, limitLogN, annotateLimits); tests/search_golden.json fixes it.
+
     python -m tngsight.search --schema OUT.json        # QUERY_SCHEMA as JSON
     python -m tngsight.search --fixture OUT.json       # the synthetic 40-entry fixture
     python -m tngsight.search --reference OUT.json     # fixed cases over the fixture with their outputs
@@ -27,6 +35,7 @@ DEFAULTS = {"n_min": 1, "sort": "score", "limit": 50}
 EN_DASH = "–"
 DELTA = "Δ"
 MAX_PAIRS = 10
+SAT, NOERR, DAMPED = 1, 32, 64                              # tngsight.vpfit.FLAGS
 
 QUERY_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["ion"],
@@ -135,6 +144,65 @@ def validate_query(q) -> dict:
     return out
 
 
+# ------------------------------------------------------------------------------- lower limits
+def is_lower_limit(c) -> bool:
+    """NOERR, or SAT without DAMPED (the damped wings measure N), on any ion: the fitted logN is no measurement."""
+    f = int(c.get("flag") or 0)
+    return bool(f & NOERR) or (bool(f & SAT) and not f & DAMPED)
+
+
+def limit_logN(c) -> float:
+    """The lower limit of a limit component: min(logN, logN_lo); logN without a logN_lo."""
+    lo = c.get("logN_lo")
+    return min(c["logN"], lo) if _is_num(lo) else c["logN"]
+
+
+def column(c) -> float:
+    """The column a predicate, the score and the reason use: limit_logN for a lower limit, else logN."""
+    return limit_logN(c) if is_lower_limit(c) else c["logN"]
+
+
+def _logN_ok(c, lo, hi, cap) -> bool:
+    if is_lower_limit(c):
+        return hi >= cap and column(c) >= lo
+    return lo <= c["logN"] <= hi
+
+
+def annotate_limits(comps: dict, aod: dict | None) -> dict:
+    """{ion: [component]} -> new dicts, every lower-limit component given logN_lo (rounded to 3 decimals).
+
+    aod is the components.json `aod` of the sightline, {ion: [total, [[region, v_lo, v_hi, logN_aod], ...]]}.
+    Per region: N = 10**logN_aod, M = the sum of 10**logN over its measured components, W = the same over its
+    limits; pool = N - M when positive, else N*W/(W + M); each limit gets logN_lo = log10(pool) + logN - log10(W).
+    A limit whose region has no AOD value gets no logN_lo. Mirrored by docs/tng50/js/state.js annotateLimits."""
+    out = {}
+    for k, lst in (comps or {}).items():
+        if not isinstance(lst, list):
+            continue
+        reg = {}
+        ent = (aod or {}).get(k)
+        for g in (ent[1] if isinstance(ent, (list, tuple)) and len(ent) > 1 and isinstance(ent[1], list) else []):
+            if isinstance(g, (list, tuple)) and len(g) >= 4 and _is_num(g[3]) and _is_num(g[0]):
+                reg[g[0]] = float(g[3])
+        acc = {}
+        for c in lst:
+            r = c.get("region")
+            if r in reg and _is_num(c.get("logN")):
+                a = acc.setdefault(r, [0.0, 0.0])
+                a[1 if is_lower_limit(c) else 0] += 10.0 ** c["logN"]
+        res = []
+        for c in lst:
+            c = dict(c)
+            r = c.get("region")
+            if is_lower_limit(c) and r in reg and _is_num(c.get("logN")) and acc[r][1] > 0:
+                n_reg, (m, w) = 10.0 ** reg[r], acc[r]
+                pool = n_reg - m if n_reg - m > 0 else n_reg * w / (w + m)
+                c["logN_lo"] = round_half_away(math.log10(pool) + c["logN"] - math.log10(w), 3)
+            res.append(c)
+        out[k] = res
+    return out
+
+
 # ------------------------------------------------------------------------------- query
 def _clamp(x, lo, hi):
     return lo if x < lo else hi if x > hi else x
@@ -143,8 +211,11 @@ def _clamp(x, lo, hi):
 def _reason(ion, n, matching, best_dv, b_kpc):
     s = f"{n} {ION_SHORT[ion]} component" + ("s" if n != 1 else "")
     if matching:
-        lN = [c["logN"] for c in matching]; bs = [c["b"] for c in matching]
+        lN = [column(c) for c in matching]; bs = [c["b"] for c in matching]
         s += f", logN {fmt(min(lN), 1)}{EN_DASH}{fmt(max(lN), 1)}"
+        nl = sum(1 for c in matching if is_lower_limit(c))
+        if nl:
+            s += f" ({nl} lower limit{'s' if nl != 1 else ''})"
         s += f", b {fmt(min(bs), 0)}{EN_DASH}{fmt(max(bs), 0)} km/s"
     if best_dv is not None:
         s += f", {DELTA}v {fmt(best_dv, 0)} km/s"
@@ -162,8 +233,9 @@ def _evaluate(q, e, comps):
         return None
     lN_lo, lN_hi = q.get("logN_min", -math.inf), q.get("logN_max", math.inf)
     b_lo, b_hi = q.get("b_min", -math.inf), q.get("b_max", math.inf)
+    cap = LOGN_MAX[ion]
     M = [dict(c, idx=i) for i, c in enumerate(comps)
-         if lN_lo <= c["logN"] <= lN_hi and b_lo <= c["b"] <= b_hi]
+         if _logN_ok(c, lN_lo, lN_hi, cap) and b_lo <= c["b"] <= b_hi]
     n = len(M)
     if n < q["n_min"] or ("n_max" in q and n > q["n_max"]):
         return None
@@ -183,7 +255,7 @@ def _evaluate(q, e, comps):
         matching = M
     score = 0.0
     for c in matching:                                        # by idx (M is idx-ordered)
-        score += 1.0 + _clamp(c["logN"] - 12.0, 0.0, 4.0) / 4.0
+        score += 1.0 + _clamp(column(c) - 12.0, 0.0, 4.0) / 4.0
     score -= 0.5 * sum(1 for c in matching if int(c["flag"]) & 1)
     if "sep_kms" in q:
         score += 0.25 * min(len(pairs), 4)
@@ -277,7 +349,14 @@ def make_fixture() -> dict:
         {"v": -157.99, "dv": 0.5, "logN": 13.5, "dlogN": 0.01, "b": 20.0, "db": 0.3, "region": 0, "flag": 0, "EW": 50.0},
         {"v": -127.99, "dv": 0.5, "logN": 13.5, "dlogN": 0.01, "b": 20.0, "db": 0.3, "region": 0, "flag": 1, "EW": 50.0},
         {"v": -127.99, "dv": 0.5, "logN": 12.25, "dlogN": 0.01, "b": 12.5, "db": 0.3, "region": 0, "flag": 0, "EW": 8.0},
-        {"v": 77.7, "dv": 0.5, "logN": 16.4, "dlogN": 0.01, "b": 35.5, "db": 0.3, "region": 1, "flag": 9, "EW": 300.0}]
+        {"v": 77.7, "dv": 0.5, "logN": 16.4, "dlogN": 0.01, "b": 35.5, "db": 0.3, "region": 1, "flag": 9, "EW": 300.0,
+         "logN_lo": 15.2},
+        {"v": 140.0, "dv": None, "logN": 17.9, "dlogN": None, "b": 9.0, "db": None, "region": 2, "flag": 33,
+         "EW": 120.0, "logN_lo": 14.6}]
+    comps[e0]["HI"] = [                                       # a degenerate H I (lower limit) and a damped (measured) one
+        {"v": -60.0, "dv": None, "logN": 17.91, "dlogN": None, "b": 20.0, "db": None, "region": 0, "flag": 33,
+         "EW": 400.0, "logN_lo": 15.1},
+        {"v": 10.0, "dv": 0.4, "logN": 20.3, "dlogN": 0.02, "b": 30.0, "db": 1.0, "region": 1, "flag": 65, "EW": 2600.0}]
     return {"version": 1, "note": "synthetic search fixture (tngsight.search.make_fixture); not real data",
             "entries": entries, "components": comps}
 
@@ -308,6 +387,36 @@ CASES = [
     {"name": "civ_pairs_20_120", "query": {"ion": "CIV", "sep_kms": [20, 120]}},
     {"name": "mgii_n_min_3", "query": {"ion": "MgII", "n_min": 3}},
     {"name": "hi_damped_logN", "query": {"ion": "HI", "logN_min": 16, "logN_max": 22.5, "n_min": 0}},
+    {"name": "limits_meet_logN_min", "query": {"ion": "OVI", "logN_min": 14.5}},
+    {"name": "limits_never_meet_logN_max", "query": {"ion": "OVI", "logN_min": 14.5, "logN_max": 18}},
+    {"name": "limits_at_ceiling", "query": {"ion": "OVI", "logN_min": 14.5, "logN_max": 19}},
+    {"name": "hi_limit_below_floor", "query": {"ion": "HI", "logN_min": 15.5, "n_min": 1}},
+    {"name": "hi_degenerate_window", "query": {"ion": "HI", "logN_min": 15, "logN_max": 19}},
+]
+
+# annotate_limits on hand-made regions (JS parity: tests/js/search_unit.mjs checks state.js annotateLimits on these)
+ANNOTATE_CASES = [
+    {"name": "single_limit_takes_region_aod",
+     "components": {"HI": [{"v": -60.0, "logN": 17.91, "b": 20.0, "region": 0, "flag": 33}]},
+     "aod": {"HI": [15.15, [[0, -200.0, 80.0, 15.15]]]}},
+    {"name": "measured_neighbours_subtracted",
+     "components": {"CIII": [{"v": -20.0, "logN": 16.2, "b": 8.0, "region": 0, "flag": 33},
+                             {"v": 15.0, "logN": 13.4, "b": 20.0, "region": 0, "flag": 0},
+                             {"v": 60.0, "logN": 13.0, "b": 15.0, "region": 0, "flag": 2}]},
+     "aod": {"CIII": [14.3, [[0, -80.0, 100.0, 14.3]]]}},
+    {"name": "two_limits_share_the_pool",
+     "components": {"MgII": [{"v": -5.0, "logN": 15.0, "b": 4.0, "region": 0, "flag": 1},
+                             {"v": 12.0, "logN": 14.5, "b": 5.0, "region": 0, "flag": 33},
+                             {"v": 90.0, "logN": 12.1, "b": 6.0, "region": 1, "flag": 0}]},
+     "aod": {"MgII": [14.2, [[0, -40.0, 40.0, 14.1], [1, 60.0, 120.0, 12.1]]]}},
+    {"name": "measured_exceed_region_share_all",
+     "components": {"SiII": [{"v": 0.0, "logN": 14.0, "b": 5.0, "region": 0, "flag": 1},
+                             {"v": 30.0, "logN": 14.3, "b": 9.0, "region": 0, "flag": 0}]},
+     "aod": {"SiII": [14.2, [[0, -30.0, 60.0, 14.2]]]}},
+    {"name": "damped_and_no_aod_untouched",
+     "components": {"HI": [{"v": 10.0, "logN": 20.3, "b": 30.0, "region": 1, "flag": 65},
+                           {"v": 400.0, "logN": 16.0, "b": 25.0, "region": 7, "flag": 33}], "OVI": []},
+     "aod": {"HI": [20.3, [[1, -2000.0, 2000.0, 20.3]]]}},
 ]
 
 INVALID_CASES = [
@@ -345,11 +454,20 @@ SEMANTICS = [
     "1. Skip unless components[id][ion] exists (an empty list exists; a missing id or ion key does not). Skip if "
     "orientation given and != entry.orientation. Skip if b_kpc=[lo,hi] given and not (entry.b_kpc is a finite number "
     "and lo<=b_kpc<=hi).",
-    "2. M = components (original list index idx kept) with logN_min<=logN<=logN_max and b_min<=b<=b_max, inclusive, "
+    "2. M = components (original list index idx kept) passing the logN bounds (2a) and b_min<=b<=b_max, inclusive, "
     "absent bound unbounded. n=|M|; require n_min<=n (and n<=n_max if given).",
+    "2a. Lower limits (owner decision 2): a component with flag&32 (NOERR), or flag&1 (SAT) without flag&64 "
+    "(DAMPED), is a lower limit, never a measurement; its column is col = min(logN, logN_lo) (logN_lo absent: logN). "
+    "Every other component has col = logN. A limit passes the logN bounds iff col>=logN_min (absent: always) and "
+    "logN_max is absent or >= LOGN_MAX[ion]: a lower limit can never show N<=logN_max. A measurement passes iff "
+    "logN_min<=logN<=logN_max.",
+    "2b. logN_lo (annotate_limits, applied by the page to every catalogue it loads): per fit region with AOD "
+    "column A (components.json aod), N=10^A, M=sum 10^logN over its measured components, W=the same over its "
+    "limits; pool=N-M if N-M>0 else N*W/(W+M); each limit gets logN_lo=round_half_away(log10(pool)+logN-log10(W),3). "
+    "A limit in a region without an AOD value keeps no logN_lo. annotate_cases fixes it.",
     "3. If sep_kms=[lo,hi]: for a<b over M in idx order, dv=r6(|v_a-v_b|) with r6(x)=round_half_away(x,6); pair if "
     "lo<=dv<=hi. Require >=1 pair. matching = members of any pair (idx order); else matching = M.",
-    "4. score = sum over matching in idx order of (1 + clamp(logN-12,0,4)/4), then minus 0.5*count(matching with "
+    "4. score = sum over matching in idx order of (1 + clamp(col-12,0,4)/4), then minus 0.5*count(matching with "
     "flag&1), then plus 0.25*min(npairs,4) when sep_kms given; score = r6(score). Evaluate in exactly this order "
     "with IEEE doubles.",
     "5. Sort 'score': (-score, id); 'b_kpc': (b_kpc [non-number -> +inf], -score, id); 'n': (-n, -score, id). "
@@ -357,8 +475,9 @@ SEMANTICS = [
     "6. Result {id, score, n, b_kpc, orientation, components: matching sorted by (v, idx), each the stored "
     "component plus 'idx'; pairs: sorted by (dv[r6], idx_a, idx_b), first 10, each [idx_a, idx_b, "
     "round_half_away(dv,1)]; reason}. pairs is [] without sep_kms.",
-    "7. reason = '{n} {ION_SHORT} component' + ('s' if n!=1) + (if matching: ', logN {fmt(min,1)}–{fmt(max,1)}"
-    ", b {fmt(min,0)}–{fmt(max,0)} km/s' over matching) + (if pairs: ', Δv {fmt(dv_smallest,0)} km/s') + "
+    "7. reason = '{n} {ION_SHORT} component' + ('s' if n!=1) + (if matching: ', logN {fmt(min,1)}–{fmt(max,1)}' "
+    "of col over matching + (if k lower limits among matching: ' ({k} lower limit' + ('s' if k!=1) + ')') + "
+    "', b {fmt(min,0)}–{fmt(max,0)} km/s' over matching) + (if pairs: ', Δv {fmt(dv_smallest,0)} km/s') + "
     "(if b_kpc is a number: ', {fmt(b_kpc,0)} kpc'). fmt(x,d) = round_half_away(x,d) printed with d decimals; "
     "round_half_away(x,d) = sign(x)*floor(|x|*10^d+0.5)/10^d, -0 -> 0. ION_SHORT = the registry ion names "
     "(HI:'H I', MgII:'Mg II', ..., OVII:'O VII').",
@@ -384,7 +503,13 @@ def golden(fixture_rel="tests/data/search_fixture.json") -> dict:
     return {"version": 1, "fixture": fixture_rel, "query_schema": QUERY_SCHEMA, "defaults": DEFAULTS,
             "semantics": SEMANTICS, "score_tolerance": 1e-9,
             "cases": reference_cases(),
-            "invalid_cases": [{"query": q, "error": msg} for q, msg in INVALID_CASES]}
+            "invalid_cases": [{"query": q, "error": msg} for q, msg in INVALID_CASES],
+            "annotate_cases": annotate_cases()}
+
+
+def annotate_cases() -> list:
+    """ANNOTATE_CASES with the annotate_limits output each must give (the JS mirror is checked against it)."""
+    return [dict(c, expected=annotate_limits(c["components"], c["aod"])) for c in ANNOTATE_CASES]
 
 
 def _write(path, obj):
@@ -404,7 +529,8 @@ def main(argv=None):
     if a.fixture:
         _write(a.fixture, make_fixture())
     if a.reference:
-        _write(a.reference, {"version": 1, "fixture": "tests/data/search_fixture.json", "cases": reference_cases()})
+        _write(a.reference, {"version": 1, "fixture": "tests/data/search_fixture.json", "cases": reference_cases(),
+                             "annotate_cases": annotate_cases()})
     if a.golden:
         _write(a.golden, golden())
     return 0

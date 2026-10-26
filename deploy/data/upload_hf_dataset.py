@@ -2,11 +2,13 @@
 """Create/update the PRIVATE Hugging Face dataset that the Space downloads at start.
 
     HF_TOKEN=hf_... python deploy/data/upload_hf_dataset.py [--repo tanmay-starslab/tng50-sub488530-cgm] [--dry-run]
+    (defaults: --cutout tngsight cutout_path(), --library library_dir(), --ion-table
+    $TNG_WORK/data/trident_slim_v3/hm2012_ss_hr.h5; TNG_WORK is the work root, default /Volumes/cgm_work)
 
 Dataset layout (repo root == the server's library dir, so the server's HFSync snapshot_download and
 its `generated/<id>.npz` uploads land in the same tree):
   cutout_slim_R400_sub488530.hdf5   slim cutout (r - hsml < 400 kpc)
-  trident/hm2012_ss_hr.h5           slim ion table (H, C, O)
+  trident/hm2012_ss_hr.h5           slim ion table (H, C, N, O, Ne, Mg, Si; deploy/data/slim_iontable.py)
   catalog.json                      library catalog
   sightlines/<id>.npz, web/<id>.bin library files
   components.json                   Phase-2 Voigt-component catalogue (deploy/data/build_components.py)
@@ -28,10 +30,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(1, str(ROOT))
-from tngsight.config import cutout_path, library_dir  # noqa: E402
+from tngsight.config import cutout_path, library_dir, work_root  # noqa: E402
 
 REPO = "tanmay-starslab/tng50-sub488530-cgm"
-ION_TABLE = Path("/Volumes/cgm_work/data/trident_slim/hm2012_ss_hr.h5")
+# the 7-element slim table of slim_iontable.py (the Phase 1/2 H, C, O table, trident_slim/, cannot deposit the new ions)
+ION_TABLE = work_root() / "data" / "trident_slim_v3" / "hm2012_ss_hr.h5"
 ID = r"(face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?"
 GID = rf"({ID}|cust_[0-9a-f]{{10}})"                    # generated ids include custom rays
 LIB_RE = re.compile(rf"^(catalog\.json|sightlines/{ID}\.npz|web/{ID}\.bin)$")

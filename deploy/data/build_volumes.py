@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build the nested raw-resolution gas cubes of the 3D viewer (Phase-2b design §4.1–4.3).
 
-    python deploy/data/build_volumes.py [--viz DIR] [--cache DIR] [--index FILE] [--levels L0,L1,L2]
-                                        [--fields nH,T,Z,<ion keys>] [--workers 4] [--deposit-workers 1]
-                                        [--lock FILE] [--force] [--check]
+    python deploy/data/build_volumes.py [--library DIR] [--viz DIR] [--cache DIR] [--index FILE]
+                                        [--levels L0,L1,L2] [--fields nH,T,Z,<ion keys>] [--workers 4]
+                                        [--deposit-workers 1] [--lock FILE] [--force] [--check] [--report FILE]
 
 Stages (each resumable from --cache):
   1. cells   — every gas cell of the slim cutout through `Generator.load()` (yt + trident, same metallicity override
@@ -14,10 +14,17 @@ Stages (each resumable from --cache):
   3. encode  — shared full-range log10 → u8 per field (L0 masked at r > 400 kpc), proj/vol windows, WebP atlases
                (process pool, --workers) + gzip raw, content-hashed, under <viz>/gas/<L>/; <viz>/gas/manifest_gas.json.
                Unchanged cubes (same raw sha256, files intact) are not re-encoded.
-  4. checks  — conservation, lost fractions, sizes, the column checks of design §4.3 items 3–5.
---check alone runs only stage 4 (+ manifest validation) from the cache. viz/manifest_v2.json is never written here
-(`python -m tngsight.vizpack merge` does that at integration). Heavy I/O (stage 1) runs under the fcntl lock --lock.
---deposit-workers sets the scatter processes (CORE measured 1 as fastest for 7 quantities); --workers the encoders.
+  4. checks  — conservation, lost fractions, sizes, and the column checks of design §4.3 items 3–5 (`column_checks`):
+               each cube column against the field the cube holds, the h_eff = max(h, 2Δ) SPH line integral averaged
+               over a 3×3 voxel-footprint bundle (`volume.smoothed_columns`), within `volume.SMOOTH_TOL` (0.05 dex).
+               The thin-ray difference (npz ray column, or the cell-h line integral) is reported only.
+--check alone runs only stage 4 (+ manifest validation) from the cache and writes nothing but the report (--report,
+default <cache>/check_report.json), so --cache and --viz may be read-only. viz/manifest_v2.json is never written
+here (`python -m tngsight.vizpack merge` does that at integration).
+Defaults: --library tngsight.config.library_dir(), --viz <library>/viz, --cache <library>/viz_cache/gas, --index
+$TNG_INDEX_FILE or <library>/cutout.ewah. Heavy I/O (stage 1) runs under the fcntl lock --lock (default
+$TNG_HEAVY_LOCK; unset or '' = no lock). --deposit-workers sets the scatter processes (CORE measured 1 as fastest
+for 7 quantities); --workers the encoders.
 """
 from __future__ import annotations
 
@@ -39,14 +46,18 @@ if str(ROOT) not in sys.path:
 import numpy as np  # noqa: E402
 from tngsight import config, deposit as D, volume as V  # noqa: E402
 
-DEFAULT_LOCK = Path(os.environ["TNG_HEAVY_LOCK"]) if os.environ.get("TNG_HEAVY_LOCK") else None
+DEFAULT_LOCK = Path(os.environ["TNG_HEAVY_LOCK"]).expanduser() if os.environ.get("TNG_HEAVY_LOCK") else None
 CM = V.CM_PER_KPC
 IONS = tuple((k, k) for k in V.ION_KEYS)                         # (VOL key, npz line key): the registry keys
-CHECKS = {"L1": ("face_b050_a090", "rand_b031_a334_s175141482", "rand_b008_a049_s51205422"),
+# Column-check sightlines per level. L0 uses the full ray, L1/L2 its segment inside the box. rand_b010_a020 was
+# info-only on L1 under the Phase-2b thin-ray check (+0.64 dex Si IV, the clump the thin ray misses); against the
+# smoothed reference it is an ordinary hard check (+0.001 dex in the C1 gate notes).
+CHECKS = {"L1": ("face_b050_a090", "rand_b031_a334_s175141482", "rand_b008_a049_s51205422",
+                 "rand_b010_a020_s339575117"),
           "L2": ("rand_b010_a020_s339575117", "rand_b008_a049_s51205422", "rand_b006_a031_s708179283"),
           "L0": ("face_b050_a090", "edge_b100_a090", "rand_b031_a334_s175141482")}
-INFO_L1 = ("rand_b010_a020_s339575117",)
-TOL = {k: 0.15 for k in V.ION_KEYS} | {"OVI": 0.10, "CIII": 0.10}    # L1/L2 segment checks; L0 full ray: 0.15 all
+U8_TOL = 0.02                        # u8 cube column against the float cube column (dex)
+REF_TOL = 0.02                       # cell-h line integral against the npz ray column on full rays (dex)
 SIDE_VERSION = 2                     # 2: gas h floor GAS_H_MIN_VOX = 2 Δ (tune1)
 
 
@@ -271,58 +282,84 @@ def log10s(x):
     return math.log10(x) if x > 0 else -math.inf
 
 
+def dlog(a, b) -> float:
+    """a − b for log10 columns; two empty columns (−inf, −inf) agree (0), one empty column is an infinite miss."""
+    return 0.0 if a == b else a - b
+
+
+def rnd(x, nd=3):
+    return round(float(x), nd) if x is not None and math.isfinite(x) else None
+
+
 def column_checks(cells, cache: Path, frag, lib: Path, viz: Path, keys=None) -> dict:
+    """design §4.3 items 3–5 (Phase 3): every cube column against the field the cube holds.
+
+    Hard checks, on every (level, sightline, ion):
+    - physics: |cube − smoothed| ≤ V.SMOOTH_TOL, where `smoothed` is the SPH line integral with the deposited
+      h_eff = max(h, h_min_vox·Δ) averaged over the 3×3 voxel-footprint bundle (`volume.smoothed_columns`) and
+      `cube` the trilinear column of the float cube (4 samples per voxel), both over the L0 ray or the L1/L2 segment;
+    - u8: the shipped u8 cube's column against the float cube's (8 samples per voxel) within U8_TOL;
+    - reference (full rays of the L0 and L1 sightlines): the cell-h line integral against the npz ray column within
+      REF_TOL, which pins the integrator to Trident.
+    Reported only (`thin`, `d_thin`): the thin-ray column (npz ray column at L0, cell-h line integral at L1/L2). The
+    cube is smoothed to ≥ 2 Δ and averaged over a voxel, so on clumpy gas the thin ray measures the resolution, not
+    the deposit (Phase 3: up to 0.64 dex on Si IV, C IV and N V at L0/L1 while the smoothed check holds to 0.046)."""
     ions = check_ions(cache, keys)
     ext = {k: cells[k] * cells["V_cm3"] for k, _ in ions}
     pos, h = cells["pos_disk"], cells["h"]
     fields = frag["gas"]["fields"] if frag else {}
-    sl = {sid: sightline(lib, sid) for sid in {s for v in CHECKS.values() for s in v} | set(INFO_L1)}
-    rows, fails = [], []
+    sl = {sid: sightline(lib, sid) for sid in {s for v in CHECKS.values() for s in v}}
+    rows, fails, meta = [], [], {}
 
-    def ref(a, b, k):
+    def thin_li(a, b, k):
         return log10s(D.line_integral(pos, h, ext[k], a, b) / CM ** 2)
 
     for L in ("L1", "L2", "L0"):
         half = V.GAS_LEVELS[L]
-        cub = load_level(cache, L, [k for k, _ in ions])
-        ids = CHECKS[L] + (INFO_L1 if L == "L1" else ())
-        for sid in ids:
+        side = side_numbers(cache, L) if level_paths(cache, L)[1].is_file() else {}
+        n = int(side.get("n") or V.N)
+        hmin = float(side.get("gas_h_min_vox") or V.GAS_H_MIN_VOX)  # the floor the level was deposited with
+        dx = 2.0 * half / n
+        meta[L] = {"n": n, "dx_kpc": dx, "h_min_vox": hmin}
+        segs = {}
+        for sid in CHECKS[L]:
             if sl.get(sid) is None:
-                print(f"[check] {sid}: npz missing"); continue
+                print(f"[check] {sid}: npz missing", flush=True); continue
             p0, p1, logN = sl[sid]
-            if L == "L0":
-                seg = (p0, p1)
-            else:
-                seg = clip_box(p0, p1, half)
-                if seg is None:
-                    print(f"[check] {L} {sid}: misses the box"); continue
-            a, b = seg
-            info = sid in INFO_L1 and L == "L1"
-            for k, lk in ions:
-                cube4 = log10s(D.cube_column(cub[k], half, a, b, 4.0) * CM)
-                cube8 = log10s(D.cube_column(cub[k], half, a, b, 8.0) * CM)
-                if L == "L0" and lk not in logN:
-                    continue                                    # v1 library npz: no column for this line
-                target = logN[lk] if L == "L0" else ref(a, b, k)
-                d = cube4 - target
-                tol = 0.15 if L == "L0" else TOL[k]
+            seg = (p0, p1) if L == "L0" else clip_box(p0, p1, half)
+            if seg is None:
+                print(f"[check] {L} {sid}: misses the box", flush=True); continue
+            sm = V.smoothed_columns(pos, h, ext, seg[0], seg[1], dx, h_min_vox=hmin)
+            segs[sid] = (seg, logN, {k: log10s(v / CM ** 2) for k, v in sm.items()})
+        for k, lk in ions:
+            cub = load_level(cache, L, [k])[k]
+            if cub.shape != (n, n, n):
+                fails.append(f"shape {L} {k} {cub.shape} != {n}^3")
+                continue
+            for sid, ((a, b), logN, smooth) in segs.items():
+                cube4 = log10s(D.cube_column(cub, half, a, b, 4.0) * CM)
+                cube8 = log10s(D.cube_column(cub, half, a, b, 8.0) * CM)
+                d = dlog(cube4, smooth[k])
+                thin = logN.get(lk) if L == "L0" else thin_li(a, b, k)     # a v1 npz has no column for new lines
                 r = {"level": L, "sid": sid, "ion": k, "seg_kpc": round(float(np.linalg.norm(b - a)), 1),
-                     "ref": round(target, 3), "ref_kind": "npz" if L == "L0" else "line_integral",
-                     "cube4": round(cube4, 3), "d": round(d, 3), "tol": tol, "info": info}
+                     "ref": rnd(smooth[k]), "ref_kind": "smoothed_bundle", "cube4": rnd(cube4), "d": rnd(d),
+                     "tol": V.SMOOTH_TOL, "thin": rnd(thin), "thin_kind": "npz" if L == "L0" else "line_integral",
+                     "d_thin": None if thin is None else rnd(dlog(cube4, thin))}
                 if k in fields and L in fields[k]["cubes"]:
                     c = fields[k]["cubes"][L]
-                    q = u8_cube(viz, c)
-                    u8 = V.VP.column_from_u8(q, c["vmin"], c["vmax"], half, a, b, spv=1.0)
-                    r["u8"] = round(u8, 3); r["d_u8"] = round(u8 - cube8, 4)
-                    if abs(u8 - cube8) > 0.02 and not info:
-                        fails.append(f"u8 {L} {sid} {k} {u8 - cube8:+.3f}")
-                if abs(d) > tol and not info:
+                    u8 = V.VP.column_from_u8(u8_cube(viz, c), c["vmin"], c["vmax"], half, a, b, spv=1.0)
+                    du = dlog(u8, cube8)
+                    r["u8"] = rnd(u8); r["d_u8"] = rnd(du, 4)
+                    if not abs(du) <= U8_TOL:
+                        fails.append(f"u8 {L} {sid} {k} {du:+.3f}")
+                if not abs(d) <= V.SMOOTH_TOL:
                     fails.append(f"physics {L} {sid} {k} {d:+.3f}")
                 rows.append(r)
-                print(f"[check] {L} {sid:27s} {k:4s} seg {r['seg_kpc']:6.1f} kpc  {r['ref_kind']:13s} "
-                      f"{target:7.3f}  cube {cube4:7.3f}  Δ {d:+.3f} (≤{tol}){'  [info]' if info else ''}"
-                      + (f"  u8-vs-float {r['d_u8']:+.4f}" if "d_u8" in r else ""), flush=True)
-        del cub
+                print(f"[check] {L} {sid:27s} {k:6s} seg {r['seg_kpc']:6.1f} kpc  smoothed {smooth[k]:7.3f}  "
+                      f"cube {cube4:7.3f}  Δ {d:+.3f} (≤{V.SMOOTH_TOL})"
+                      + ("" if r["d_thin"] is None else f"  thin-ray Δ {r['d_thin']:+.3f} [info]")
+                      + (f"  u8-vs-float {r['d_u8']:+.4f}" if r.get("d_u8") is not None else ""), flush=True)
+            del cub
     full = []
     for sid in sorted(set(CHECKS["L0"]) | set(CHECKS["L1"])):
         if sl.get(sid) is None:
@@ -331,15 +368,25 @@ def column_checks(cells, cache: Path, frag, lib: Path, viz: Path, keys=None) -> 
         for k, lk in ions:
             if lk not in logN:
                 continue
-            r_ = ref(p0, p1, k)
-            dd = r_ - logN[lk]
-            full.append({"sid": sid, "ion": k, "line_integral": round(r_, 3), "npz": round(logN[lk], 3),
-                         "d": round(dd, 4)})
-            if abs(dd) > 0.02:
+            r_ = thin_li(p0, p1, k)
+            dd = dlog(r_, logN[lk])
+            full.append({"sid": sid, "ion": k, "line_integral": rnd(r_), "npz": rnd(logN[lk]), "d": rnd(dd, 4)})
+            if not abs(dd) <= REF_TOL:
                 fails.append(f"reference {sid} {k} {dd:+.3f}")
-            print(f"[check] reference full ray {sid:27s} {k:4s} line_integral {r_:7.3f}  npz {logN[lk]:7.3f}  "
-                  f"Δ {dd:+.4f} (≤0.02)", flush=True)
-    return {"rows": rows, "reference": full, "fails": fails}
+            print(f"[check] reference full ray {sid:27s} {k:6s} line_integral {r_:7.3f}  npz {logN[lk]:7.3f}  "
+                  f"Δ {dd:+.4f} (≤{REF_TOL})", flush=True)
+    worst = max(rows, key=lambda r: abs(r["d"]) if r["d"] is not None else math.inf, default=None)
+    ok = [r for r in rows if r["d"] is not None and abs(r["d"]) <= V.SMOOTH_TOL]
+    thin_off = [r for r in rows if r["d_thin"] is not None and abs(r["d_thin"]) > V.SMOOTH_TOL]
+    summary = {"n_rows": len(rows), "n_pass": len(ok), "thin_over_smooth_tol": len(thin_off),
+               "worst": None if worst is None else {x: worst[x] for x in ("level", "sid", "ion", "d")},
+               "n_reference": len(full), "n_fails": len(fails)}
+    print(f"[check] physics {summary['n_pass']}/{summary['n_rows']} within {V.SMOOTH_TOL} dex of the smoothed "
+          f"reference (worst {summary['worst']}); thin ray beyond it on {summary['thin_over_smooth_tol']} rows "
+          f"(reported only); {len(fails)} hard failure(s)", flush=True)
+    return {"rows": rows, "reference": full, "fails": fails, "summary": summary, "method": "smoothed_bundle",
+            "tol": V.SMOOTH_TOL, "u8_tol": U8_TOL, "ref_tol": REF_TOL, "levels": meta,
+            "bundle_offsets_vox": list(V.BUNDLE_OFFSETS)}
 
 
 _U8_CACHE: dict = {}
@@ -384,22 +431,36 @@ def sizes(frag) -> dict:
 
 
 # ------------------------------------------------------------------------------------------ main
+def _opt_path(s):
+    return Path(s).expanduser() if s else None                  # '' -> None (e.g. --lock '' = no lock)
+
+
 def main(argv=None):
-    lib = config.library_dir()
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--viz", type=Path, default=lib / "viz")
-    ap.add_argument("--cache", type=Path, default=lib / "viz_cache" / "gas")
-    ap.add_argument("--index", type=Path, default=config.index_path())
+    ap.add_argument("--library", type=Path, default=None, help="library root whose sightlines/<id>.npz the column "
+                    "checks use (default tngsight.config.library_dir())")
+    ap.add_argument("--viz", type=Path, default=None, help="default <library>/viz")
+    ap.add_argument("--cache", type=Path, default=None, help="default <library>/viz_cache/gas")
+    ap.add_argument("--index", type=Path, default=None, help="writable yt index (default $TNG_INDEX_FILE, else "
+                    "<library>/cutout.ewah)")
     ap.add_argument("--levels", default=",".join(V.GAS_LEVELS))
     ap.add_argument("--fields", default=",".join(V.VOL_KEYS))
     ap.add_argument("--workers", type=int, default=4, help="WebP/gzip encoder processes")
     ap.add_argument("--deposit-workers", type=int, default=1, help="scatter processes per level")
-    ap.add_argument("--lock", type=Path, default=DEFAULT_LOCK)
+    ap.add_argument("--lock", type=_opt_path, default=DEFAULT_LOCK, help="heavy-I/O fcntl lock file for stage 1 "
+                    "(default $TNG_HEAVY_LOCK; '' = no lock)")
     ap.add_argument("--force", action="store_true", help="re-read cells, re-deposit and re-encode everything")
     ap.add_argument("--check", action="store_true", help="only validation + column checks from the cache")
+    ap.add_argument("--report", type=Path, default=None, help="JSON report path (default <cache>/check_report.json "
+                    "with --check, else <cache>/build_report.json)")
     ap.add_argument("--allow-range", default="", help="fields whose design §3.4 range bound may be exceeded "
                     "(reported, not fatal); the §2.3 rule still sets the range")
     a = ap.parse_args(argv)
+    lib = a.library or config.library_dir()
+    a.viz = a.viz or lib / "viz"
+    a.cache = a.cache or lib / "viz_cache" / "gas"
+    a.index = a.index or (Path(os.environ["TNG_INDEX_FILE"]).expanduser() if os.environ.get("TNG_INDEX_FILE")
+                          else lib / "cutout.ewah")             # = config.index_path() for the default library
     levels = [s.strip() for s in a.levels.split(",") if s.strip()]
     keys = [s.strip() for s in a.fields.split(",") if s.strip()]
     if [x for x in levels if x not in V.GAS_LEVELS] or [k for k in keys if k not in V.FIELDS]:
@@ -464,7 +525,10 @@ def main(argv=None):
     rs, rc = rss_gb()
     report = {"timings": timings, "peak_rss_gb": {"self": round(rs, 2), "children_max": round(rc, 2)},
               "sizes": sz, "mass": cons, "checks": chk, "vizpack_impl": V.VIZPACK_IMPL}
-    (a.cache / ("check_report.json" if a.check else "build_report.json")).write_text(json.dumps(report, indent=1))
+    out = a.report or a.cache / ("check_report.json" if a.check else "build_report.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=1))
+    print(f"[build] report {out}", flush=True)
     print(f"[build] timings {timings}; peak RSS self {rs:.2f} GB, largest child {rc:.2f} GB", flush=True)
     if chk["fails"]:
         print(f"[build] CHECK FAILURES: {chk['fails']}", flush=True)

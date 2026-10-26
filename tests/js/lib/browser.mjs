@@ -4,18 +4,31 @@
 // headless with --remote-debugging-port=0 (the port is read back from DevToolsActivePort, never fixed), and drives it
 // over CDP: evaluate, viewport, colour scheme, keys, mouse, screenshots. An init script installed before any page
 // script records every tng:* window event and every canvas fillText/strokeText string (window.__tng).
+//
+// Environment:
+//   TNG_EDGE            the browser binary (any Chromium: Edge, Chrome, Chromium, chrome-headless-shell). Unset: findBrowser()
+//                       picks one per platform (macOS: Microsoft Edge, then Google Chrome; Linux: the first of
+//                       microsoft-edge, google-chrome, chromium, chromium-browser, chrome-headless-shell on PATH).
+//   TNG_EDGE_PROFILE    the parent dir of the fresh temp profile (default the OS temp dir); removed by close().
+//   TNG_REDUCED_MOTION  "1" adds --force-prefers-reduced-motion (opt-in, off by default). On a machine without a GPU
+//                       (e.g. a Linux cluster node) WebGL is rendered in software, and the 3D thumbnail's continuous spin
+//                       then saturates the browser's GPU process and starves the page, so page tests time out. With
+//                       reduced motion the page stops the spin (viewer3d.js spinning()). Do not set it for
+//                       viewer_browser.mjs, which checks the spin itself (launch({reducedMotion: false}) forces it off).
+//   TNG_TEST_PORT       a fixed static-server port (default 0, OS-chosen).
 import {createServer, request as httpRequest} from "node:http";
-import {readFileSync, existsSync, statSync, mkdirSync, rmSync, readdirSync} from "node:fs";
+import {readFileSync, existsSync, statSync, mkdirSync, rmSync, readdirSync, accessSync, constants as FS} from "node:fs";
 import {spawn} from "node:child_process";
-import {join, extname, resolve, dirname} from "node:path";
-import {tmpdir} from "node:os";
+import {join, extname, resolve, dirname, delimiter} from "node:path";
+import {tmpdir, homedir} from "node:os";
 import {fileURLToPath} from "node:url";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const RESERVED_PORTS = [8787, 8000];
-/** Requests every test blocks: the owner's laptop server and the hosted backends/cubes (tests never depend on them). */
-export const BLOCK = ["*://127.0.0.1:8787/*", "*://localhost:8787/*", "*.hf.space/*", "*://huggingface.co/*", "*://*.huggingface.co/*"];
+/** Requests every test blocks: the owner's laptop server and the hosted backends/cubes (tests never depend on them).
+ *  *.sslip.io is the public VM backend a docs/tng50 export lists, so a test of the repo page never probes it. */
+export const BLOCK = ["*://127.0.0.1:8787/*", "*://localhost:8787/*", "*.hf.space/*", "*.sslip.io/*", "*://huggingface.co/*", "*://*.huggingface.co/*"];
 
 /** argv -> {pos: [...positional], opt: {flag: value|true}} ("--flag value" or a bare "--flag"). */
 export function parseArgs(argv) {
@@ -107,28 +120,72 @@ export const INIT_SCRIPT = `(() => {
   for (const t of ["ready", "instrument", "fit", "select", "catalog", "submitted", "job", "done", "error"]) window.addEventListener("tng:" + t, keep, true);
 })();`;
 
+/* ---------------------------------------------------------------- browser binary */
+/** Browser candidates per platform when TNG_EDGE is unset: absolute app paths on macOS, command names on PATH on Linux. */
+export const BROWSERS = {
+  darwin: ["Microsoft Edge.app/Contents/MacOS/Microsoft Edge", "Google Chrome.app/Contents/MacOS/Google Chrome"],
+  linux: ["microsoft-edge", "google-chrome", "chromium", "chromium-browser", "chrome-headless-shell"],
+};
+const isExec = f => { try { return statSync(f).isFile() && (accessSync(f, FS.X_OK), true); } catch { return false; } };
+/**
+ * The browser binary: env.TNG_EDGE when set, else the first installed candidate of BROWSERS[platform] (macOS: in
+ * /Applications, then ~/Applications; Linux: the first name found in a PATH directory, in the order listed). Throws an
+ * Error naming TNG_EDGE when none is found. The arguments exist for tests (a fake env, platform or file check).
+ */
+export function findBrowser({env = process.env, platform = process.platform, exec = isExec, home = homedir()} = {}) {
+  if (env.TNG_EDGE) return env.TNG_EDGE;
+  let tried = [];
+  if (platform === "darwin") {
+    tried = BROWSERS.darwin.flatMap(app => ["/Applications", join(home, "Applications")].map(d => join(d, app)));
+  } else if (platform === "linux") {
+    const dirs = String(env.PATH || "").split(delimiter).filter(Boolean);
+    tried = BROWSERS.linux.flatMap(name => dirs.map(d => join(d, name)));
+  }
+  const hit = tried.find(f => exec(f));
+  if (hit) return hit;
+  const want = platform === "darwin" ? "Microsoft Edge or Google Chrome in /Applications"
+    : platform === "linux" ? `one of ${BROWSERS.linux.join(", ")} on PATH` : `a Chromium browser (no default for ${platform})`;
+  throw new Error(`no headless browser found (looked for ${want}): set TNG_EDGE to the path of a Chromium-based browser binary`);
+}
+
+/** A desktop mouse for (hover: hover) and (pointer: fine). A headless browser on a machine with no input device (a
+ *  cluster node) reports hover: none and pointer: none, so hover-only page behaviour (the info popovers open on hover
+ *  only when (hover: hover) matches) cannot be tested there; the Mac's headless Edge already reports a mouse. */
+export const HOVER_FLAG = "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4";
+/** The command-line flags of a headless launch (reducedMotion: TNG_REDUCED_MOTION=1 unless given; hover: true adds
+ *  HOVER_FLAG). */
+export function browserArgs({profile, width = 1440, height = 900, reducedMotion, hover = false} = {}, env = process.env) {
+  const rm = reducedMotion ?? env.TNG_REDUCED_MOTION === "1";
+  return ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check",
+    "--disable-component-update", "--disable-background-networking", "--no-proxy-server", "--hide-scrollbars", "--mute-audio",
+    "--disable-features=msSmartScreenProtection,msEdgeEnhancedSecurityMode,msEnhancedSecurityMode",
+    ...(rm ? ["--force-prefers-reduced-motion"] : []), ...(hover ? [HOVER_FLAG] : []), `--window-size=${width},${height}`, "about:blank"];
+}
+
 /* ---------------------------------------------------------------- Edge + CDP */
 const KEYS = {ArrowLeft: 37, ArrowRight: 39, ArrowUp: 38, ArrowDown: 40, Home: 36, End: 35, Enter: 13, Escape: 27, Tab: 9, "+": 187, "=": 187, "-": 189};
 /**
- * Launch headless Edge and attach to its first page. opts: {profile, edge, width, height, block: [url patterns], inject: [js source]}.
- * Returns a page object (see the methods below). Call close() at the end (kills only this Edge).
+ * Launch the headless browser (opts.edge, else findBrowser(): TNG_EDGE or a per-platform default) and attach to its
+ * first page. opts: {profile, edge, width, height, block: [url patterns], inject: [js source], reducedMotion, hover}.
+ * Returns a page object (see the methods below); P.browser is the binary. Call close() at the end (kills only this browser).
  */
 export async function launch(opts = {}) {
-  const EDGE = opts.edge || process.env.TNG_EDGE || "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
+  const EDGE = opts.edge || findBrowser();
   const profile = resolve(opts.profile || process.env.TNG_EDGE_PROFILE || join(tmpdir(), `tng-edge-${process.pid}`)) + `/edge-${process.pid}-${Date.now()}`;
   mkdirSync(profile, {recursive: true});
   const W = opts.width || 1440, H = opts.height || 900;
-  const proc = spawn(EDGE, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check",
-    "--disable-component-update", "--disable-background-networking", "--no-proxy-server", "--hide-scrollbars", "--mute-audio",
-    "--disable-features=msSmartScreenProtection,msEdgeEnhancedSecurityMode,msEnhancedSecurityMode", `--window-size=${W},${H}`, "about:blank"], {stdio: "ignore"});
+  const proc = spawn(EDGE, browserArgs({profile, width: W, height: H, reducedMotion: opts.reducedMotion, hover: !!opts.hover}), {stdio: "ignore"});
+  let spawnErr = null; proc.on("error", e => { spawnErr = e; });     // e.g. ENOENT: report it instead of crashing the test
   let port = null; const tStart = Date.now();
-  for (let i = 0; i < 1200 && !port; i++) { await sleep(150); try { port = +readFileSync(join(profile, "DevToolsActivePort"), "utf8").split("\n")[0] || null; } catch {} }
-  if (!port) { proc.kill("SIGKILL"); throw new Error("Edge did not write DevToolsActivePort within 180 s"); }
+  for (let i = 0; i < 1200 && !port && !spawnErr; i++) { await sleep(150); try { port = +readFileSync(join(profile, "DevToolsActivePort"), "utf8").split("\n")[0] || null; } catch {} }
+  if (spawnErr) { try { rmSync(profile, {recursive: true, force: true}); } catch {}
+    throw new Error(`could not start the browser ${EDGE}: ${spawnErr.message} (set TNG_EDGE to a Chromium-based browser binary)`); }
+  if (!port) { proc.kill("SIGKILL"); throw new Error(`the browser (${EDGE}) did not write DevToolsActivePort within 180 s`); }
   let tabs = null; for (let i = 0; i < 200 && !tabs; i++) { try { tabs = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).filter(t => t.type === "page"); if (!tabs.length) tabs = null; } catch {} if (!tabs) await sleep(150); }
   if (!tabs) { proc.kill("SIGKILL"); throw new Error("no CDP page target"); }
   const ws = new WebSocket(tabs[0].webSocketDebuggerUrl); await new Promise((r, j) => { ws.addEventListener("open", r); ws.addEventListener("error", j); });
   let id = 0; const pend = new Map(), listeners = [];
-  const P = {proc, port, profile, startMs: Date.now() - tStart, exceptions: [], consoleErrors: [], requests: [], W, H, mobile: false};
+  const P = {proc, port, profile, browser: EDGE, startMs: Date.now() - tStart, exceptions: [], consoleErrors: [], requests: [], W, H, mobile: false};
   ws.addEventListener("message", ev => { const m = JSON.parse(ev.data);
     if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); return; }
     if (m.method === "Runtime.exceptionThrown") P.exceptions.push((m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text || "").slice(0, 400));

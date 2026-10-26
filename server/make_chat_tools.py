@@ -37,6 +37,15 @@ SET_INSTRUMENT_DESC = (
     "window (km/s). vc: window centre (km/s). fit: overplot on-the-fly component fits.")
 
 
+def _ceilings(ions) -> str:
+    """The per-ion logN ceilings (registry fit.logN_max) as text, e.g. '22.5 for HI, 19 otherwise'."""
+    vals = {k: float(ions.atomic(k)["logN_max"]) for k in ions.KEYS}
+    num = lambda v: str(int(v)) if v.is_integer() else str(v)          # noqa: E731
+    common = max(set(vals.values()), key=lambda v: sum(1 for x in vals.values() if x == v))
+    odd = [f"{num(v)} for {k}" for k, v in vals.items() if v != common]
+    return ", ".join(odd + [f"{num(common)} otherwise"]) if odd else num(common)
+
+
 def _one_or_two(item: dict) -> dict:
     return {"anyOf": [dict(item), {"type": "array", "items": dict(item), "minItems": 2, "maxItems": 2}]}
 
@@ -70,7 +79,10 @@ def build_tools(ions=None, query_schema=None) -> list:
          "input_schema": {"type": "object", "additionalProperties": False, "required": ["id"],
                           "properties": {"id": {"type": "string", "pattern": ID_PATTERN}}}},
         {"name": "search_sightlines",
-         "description": "Find sightlines by their fitted Voigt components. Returns ranked ids with reasons.",
+         "description": "Find sightlines by their fitted Voigt components. Returns ranked ids with reasons. "
+                        "Saturated or degenerate components are lower limits on log N, never measurements: one "
+                        "meets logN_min when its lower limit does, and never meets a logN_max below the ion's "
+                        f"ceiling ({_ceilings(ions)}). Reasons count them as lower limits.",
          "input_schema": {"type": "object", "additionalProperties": False, "required": ["query"],
                           "properties": {"query": json.loads(json.dumps(query_schema))}}},
         {"name": "request_sightline",
@@ -133,7 +145,9 @@ def build_prompt(ions=None) -> str:
         "shown and the velocity window, show_3d for the gas distribution, and request_sightline or "
         "request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes "
         "and the page opens it when ready). Velocities are km/s relative to the galaxy's systemic velocity; "
-        "column densities are log10 cm^-2; distances are kpc. Keep answers short.")
+        "column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower "
+        "(saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it "
+        "as a measured column. Keep answers short.")
     bad = [c for c in FORBIDDEN if c in text]
     if bad:
         raise ValueError(f"system prompt contains forbidden separators {bad!r}")

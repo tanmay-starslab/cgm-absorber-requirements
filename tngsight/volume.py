@@ -427,6 +427,54 @@ def build_level(cells, level, workers=1, n=N, progress=None, keys=VOL_KEYS):
     return level_cubes(dep, level), dep
 
 
+# ============================================================================== column check reference (§4.3)
+# A level cube holds the field smoothed to h_eff = max(h, GAS_H_MIN_VOX·Δ) and is read back by a trilinear march,
+# i.e. averaged over about one voxel across the beam. Its column is therefore checked against that same field: the
+# SPH line integral with h_eff, averaged over a 3×3 bundle of parallel rays offset by (−Δ/2, 0, +Δ/2) across the
+# beam. A single thin ray through the unsmoothed cells is not the cube's field: it misses or hits sub-voxel clumps
+# (Si IV, C IV, N V differ by −0.2 to +0.6 dex at L0/L1 although the deposit is right), so build_volumes reports that
+# difference and never gates on it. SMOOTH_TOL: the Phase-3 cubes reach at most 0.046 dex against this reference.
+SMOOTH_TOL = 0.05
+BUNDLE_OFFSETS = (-0.5, 0.0, 0.5)                # in units of the level voxel Δ
+
+
+def _beam_basis(u):
+    e1 = np.cross(u, [0.0, 0.0, 1.0])
+    if np.linalg.norm(e1) < 1e-6:
+        e1 = np.cross(u, [0.0, 1.0, 0.0])
+    e1 = e1 / np.linalg.norm(e1)
+    return e1, np.cross(u, e1)
+
+
+def smoothed_columns(pos, h, qs: dict, p0, p1, dx, h_min_vox=GAS_H_MIN_VOX, offsets=BUNDLE_OFFSETS) -> dict:
+    """{name: bundle mean of ∫ W(r, h_eff) q ds} [q·kpc⁻²] along [p0, p1] for every per-cell extensive q in `qs`,
+    with h_eff = max(h, h_min_vox·dx) and the len(offsets)² parallel rays p + (s·e1 + t·e2)·dx: the column the level
+    cube of voxel dx must reproduce (to SMOOTH_TOL). Cells that cannot touch any bundle ray are dropped first, so a
+    call costs one cylinder selection plus len(offsets)² line integrals per quantity on the cells near the beam."""
+    pos = np.asarray(pos, dtype=np.float64).reshape(-1, 3)
+    p0, p1 = np.asarray(p0, dtype=np.float64), np.asarray(p1, dtype=np.float64)
+    L = float(np.linalg.norm(p1 - p0))
+    if L == 0.0:
+        return {k: 0.0 for k in qs}
+    u = (p1 - p0) / L
+    dx = float(dx)
+    heff = np.maximum(np.asarray(h, dtype=np.float64).reshape(-1), float(h_min_vox) * dx)
+    reach = heff + dx * max(abs(float(o)) for o in offsets) * math.sqrt(2.0)
+    d = pos - p0
+    t = d @ u
+    b2 = np.maximum(np.einsum("ij,ij->i", d, d) - t * t, 0.0)
+    near = (b2 < reach * reach) & (t > -reach) & (t < L + reach)
+    P, H = pos[near], heff[near]
+    Q = {k: np.asarray(q, dtype=np.float64).reshape(-1)[near] for k, q in qs.items()}
+    e1, e2 = _beam_basis(u)
+    shifts = [(float(s) * dx) * e1 + (float(r) * dx) * e2 for s in offsets for r in offsets]
+    out = {k: 0.0 for k in qs}
+    for sh in shifts:
+        for k in qs:
+            out[k] += D.line_integral(P, H, Q[k], p0 + sh, p1 + sh)
+    return {k: v / len(shifts) for k, v in out.items()}
+
+
 # ============================================================================== ranges and windows (§2.3, §3.5)
 def field_range(cubes_by_level: dict, key) -> tuple:
     """Shared (vmin, vmax) of `key` over the given levels (§2.3 gas rule; L0 masked)."""

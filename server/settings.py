@@ -14,6 +14,11 @@ def _flag(v, default=False):
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _work_root(env=None) -> Path:
+    """The TNG_WORK work root (tngsight.config.work_root's rule, repeated so settings import without tngsight)."""
+    return Path((os.environ if env is None else env).get("TNG_WORK") or "/Volumes/cgm_work")
+
+
 def _default_dir(fn, env, fallback):
     """tngsight.config path helpers when importable (no yt there), else the documented default."""
     if os.environ.get(env):
@@ -22,12 +27,12 @@ def _default_dir(fn, env, fallback):
         from tngsight import config
         return Path(getattr(config, fn)())
     except Exception:
-        return Path(fallback)
+        return Path(fallback() if callable(fallback) else fallback)
 
 
 @dataclass
 class Settings:
-    library_dir: Path = Path("/Volumes/cgm_work/data/library")
+    library_dir: Path = field(default_factory=lambda: _work_root() / "data" / "library")   # from_env: TNG_LIBRARY_DIR
     cutout: Path | None = None              # None -> tngsight.config.cutout_path()
     ion_table_dir: Path | None = None
     index_file: Path | None = None
@@ -84,8 +89,12 @@ class Settings:
         e = os.environ if env is None else env
         g = e.get
         opt = lambda k: Path(g(k)) if g(k) else None  # noqa: E731
-        lib = Path(g("TNG_LIBRARY_DIR")) if g("TNG_LIBRARY_DIR") else _default_dir(
-            "library_dir", "TNG_LIBRARY_DIR", "/Volumes/cgm_work/data/library")
+        if g("TNG_LIBRARY_DIR"):
+            lib = Path(g("TNG_LIBRARY_DIR"))
+        elif g("TNG_WORK"):                                  # the mapping's own work root wins over the process env
+            lib = _work_root(e) / "data" / "library"
+        else:
+            lib = _default_dir("library_dir", "TNG_LIBRARY_DIR", lambda: _work_root() / "data" / "library")
         cors = tuple(o.strip() for o in g("CORS_ORIGINS", "").split(",") if o.strip()) or DEFAULT_CORS
         s = cls(library_dir=lib, cutout=opt("TNG_CUTOUT"), ion_table_dir=opt("TNG_ION_TABLE_DIR"),
                 index_file=opt("TNG_INDEX_FILE"), local_worker=_flag(g("LOCAL_WORKER"), True),
