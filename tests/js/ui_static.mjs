@@ -122,7 +122,29 @@ else {
   const PT = St.instrumentPatch({R: {uv: [20000, 60000], xray: 1000}, snr: [100, 2], layout: "2SN", ions: ["OVII", "HI"], vhw: 20, vc: 30.5, fit: true}, reg, S0, vmaxFor);
   check(PT.R.uv.join() === "20000,60000" && PT.R.xray.join() === "1000,3000" && PT.sn.join() === "100,2" && PT.layout === "2SN" && PT.ions.join() === "HI,OVII" && PT.vhw === 20 && PT.vc === 30.5 && PT.fit === true,
     "setInstrument: a valid patch, ions put into registry order, a scalar R sets the first case");
-  check(St.minus(-400) === "−400" && St.fmtNum(-0.004, 2) === "0.00", "U+2212 minus for negatives, no negative zero");}
+  check(St.minus(-400) === "−400" && St.fmtNum(-0.004, 2) === "0.00", "U+2212 minus for negatives, no negative zero");
+  /* C2: lower limits (owner decision 2), readout flags (code 2), the AOD lower bound, the boot clamp (code 6) */
+  { const K = (flag, logN = 15, extra = {}) => Object.assign({v: 0, logN, dlogN: flag & 32 ? null : 0.05, b: 20, db: 1, dv: 0.3, flag}, extra);
+    check(St.isLowerLimit(K(1)) && St.isLowerLimit(K(33)) && St.isLowerLimit(K(32)) && !St.isLowerLimit(K(65)) && !St.isLowerLimit(K(0)) && !St.isLowerLimit(K(2 | 8 | 128)),
+      "isLowerLimit: NOERR, or SAT without DAMPED, nothing else");
+    check(St.limitLogN(K(33, 17.91, {logN_lo: 15.1})) === 15.1 && St.limitLogN(K(1, 14, {logN_lo: 14.6})) === 14 && St.limitLogN(K(1, 14)) === 14, "limitLogN = min(logN, logN_lo)");
+    const fc = (c, damped, q) => St.fitClass(c, damped, q);
+    check(fc(K(1, 17.9), true, null).limit && !fc(K(1, 20.3), true, null).limit && fc(K(1, 20.3), false, null).limit && fc(K(33, 20.3), true, null).limit,
+      "fitClass without fit.js fitQuality: SAT is a lower limit, except a damped-ion fit at log N >= 19 that kept its errors");
+    const t1 = fc(K(1 | 2, 15), false, null), t2 = fc(K(2, 13, {dlogN: 2.5}), false, null), t3 = fc(K(0, 13), false, "unconstrained"), t4 = fc(K(1, 15), false, "ok");
+    check(t1.limit && t1.tags.join() === "sat,bound" && !t1.hollow && t2.hollow && t2.tags.join() === "bound,unconstrained" && t3.loose && t3.hollow && !t4.limit,
+      `fitClass names every flag and follows fitQuality when given (${[t1, t2, t3, t4].map(x => x.tags.join("+")).join(" ")})`);
+    const n = 401, v = Float64Array.from({length: n}, (_, i) => -200 + i), tau = Float64Array.from(v, x => Math.exp(-0.5 * (x / 10) ** 2));
+    const lnT = Math.log10(3.7679e14 / (0.1325 * 1031.912) * 10 * Math.sqrt(2 * Math.PI));     // tau0 = 1, sigma_v = 10 km/s
+    const a = St.aodLogN({v, flux: Float64Array.from(tau, t => Math.exp(-t)), dvp: 1, sigma: 0.001}, -100, 100, 1031.912, 0.1325);
+    check(Math.abs(a - lnT) < 0.01, `aodLogN recovers an unsaturated O VI column (${a.toFixed(3)} vs ${lnT.toFixed(3)})`);
+    const s = St.aodLogN({v, flux: Float64Array.from(tau, t => Math.exp(-100 * t)), dvp: 1, sigma: 0.02}, -100, 100, 1031.912, 0.1325);
+    check(s > lnT && s < lnT + 2, `aodLogN of a saturated trough (tau0 100) is a lower limit (${s.toFixed(2)} < true ${(lnT + 2).toFixed(2)})`);
+    const r = {comps: [K(1, 17.0, {v: -10}), K(0, 13.0, {v: 30})], windows: [[-100, 100]]};
+    const lim = St.fitLimits(r, {v, flux: Float64Array.from(tau, t => Math.exp(-100 * t)), dvp: 1, sigma: 0.02}, {lam0_A: 1031.912, f: 0.1325}, St.isLowerLimit);
+    check(lim.size === 1 && lim.get(r.comps[0]) < 17.0 && lim.get(r.comps[0]) <= s, `fitLimits: the saturated fit at 17.0 reads as > ${lim.get(r.comps[0])?.toFixed(2)}, its share of the window AOD`);
+    const deep = St.clampView({vc: 2000, vhw: 6000}, Math.min(20000, Math.max(1500, 6000 + 2000)));
+    check(deep.vhw === 6000 && deep.vc === 2000, "boot clamp keeps a deep-linked damped H I window and its centre until the line is decoded"); }}
 
 /* ---------------------------------------------------------------- browser part */
 if (!process.env.TNG_BROWSER) { console.log("browser part skipped (set TNG_BROWSER=1 to run it in headless Edge)"); process.exit(C.finish()); }

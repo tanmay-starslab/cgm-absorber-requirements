@@ -56,6 +56,22 @@ function fakeApp() {
   check(r.ok && r.id === "edge_b100_a090" && r.v_sys === 12.35 && r.logN.OVI === 14.23 && r.components.OVI.length === 3
     && J(Object.keys(r.components.OVI[0])) === J(["v", "logN", "b", "flag"]), `select_sightline result shape (${J(r).slice(0, 120)}…)`);
   check(app.log.some(x => x[0] === "select" && x[1] === "edge_b100_a090" && x[2] === "chat"), "select_sightline calls app.select with source chat");
+  /* C2, owner decision 2: the SAT component (flag 1) is a lower limit, sent as logN_lower, never as logN */
+  check(J(r.components.OVI[2]) === J({v: 140, logN_lower: 14.6, b: 12, flag: 1}), `select_sightline sends a saturated component as logN_lower (${J(r.components.OVI[2])})`);
+  { const a2 = fakeApp(), ex2 = C.createToolExecutor(a2, {loadSearch: () => import(searchUrl)});
+    const c0 = await a2.components("edge_b100_a090");
+    c0.HI = [{v: -60, dv: null, logN: 17.91, dlogN: null, b: 20, db: null, region: 0, flag: 33, EW: 400, logN_lo: 15.1},
+      {v: 10, dv: 0.4, logN: 20.3, dlogN: 0.02, b: 30, db: 1, region: 1, flag: 65, EW: 2600}];
+    const q = await ex2("select_sightline", {id: "edge_b100_a090"});
+    check(J(q.components.HI) === J([{v: -60, logN_lower: 15.1, b: 20, flag: 33}, {v: 10, logN: 20.3, b: 30, flag: 65}]),
+      `degenerate H I (SAT|NOERR) -> logN_lower at its logN_lo 15.1; the damped H I stays a value (${J(q.components.HI)})`);
+    const s2 = await ex2("search_sightlines", {query: {ion: "HI", logN_min: 15, logN_max: 19}});
+    check(s2.ok && s2.n_total === 0, `a lower limit never meets a logN_max below the H I ceiling (${J(s2)})`);
+    const s3 = await ex2("search_sightlines", {query: {ion: "HI", logN_min: 15}});
+    check(s3.ok && s3.n_total === 1 && /\(1 lower limit\)/.test(s3.results[0].reason), `search reasons name the lower limits (${J(s3)})`);
+    const st = C.TOOLS.find(t => t.name === "search_sightlines").description;
+    check(/lower limit/.test(C.SYSTEM_PROMPT) && /logN_lower/.test(C.SYSTEM_PROMPT) && /lower limits on log N/.test(st) && /logN_max/.test(st),
+      "the system prompt and the search tool state the lower-limit semantics"); }
   r = await ex("select_sightline", {id: "rand_b075_a000_s12345"});
   check(J(r) === J({ok: false, error: "unknown sightline id"}), "select_sightline unknown id");
   r = await ex("search_sightlines", {query: {ion: "OVI", n_min: 2}});

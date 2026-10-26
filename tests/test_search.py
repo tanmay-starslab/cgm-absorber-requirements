@@ -28,7 +28,8 @@ def test_fixture_is_reproducible():
 def test_golden_is_current():
     g = json.loads(GOLDEN.read_text())
     assert g == json.loads(json.dumps(S.golden(), ensure_ascii=False))
-    assert len(g["cases"]) == 23 and g["query_schema"] == S.QUERY_SCHEMA
+    assert len(g["cases"]) == len(S.CASES) == 28 and g["query_schema"] == S.QUERY_SCHEMA
+    assert len(g["annotate_cases"]) == len(S.ANNOTATE_CASES) == 5
     assert all(c["ids"] for c in g["cases"])                       # every case selects something
 
 
@@ -77,14 +78,14 @@ def test_hand_checked_pair_case():
     res = S.search({"ion": "OVI", "sep_kms": [30, 30]}, f["entries"], f["components"])
     assert res["n_total"] == 1
     r = res["results"][0]
-    assert r["id"] == "face_b010_a000" and r["n"] == 4 and r["b_kpc"] == 100.0
+    assert r["id"] == "face_b010_a000" and r["n"] == 5 and r["b_kpc"] == 100.0     # 4 hand-made + 1 NOERR limit
     # |(-127.99) - (-157.99)| = 30.000000000000014 in IEEE doubles: only matches after the 1e-6 rounding
     assert abs(-127.99 - -157.99) != 30.0
     assert r["pairs"] == [[0, 1, 30.0], [0, 2, 30.0]]
     assert [c["idx"] for c in r["components"]] == [0, 1, 2]
-    # 1.375 + 1.375 + 1.0625 − 0.5 (one SAT) + 0.25·2 pairs
+    # 1.375 + 1.375 (the SAT one, a lower limit at its fitted 13.5) + 1.0625 − 0.5 (one SAT) + 0.25·2 pairs
     assert r["score"] == pytest.approx(3.8125, abs=1e-12)
-    assert r["reason"] == "4 O VI components, logN 12.3–13.5, b 13–20 km/s, Δv 30 km/s, 100 kpc"
+    assert r["reason"] == "5 O VI components, logN 12.3–13.5 (1 lower limit), b 13–20 km/s, Δv 30 km/s, 100 kpc"
 
 
 def test_zero_separation_and_n_zero():
@@ -157,3 +158,66 @@ def test_speed_700_entries():
     for _ in range(5):
         S.run_query({"ion": "OVI", "sep_kms": [30, 80]}, entries, comps)
     assert (time.perf_counter() - t0) / 5 <= 0.05
+
+
+# ------------------------------------------------------------------------------- lower limits (owner decision 2)
+def _c(v, logN, flag=0, lo=None, region=0):
+    c = {"v": v, "dv": 0.1, "logN": logN, "dlogN": None if flag & 32 else 0.01, "b": 20.0, "db": 0.2,
+         "region": region, "flag": flag, "EW": 10.0}
+    if lo is not None:
+        c["logN_lo"] = lo
+    return c
+
+
+def test_lower_limit_rule():
+    assert S.is_lower_limit(_c(0, 15, 1)) and S.is_lower_limit(_c(0, 15, 33)) and S.is_lower_limit(_c(0, 15, 32))
+    assert not S.is_lower_limit(_c(0, 20.3, 65)) and not S.is_lower_limit(_c(0, 13, 2 | 8 | 128))   # DAMPED; others
+    assert S.is_lower_limit(_c(0, 20.3, 65 | 32))                                                  # NOERR always
+    assert S.limit_logN(_c(0, 17.91, 33, 15.1)) == 15.1 and S.limit_logN(_c(0, 14.0, 1, 14.6)) == 14.0
+    assert S.limit_logN(_c(0, 14.0, 1)) == 14.0 and S.column(_c(0, 13.0, 0, 12.0)) == 13.0       # a value ignores lo
+
+
+def test_lower_limit_predicates_score_and_reason():
+    es = [{"id": "edge_b010_a000", "orientation": "edge-on", "b_kpc": 10}]
+    cs = {"edge_b010_a000": {"HI": [_c(-60, 17.91, 33, 15.1), _c(10, 20.3, 65), _c(80, 14.2)]}}
+    r = S.run_query({"ion": "HI", "logN_min": 15}, es, cs)
+    assert r[0]["n"] == 2 and r[0]["reason"] == "2 H I components, logN 15.1–20.3 (1 lower limit), b 20–20 km/s, 10 kpc"
+    assert r[0]["score"] == pytest.approx(1.775 + 2.0 - 1.0, abs=1e-12)        # the limit scores at 15.1, not 17.91
+    assert [c["v"] for c in S.run_query({"ion": "HI", "logN_min": 15.5}, es, cs)[0]["components"]] == [10]
+    assert -60 not in [c["v"] for c in S.run_query({"ion": "HI", "logN_max": 21}, es, cs)[0]["components"]]
+    assert S.run_query({"ion": "HI", "logN_max": 22.5}, es, cs)[0]["n"] == 3      # the ion ceiling = unbounded
+    assert S.run_query({"ion": "HI", "logN_min": 15, "logN_max": 19}, es, cs) == []
+
+
+def test_annotate_limits_share_rule():
+    comps = {"HI": [_c(-60, 17.91, 33, region=0), _c(10, 13.0, 0, region=1)], "OVI": []}
+    aod = {"HI": [15.3, [[0, -200, 0, 15.1], [1, 0, 100, 13.0]]]}
+    out = S.annotate_limits(comps, aod)
+    assert out["HI"][0]["logN_lo"] == 15.1 and "logN_lo" not in out["HI"][1] and out["OVI"] == []
+    assert "logN_lo" not in comps["HI"][0]                                       # inputs untouched
+    assert S.annotate_limits(comps, None)["HI"][0].get("logN_lo") is None
+    # measured neighbours are subtracted; two limits share what is left in proportion to their fitted N
+    m = S.annotate_limits({"MgII": [_c(0, 15.0, 1), _c(9, 14.5, 33), _c(30, 13.6, 0)]},
+                          {"MgII": [14.2, [[0, -40, 40, 14.2]]]})["MgII"]
+    left = 10 ** 14.2 - 10 ** 13.6
+    assert math.log10(10 ** m[0]["logN_lo"] + 10 ** m[1]["logN_lo"]) == pytest.approx(math.log10(left), abs=2e-3)
+    assert m[0]["logN_lo"] - m[1]["logN_lo"] == pytest.approx(0.5, abs=2e-3)
+    # measured components above the region column: the region is shared over all of them by fitted N
+    z = S.annotate_limits({"SiII": [_c(0, 14.0, 1), _c(30, 14.3, 0)]}, {"SiII": [14.2, [[0, -30, 60, 14.2]]]})["SiII"]
+    assert z[0]["logN_lo"] == pytest.approx(14.2 + 14.0 - math.log10(10 ** 14.0 + 10 ** 14.3), abs=1e-3)
+
+
+def test_golden_limit_cases():
+    g = {c["name"]: c for c in json.loads(GOLDEN.read_text())["cases"]}
+    for name in ("limits_meet_logN_min", "limits_never_meet_logN_max", "limits_at_ceiling", "hi_limit_below_floor",
+                 "hi_degenerate_window"):
+        q = g[name]["query"]
+        for r in g[name]["results"]:
+            for c in r["components"]:
+                if S.is_lower_limit(c):
+                    assert S.limit_logN(c) >= q.get("logN_min", -math.inf)
+                    assert q.get("logN_max", S.LOGN_MAX[q["ion"]]) >= S.LOGN_MAX[q["ion"]]
+                else:
+                    assert q.get("logN_min", -math.inf) <= c["logN"] <= q.get("logN_max", math.inf)
+    assert any(S.is_lower_limit(c) for r in g["limits_at_ceiling"]["results"] for c in r["components"])
+    assert not any(S.is_lower_limit(c) for r in g["limits_never_meet_logN_max"]["results"] for c in r["components"])

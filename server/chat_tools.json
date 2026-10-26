@@ -155,7 +155,7 @@
  },
  {
   "name": "search_sightlines",
-  "description": "Find sightlines by their fitted Voigt components. Returns ranked ids with reasons.",
+  "description": "Find sightlines by their fitted Voigt components. Returns ranked ids with reasons. Saturated or degenerate components are lower limits on log N, never measurements: one meets logN_min when its lower limit does, and never meets a logN_max below the ion's ceiling (22.5 for HI, 19 otherwise). Reasons count them as lower limits.",
   "input_schema": {
    "type": "object",
    "additionalProperties": false,

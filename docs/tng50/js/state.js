@@ -26,13 +26,93 @@ export function makeRegistry(cfg) {
 }
 export const cloneState = s => JSON.parse(JSON.stringify(s));
 
-/* B_fix M1: a fitted component whose errors leave it unconstrained (no covariance, sigma(log N) above 1 dex or sigma(b)
-   above b) is drawn with a hollow tick and named as such in the readout, like a component on a bound */
+/* B_fix M1: a fitted component whose errors leave it unconstrained is drawn with a hollow tick and named as such in
+   the readout, like a component on a bound. C2: the same rule as fit.js fitQuality "unconstrained" (no covariance or
+   NOERR, or sigma(log N) above 1 dex); a large sigma(b) alone no longer counts, since an unresolved component has a
+   loose b but a well measured column (B_retest item 3). Only used when fit.js does not export fitQuality. */
 export const LOOSE_DEX = 1;
 export function fitLoose(c) {
   if (!c) return false;
-  const dN = c.dlogN, db = c.db;
-  return !(Number.isFinite(dN) && Number.isFinite(db)) || dN > LOOSE_DEX || db > Math.max(c.b, 1);
+  return !!((+c.flag || 0) & 32) || !Number.isFinite(c.dlogN) || c.dlogN > LOOSE_DEX;
+}
+
+/* ---- lower limits (Phase-3 owner decision 2; tngsight/search.py is the reference and tests/search_golden.json
+   fixes the rule). A saturated or degenerate catalogue component, flag NOERR, or SAT without DAMPED, on any ion, is
+   never a measurement: its column is the lower limit min(logN, logN_lo). annotateLimits gives logN_lo: the AOD
+   column of the component's fit region minus the region's measured components, shared among the region's limits in
+   proportion to their fitted N, so the limits of a region never add up to more than its exact column. ---- */
+export const FLAG = {SAT: 1, BOUND: 2, MAXCOMP: 4, POORFIT: 8, EDGE: 16, NOERR: 32, DAMPED: 64, BUDGET: 128};
+const isNum = x => typeof x === "number" && Number.isFinite(x);
+const roundAway = (x, d) => { const p = 10 ** d; return Math.sign(x) * Math.floor(Math.abs(x) * p + 0.5) / p + 0; };
+export function isLowerLimit(c) {
+  const f = c ? +c.flag || 0 : 0;
+  return !!(f & FLAG.NOERR) || (!!(f & FLAG.SAT) && !(f & FLAG.DAMPED));
+}
+export const limitLogN = c => (isNum(c.logN_lo) ? Math.min(c.logN, c.logN_lo) : c.logN);
+export const columnOf = c => (isLowerLimit(c) ? limitLogN(c) : c.logN);
+/* the share rule on one group (a fit region, or a fit window): total log column A, comps, isLim(c) -> Map(limit ->
+   logN_lo). pool = N - M when positive (N = 10^A, M = the measured components), else N W / (W + M) (W = the limits) */
+export function shareLimits(A, comps, isLim) {
+  const out = new Map(); if (!isNum(A)) return out;
+  let M = 0, W = 0; for (const c of comps) if (isNum(c.logN)) { if (isLim(c)) W += 10 ** c.logN; else M += 10 ** c.logN; }
+  if (!(W > 0)) return out;
+  const N = 10 ** A, pool = N - M > 0 ? N - M : N * W / (W + M), lp = Math.log10(pool), lw = Math.log10(W);
+  for (const c of comps) if (isLim(c) && isNum(c.logN)) out.set(c, lp + c.logN - lw);
+  return out;
+}
+/* {ion: [component]} + the sightline's components.json aod {ion: [total, [[region, v_lo, v_hi, logN_aod], ...]]} ->
+   new dicts, each lower limit with logN_lo (3 decimals). Mirror of tngsight.search.annotate_limits. */
+export function annotateLimits(comps, aod) {
+  const out = {};
+  for (const [k, lst] of Object.entries(comps || {})) {
+    if (!Array.isArray(lst)) continue;
+    const reg = new Map(), ent = aod && aod[k];
+    for (const g of (Array.isArray(ent) && Array.isArray(ent[1]) ? ent[1] : []))
+      if (Array.isArray(g) && g.length >= 4 && isNum(g[3]) && isNum(g[0])) reg.set(g[0], g[3]);
+    const res = lst.map(c => Object.assign({}, c)), by = new Map();
+    for (const c of res) if (reg.has(c.region)) { if (!by.has(c.region)) by.set(c.region, []); by.get(c.region).push(c); }
+    for (const [r, group] of by) for (const [c, lo] of shareLimits(reg.get(r), group, isLowerLimit)) c.logN_lo = roundAway(lo, 3);
+    out[k] = res;
+  }
+  return out;
+}
+/* AOD column (log10 cm^-2) of degraded data d {v, flux, dvp, sigma} over [lo, hi] km/s for a line (lam0 in A, f):
+   tau = -ln max(F, floor), floor = max(sigma per pixel, 0.01), so a saturated trough gives a lower bound
+   (Savage and Sembach 1991). NaN without data or absorption. */
+export function aodLogN(d, lo, hi, lam0, f) {
+  if (!d || !d.v || !(lam0 > 0) || !(f > 0)) return NaN;
+  const fl = Math.max(0.01, isNum(d.sigma) ? d.sigma : 0.01); let s = 0;
+  for (let i = 0; i < d.v.length; i++) if (d.v[i] >= lo && d.v[i] <= hi) s -= Math.log(Math.max(fl, d.flux[i]));
+  const N = 3.7679e14 / (f * lam0) * s * d.dvp;
+  return N > 0 ? Math.log10(N) : NaN;
+}
+/* How a fitted (browser) component reads -> {limit, loose, hollow, tags}. q is fit.js fitQuality(c) ("ok", "sat",
+   "unconstrained" or "bound") when the fit module exports it, else null; then the same flag rule applies here: SAT
+   without DAMPED is a lower limit, except a saturated fit of the damped ion (H I) at log N >= DAMPED_LOGN that kept its
+   errors (its wings measure N). Flags are named after the value: sat, bound, time cap, poor fit, unconstrained. */
+export const DAMPED_LOGN = 19;
+export function fitClass(c, damped, q) {
+  const f = c ? +c.flag || 0 : 0, tags = [];
+  const limit = typeof q === "string" ? q === "sat"
+    : !!(f & FLAG.SAT) && !(f & FLAG.DAMPED) && !(damped && c.logN >= DAMPED_LOGN && isNum(c.dlogN) && !(f & FLAG.NOERR));
+  const loose = !limit && (typeof q === "string" ? q === "unconstrained" : fitLoose(c));
+  if (limit) tags.push("sat");
+  if (f & FLAG.BOUND) tags.push("bound");
+  if (f & FLAG.BUDGET) tags.push("time cap");
+  if (f & FLAG.POORFIT) tags.push("poor fit");
+  if (loose) tags.push("unconstrained");
+  return {limit, loose, hollow: !limit && (loose || !!(f & (FLAG.BOUND | FLAG.BUDGET)) || q === "bound"), tags};
+}
+/* lower limits of a browser fit result r on its data d: per fit window, the AOD of the data (aodLogN) is shared by
+   the window's limits like annotateLimits. -> Map(component -> min(logN, share)); ION entry A gives lam0_A and f */
+export function fitLimits(r, d, A, isLim) {
+  const out = new Map(), comps = (r && r.comps) || [];
+  for (const [a, b] of (r && r.windows) || []) {
+    const inW = comps.filter(c => c.v >= a && c.v <= b); if (!inW.some(isLim)) continue;
+    for (const [c, lo] of shareLimits(aodLogN(d, a, b, A && A.lam0_A, A && A.f), inW, isLim)) if (!out.has(c)) out.set(c, Math.min(c.logN, lo));
+  }
+  for (const c of comps) if (isLim(c) && !out.has(c)) out.set(c, c.logN);
+  return out;
 }
 
 /* cases in column order: [R index, S/N index] (§6.3 table) */

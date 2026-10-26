@@ -496,6 +496,16 @@ def test_tools_and_prompt_follow_the_registry():
     assert "\n" not in prompt                     # one paragraph
 
 
+def test_tools_and_prompt_state_the_lower_limits():
+    """Owner decision 2: the model is told that a logN_lower component is a lower limit (never a measured column),
+    and the search tool states how its logN predicates treat lower limits, with the registry's ion ceilings."""
+    t = {x["name"]: x for x in chat.TOOLS}
+    d = t["search_sightlines"]["description"]
+    assert "lower limits on log N" in d and "logN_min" in d and "logN_max" in d and "22.5 for HI, 19 otherwise" in d
+    assert "logN_lower" in chat.SYSTEM_PROMPT and "lower limit" in chat.SYSTEM_PROMPT and "log N >" in chat.SYSTEM_PROMPT
+    assert not any(c in d for c in ("·", "•", " . "))
+
+
 def test_make_chat_tools_check(monkeypatch, capsys):
     """--check exits 0 on the committed files and 1 once the registry changes (nothing is written)."""
     import copy as _copy

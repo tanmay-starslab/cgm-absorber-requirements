@@ -5,11 +5,12 @@
 // Rendering is in spectra.js, the instrument sliders in instrument.js, the sightline picker in gallery.js and the
 // pure state (hash, slider maps, validation) in state.js.
 import {makeRegistry, cloneState, casesFor, bandsOf, clampView, parseHash, formatHash, instrumentPatch, ID_RE, LAYOUTS,
-  fmtR, fmtNum, minus, nf, fitLoose} from "./state.js";
+  fmtR, fmtNum, minus, nf, annotateLimits, fitClass, fitLimits} from "./state.js";
 import {createSpectra} from "./spectra.js";
 import {createGallery, kindOf, nShow} from "./gallery.js";
 import {createInstrument} from "./instrument.js";
-import {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} from "./fit.js";
+import * as FITM from "./fit.js";
+const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
 /* ---------------- config ---------------- */
 const CFG = Object.assign({
@@ -125,9 +126,18 @@ function lineW(id, k) { const L = SIGHT.get(id)?.lines[k]; if (L) { const vs = v
   const w = CAT.get(id)?.W_kms?.[k]; return +w || 1500; }
 const vmaxFor = ions => Math.max(10, ...ions.map(k => lineW(S.id, k)));
 const vmax = () => vmaxFor(S.ions);
+const FIG_V_CAP = +(CFG.grid && CFG.grid.damped_v_max_kms) || 10000;   // the widest line window (damped H I)
 
-/* degraded data per panel: the full line, so cached fits never depend on the view window */
-const DG = new Map();
+/* degraded data per panel: the full line, so cached fits never depend on the view window. C2 (code 7): least recently
+   used, capped by bytes rather than entries (a damped H I line at R 150,000 holds about 1 MB per entry); the entry
+   just stored always stays */
+const DG = new Map(), DG_MAX_BYTES = 64 * 1024 * 1024; let dgBytes = 0;
+const dgSize = d => [d.v, d.flux, d.model, d.sigma].reduce((s, a) => s + (a && a.byteLength || 0), 0);
+function dgPut(key, d) {
+  if (DG.has(key)) { dgBytes -= DG.get(key)._bytes; DG.delete(key); }
+  d._bytes = dgSize(d); DG.set(key, d); dgBytes += d._bytes;
+  for (const [k, e] of DG) { if (dgBytes <= DG_MAX_BYTES || k === key) break; DG.delete(k); dgBytes -= e._bytes; }
+}
 function caseRS(ion, ci) { const c = casesFor(S.layout)[ci] || [0, 0], band = ION[ion]?.band; return [S.R[band]?.[c[0]] ?? 0, S.sn[c[1]]]; }
 const panelSeed = (ion, ci) => seedFor(S.seed, ion, ci);
 function dataFor(ion, ci) {
@@ -135,7 +145,7 @@ function dataFor(ion, ci) {
   const [R, sn] = caseRS(ion, ci), seed = panelSeed(ion, ci), key = `${S.id}|${ion}|${R}|${sn}|${seed}`;
   let d = DG.get(key);
   if (!d) { const vSys = vSysOf(S.id), o = degradeV(L, R, sn, vSys, {seed}); d = {v: o.v, flux: o.flux, model: o.model, sigma: o.sigma, dvp: o.v.length > 1 ? o.v[1] - o.v[0] : C_KMS / R / 5, line: L, vSys, R, sn, seed};
-    DG.set(key, d); if (DG.size > 160) DG.delete(DG.keys().next().value); }
+    dgPut(key, d); }
   else { DG.delete(key); DG.set(key, d); }
   return d;
 }
@@ -151,7 +161,16 @@ function normComps(obj, keys = DEF_KEYS, aod = null, tag = null) {   // rows or 
     rows[k] = list.map(r => Array.isArray(r) ? r : keys.map(q => r[q] ?? (q === "region" ? 0 : q === "flag" ? 0 : null))); }
   return {keys, rows, aod: a, tag};
 }
-const dictsOf = raw => raw ? Object.fromEntries(Object.entries(raw.rows).map(([k, rows]) => [k, rows.map(r => Object.fromEntries(raw.keys.map((q, i) => [q, r[i]])))])) : null;
+/* C2 (owner decision 2): every catalogue a consumer sees (Find, Ask, tngApp.components) carries logN_lo on its lower
+   limits (state.js annotateLimits, from the region AOD in raw.aod), so search and chat present them as log N > x.
+   Memoised per raw store; tngApp.components hands out a copy. */
+const DICTS = new WeakMap();
+function dictsOf(raw) {
+  if (!raw) return null; let d = DICTS.get(raw);
+  if (!d) { d = annotateLimits(Object.fromEntries(Object.entries(raw.rows).map(([k, rows]) => [k, rows.map(r => Object.fromEntries(raw.keys.map((q, i) => [q, r[i]])))])), raw.aod);
+    DICTS.set(raw, d); }
+  return d;
+}
 function componentsIndex() {
   if (CIX) return CIX;
   CIX = (async () => { let ok = false;
@@ -173,7 +192,7 @@ async function ensureComps(id) {
   try { await componentsIndex(); } catch { return null; }
   return COMPRAW.get(id) || null;
 }
-async function components(id) { return dictsOf(await ensureComps(id)); }
+async function components(id) { const d = dictsOf(await ensureComps(id)); return d ? JSON.parse(JSON.stringify(d)) : null; }
 
 /* ---------------- fits (design §5.5) ---------------- */
 const NOCOMP = new Set();       // ids whose components could not be found (B_fix R7)
@@ -251,6 +270,21 @@ const fitPump = debounce(() => {
   fitStatus();
 }, 120);
 function fitResult(ion, ci) { if (!S.fit) return null; return FIT.res.get(cacheKey(fitIdent(ion, ci))) || null; }
+/* C2 (owner decision 2, code 2): how a fitted component reads -> {limit, loose, hollow, tags, lo}. fit.js fitQuality(c)
+   ("ok", "sat", "unconstrained" or "bound") decides when the fit module exports it; without it state.js fitClass
+   applies the same flag rule. A lower limit's value lo is the smaller of the fitted log N and its share of the AOD
+   column of the degraded data over its fit window (state.js fitLimits), cached on the result per data object. */
+const FITQ = typeof FITM.fitQuality === "function" ? FITM.fitQuality : null;
+const fitQ = c => { if (!FITQ) return null; try { return FITQ(c); } catch { return null; } };
+const pm = (x, d) => (Number.isFinite(x) ? `±${fmtNum(x, d)}` : "");
+function compQuality(c, ion, r, d) {
+  const damped = !!ION[ion]?.damped, cls = x => fitClass(x, damped, fitQ(x)), q = cls(c);
+  if (q.limit) {
+    if (r && (!r._lim || r._limD !== d)) { r._lim = fitLimits(r, d, ION[ion], x => cls(x).limit); r._limD = d; }
+    const lo = r && r._lim ? r._lim.get(c) : undefined; q.lo = Number.isFinite(lo) ? lo : c.logN;
+  }
+  return q;
+}
 function fitStatus() {
   const fs = $("#fitstatus");
   if (!S.fit) { fs.dataset.state = "idle"; fs.textContent = ""; return; }
@@ -266,7 +300,7 @@ let instEmit = null, fitSig = "";
 const spectra = createSpectra({box: $("#spectra"), cv: $("#cv"), hitboxes: $("#hitboxes"), axis: $("#vaxis"), axisCv: $("#vaxis-cv"), more: $("#more-below")}, {
   get S() { return S; }, reg, caseRS, vmax, color: ionColor,
   data: (ion, ci) => (S.id && SIGHT.has(S.id) ? dataFor(ion, ci) : null),
-  fit: fitResult,
+  fit: fitResult, quality: compQuality,
   /* tune1 F13: each row's catalogue log N sits beside its ion box (every selected line, never truncated) */
   rowNote: ion => { const v = CAT.get(S.id)?.logN?.[ion]; return Number.isFinite(v) ? `log N ${fmtNum(v, 1)}` : ""; },
   missingText: ion => !S.id ? "" : SIGHT.has(S.id) ? `${ION[ion].label} is not in this sightline` : "loading",
@@ -275,10 +309,14 @@ const spectra = createSpectra({box: $("#spectra"), cv: $("#cv"), hitboxes: $("#h
     if (d) { const m = clamp(Math.round((v - d.v[0]) / d.dvp), 0, d.v.length - 1); t += `  F ${fmtNum(d.flux[m], 2)}`; }
     if (S.fit) { const r = fitResult(p.ion, p.ci);
       if (r && r.comps && r.comps.length) { const c = r.comps.reduce((a, b) => Math.abs(b.v - v) < Math.abs(a.v - v) ? b : a);
-        /* B_fix M1, m3: with errors, or "unconstrained" when the fit does not pin the component; b keeps a decimal below 10 */
-        const bd = c.b < 10 ? 1 : 0;
-        t += fitLoose(c) ? `  fit log N ${fmtNum(c.logN, 2)}  b ${fmtNum(c.b, bd)}  v ${minus(Math.round(c.v))}  unconstrained`
-          : `  fit log N ${fmtNum(c.logN, 2)}±${fmtNum(c.dlogN, 2)}  b ${fmtNum(c.b, bd)}±${fmtNum(c.db, c.db < 10 ? 1 : 0)}  v ${minus(Math.round(c.v))}±${fmtNum(c.dv, c.dv < 10 ? 1 : 0)}`; }
+        /* B_fix M1, m3: with errors, or "unconstrained" when the fit does not pin the component; b keeps a decimal below 10.
+           C2 (owner decision 2, code 2): a saturated or degenerate component reads as a lower limit ("log N > 14.5 sat",
+           no errors), and every flag is named right after the value */
+        const q = compQuality(c, p.ion, r, d), bd = c.b < 10 ? 1 : 0, tags = q.tags.length ? " " + q.tags.join(" ") : "";
+        const bv = `  b ${fmtNum(c.b, bd)}`, vv = `  v ${minus(Math.round(c.v))}`;
+        t += q.limit ? `  fit log N > ${fmtNum(q.lo, 1)}${tags}${bv}${vv}`
+          : q.loose || !Number.isFinite(c.dlogN) ? `  fit log N ${fmtNum(c.logN, 2)}${tags}${bv}${vv}`
+          : `  fit log N ${fmtNum(c.logN, 2)}${pm(c.dlogN, 2)}${tags}${bv}${pm(c.db, c.db < 10 ? 1 : 0)}${vv}${pm(c.dv, c.dv < 10 ? 1 : 0)}`; }
       else if (r && r.status === "no_seeds") t += "  no seeds"; else if (r) t += "  no components"; }
     return t; },
   onReadout(t) { const r = $("#readouts"), s = $("#statusline"); if (t) { r.textContent = t; r.hidden = false; s.hidden = true; } else { r.hidden = true; s.hidden = false; } },
@@ -546,11 +584,23 @@ function track(j, kind = "geometry", fromBridge = false) {
 
 /* ---------------- downloads ---------------- */
 function save(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+/* C2 (code 3): the server figure gets the page layout ("1", "2R", "2SN" or "4", tngsight.figure.cases_for) and a
+   window inside the server's caps. A server that announces them in /api/health ("figure": {layouts, v_max_kms}, the
+   damped H I window) renders the page view, its renderer clamping the window to the lines' coverage as the page
+   does; an older server gets its fixed 1500 km/s caps and no layout (it rendered the 2x2 grid), so it never 422s */
+function figureBody(fmtx) {
+  const F = HEALTH && HEALTH.figure, vm = F && +F.v_max_kms > 0 ? +F.v_max_kms : 1500;
+  const vhw = clamp(Math.round(S.vhw), 10, vm), vc = clamp(Math.round(S.vc), -vm, vm);
+  const b = {id: S.id, ions: S.ions.slice(0, 6), R: Object.fromEntries(bandsOf(reg, S.ions).map(k => [k, S.R[k]])), sn: S.sn,
+    vhw, vc, intrinsic: S.intr, seed: S.seed, fmt: fmtx};
+  if (F && Array.isArray(F.layouts) && F.layouts.includes(S.layout)) b.layout = S.layout;
+  return b;
+}
 async function download(fmtx) {
   closePops(); if (!S.id) return; const name = `tng50_${S.id}_${S.ions.join("-")}_sn${S.sn.join("-")}`;
   if (API) { note(`rendering the ${fmtx.toUpperCase()} figure`);
     try { const r = await fetch(API + "/api/figure", {method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({id: S.id, ions: S.ions.slice(0, 6), R: Object.fromEntries(bandsOf(reg, S.ions).map(b => [b, S.R[b]])), sn: S.sn, vhw: S.vhw, vc: Math.round(S.vc), intrinsic: S.intr, seed: S.seed, fmt: fmtx})});
+        body: JSON.stringify(figureBody(fmtx))});
       if (!r.ok) throw new Error(r.status === 429 ? "rate limit reached" : "HTTP " + r.status);
       save(await r.blob(), `${name}.${fmtx}`); note(`${fmtx.toUpperCase()} figure saved; its noise draw differs from the screen`, "good"); return;
     } catch (x) { note(`server figure failed (${x.message}); saved the screen instead`, "bad"); } }
@@ -700,7 +750,10 @@ window.tngApp = {
     if (species && !(await v.setSpecies(species))) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: v.loadError && v.loadError.key === species ? `the ${species} volume could not be loaded: ${v.loadError.message}` : v.wanted !== species ? "superseded by a later 3D request" : `the ${species} volume is not available`};
     if (preset && !v.setPreset(preset)) return {ok: false, webgl2: true, species: v.species, preset, mode: v.mode, message: v.presetError || "select a sightline first"};
     return {ok: true, webgl2: true, species: v.species, preset: preset || null, mode: v.mode}; },
-  _debug: {get drawMs() { return spectra.lastMs; }, get nDraw() { return spectra.nDraw; }, draw: () => spectra.draw(), fitMode: () => FIT.mode, fitCache: () => FIT.res.size}
+  _debug: {figureBody, get dgBytes() { return dgBytes; }, get dgSize() { return DG.size; }, dgMax: DG_MAX_BYTES,
+    quality(ion, ci, v) { const r = fitResult(ion, ci), d = S.id && SIGHT.has(S.id) ? dataFor(ion, ci) : null;
+      return (r && r.comps || []).filter(c => v == null || Math.abs(c.v - v) < 1e-6).map(c => ({v: c.v, logN: c.logN, flag: c.flag, ...compQuality(c, ion, r, d)})); },
+    get drawMs() { return spectra.lastMs; }, get nDraw() { return spectra.nDraw; }, draw: () => spectra.draw(), fitMode: () => FIT.mode, fitCache: () => FIT.res.size}
 };
 
 /* ---------------- start ---------------- */
@@ -708,7 +761,11 @@ window.tngApp = {
   if (new URLSearchParams(location.search).has("debug")) document.body.classList.add("debug");   // shows the 3D LOD line (B_fix F8)
   const H = parseHash(location.hash, reg, S); const hashId = H.id; Object.assign(S, H, {id: null, tab: "spectra"});
   if (!reg.IONS.length) $("#statusline").textContent = "this page needs the exporter's configuration (scripts/export_tng50_web.py)";
-  setSide(store.get("tngsight.side") !== "0"); placeControls(); seedState(); setGeoEnabled(); pill(); banner(); syncAll(); clampView(S, Math.max(1500, +S.vhw || 0)); inst.syncV();   /* B_fix R5: a deep-linked wide window waits for the sightline's own vmax */
+  setSide(store.get("tngsight.side") !== "0"); placeControls(); seedState(); setGeoEnabled(); pill(); banner(); syncAll();
+  /* B_fix R5, C2 code 6: before any sightline is decoded the boot clamp only bounds the hash (integer half-window from
+     10 up to the widest line window, the centre kept with it); select() clamps again with the decoded line's own vmax
+     once the sightline is in, so a deep-linked damped H I view (vw 6000 vc 2000) survives to the drawn page */
+  clampView(S, clamp((+S.vhw || 0) + Math.abs(+S.vc || 0), 1500, 2 * FIG_V_CAP)); inst.syncV();
   const g = CFG.galaxy || {}; if (g.R200c_kpc) $("#about-gal").textContent = `Sightlines through the circumgalactic medium of one ${g.sim || "TNG50-1"} galaxy (subhalo ${g.subhalo_id} at z = ${g.redshift ?? 0}, R200c ${nf.format(Math.round(+g.R200c_kpc))} kpc${g.M200c_Msun ? `, M200c ${(+g.M200c_Msun / 1e12).toFixed(2)}e12 solar masses` : ""}), labelled by orientation, impact parameter b and azimuth from the projected major axis.`;
   if (H.tab === "3d") showTab("3d");
   const disc = discover();

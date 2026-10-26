@@ -16,7 +16,7 @@ spec = importlib.util.spec_from_file_location("export_tng50_web", ROOT / "script
 EXP = importlib.util.module_from_spec(spec); spec.loader.exec_module(EXP)
 GAL = json.loads((ROOT / "tngsight" / "galaxy_488530.json").read_text())
 CENTER, H = np.asarray(GAL["center_kpc"]), GAL["TNG_H"]
-LIB = Path("/Volumes/cgm_work/data/library")
+LIB = EXP.default_library()        # the exporter's default: TNG_LIBRARY_DIR, else <TNG_WORK>/data/library
 VIZ_CFG = {"manifest_url": "data/viz/manifest_v2.json",
            "base": "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/",
            "fallback_base": None, "dataset": "tanmay-starslab/tng50-sub488530-viz"}  # design-2b §5.10; no local cubes
@@ -147,6 +147,8 @@ def test_cfg_v3_from_registry(fake_lib, tmp_path):
     html = (out / "index.html").read_text(encoding="utf-8")
     assert "\u00b7" not in json.dumps(cfg["ions"], ensure_ascii=False) and "·" not in json.dumps(cfg["ions"], ensure_ascii=False)
     assert "/Users/" not in html and "/Volumes/" not in json.dumps(cfg)
+    for private in (str(tmp_path), str(fake_lib), str(EXP.default_library())):      # no local path of this machine
+        assert private not in json.dumps(cfg), private
 
 
 def test_check_bin_v1_v2():
@@ -353,3 +355,21 @@ def test_real_library_p0_p1(tmp_path):
         assert np.max(np.abs(np.asarray(ents[sid]["p0"]) - p0)) <= 0.005, sid
         assert np.max(np.abs(np.asarray(ents[sid]["p1"]) - p1)) <= 0.005, sid
         assert ents[sid]["has_components"] is False
+
+
+def test_default_library_follows_tng_work(tmp_path, monkeypatch):
+    """--library default: TNG_LIBRARY_DIR, else $TNG_WORK/data/library (TNG_WORK default /Volumes/cgm_work), with tngsight
+    importable or not (the script's fallback repeats tngsight.config's rule)."""
+    import tngsight
+    for v in ("TNG_WORK", "TNG_LIBRARY_DIR"):
+        monkeypatch.delenv(v, raising=False)
+    for unimportable in (False, True):
+        if unimportable:
+            monkeypatch.delattr(tngsight, "config")
+            monkeypatch.setitem(sys.modules, "tngsight.config", None)
+        assert EXP.default_library() == Path("/Volumes/cgm_work/data/library")
+        monkeypatch.setenv("TNG_WORK", str(tmp_path))
+        assert EXP.default_library() == tmp_path / "data" / "library"
+        monkeypatch.setenv("TNG_LIBRARY_DIR", str(tmp_path / "lib"))
+        assert EXP.default_library() == tmp_path / "lib"
+        monkeypatch.delenv("TNG_WORK"); monkeypatch.delenv("TNG_LIBRARY_DIR")

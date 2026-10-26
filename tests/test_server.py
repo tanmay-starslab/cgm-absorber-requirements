@@ -20,7 +20,7 @@ pytest.importorskip("httpx")
 pytest.importorskip("sse_starlette")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from server.app import create_app  # noqa: E402
+from server.app import FIG_LAYOUTS, FIG_V_MAX, create_app  # noqa: E402
 from server.jobs import JobQueue  # noqa: E402
 from server.ratelimit import RateLimiter, TokenBucket, client_ip  # noqa: E402
 from server.settings import Settings  # noqa: E402
@@ -115,6 +115,24 @@ def wait_for(fn, timeout=20.0, every=0.02):
             return v
         time.sleep(every)
     raise AssertionError("condition not met in time")
+
+
+# HFSync waits: every wait polls its condition, so a pass returns as soon as the upload thread is done; the long
+# ceiling only matters on a loaded machine (at load 9+ the earlier 10 s ceilings ran out). TNG_TEST_HF_WAIT overrides.
+HF_WAIT = float(os.environ.get("TNG_TEST_HF_WAIT") or 120)
+
+
+def hf_wait(fn):
+    return wait_for(fn, timeout=HF_WAIT, every=0.05)
+
+
+def hf_stop(hf):
+    """Stop an HFSync and wait for its thread to end, so the next HFSync on the same manifest starts alone."""
+    hf.stop()
+    t = getattr(hf, "_t", None)
+    if t is not None:
+        t.join(HF_WAIT)
+        assert not t.is_alive(), "hfsync thread did not stop"
 
 
 def wait_job(c, job_id, statuses=("done", "error"), timeout=120.0):
@@ -613,11 +631,46 @@ def test_figure_endpoint_cache_and_errors(libdir):
         for bad in ({"ions": []}, {"ions": ["HILyb"]}, {"ions": ["HI", "HI"]}, {"ions": list(I.KEYS)[:7]},
                     {"R": {"uv": [4000, 50000]}}, {"R": {"xray": [300, 6000]}}, {"R": {"radio": [300, 600]}},
                     {"R": {"uv": [15000]}}, {"sn": [101, 5]}, {"sn": [20]}, {"sn": [1, 5]}, {"vhw": 5},
-                    {"vhw": 1501}, {"vc": 1600}, {"seed": 100000}, {"R_lo": 200000}, {"sn_hi": 101},
-                    {"vwin": 9}):
+                    {"vhw": FIG_V_MAX + 1}, {"vc": FIG_V_MAX + 1}, {"seed": 100000}, {"R_lo": 200000}, {"sn_hi": 101},
+                    {"vwin": 9}, {"layout": "3"}, {"layout": 4}, {"layout": "2x2"}):
             assert c.post("/api/figure", json=dict(body, **bad)).status_code == 422, bad
         r = c.post("/api/figure", json=body)                 # 6 charged requests (cache hits count): burst spent
         assert r.status_code == 429 and "retry-after" in r.headers
+
+
+def test_figure_wide_window_and_layout(libdir):
+    """C2 code 3: a damped H I window (the page allows vhw up to the line's vmax, 10000 km/s) no longer gets a 422,
+    the page layout reaches the renderer (and the cache key), and /api/health announces both caps."""
+    from tngsight import figure as F
+    assert FIG_V_MAX == I.GRID["damped_v_max_kms"] and set(FIG_LAYOUTS) == set(F.LAYOUTS)
+    calls = []
+
+    def renderer(payload, fmt, **kw):
+        calls.append(kw)
+        return PNG + b"fake"
+    with client_for(libdir, local_worker=False, renderer=renderer, rl_figure=(60, 20)) as c:
+        h = c.get("/api/health").json()
+        assert h["figure"] == {"layouts": list(FIG_LAYOUTS), "v_max_kms": FIG_V_MAX}
+        body = {"id": LIB_IDS[0], "ions": ["HI", "OVI"], "sn": [20, 5], "vhw": 6500, "vc": -1200, "seed": 1, "fmt": "png"}
+        r = c.post("/api/figure", json=body)
+        assert r.status_code == 200, r.text
+        assert calls[-1]["vhw"] == 6500 and calls[-1]["vc"] == -1200.0 and "layout" not in calls[-1]
+        for lay in FIG_LAYOUTS:
+            assert c.post("/api/figure", json=dict(body, layout=lay)).status_code == 200
+            assert calls[-1]["layout"] == lay
+        assert len(calls) == 1 + len(FIG_LAYOUTS)                       # each layout is its own cache entry
+        assert c.post("/api/figure", json=dict(body, vhw=FIG_V_MAX, vc=FIG_V_MAX)).status_code == 200
+
+
+def test_figure_real_png_wide_window(libdir):
+    """The real renderer clamps a window wider than the lines' data to their coverage instead of failing, for every
+    page layout (the 422 of a damped H I view is gone)."""
+    pytest.importorskip("tngsight.figure")
+    with client_for(libdir, local_worker=False, rl_figure=(60, 20)) as c:
+        for lay in FIG_LAYOUTS:
+            r = c.post("/api/figure", json={"id": LIB_IDS[0], "ions": ["HI", "OVI"], "vhw": 8000, "vc": 3000,
+                                            "layout": lay, "seed": 1, "fmt": "png"})
+            assert r.status_code == 200 and r.content.startswith(PNG), (lay, r.text)
 
 
 def test_figure_real_png(libdir):
@@ -643,12 +696,16 @@ def test_jobqueue_positions_and_lease_order():
 
 
 class FakeHfApi:
-    """create_commit/list_repo_files stand-in. `fail` = exceptions raised by the next calls, in order."""
+    """create_commit/list_repo_files stand-in. `fail` = exceptions raised by the next calls, in order. `gate`
+    (a threading.Event): every create_commit waits for it first, so a test decides when the upload thread may
+    proceed instead of racing it."""
 
-    def __init__(self, fail=(), remote=()):
-        self.commits, self.fail, self.remote = [], list(fail), set(remote)
+    def __init__(self, fail=(), remote=(), gate=None):
+        self.commits, self.fail, self.remote, self.gate = [], list(fail), set(remote), gate
 
     def create_commit(self, **kw):
+        if self.gate is not None:
+            assert self.gate.wait(HF_WAIT), "test never opened the commit gate"
         if self.fail:
             raise self.fail.pop(0)
         self.commits.append(kw)
@@ -769,13 +826,17 @@ def test_remote_worker_fatal_lease_and_409_after_done(libdir):
 
 
 def test_store_reconcile_and_hfsync(libdir):
-    api = FakeHfApi(fail=[ConnectionError("transient /Volumes/x")])
+    # The first commit attempt fails (transient). The gate holds that attempt until add_generated has queued all three
+    # files, so the retry, the one commit that succeeds, batches them however slowly a loaded machine runs.
+    gate = threading.Event()
+    api = FakeHfApi(fail=[ConnectionError("transient /Volumes/x")], gate=gate)
     hf = HFSync("tok", "user/ds", libdir, api=api, snapshot=lambda **kw: str(libdir), base_delay=0.01, batch_s=0.05)
     store = LibraryStore(libdir, hf=hf)
     p = FakeGenerator().generate(canonicalize("edge", 60, 61))
     e = store.add_generated(p)
-    assert e["source"] == "generated"
-    wait_for(lambda: api.commits and hf.pending() == 0, timeout=10)
+    assert e["source"] == "generated" and hf.pending() == 3
+    gate.set()
+    hf_wait(lambda: api.commits and hf.pending() == 0)
     assert len(api.commits) == 1                              # npz + bin + components in ONE commit
     assert {o.path_in_repo for o in api.commits[0]["operations"]} == {
         "generated/edge_b060_a061.npz", "generated/edge_b060_a061.bin",
@@ -783,7 +844,7 @@ def test_store_reconcile_and_hfsync(libdir):
     assert api.commits[0]["repo_type"] == "dataset" and api.commits[0]["repo_id"] == "user/ds"
     st = hf.status()
     assert st["uploaded"] == 3 and st["last_error"] is None and st["disabled"] is False   # cleared on success
-    hf.stop()
+    hf_stop(hf)
     # restart without the catalog row (e.g. a fresh Space after snapshot_download): reconcile restores it
     cat = json.loads((libdir / "catalog.json").read_text())
     cat["entries"] = [x for x in cat["entries"] if x["id"] != "edge_b060_a061"]
@@ -801,31 +862,31 @@ def test_hfsync_never_drops_and_resumes(libdir):
     down = FakeHfApi(fail=[ConnectionError("down")] * 1000)
     hf = HFSync("tok", "user/ds", libdir, api=down, base_delay=0.01, max_delay=0.02, max_tries=2, batch_s=0)
     hf.upload(f, "generated/face_b001_a001.npz")
-    wait_for(lambda: len(down.fail) < 990, timeout=10)                  # well past max_tries
+    hf_wait(lambda: len(down.fail) < 990)                                # well past max_tries
     assert hf.pending() == 1 and hf.status()["last_error"] == "upload: ConnectionError"
-    hf.stop()
+    hf_stop(hf)
     # restart: the manifest still lists it, and it is uploaded once HF is back
     up = FakeHfApi()
     hf2 = HFSync("tok", "user/ds", libdir, api=up, base_delay=0.01, batch_s=0)
     assert hf2.pending() == 1
     hf2.start()
-    wait_for(lambda: hf2.pending() == 0 and up.commits, timeout=10)
-    hf2.stop()
+    hf_wait(lambda: hf2.pending() == 0 and up.commits)
+    hf_stop(hf2)
     # read-only token: one 403 disables uploading (no retry loop); the item stays pending
     ro = FakeHfApi(fail=[_HTTPErr(403)])
     hf3 = HFSync("tok", "user/ds", libdir, api=ro, base_delay=0.01, batch_s=0)
     hf3.upload(f, "generated/face_b001_a001.npz")
-    wait_for(lambda: hf3.status()["disabled"], timeout=10)
+    hf_wait(lambda: hf3.status()["disabled"])
     assert hf3.pending() == 1 and "secret" not in hf3.status()["last_error"] and not ro.commits
-    hf3.stop()
+    hf_stop(hf3)
     # hf_xet reports the same 403 as a bare RuntimeError carrying only a message
     xet = FakeHfApi(fail=[RuntimeError("Network error: HTTP status client error (403 Forbidden), "
                                        "domain: https://huggingface.co/api/datasets/user/ds/xet-write-token/main")])
     hf4 = HFSync("tok", "user/ds", libdir, api=xet, base_delay=0.01, batch_s=0)
     hf4.upload(f, "generated/face_b001_a001.npz")
-    wait_for(lambda: hf4.status()["disabled"], timeout=10)
+    hf_wait(lambda: hf4.status()["disabled"])
     assert hf4.pending() == 1 and not xet.commits
-    hf4.stop()
+    hf_stop(hf4)
 
 
 def test_hfsync_sync_missing(libdir):
@@ -836,11 +897,11 @@ def test_hfsync_sync_missing(libdir):
     api = FakeHfApi(remote={"generated/face_b003_a003.npz"})
     hf = HFSync("tok", "user/ds", libdir, api=api, base_delay=0.01, batch_s=0)
     assert hf.sync_missing(gen) == 2
-    wait_for(lambda: hf.pending() == 0, timeout=10)
+    hf_wait(lambda: hf.pending() == 0)
     assert {o.path_in_repo for c in api.commits for o in c["operations"]} == {
         "generated/face_b002_a002.npz", "generated/face_b002_a002.bin"}
     assert hf.sync_missing(gen) == 0
-    hf.stop()
+    hf_stop(hf)
 
 
 def test_hfsync_download_fails_fast_on_auth():
@@ -1231,7 +1292,7 @@ def test_store_components_persist_reconcile_and_hf(libdir, monkeypatch):
     p.pop("components_aod")
     e = store.add_generated(p, components=comps)               # explicit argument
     assert e["has_components"] is True
-    wait_for(lambda: hf.pending() == 0 and api.commits, timeout=10)
+    hf_wait(lambda: hf.pending() == 0 and api.commits)
     # (union over commits: on a loaded machine the 50 ms batch window can split npz + bin from the components file)
     assert "generated/cust_35277e0469.components.json" in {o.path_in_repo for c_ in api.commits for o in c_["operations"]}
     doc = json.loads((libdir / "generated" / "cust_35277e0469.components.json").read_text())
@@ -1241,8 +1302,8 @@ def test_store_components_persist_reconcile_and_hf(libdir, monkeypatch):
     api2 = FakeHfApi(remote=["generated/cust_35277e0469.npz", "generated/cust_35277e0469.bin"])
     hf2 = HFSync("tok", "user/ds", libdir, api=api2, base_delay=0.01, batch_s=0.05)
     assert hf2.sync_missing(libdir / "generated") == 1
-    wait_for(lambda: hf2.pending() == 0, timeout=10)
-    hf2.stop()
+    hf_wait(lambda: hf2.pending() == 0)
+    hf_stop(hf2)
     # restart without the catalog row: reconcile restores it with has_components from the stored file
     cat = json.loads((libdir / "catalog.json").read_text())
     cat["entries"] = [x for x in cat["entries"] if x["id"] != "cust_35277e0469"]
