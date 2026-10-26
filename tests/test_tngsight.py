@@ -1,6 +1,7 @@
 """Tests for the tngsight package (design.md §7; Phase-3 data v2: 12 registry lines, npz v2, TNGS v2, degrade_v).
-Real-library tests read the raw v1 npz set (TNG_RAW_SIGHTLINES, default the read-only LaCie copy) and skip if it
-is absent. The Generator integration tests are @slow and run only with TNG_RUN_SLOW=1 (yt/trident + the slim
+Real-library tests read the raw v1 npz set and skip if it is absent: TNG_RAW_SIGHTLINES (cgm_sid488530_<id>.npz), else
+the v1 library under the work root, $TNG_WORK/data/library/sightlines (<id>.npz, byte copies of the raw files made by
+deploy/data/build_library.py). The Generator integration tests are @slow and run only with TNG_RUN_SLOW=1 (yt/trident + the slim
 cutout). Temp files go to $TNG_TEST_TMP when set (else pytest's tmp_path)."""
 import io
 import json
@@ -15,13 +16,22 @@ import pytest
 
 from tngsight import config, geometry as G, ions as I, library as L
 
-RAW = Path(os.environ.get("TNG_RAW_SIGHTLINES", "/Volumes/LaCie/cgm_qso_488530/data/sightlines"))
+def work_root() -> Path:
+    """tngsight.config.work_root() (the TNG_WORK contract), or the same rule while config lacks it."""
+    f = getattr(config, "work_root", None)
+    return Path(f()) if callable(f) else Path(os.environ.get("TNG_WORK") or "/Volumes/cgm_work")
+
+
+LIB_V1 = work_root() / "data" / "library"          # the v1 library (3-line npz, TNGS v1 web)
+RAW_ENV = os.environ.get("TNG_RAW_SIGHTLINES")
+RAW = Path(RAW_ENV) if RAW_ENV else LIB_V1 / "sightlines"
 GRID_INDEX = Path(__file__).resolve().parent.parent / "tng50" / "data" / "grid_index.csv"
 need_raw = pytest.mark.skipif(not RAW.is_dir(), reason=f"raw sightline library not at {RAW}")
 
 
 def raw(id):
-    return RAW / L.npz_name(id)
+    """The raw v1 npz of `id`: the raw set's cgm_sid488530_<id>.npz, or its byte copy <id>.npz in the v1 library."""
+    return RAW / (L.npz_name(id) if RAW_ENV else f"{id}.npz")
 
 
 @pytest.fixture
@@ -221,15 +231,12 @@ def test_npz_v1_read(scratch):
         L.load_npz(buf)
 
 
-LIB_V1 = Path("/Volumes/cgm_work/data/library/sightlines")
-
-
-@pytest.mark.skipif(not LIB_V1.is_dir(), reason=f"v1 library not at {LIB_V1}")
+@pytest.mark.skipif(not (LIB_V1 / "sightlines").is_dir(), reason=f"v1 library not at {LIB_V1}")
 @pytest.mark.parametrize("id", ["edge_b100_a090", "face_b050_a090", "rand_b005_a134_s479980658"])
 def test_npz_v1_load_existing_library(id):
     """design §8 U_ions 3: v1 load of existing library npz gives OVI and CIII with the identical τ."""
-    p = L.load_npz(LIB_V1 / f"{id}.npz")
-    with np.load(LIB_V1 / f"{id}.npz", allow_pickle=False) as d:
+    p = L.load_npz(LIB_V1 / "sightlines" / f"{id}.npz")
+    with np.load(LIB_V1 / "sightlines" / f"{id}.npz", allow_pickle=False) as d:
         for k in ("OVI", "CIII"):
             assert np.array_equal(p["tau"][k], d[f"{k}_tau"]) and p["logN"][k] == float(d[f"logN_{k}"])
     assert p["id"] == id and p["format"] == 1 and p["lines"] == ["CIII", "OVI"] and p["dropped"] == ["HILyb"]
@@ -265,6 +272,27 @@ def legacy_decode_v1(blob):
         q = np.frombuffer(blob, "<u2", n, off); off += 2 * n
         out[k] = (lam0 + np.arange(n) * dg, q / 65535.0, rest)
     return out
+
+
+TNGS_CASES = Path(__file__).resolve().parent / "js" / "fixtures" / "fit_tngs_cases.json"
+_TNGS = json.loads(TNGS_CASES.read_text())["cases"] if TNGS_CASES.is_file() else []
+
+
+@pytest.mark.skipif(not _TNGS, reason=f"crafted TNGS fixture missing: {TNGS_CASES}")
+@pytest.mark.parametrize("case", _TNGS, ids=[c["name"] for c in _TNGS])
+def test_decode_web_crafted_v2(case):
+    """Phase-3 Code 4: decode_web accepts or refuses each crafted TNGS v2 blob as docs/tng50/js/fit.js decodeTNGS does
+    (tests/js/fit_decode.mjs runs the same blobs; make_fit_fixture.py writes the expected outcomes out by hand)."""
+    import base64
+    blob = base64.b64decode(case["blob"])
+    if not case["expect"]["ok"]:
+        with pytest.raises(ValueError):
+            L.decode_web(blob)
+        return
+    d = L.decode_web(blob)
+    assert list(d["lines"]) == case["expect"]["lines"] and d["skipped"] == case["expect"]["skipped"]
+    for ln in d["lines"].values():
+        assert ln["n"] == ln["flux"].size == ln["u"].size and np.all(np.isfinite(ln["u"])) and ln["du"] > 0
 
 
 def test_tngs_v2_round_trip():
@@ -317,7 +345,7 @@ def test_tngs_v1_decode_and_v1_payload_encode(scratch):
     f = scratch / "edge_b100_a090.npz"; write_v1_npz(f, g, lam, tau, rest)
     v2 = L.decode_web(L.encode_web(L.load_npz(f)))
     assert v2["version"] == 2 and list(v2["lines"]) == ["CIII", "OVI"] and v2["vSys"] == g["v_sys_kms"]
-    lib_bin = Path("/Volumes/cgm_work/data/library/web/edge_b100_a090.bin")
+    lib_bin = LIB_V1 / "web" / "edge_b100_a090.bin"
     if lib_bin.is_file():                                     # a real v1 library binary
         b = lib_bin.read_bytes(); od = legacy_decode_v1(b); nd = L.decode_web(b)
         assert nd["version"] == 1 and all(np.array_equal(nd["lines"][k]["flux"], od[k][1]) for k in ("OVI", "CIII"))
@@ -444,33 +472,55 @@ def test_degrade_v1_matches_independent_numpy(key, R):
     assert np.std(n2 - m2) == pytest.approx(np.sqrt(5) / 8, rel=0.15)
 
 
-def test_degrade_v1_byte_identical_golden():
-    """degrade() output bytes are pinned (sha256 of the model on a fixed input), so v1 stays byte-identical."""
-    import hashlib
+# The v1 degrade() output on a fixed input, from tngsight.degrade.degrade at commit 21d46e1 (the function is unchanged
+# since): tests/data/degrade_v1_golden.json. It replaces a sha256 pin, which only held on the machine that made it: the
+# owner's Mac (arm64) and Linux x86_64 give the same arrays to about 1e-14 but not the same last bits (np.arange,
+# astropy's convolution and np.interp round differently there; same numpy 1.26.4 and astropy 7.2.0).
+DEGRADE_V1_GOLDEN = Path(__file__).resolve().parent / "data" / "degrade_v1_golden.json"
+
+
+def test_degrade_v1_matches_golden_reference():
+    """degrade() is unchanged since 21d46e1: v, model and noisy flux equal the committed reference to rounding
+    (rtol 1e-12), the clipped pixels are the same, and the noise is the same draw (default_rng(7), σ = √5/10, in
+    pixel order). Any real change of the kernel, grid, frame, clipping or noise moves these by far more than 1e-12."""
+    import base64
     from tngsight.degrade import degrade
+    ref = json.loads(DEGRADE_V1_GOLDEN.read_text())
+    A = {k: np.frombuffer(base64.b64decode(ref[k]), "<f8") for k in ("v", "model", "noisy", "noise")}
     lam = legacy_lam("OVI"); rest = 1031.912
     tau = 3.0 * np.exp(-0.5 * ((lam.astype(float) - rest) / 0.05) ** 2)
     v, noisy, m = degrade(lam, tau, rest, 30000, 10, 12.5, seed=7, vwin=300)
-    h = hashlib.sha256(v.tobytes() + noisy.tobytes() + m.tobytes()).hexdigest()
-    assert h == DEGRADE_V1_SHA, h
-
-
-# Pinned before the Phase-3 changes (tngsight.degrade.degrade at commit 21d46e1, numpy 1.26.4, astropy as installed).
-DEGRADE_V1_SHA = "a275189863663e815f1a760a0ddb4787eb75b9d156ebed31a3dc1c3fb0248b0f"
+    assert v.shape == m.shape == noisy.shape == (ref["n"],)
+    np.testing.assert_allclose(v, A["v"], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(m, A["model"], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(noisy, A["noisy"], rtol=1e-12, atol=1e-12)
+    clip = A["noisy"] == 0
+    assert 0 < clip.sum() < clip.size and np.array_equal(noisy == 0, clip)
+    np.testing.assert_allclose(np.random.default_rng(7).normal(0.0, math.sqrt(5) / 10, v.size), A["noise"], rtol=1e-12, atol=0)
+    np.testing.assert_allclose((noisy - m)[~clip], A["noise"][~clip], rtol=0, atol=1e-12)
 
 
 # ------------------------------------------------------------------------------- degrade_v (v2)
-def reference_degrade_v(u, flux, R, v_sys, du, vwin, vcenter=0.0, pix=5):
-    """Independent port of design §3.4 (erf taps written out, np.pad edge, np.convolve, arange, interp)."""
-    from math import erf, sqrt, ceil
-    sig = (C_KMS / R) / 2.35482 / du
-    h = max(1, ceil(4 * sig))
-    k = np.array([0.5 * (erf((j + 0.5) / (sqrt(2) * sig)) - erf((j - 0.5) / (sqrt(2) * sig))) for j in range(-h, h + 1)])
-    k /= k.sum()
-    fl = np.convolve(np.pad(np.asarray(flux, float), h, mode="edge"), k, mode="valid")
+def reference_degrade_v(u, flux, R, v_sys, du, vwin, vcenter=0.0, pix=5, box=None):
+    """Independent port of design §3.4 as amended by Phase-3 D1, one output pixel at a time: the Gaussian of
+    s² = σ_LSF² − box²/12 (box = du for box-averaged samples) at the true offsets of the samples jc−h..jc+h around the
+    nearest one, normalised, indices clamped to the grid (edge extend); continuum outside the sampled range."""
+    from math import exp, sqrt, ceil, floor
+    box = du if box is None else box
+    s = sqrt(max(((C_KMS / R) / 2.35482) ** 2 - box * box / 12, (0.3 * du) ** 2))
+    h = max(1, ceil(4 * s / du))
+    flux = np.asarray(flux, float); n = flux.size
+    V = lambda j: (u[0] + j * du) + v_sys  # noqa: E731
     dv = C_KMS / R / pix
     v = np.arange(vcenter - vwin, vcenter + vwin + dv, dv)
-    return v, np.interp(v, np.asarray(u) + v_sys, fl, left=1.0, right=1.0)
+    out = np.ones(v.size)
+    for m, x in enumerate(v):
+        if not V(0) <= x <= V(n - 1):
+            continue
+        jc = floor((x - V(0)) / du + 0.5)
+        w = [exp(-0.5 * ((x - V(j)) / s) ** 2) for j in range(jc - h, jc + h + 1)]
+        out[m] = sum(wi * flux[min(max(j, 0), n - 1)] for wi, j in zip(w, range(jc - h, jc + h + 1))) / sum(w)
+    return v, out
 
 
 @pytest.mark.parametrize("key,R,vc", [("OVI", 15000, 0.0), ("MgII", 150000, -60.0), ("OVII", 300, 250.0),
@@ -503,23 +553,32 @@ def test_degrade_v_fft_branch_equals_direct():
 
 
 @pytest.mark.parametrize("R,sig_line,band", [(5000, 5.0, "uv"), (30000, 5.0, "uv"), (150000, 5.0, "uv"),
+                                             (150000, 1.5, "uv"), (50000, 1.5, "uv"),
                                              (100, 100.0, "xray"), (1000, 100.0, "xray"), (5000, 100.0, "xray")])
 def test_degrade_v_gaussian_lsf_variance(R, sig_line, band):
-    """design §8 U_ions 4: a weak Gaussian absorber's degraded profile has variance σ_line² + σ_LSF² + du²/12 within
-    2 % (σ_LSF = (c/R)/2.35482; the pixel-integrated kernel adds du²/12)."""
+    """design §8 U_ions 4 as amended by Phase-3 D1: a weak Gaussian absorber's degraded profile has variance
+    σ_line² + σ_LSF² (σ_LSF = (c/R)/2.35482) within 0.3 %, from point samples on 1 km/s (box=0) and from the 1 km/s
+    box-averaged web flux (library.web_flux) of a 0.25 km/s native grid, whose cumulative-trapezoid box average
+    adds 0.25²/6 km²/s² on a grid aligned with the box edges. The pre-D1 operator added du²/12 + interpolation."""
     from tngsight.degrade import degrade_v
     du = 1.0
     sig_lsf = C_KMS / R / 2.35482
     half = math.ceil(10 * math.hypot(sig_line, sig_lsf) / 100) * 100 + 200
+
+    def var_of(v, m):
+        D = 1.0 - m
+        mu = np.sum(v * D) / np.sum(D)
+        return mu, np.sum((v - mu) ** 2 * D) / np.sum(D)
     u = np.arange(-half, half + du, du)
-    tau = 1e-4 * np.exp(-0.5 * (u / sig_line) ** 2)
-    v, _, m = degrade_v(u, np.exp(-tau), R, None, 0.0, du)
-    D = 1.0 - m
-    mu = np.sum(v * D) / np.sum(D)
-    var = np.sum((v - mu) ** 2 * D) / np.sum(D)
-    expect = sig_line ** 2 + sig_lsf ** 2 + du ** 2 / 12
+    mu, var = var_of(*degrade_v(u, np.exp(-1e-4 * np.exp(-0.5 * (u / sig_line) ** 2)), R, None, 0.0, du, box=0.0)[::2])
+    expect = sig_line ** 2 + sig_lsf ** 2
     assert abs(mu) < 0.01 * math.sqrt(expect)
-    assert var == pytest.approx(expect, rel=0.02), (R, var, expect)
+    assert var == pytest.approx(expect, rel=0.003), (R, var, expect)
+    un = -half + 0.25 * np.arange(8 * half + 1)
+    uj, Fw = L.web_flux({"u": {"X": un}, "tau": {"X": 1e-4 * np.exp(-0.5 * (un / sig_line) ** 2)}, "W": {"X": half}}, "X")
+    mu2, var2 = var_of(*degrade_v(uj, Fw, R, None, 0.0, du)[::2])
+    assert abs(mu2) < 0.01 * math.sqrt(expect)
+    assert var2 == pytest.approx(expect + 0.25 ** 2 / 6, rel=0.003), (R, var2, expect)
 
 
 def test_degrade_v_no_lsf_and_frame():
@@ -541,7 +600,7 @@ def test_degrade_v_no_lsf_and_frame():
 def test_velocity_frame_on_library():
     """τ-weighted H I Lyβ centroids sit closer to V=0 in the +v_sys frame than in the legacy −v_sys one."""
     from tngsight.degrade import velocity_axis
-    files = sorted(RAW.glob("cgm_sid488530_edge_b*.npz"))[:40]
+    files = sorted(RAW.glob(("cgm_sid488530_" if RAW_ENV else "") + "edge_b*.npz"))[:40]
     new, old = [], []
     for f in files:
         with np.load(f) as d:
@@ -615,7 +674,7 @@ def test_build_library_scores_in_fixed_frame(scratch):
     ids = ["face_b150_a270", "edge_b100_a090"]
     src = scratch / "src"; src.mkdir()
     for i in ids:
-        shutil.copy2(raw(i), src)
+        shutil.copy2(raw(i), src / L.npz_name(i))
     out = scratch / "lib"
     assert bl.main(["--src", str(src), "--out", str(out), "--legacy-index", str(GRID_INDEX), "-j", "1"]) == 0
     snap = {q: q.stat().st_mtime_ns for q in out.rglob("*") if q.is_file() and q.suffix in (".npz", ".bin")}

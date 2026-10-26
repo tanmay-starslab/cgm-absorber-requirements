@@ -287,7 +287,11 @@ def _decode_v1(blob) -> dict:
 
 def decode_web(blob) -> dict:
     """{version: 1|2, vSys: float|None, skipped: [keys], lines: {key: {n, u0, du, rest, q, flux, u}}} (design §2.4).
-    Unknown v2 keys are skipped (forward compatibility); v1 line 1 (HILyb) is skipped."""
+    Only registry keys become lines; any other v2 key is skipped and listed (forward compatibility); v1 line 1 (HILyb)
+    is skipped. v2 checks, identical to docs/tng50/js/fit.js decodeTNGS (Phase-3 Code 4): 1 ≤ nlines ≤ len(registry);
+    v_sys finite; per line the key is its 8 bytes without the trailing NULs (a byte ≥ 128 reads as U+FFFD, an embedded
+    NUL stays, so neither can match a registry key), a key seen twice is refused, 1 ≤ n ≤ MAX_WEB_N, u0, du and rest
+    finite and du > 0 (for skipped lines too), and the length is exact."""
     blob = bytes(blob)
     if len(blob) < 8 or blob[:4] != WEB_MAGIC:
         raise ValueError("not a TNGS blob")
@@ -299,6 +303,11 @@ def decode_web(blob) -> dict:
     if len(blob) < _HDR2.size:
         raise ValueError("truncated")
     _, _, nlines, _, v_sys = _HDR2.unpack_from(blob, 0)
+    registry = frozenset(I.KEYS)
+    if not 1 <= nlines <= len(registry):
+        raise ValueError(f"TNGS v2: nlines {nlines} outside 1..{len(registry)}")
+    if not math.isfinite(v_sys):
+        raise ValueError("TNGS v2: v_sys not finite")
     off, lines, skipped, seen = _HDR2.size, {}, [], set()
     for _ in range(nlines):
         if off + _LINE2.size > len(blob):
@@ -308,9 +317,15 @@ def decode_web(blob) -> dict:
         if key in seen:
             raise ValueError(f"duplicate line key {key!r}")
         seen.add(key)
+        if not 1 <= n <= MAX_WEB_N:
+            raise ValueError(f"TNGS v2: line {key!r} has n {n} outside 1..{MAX_WEB_N}")
+        if not (math.isfinite(u0) and math.isfinite(du) and math.isfinite(rest)):
+            raise ValueError(f"TNGS v2: line {key!r} has a non-finite u0, du or rest")
+        if not du > 0:
+            raise ValueError(f"TNGS v2: line {key!r} has du {du} <= 0")
         if off + 2 * n > len(blob):
             raise ValueError("truncated")
-        if key in I.KEYS:
+        if key in registry:
             q = np.frombuffer(blob, "<u2", n, off)
             lines[key] = dict(n=n, u0=u0, du=du, rest=rest, q=q, flux=q / 65535.0, u=u0 + np.arange(n) * du)
         else:

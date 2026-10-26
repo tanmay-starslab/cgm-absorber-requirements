@@ -4,20 +4,27 @@
 // Model (shared by the displayed spectrum and the fit):
 //   fine grid      V_i = u0 + i*du + vSys  (the decoded TNGS line, du = 1 km/s)
 //   component      tau = k_tau * 10^logN * H(a, x) / b,  x = (V - v_c)/b,  a = a0/b,  H = Re w(x + i a)
-//   flux           F = exp(-sum tau), convolved with the pixel-integrated Gaussian LSF (FWHM = c/R, edge-extend)
-//   data pixels    numpy-style linear interpolation of the convolved flux at the output velocities
-// The convolution is only evaluated at the fine indices that bracket an output pixel (2 dot products per pixel),
-// which is identical to a full convolution followed by interpolation.
+//   flux           F = exp(-sum tau) at the fine samples (point samples of the model)
+//   data pixels    the Gaussian LSF (FWHM = c/R) of the flux at each output velocity v (Phase-3 D1, makeSampler):
+//                  sum_j w_j g_j over the taps j = jc-h..jc+h around the nearest sample jc, w_j ~ exp(-(v - V_j)^2 / 2 s^2)
+//                  at the true offsets, normalised, indices clamped to the line (edge extend); no interpolation step.
+//                  s^2 = sigma_LSF^2 - box^2/12, box = the box average already in the samples: du for the stored web
+//                  flux (degradeV; tngsight.library.web_flux), 0 for the fitter's model, so both carry sigma_LSF^2.
+//                  tngsight.degrade.lsf_weights is the same operator. R none/0/inf: linear interpolation (no LSF).
 
 export const FIT_VERSION = "fit/1";
 export const FIT_PARAMS = {maxIt: 40, maxItPrune: 20, maxTries: 8, lambda0: 1e-2, lambdaMin: 1e-7, relTol: 1e-5,
   padResel: 2, padKms: 10, mergeFrac: 0.5, bMax: 300, logNMin: 10, bicK: 3, maxPrunePasses: 30, asymU: 10,
   budgetMs: 300, capMs: 1500, cacheSize: 256, chi2nuPoor: 2.0};
-export const FLAGS = {SAT: 1, BOUND: 2, POORFIT: 8, BUDGET: 128};
+export const FLAGS = {SAT: 1, BOUND: 2, POORFIT: 8, NOERR: 32, DAMPED: 64, BUDGET: 128};   // values as tngsight.vpfit.FLAGS
 
 const C_KMS = 299792.458, FWHM_TO_SIGMA = 1 / 2.35482, PIX_PER_RESEL = 5, SIGMA0 = 0.02654008;
-const SQPI = Math.sqrt(Math.PI), ISQPI = 1 / SQPI, LN10 = Math.LN10, BOUND_TOL = 1e-3, SAT_FLUX = 0.05;
-const KEY_RE = /^[A-Z][a-z]?[IVX]+$/;
+const SQPI = Math.sqrt(Math.PI), ISQPI = 1 / SQPI, LN10 = Math.LN10, BOUND_TOL = 1e-3;
+// tngsight.vpfit PARAMS sat_flux, sat_tau0 and damped_logN; tngsight.degrade LSF_FLOOR and LSF_HALF; library.MAX_WEB_N
+const SAT_FLUX = 0.05, SAT_TAU0 = 5, DAMPED_LOGN = 19, LSF_FLOOR = 0.3, LSF_HALF = 4, MAX_WEB_N = 20001;
+// The registry keys in registry order (tngsight/ions.json; tests/js/fit_decode.mjs checks the copy). decodeTNGS accepts
+// these keys when the caller passes no key list.
+export const REGISTRY_KEYS = Object.freeze(["HI", "MgII", "SiII", "CII", "SiIII", "CIII", "SiIV", "CIV", "NV", "OVI", "NeVIII", "OVII"]);
 const now = () => (globalThis.performance && performance.now ? performance.now() : Date.now());
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -94,7 +101,8 @@ function erf(x) {
 
 const noLSF = R => !(R > 0) || !Number.isFinite(R);
 
-// Pixel-integrated Gaussian LSF on a grid of step du (design-3 section 3.4 step 1). R none/0/inf -> [1].
+// Pixel-integrated Gaussian LSF taps on a grid of step du (design-3 section 3.4 step 1; tngsight.degrade.lsf_kernel).
+// The pre-D1 operator, kept for tests; the page and the fitter sample with makeSampler. R none/0/inf -> [1].
 export function lsfKernel(R, du) {
   if (noLSF(R)) return Float64Array.of(1);
   const sp = (C_KMS / R) * FWHM_TO_SIGMA / du, h = Math.max(1, Math.ceil(4 * sp)), k = new Float64Array(2 * h + 1), s2 = Math.SQRT2 * sp;
@@ -102,6 +110,13 @@ export function lsfKernel(R, du) {
   for (let j = -h; j <= h; j++) { k[j + h] = 0.5 * (erf((j + 0.5) / s2) - erf((j - 0.5) / s2)); s += k[j + h]; }
   for (let j = 0; j < k.length; j++) k[j] /= s;
   return k;
+}
+
+// Width of the sampling Gaussian (tngsight.degrade.lsf_width): s^2 = sigma_LSF^2 - box^2/12 (box = the box average
+// already in the samples: du for the web flux, 0 for point samples), floored at (LSF_FLOOR du)^2; h taps a side.
+export function lsfWidth(R, du, box = du) {
+  const sig = (C_KMS / R) * FWHM_TO_SIGMA, s = Math.sqrt(Math.max(sig * sig - box * box / 12, (LSF_FLOOR * du) ** 2));
+  return {s, h: Math.max(1, Math.ceil(LSF_HALF * s / du))};
 }
 
 // numpy float arange: length ceil((hi - lo)/step), v[i] = lo + i*delta with delta = (lo + step) - lo.
@@ -148,30 +163,49 @@ function makePlan(vOut, V) {
   return {U, lo, hi, t, m};
 }
 
-// Convolve g (length nf, edge-extend) with kernel k at the plan's fine indices, then interpolate onto the outputs.
-function convSample(g, k, plan, out, fill = 1) {
-  const h = (k.length - 1) >> 1, nf = g.length, U = plan.U, c = new Float64Array(U.length);
-  for (let q = 0; q < U.length; q++) {
-    const i = U[q]; let s = 0;
-    if (i - h >= 0 && i + h < nf) { for (let j = 0, b = i - h; j < k.length; j++) s += k[j] * g[b + j]; }
-    else { for (let j = -h; j <= h; j++) { let p = i + j; p = p < 0 ? 0 : p >= nf ? nf - 1 : p; s += k[j + h] * g[p]; } }
-    c[q] = s;
+// Sampling operator (tngsight.degrade.lsf_weights) from samples g at V_j = (u0 + j*du) + vSys of a line with n samples
+// to the output velocities vOut. g holds the samples jLo..jHi (g[0] is j = jLo; a fit window's fine sub-grid). With an
+// LSF: centre jc = floor((v - V_0)/du + 1/2), taps jc-h..jc+h, Gaussian at the true offsets with lsfWidth(R, du, box),
+// normalised, indices clamped to [0, n-1] (edge extend); outputs outside [V_0, V_{n-1}] get `fill`. Without an LSF:
+// numpy-style linear interpolation. The weights are built once; sample(g, out, fill) applies them.
+function makeSampler(vOut, u0, du, n, vSys, R, box, jLo = 0, jHi = n - 1) {
+  const m = vOut.length, Vat = j => (u0 + j * du) + vSys, V0 = Vat(0), Vn = Vat(n - 1);
+  if (noLSF(R)) {
+    const V = new Float64Array(jHi - jLo + 1); for (let i = 0; i < V.length; i++) V[i] = Vat(jLo + i);
+    const plan = makePlan(vOut, V);
+    return {sample(g, out, fill = 1) {
+      for (let k = 0; k < m; k++) { const a = plan.lo[k]; if (a < 0) { out[k] = fill; continue; } const t = plan.t[k], ga = g[plan.U[a]]; out[k] = t === 0 ? ga : ga + (g[plan.U[plan.hi[k]]] - ga) * t; }
+      return out; }};
   }
-  for (let m = 0; m < plan.m; m++) { const a = plan.lo[m]; if (a < 0) { out[m] = fill; continue; } const t = plan.t[m]; out[m] = t === 0 ? c[a] : c[a] + (c[plan.hi[m]] - c[a]) * t; }
-  return out;
+  const {s, h} = lsfWidth(R, du, box), L = 2 * h + 1, j0 = new Int32Array(m), inside = new Uint8Array(m), w = new Float64Array(m * L);
+  for (let k = 0; k < m; k++) {
+    const x = vOut[k]; if (!(x >= V0 && x <= Vn)) continue;
+    inside[k] = 1; const jc = Math.floor((x - V0) / du + 0.5), o = k * L; j0[k] = jc - h;
+    let sum = 0; for (let t = 0; t < L; t++) { const e = (x - Vat(jc - h + t)) / s, q = Math.exp(-0.5 * e * e); w[o + t] = q; sum += q; }
+    for (let t = 0; t < L; t++) w[o + t] /= sum;
+  }
+  return {sample(g, out, fill = 1) {
+    for (let k = 0; k < m; k++) {
+      if (!inside[k]) { out[k] = fill; continue; }
+      const a = j0[k], o = k * L; let acc = 0;
+      if (a >= jLo && a + L - 1 <= jHi) { const b = a - jLo; for (let t = 0; t < L; t++) acc += w[o + t] * g[b + t]; }
+      else for (let t = 0; t < L; t++) { let j = a + t; j = j < 0 ? 0 : j > n - 1 ? n - 1 : j; j = j < jLo ? jLo : j > jHi ? jHi : j; acc += w[o + t] * g[j - jLo]; }
+      out[k] = acc;
+    }
+    return out; }};
 }
 
-// Degrade a decoded intrinsic line to (R, S/N) (design-3 sections 3.4 and 5.2). line = {n, u0, du, flux}.
-// o = {vwin, vcenter, seed, pix}. Returns {v, flux (noisy, clipped at 0), model, sigma (per pixel)}.
+// Degrade a decoded intrinsic line to (R, S/N) (design-3 sections 3.4 and 5.2, Phase-3 D1; tngsight.degrade.degrade_v).
+// line = {n, u0, du, flux, box?}: box is the box average already in the samples (default du: the stored web flux; 0 for
+// point samples). o = {vwin, vcenter, seed, pix}. Returns {v, flux (noisy, clipped at 0), model, sigma (per pixel)}.
 export function degradeV(line, R, snr, vSys, o = {}) {
   const pix = o.pix ?? PIX_PER_RESEL, n = line.n, du = line.du, u0 = line.u0;
-  const V = new Float64Array(n); for (let i = 0; i < n; i++) V[i] = (u0 + i * du) + vSys;
-  const k = lsfKernel(R, du), dvPix = noLSF(R) ? du * pix : (C_KMS / R) / pix;
-  let lo = V[0], hi = V[n - 1];
+  const dvPix = noLSF(R) ? du * pix : (C_KMS / R) / pix;
+  let lo = (u0 + 0 * du) + vSys, hi = (u0 + (n - 1) * du) + vSys;
   if (o.vwin != null) { const vc = o.vcenter ?? 0; lo = vc - o.vwin; hi = vc + o.vwin; }
-  const v = arange(lo, hi + dvPix, dvPix), plan = makePlan(v, V);
+  const v = arange(lo, hi + dvPix, dvPix);
   const g = line.flux instanceof Float64Array ? line.flux : Float64Array.from(line.flux);
-  const model = convSample(g, k, plan, new Float64Array(v.length), 1);
+  const model = makeSampler(v, u0, du, n, vSys, R, line.box ?? du).sample(g, new Float64Array(v.length), 1);
   const sigma = snr > 0 ? Math.sqrt(pix) / snr : 0, flux = new Float64Array(v.length);
   if (snr > 0) { const r = rng(o.seed ?? 0); for (let i = 0; i < v.length; i++) flux[i] = Math.max(0, model[i] + sigma * gauss(r)); }
   else for (let i = 0; i < v.length; i++) flux[i] = Math.max(0, model[i]);
@@ -180,14 +214,17 @@ export function degradeV(line, R, snr, vSys, o = {}) {
 
 // ---------------------------------------------------------------------------------------------------------------
 // TNGS web binaries, v1 (OVI, HILyb, CIII on a lambda grid) and v2 (keyed lines on 1 km/s grids), design-3 2.4.
-// keys: optional list of known registry keys; without it any key of registry form is accepted. Unknown keys are
-// skipped and reported in `skipped`.
+// keys: the registry keys (default REGISTRY_KEYS); only these become lines, every other key is skipped and listed in
+// `skipped`. v2 checks, identical to tngsight.library.decode_web (Phase-3 Code 4): 1 <= nlines <= keys.length; v_sys
+// finite; per line the key is its 8 bytes without the trailing NULs (a byte >= 128 reads as U+FFFD, an embedded NUL
+// stays, so neither can match a registry key), a key seen twice is refused, 1 <= n <= 20001, u0, du and rest finite and
+// du > 0 (for skipped lines too), and the file length is exact. Key lookups go through a Set, never an object.
 export function decodeTNGS(arrayBuffer, keys = null) {
   const buf = arrayBuffer instanceof ArrayBuffer ? arrayBuffer : arrayBuffer.buffer;
   const off = arrayBuffer instanceof ArrayBuffer ? 0 : arrayBuffer.byteOffset, len = arrayBuffer.byteLength;
   const dv = new DataView(buf, off, len);
   if (len < 8 || String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) !== "TNGS") throw new Error("not a TNGS sightline binary");
-  const ver = dv.getUint8(4), nl = dv.getUint8(5), known = k => (keys ? keys.includes(k) : KEY_RE.test(k));
+  const reg = new Set(keys || REGISTRY_KEYS), ver = dv.getUint8(4), nl = dv.getUint8(5), known = k => reg.has(k);
   const lines = {}, skipped = [];
   if (ver === 1) {
     const V1 = ["OVI", "HILyb", "CIII"]; if (nl !== 3) throw new Error(`TNGS v1: expected 3 lines, got ${nl}`);
@@ -207,21 +244,46 @@ export function decodeTNGS(arrayBuffer, keys = null) {
   }
   if (ver !== 2) throw new Error("unsupported TNGS version " + ver);
   if (len < 16) throw new Error("truncated TNGS binary");
-  if (nl < 1 || nl > 12) throw new Error(`TNGS v2: nlines ${nl} outside 1..12`);
+  if (!(nl >= 1 && nl <= reg.size)) throw new Error(`TNGS v2: nlines ${nl} outside 1..${reg.size}`);
   const vSys = dv.getFloat64(8, true); let o = 16;
+  if (!Number.isFinite(vSys)) throw new Error("TNGS v2: v_sys not finite");
+  const seen = new Set();
   for (let l = 0; l < nl; l++) {
     if (o + 40 > len) throw new Error("truncated TNGS binary");
-    let k = ""; for (let i = 0; i < 8; i++) { const c = dv.getUint8(o + i); if (c) k += String.fromCharCode(c); }
+    let e = 8; while (e > 0 && dv.getUint8(o + e - 1) === 0) e--;
+    let k = ""; for (let i = 0; i < e; i++) { const c = dv.getUint8(o + i); k += c < 128 ? String.fromCharCode(c) : "\ufffd"; }
     const n = dv.getUint32(o + 8, true), u0 = dv.getFloat64(o + 16, true), du = dv.getFloat64(o + 24, true), rest = dv.getFloat64(o + 32, true);
     o += 40;
+    const kq = JSON.stringify(k);
+    if (seen.has(k)) throw new Error(`duplicate line key ${kq} in TNGS binary`);
+    seen.add(k);
+    if (!(n >= 1 && n <= MAX_WEB_N)) throw new Error(`TNGS v2: line ${kq} has n ${n} outside 1..${MAX_WEB_N}`);
+    if (!(Number.isFinite(u0) && Number.isFinite(du) && Number.isFinite(rest))) throw new Error(`TNGS v2: line ${kq} has a non-finite u0, du or rest`);
+    if (!(du > 0)) throw new Error(`TNGS v2: line ${kq} has du ${du} <= 0`);
     if (o + 2 * n > len) throw new Error("truncated TNGS binary");
-    if (k in lines || skipped.includes(k)) throw new Error(`duplicate line key ${k} in TNGS binary`);
     if (!known(k)) skipped.push(k);
     else { const flux = new Float64Array(n); for (let i = 0; i < n; i++) flux[i] = dv.getUint16(o + 2 * i, true) / 65535; lines[k] = {n, u0, du, rest, flux}; }
     o += 2 * n;
   }
   if (o !== len) throw new Error("trailing bytes in TNGS binary");
   return {version: 2, vSys, skipped, lines};
+}
+
+// How one fitted component (a fitPanel comps entry) should be shown; the page's ticks and readout call it per component.
+//   "sat"            SAT without DAMPED: the core is black, so logN and b are degenerate (errors null, NOERR); logN is
+//                    no measurement (show it as a lower limit)
+//   "bound"          BOUND or BUDGET: a parameter sits on its box limit, or the fit hit the time cap
+//   "unconstrained"  no covariance (NOERR), or sigma(logN) > LOOSE_DEX: the data do not pin the column
+//   "ok"             a column with an error bar. A large sigma(b) alone is not "unconstrained": an unresolved
+//                    component has a loose b and a well measured column.
+export const LOOSE_DEX = 1;
+export function fitQuality(c) {
+  if (!c) return "unconstrained";
+  const f = +c.flag || 0;
+  if ((f & FLAGS.SAT) && !(f & FLAGS.DAMPED)) return "sat";
+  if (f & (FLAGS.BOUND | FLAGS.BUDGET)) return "bound";
+  if ((f & FLAGS.NOERR) || !Number.isFinite(c.dlogN) || c.dlogN > LOOSE_DEX) return "unconstrained";
+  return "ok";
 }
 
 export function rowsToComps(rows, compKeys) {
@@ -250,13 +312,14 @@ function solve(A, b, n) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// One fit window: fine sub-grid, data pixels, kernel, and the model/Jacobian operator.
+// One fit window: fine sub-grid, data pixels, the sampling operator (box 0: the model is point-sampled on the fine
+// grid), and the model/Jacobian operator.
 function makeWindow(ctx, lo, hi, dataIdx) {
-  const {line, vSys, k, kTau, a0, asymU} = ctx, h = (k.length - 1) >> 1, du = line.du, n = line.n, V0 = line.u0 + vSys;
+  const {line, vSys, h, kTau, a0, asymU} = ctx, du = line.du, n = line.n, V0 = line.u0 + vSys;
   const i0 = Math.max(0, Math.floor((lo - V0) / du) - h - 2), i1 = Math.min(n - 1, Math.ceil((hi - V0) / du) + h + 2), nf = i1 - i0 + 1;
   const Vf = new Float64Array(nf); for (let i = 0; i < nf; i++) Vf[i] = (line.u0 + (i0 + i) * du) + vSys;
   const vd = Float64Array.from(dataIdx, m => ctx.data.v[m]), d = Float64Array.from(dataIdx, m => ctx.data.flux[m]);
-  const plan = makePlan(vd, Vf), N = vd.length, sig = ctx.data.sigma, w4 = new Float64Array(4);
+  const smp = makeSampler(vd, line.u0, du, n, vSys, ctx.R, 0, i0, i1), N = vd.length, sig = ctx.data.sigma, w4 = new Float64Array(4);
   const tauOne = (vc, lN, b, tau, D) => {                      // adds one component's tau; D = [dv, dlogN, db] columns or null
     const A = kTau * 10 ** lN, a = a0 / b, ib = 1 / b;
     for (let i = 0; i < nf; i++) {
@@ -265,16 +328,16 @@ function makeWindow(ctx, lo, hi, dataIdx) {
       if (D) { const Hu = w4[2], Ha = -w4[3]; D[0][i] = -A * Hu * ib * ib; D[1][i] = t * LN10; D[2][i] = -(A * ib * ib) * (H + x * Hu + a * Ha); }
     }
   };
-  const W = {lo, hi, dataIdx, vd, d, N, nf, plan,
+  const W = {lo, hi, dataIdx, vd, d, N, nf,
     tauComps(P) { const out = []; for (let c = 0; c < P.length / 3; c++) { const t = new Float64Array(nf); tauOne(P[3 * c], P[3 * c + 1], P[3 * c + 2], t, null); out.push(t); } return out; },
-    fluxModel(tau) { const F = new Float64Array(nf); for (let i = 0; i < nf; i++) F[i] = Math.exp(-tau[i]); return convSample(F, k, plan, new Float64Array(N)); },
+    fluxModel(tau) { const F = new Float64Array(nf); for (let i = 0; i < nf; i++) F[i] = Math.exp(-tau[i]); return smp.sample(F, new Float64Array(N)); },
     model(P, wantJ) {
       const np = P.length, tau = new Float64Array(nf), D = wantJ ? Array.from({length: np}, () => new Float64Array(nf)) : null;
       for (let c = 0; c < np / 3; c++) tauOne(P[3 * c], P[3 * c + 1], P[3 * c + 2], tau, wantJ ? [D[3 * c], D[3 * c + 1], D[3 * c + 2]] : null);
       const F = new Float64Array(nf); for (let i = 0; i < nf; i++) F[i] = Math.exp(-tau[i]);
-      const M = convSample(F, k, plan, new Float64Array(N));
+      const M = smp.sample(F, new Float64Array(N));
       if (!wantJ) return {M};
-      const J = D.map(col => { for (let i = 0; i < nf; i++) col[i] = -F[i] * col[i]; return convSample(col, k, plan, new Float64Array(N), 0); });
+      const J = D.map(col => { for (let i = 0; i < nf; i++) col[i] = -F[i] * col[i]; return smp.sample(col, new Float64Array(N), 0); });
       return {M, J};
     },
     chi2(M) { let s = 0; for (let i = 0; i < N; i++) { const r = (d[i] - M[i]) / sig; s += r * r; } return s; },
@@ -348,11 +411,14 @@ export function fitPanel(req) {
     const nOut = data.v.length, model = new Float32Array(nOut).fill(1);
     const lamCm = atom.lam0_A * 1e-8, kTau = SIGMA0 * atom.f * lamCm / (SQPI * 1e5), a0 = atom.gamma_s * lamCm / (4 * Math.PI * 1e5);
     const lineF = {...line, flux: line.flux};
-    const k = lsfKernel(req.R, line.du), fw = noLSF(req.R) ? 0 : C_KMS / req.R;
-    const ctx = {line: lineF, vSys: req.vSys, k, kTau, a0, asymU: prm.asymU, data};
+    const h = noLSF(req.R) ? 0 : lsfWidth(req.R, line.du, 0).h, fw = noLSF(req.R) ? 0 : C_KMS / req.R;
+    const ctx = {line: lineF, vSys: req.vSys, R: req.R, h, kTau, a0, asymU: prm.asymU, data};
     const ck = req.compKeys || ["v", "dv", "logN", "dlogN", "b", "db", "region", "flag", "EW"];
     const iv = ck.indexOf("v"), iN = ck.indexOf("logN"), ib = ck.indexOf("b"), ir = ck.indexOf("region");
     const logNMax = atom.logN_max ?? 19, bMin = atom.b_min ?? 2;
+    // DAMPED as tngsight.vpfit: the damped ion (registry "damped"; without the field, an ion whose logN cap exceeds
+    // DAMPED_LOGN, i.e. H I) at logN >= DAMPED_LOGN; its wings pin the column, so SAT keeps its errors
+    const damped = atom.damped ?? (logNMax > DAMPED_LOGN);
     let budgetHit = false;
     const clock = {over: () => { if (!budgetHit && now() - t0 > prm.capMs) budgetHit = true; return budgetHit; }};
     // 1. windows from the aod regions that have seeds; overlapping windows merge with their seeds
@@ -403,16 +469,22 @@ export function fitPanel(req) {
       if (!nc) continue;
       // 6. errors, 7. flags
       const err = covDiag(W.model(P, true).J, P.length, data.sigma), poor = c2 / Math.max(dof, 1) > prm.chi2nuPoor;
-      const taus = W.tauComps(P);
+      const taus = W.tauComps(P), w4c = new Float64Array(4);
       for (let c = 0; c < nc; c++) {
         const vc = P[3 * c], lN = P[3 * c + 1], b = P[3 * c + 2];
-        let flag = 0, mn = Infinity;
+        let flag = damped && lN >= DAMPED_LOGN ? FLAGS.DAMPED : 0, mn = Infinity;
         for (let q = 0; q < W.N; q++) if (W.vd[q] >= vc - b && W.vd[q] <= vc + b && M[q] < mn) mn = M[q];
-        if (mn < SAT_FLUX) flag |= FLAGS.SAT;
+        // SAT as tngsight.vpfit: the intrinsic component's line-centre optical depth k_tau N H(a, 0)/b reaches SAT_TAU0,
+        // or the LSF-convolved model drops below SAT_FLUX within +-b of the centre
+        const tau0 = kTau * 10 ** lN * wofz4(0, a0 / b, w4c, prm.asymU)[0] / b;
+        if (tau0 >= SAT_TAU0 || mn < SAT_FLUX) flag |= FLAGS.SAT;
         if (Math.min(vc - w.lo, w.hi - vc) < BOUND_TOL || Math.min(lN - prm.logNMin, logNMax - lN) < BOUND_TOL || Math.min(b - bMin, prm.bMax - b) < BOUND_TOL) flag |= FLAGS.BOUND;
         if (poor) flag |= FLAGS.POORFIT;
+        // SAT without DAMPED: logN and b are degenerate both ways, so the formal errors are dropped (NOERR), as vpfit
+        const satNoErr = !!(flag & FLAGS.SAT) && !(flag & FLAGS.DAMPED);
+        if (!err || satNoErr) flag |= FLAGS.NOERR;
         const prof = new Float32Array(nOut).fill(1), Mc = W.fluxModel(taus[c]); for (let q = 0; q < W.N; q++) prof[idx[q]] = Mc[q];
-        comps.push({c: {v: vc, dv: err ? err[3 * c] : null, logN: lN, dlogN: err ? err[3 * c + 1] : null, b, db: err ? err[3 * c + 2] : null, flag, region: w.region}, prof, P: [vc, lN, b]});
+        comps.push({c: {v: vc, dv: err ? err[3 * c] : null, logN: lN, dlogN: err && !satNoErr ? err[3 * c + 1] : null, b, db: err && !satNoErr ? err[3 * c + 2] : null, flag, region: w.region}, prof, P: [vc, lN, b]});
       }
     }
     if (!anyFit) return {...base, status: "no_seeds", ms: now() - t0, model, profiles: []};
