@@ -2,13 +2,15 @@
 # Assemble the Space build context and push it with huggingface_hub (upload_folder).
 #   HF_TOKEN=hf_... deploy/hf_space/push_space.sh [space-id]     (default tanmay-starslab/tng50-sightlines)
 #   deploy/hf_space/push_space.sh --assemble-only                 (build the context, no token, no push)
-# Context: /Volumes/cgm_work/scratch/space_build (override with SPACE_BUILD). The context is scanned
+# Context: $TNG_WORK/scratch/space_build (TNG_WORK: the work root, default /Volumes/cgm_work; SPACE_BUILD overrides
+# the context dir). Python: $PY, else $PYTHON, else $TNG_WORK/envs/trident/bin/python. The context is scanned
 # for secrets and cluster paths before anything is uploaded.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
-PY=${PY:-/Volumes/cgm_work/envs/trident/bin/python}
-BUILD=${SPACE_BUILD:-/Volumes/cgm_work/scratch/space_build}
+WORK=${TNG_WORK:-/Volumes/cgm_work}
+PY=${PY:-${PYTHON:-$WORK/envs/trident/bin/python}}
+BUILD=${SPACE_BUILD:-$WORK/scratch/space_build}
 ASSEMBLE_ONLY=0
 if [[ "${1:-}" == --assemble-only ]]; then ASSEMBLE_ONLY=1; shift; fi
 SPACE=${1:-${HF_SPACE:-tanmay-starslab/tng50-sightlines}}

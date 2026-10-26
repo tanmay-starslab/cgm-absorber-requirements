@@ -6,6 +6,7 @@ lines, npz v2, TNGS v2, components v2) is made by deploy/data/regen_library.py i
 web binaries written here are TNGS v2 with the two registry lines a v1 npz holds (O VI, C III).
 
     python deploy/data/build_library.py [--src DIR] [--out DIR] [-j N] [--force] [--verify] [--legacy-index CSV]
+    (--src default $TNG_RAW_SIGHTLINES, else the Mac's read-only original; --out default tngsight library_dir())
     (--index is the old name of --legacy-index)
 
 Writes into `--out` (default tngsight.config.library_dir()):
@@ -37,7 +38,9 @@ from tngsight import library as L  # noqa: E402
 from tngsight.config import NPZ_PREFIX, library_dir  # noqa: E402
 from tngsight.scoring import SCORING_TAG, assign_ranks, score_payload  # noqa: E402
 
-SRC = Path("/Volumes/LaCie/cgm_qso_488530/data/sightlines")
+# the read-only raw set cgm_sid488530_<id>.npz: TNG_RAW_SIGHTLINES, else the original on the Mac's external disk
+# (it is not under the work root; on other machines set TNG_RAW_SIGHTLINES or pass --src)
+SRC = Path(os.environ.get("TNG_RAW_SIGHTLINES") or "/Volumes/LaCie/cgm_qso_488530/data/sightlines")
 INDEX = ROOT / "tng50" / "data" / "grid_index.csv"
 
 

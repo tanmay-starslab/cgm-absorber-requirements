@@ -7,14 +7,13 @@ import json
 import math
 import os
 import time
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-from tngsight import deposit as D
+from tngsight import config, deposit as D
 
-LOCK = Path(os.environ.get("TNG_HEAVY_LOCK", "/Volumes/cgm_work/scratch/p2/heavy.lock"))
+LOCK = config.heavy_lock_path()      # TNG_HEAVY_LOCK, else <TNG_WORK>/scratch/p2/heavy.lock (taken only if its dir exists)
 
 
 def rel_max(a, b):

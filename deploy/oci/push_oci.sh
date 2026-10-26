@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
 # Build the app context (same as the HF Space), copy it to the VM and (re)start the stack.
 #   deploy/oci/push_oci.sh <public-ip> [ssh-key]          (key default ~/.ssh/tng50_oci)
+#   deploy/oci/push_oci.sh --assemble-only                (build the context only: no ssh, no VM, no token read)
+# Paths: TNG_WORK is the work root (default /Volumes/cgm_work); the context goes to $SPACE_BUILD, else
+# $TNG_WORK/scratch/oci_build, and the token files are read from $HFDIR, else $TNG_WORK/cache/hf.
 # The VM's ~/tng50/.env is written once, from the local token files (never printed); later edits are
 # made on the VM. HOST=<ip-dashes>.sslip.io is (re)written into it on every run.
 set -euo pipefail
-IP=${1:?public ip}; KEY=${2:-$HOME/.ssh/tng50_oci}
+ASSEMBLE_ONLY=0
+if [[ "${1:-}" == --assemble-only ]]; then ASSEMBLE_ONLY=1; shift; fi
+if [[ $ASSEMBLE_ONLY == 0 ]]; then IP=${1:?public ip}; KEY=${2:-$HOME/.ssh/tng50_oci}; fi
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
-BUILD=${SPACE_BUILD:-/Volumes/cgm_work/scratch/oci_build}
-HFDIR=${HFDIR:-/Volumes/cgm_work/cache/hf}
-HOST="${IP//./-}.sslip.io"
-SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new)
-SSH=(ssh "${SSH_OPTS[@]}" ubuntu@"$IP")
+WORK=${TNG_WORK:-/Volumes/cgm_work}
+BUILD=${SPACE_BUILD:-$WORK/scratch/oci_build}
+HFDIR=${HFDIR:-$WORK/cache/hf}
 
 SPACE_BUILD=$BUILD "$REPO/deploy/hf_space/push_space.sh" --assemble-only
 cp "$REPO/deploy/oci/docker-compose.yml" "$REPO/deploy/oci/Caddyfile" "$BUILD/"
 printf '.env\n' > "$BUILD/.dockerignore"       # keep the secrets out of the BuildKit build context
+if [[ $ASSEMBLE_ONLY == 1 ]]; then echo "assembled $BUILD (no VM contacted)"; exit 0; fi
 
+HOST="${IP//./-}.sslip.io"
+SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new)
+SSH=(ssh "${SSH_OPTS[@]}" ubuntu@"$IP")
 "${SSH[@]}" 'bash -s' < "$REPO/deploy/oci/vm_setup.sh"
 rsync -az --delete --exclude .env -e "ssh -i '$KEY' -o StrictHostKeyChecking=accept-new" \
   "$BUILD/" ubuntu@"$IP":tng50/

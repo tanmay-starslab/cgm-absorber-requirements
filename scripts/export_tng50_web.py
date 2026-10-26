@@ -152,7 +152,9 @@ def default_library() -> Path:
         from tngsight.config import library_dir
         return library_dir()
     except Exception:                                    # noqa: BLE001 - tngsight optional for this script
-        return Path(os.environ.get("TNG_LIBRARY_DIR", "/Volumes/cgm_work/data/library"))
+        # tngsight.config's rule: TNG_LIBRARY_DIR, else $TNG_WORK/data/library (TNG_WORK default /Volumes/cgm_work)
+        work = Path(os.environ.get("TNG_WORK") or "/Volumes/cgm_work")
+        return Path(os.environ.get("TNG_LIBRARY_DIR") or work / "data" / "library")
 
 
 def registry():

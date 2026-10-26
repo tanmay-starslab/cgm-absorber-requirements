@@ -1,31 +1,43 @@
-// Headless-Edge browser test of the 3D viewer (Phase-2b design §5.11 items 6-8; Phase-3 design §6.2 C13). Run manually:
-//   TNG_BROWSER=1 node tests/js/viewer_browser.mjs --viz <viz dir with manifest_v2.json> [--port 8871] [--cdp 9271]
-//       [--profile <edge user-data-dir>] [--shots <dir>] [--bench 60] [--edge <binary>] [--page <html served at /tng50/>]
-//       [--docs <dir served as /tng50/, default docs/tng50>]
+// Headless-browser test of the 3D viewer (Phase-2b design §5.11 items 6-8; Phase-3 design §6.2 C13). Run manually:
+//   TNG_BROWSER=1 node tests/js/viewer_browser.mjs --viz <viz dir with manifest_v2.json> [--port N]
+//       [--profile <parent dir of the temp browser profile>] [--shots <dir>] [--bench 60] [--edge <binary>]
+//       [--page <html served at /tng50/>] [--docs <dir served as /tng50/, default docs/tng50>]
 // Phase 3 adds: the square stage (|w - h| <= 1, at most 60 vw) beside the grouped control column (Field, View, Layers,
 // Mode, Pick ray), the 15-entry species menu (nH, T, Z + 12 ions in ladder order; species without cubes disabled with a
 // tooltip, setSpecies on them false without an exception), no dot separators in the viewer's text, and, when the page
 // has a #v3d-mini-host thumbnail (mountThumb), the thumbnail checks: shared cubes, square, not blank, the slow turn
 // pausing off-screen, click to the 3D tab with the camera restored, and a thumbnail-first cold load (L0/L1 only).
-// It starts its own static server on --port (the page at /tng50/ from docs/tng50, the viz dir at /viz/), launches
-// Edge headless with remote debugging, opens /tng50/?viz=http://127.0.0.1:<port>/viz/#tab=3d at 1440×900 and checks:
-// WebP decode byte-exact (sha256 = raw_sha256, no gz fallback), non-blank frames, viewer.bench() exact/moving frame
-// times, the fullscreen enter/exit cycle (CDP click + Esc) restoring the layout, mobile 390×844 without horizontal
-// scroll, and no page exceptions. With --shots it also writes the §10 screenshots it can make from the data present.
+// It starts its own static server (the page at /tng50/ from docs/tng50, the viz dir at /viz/) on --port, else
+// TNG_TEST_PORT, else an OS-chosen port (8787 and 8000 are refused), launches the browser headless through
+// tests/js/lib/browser.mjs like the other browser tests (binary --edge or TNG_EDGE; --remote-debugging-port=0, read back
+// from DevToolsActivePort; a fresh profile under --profile, TNG_EDGE_PROFILE or the OS temp dir, never inside the viz
+// dir, removed at exit; the owner's laptop server and the hosted backends blocked), opens
+// /tng50/?viz=http://127.0.0.1:<port>/viz/#tab=3d at 1440×900 and checks: WebP decode byte-exact (sha256 =
+// raw_sha256, no gz fallback), non-blank frames, viewer.bench() exact/moving frame times, the fullscreen enter/exit
+// cycle (CDP click + Esc) restoring the layout, mobile 390×844 without horizontal scroll, and no page exceptions.
+// TNG_REDUCED_MOTION is not applied here (this test checks the thumbnail's turn); when the browser binary forces
+// prefers-reduced-motion anyway (a --force-prefers-reduced-motion wrapper), the thumbnail must stay still instead of
+// turning, and the test says so. With --shots it also writes the §10 screenshots it can make from the data present.
 // Without TNG_BROWSER=1 (e.g. under run_all.mjs) it only prints "skipped".
 import {createServer} from "node:http";
-import {readFileSync, existsSync, statSync, mkdirSync, writeFileSync, readdirSync} from "node:fs";
-import {spawn} from "node:child_process";
-import {join, extname, resolve, dirname} from "node:path";
+import {readFileSync, existsSync, statSync, mkdirSync, writeFileSync, readdirSync, rmSync, realpathSync} from "node:fs";
+import {join, extname, resolve, dirname, basename, relative, isAbsolute} from "node:path";
 import {fileURLToPath} from "node:url";
+import {launch, BLOCK, RESERVED_PORTS} from "./lib/browser.mjs";
 
-if (!process.env.TNG_BROWSER) { console.log("skipped (set TNG_BROWSER=1 and pass --viz DIR to run the headless Edge test)"); process.exit(0); }
+if (!process.env.TNG_BROWSER) { console.log("skipped (set TNG_BROWSER=1 and pass --viz DIR to run the headless browser test)"); process.exit(0); }
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = resolve(HERE, "../..");
 const A = Object.fromEntries(process.argv.slice(2).reduce((acc, x, i, all) => (x.startsWith("--") ? acc.concat([[x.slice(2), all[i + 1]]]) : acc), []));
-const PORT = +(A.port || 8871), CDP = +(A.cdp || 9271), VIZ = A.viz && resolve(A.viz), SHOTS = A.shots && resolve(A.shots), NB = +(A.bench || 60);
-const EDGE = A.edge || "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
+const VIZ = A.viz && resolve(A.viz), SHOTS = A.shots && resolve(A.shots), NB = +(A.bench || 60);
+let PORT = +(A.port || process.env.TNG_TEST_PORT) || 0;
 if (!VIZ || !existsSync(join(VIZ, "manifest_v2.json"))) { console.error("--viz DIR with a manifest_v2.json is required"); process.exit(2); }
-if ([8787, 8000].includes(PORT)) { console.error("ports 8787 and 8000 are reserved"); process.exit(2); }
+if (RESERVED_PORTS.includes(PORT)) { console.error(`ports ${RESERVED_PORTS.join(" and ")} are reserved for the owner's demo`); process.exit(2); }
+if (A.cdp) console.log("note: --cdp is ignored (the browser picks its own debugging port)");
+const PROFILE_PARENT = A.profile || process.env.TNG_EDGE_PROFILE || undefined;      // undefined: lib/browser.mjs uses the OS temp dir
+{ /* symlinks resolved (a viz dir is often a link into a library): the real path of the deepest existing ancestor */
+  const real = p => { let d = resolve(p), rest = ""; while (!existsSync(d) && dirname(d) !== d) { rest = join(basename(d), rest); d = dirname(d); } return join(realpathSync(d), rest); };
+  const r = PROFILE_PARENT ? relative(real(VIZ), real(PROFILE_PARENT)) : "..";
+  if (r === "" || (!r.startsWith("..") && !isAbsolute(r))) { console.error("--profile / TNG_EDGE_PROFILE must not be inside the viz dir"); process.exit(2); } }
 if (SHOTS) mkdirSync(SHOTS, {recursive: true});
 let fails = 0; const check = (ok, msg) => { console.log(`${ok ? "ok  " : "FAIL"} ${msg}`); if (!ok) fails++; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -51,35 +63,26 @@ const srv = createServer((req, res) => {
   res.writeHead(200, {"Content-Type": TYPES[extname(f)] || "application/octet-stream", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"});
   res.end(f.startsWith(VIZ) ? readMem(f) : readFileSync(f));
 });
-await new Promise(r => srv.listen(PORT, "127.0.0.1", r));
+await new Promise((r, j) => { srv.once("error", j); srv.listen(PORT, "127.0.0.1", r); });
+PORT = srv.address().port;
 console.log(`serving ${PAGE.replace(ROOT + "/", "")} and ${VIZ} on http://127.0.0.1:${PORT}`);
 
-/* ---- Edge + CDP ---- */
-const profile = A.profile || join(VIZ, "..", "edge-profile");
-const edge = spawn(EDGE, ["--headless=new", `--remote-debugging-port=${CDP}`, `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check",
-  "--disable-extensions", "--disable-component-update",     // Edge's built-in extensions inject scripts that throw into the page
-  "--window-size=1440,900", "about:blank"], {stdio: "ignore"});
-/* a crash anywhere below must not leave this headless Edge (and its CDP port) behind for the next run */
-process.on("exit", () => { try { edge.kill(); } catch {} });
-process.on("uncaughtException", e => { console.error(e); try { edge.kill(); } catch {} process.exit(1); });
-process.on("unhandledRejection", e => { console.error(e); try { edge.kill(); } catch {} process.exit(1); });
-let tabs = null; for (let i = 0; i < 600 && !tabs?.some(t => t.type === "page"); i++) { await sleep(200); try { tabs = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json(); } catch {} }   // wait for the page target, not only the port
-if (!tabs) { console.error(`Edge did not open CDP port ${CDP}`); edge.kill(); process.exit(1); }
-const page = tabs.find(t => t.type === "page"), ws = new WebSocket(page.webSocketDebuggerUrl);
-await new Promise(r => ws.addEventListener("open", r));
-let id = 0; const pend = new Map(), exceptions = [], consoleErr = [];
-ws.addEventListener("message", ev => { const m = JSON.parse(ev.data);
-  if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); return; }
-  if (m.method === "Runtime.exceptionThrown" && !/^chrome-extension:\/\//.test(m.params.exceptionDetails?.url || "")      // Edge's built-in extensions are not the page,
-      && !/Receiving end does not exist/.test(m.params.exceptionDetails?.exception?.description || ""))                 // nor is their messaging error (no page code uses chrome.runtime)
-    exceptions.push(JSON.stringify(m.params.exceptionDetails).slice(0, 400));
-  if (m.method === "Runtime.consoleAPICalled" && m.params.type === "error") consoleErr.push(m.params.args.map(a => a.value ?? a.description).join(" ").slice(0, 300)); });
-const send = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({id: i, method, params})); });
+/* ---- browser + CDP: the shared harness (temp profile, --remote-debugging-port=0, blocked hosted backends) ---- */
+/* reducedMotion false: this test checks the thumbnail's turn, so TNG_REDUCED_MOTION is not applied here */
+const P = await launch({profile: PROFILE_PARENT, edge: A.edge, width: 1440, height: 900, block: BLOCK, reducedMotion: false});
+console.log(`     ${P.browser || P.proc.spawnfile} up in ${(P.startMs / 1000).toFixed(1)} s, CDP port ${P.port} (OS-chosen), temp profile ${P.profile} (removed at exit)`);
+/* a crash anywhere below must not leave this headless browser, or its profile, behind */
+process.on("exit", () => { try { P.proc.kill("SIGKILL"); } catch {} try { rmSync(P.profile, {recursive: true, force: true}); } catch {} });
+process.on("uncaughtException", e => { console.error(e); process.exit(1); });
+process.on("unhandledRejection", e => { console.error(e); process.exit(1); });
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { console.error(`${sig}: closing the browser`); process.exit(130); });
+/* the browser's built-in extensions are not the page, nor is their messaging error (no page code uses chrome.runtime) */
+const pageExceptions = () => P.exceptions.filter(x => !/chrome-extension:\/\/|Receiving end does not exist/.test(x));
+const consoleErr = P.consoleErrors, send = P.send;
 const ev = async (expr, gesture = false) => { const r = await send("Runtime.evaluate", {expression: expr, awaitPromise: true, returnByValue: true, userGesture: gesture, timeout: 120000});
   if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || JSON.stringify(r.result.exceptionDetails)); return r.result?.result?.value; };
 const shot = async name => { if (!SHOTS) return; const r = await send("Page.captureScreenshot", {format: "png"}); writeFileSync(join(SHOTS, name), Buffer.from(r.result.data, "base64")); console.log("     shot " + name); };
 const metrics = (w, h, mobile = false, dpr = 1) => send("Emulation.setDeviceMetricsOverride", {width: w, height: h, deviceScaleFactor: dpr, mobile});
-await send("Runtime.enable"); await send("Page.enable");
 await send("Emulation.setEmulatedMedia", {features: [{name: "prefers-color-scheme", value: "dark"}]});
 await metrics(1440, 900);
 const URL3D = `http://127.0.0.1:${PORT}/tng50/?viz=${encodeURIComponent(`http://127.0.0.1:${PORT}/viz/`)}#tab=3d`;
@@ -206,6 +209,9 @@ else {
   /* ---- Phase 3 thumbnail (pages with a #v3d-mini-host, e.g. the scratch harness) ---- */
   const hasThumb = await ev(`!!document.querySelector("#v3d-mini-host")`);
   if (hasThumb) {
+    /* the page stops the turn under prefers-reduced-motion (viewer3d.js spinning()); then the thumbnail must stay still */
+    const RM = await ev(`matchMedia("(prefers-reduced-motion: reduce)").matches`);
+    if (RM) console.log("     note: prefers-reduced-motion is on: checking that the thumbnail stays still (run without TNG_REDUCED_MOTION or the wrapper to check the turn)");
     const V = "window.tngViewer3d";
     await ev(`${V}.setMode("integral"); ${V}.setStars({on: true, gasMix: 0.85}); ${V}.setSpecies("nH")`); await allBound();
     for (let i = 0; i < 80 && !(await ev(`!!window.tngThumb`)); i++) await sleep(250);
@@ -216,13 +222,15 @@ else {
         moved: v.camera.position.distanceTo(p0), frameMs: v.stats.thumbFrameMs, levels: v.levels(), tag: h.querySelector(".v3d-tt .f")?.textContent, active: window.tngThumb.active}); })()`));
     check(pre.same && th.docked === "thumb" && th.inHost && th.active && Math.abs(th.host[0] - th.host[1]) <= 1 && th.n === pre.n,
       `thumbnail: one engine (${pre.same}), docked "${th.docked}" in the square host ${th.host.map(x => x.toFixed(0)).join("×")}, tag "${th.tag}", no new cube loads (${pre.n} → ${th.n})`);
-    check(th.moved > 0.5 && th.frameMs < 50, `thumbnail turns while on screen (camera moved ${th.moved.toFixed(1)} kpc in 1 s, frame ${th.frameMs?.toFixed(1)} ms submit)`);
+    if (RM) check(th.moved === 0, `reduced motion: the thumbnail stays still on screen (camera moved ${th.moved} kpc in 1 s)`);
+    else check(th.moved > 0.5 && th.frameMs < 50, `thumbnail turns while on screen (camera moved ${th.moved.toFixed(1)} kpc in 1 s, frame ${th.frameMs?.toFixed(1)} ms submit)`);
     const tb = await nonBlank(); check(tb.frac > 0.05, `thumbnail not blank: ${(100 * tb.frac).toFixed(1)} % lit pixels`);
     await shot("16_thumb_spectra.png");
     const pz = JSON.parse(await ev(`(async () => { const v = ${V}, m = document.querySelector("#v3d-mini"); m.style.display = "none"; await new Promise(r => setTimeout(r, 700));
       const a = v.camera.position.clone(); await new Promise(r => setTimeout(r, 900)); const still = v.camera.position.distanceTo(a); m.style.display = "";
       await new Promise(r => setTimeout(r, 900)); const b = v.camera.position.clone(); await new Promise(r => setTimeout(r, 600)); return JSON.stringify({still, again: v.camera.position.distanceTo(b)}); })()`));
-    check(pz.still === 0 && pz.again > 0.2, `thumbnail pauses off-screen (moved ${pz.still} kpc while hidden) and resumes (${pz.again.toFixed(2)} kpc)`);
+    if (RM) check(pz.still === 0 && pz.again === 0, `reduced motion: still while hidden (${pz.still} kpc) and after it is shown again (${pz.again} kpc)`);
+    else check(pz.still === 0 && pz.again > 0.2, `thumbnail pauses off-screen (moved ${pz.still} kpc while hidden) and resumes (${pz.again.toFixed(2)} kpc)`);
     const tbench = await ev(`${V}.bench(20)`);
     console.log(`     thumbnail bench: exact ${tbench.exact_ms_median.toFixed(1)} ms at ${tbench.size.join("×")} px (spv 0.6), moving exact ${tbench.moving_exact_ms_median.toFixed(1)} ms`);
     check(tbench.exact_ms_median <= 60, `thumbnail frame ${tbench.exact_ms_median.toFixed(1)} ms ≤ 60 ms at ${tbench.size.join("×")} px`);
@@ -283,8 +291,9 @@ else {
   await shot("15_host_hang.png");
   for (const r of held.splice(0)) r.destroy();
 }
+const exceptions = pageExceptions();
 check(exceptions.length === 0, `no page exceptions${exceptions.length ? ": " + exceptions.join(" | ") : ""}`);
 if (consoleErr.length) console.log("     console errors: " + consoleErr.slice(0, 5).join(" | "));
-ws.close(); edge.kill(); srv.close();
+await P.close(); srv.closeAllConnections?.(); srv.close();
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nall checks passed");
 process.exit(fails ? 1 : 0);

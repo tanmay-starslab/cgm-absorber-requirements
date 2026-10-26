@@ -7,17 +7,20 @@
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
-WORK=${CGM_WORK:-/Volumes/cgm_work}
-PY=${PY:-$WORK/envs/trident/bin/python}
+WORK=${TNG_WORK:-${CGM_WORK:-/Volumes/cgm_work}}     # the work root (CGM_WORK: its older name)
+PY=${PY:-${PYTHON:-$WORK/envs/trident/bin/python}}
 RUN=${TNG_RUN_DIR:-$WORK/run}
 COORD=${1:-${TNG_SPACE_URL:-https://tanmay-starslab-tng50-sightlines.hf.space}}
 [[ $# -gt 0 ]] && shift
 
-if ! mount | grep -q " on $WORK "; then echo "$WORK is not mounted"; exit 1; fi
-if [[ -z "${WORKER_TOKEN:-}" ]]; then
+# On the Mac the work root is a mounted volume; elsewhere a plain directory that must exist.
+if [[ $(uname -s) == Darwin && $WORK == /Volumes/* ]]; then
+  if ! mount | grep -q " on $WORK "; then echo "$WORK is not mounted"; exit 1; fi
+elif [[ ! -d $WORK ]]; then echo "work root $WORK does not exist (set TNG_WORK)"; exit 1; fi
+if [[ -z "${WORKER_TOKEN:-}" ]] && command -v security >/dev/null 2>&1; then     # the macOS keychain
   WORKER_TOKEN=$(security find-generic-password -s tng50-worker-token -w 2>/dev/null || true)
 fi
-[[ -n "$WORKER_TOKEN" ]] || { echo "no WORKER_TOKEN (env or keychain item tng50-worker-token)"; exit 1; }
+[[ -n "${WORKER_TOKEN:-}" ]] || { echo "no WORKER_TOKEN (env or keychain item tng50-worker-token)"; exit 1; }
 export WORKER_TOKEN
 
 export MPLCONFIGDIR=$WORK/cache/mpl XDG_CACHE_HOME=$WORK/cache/xdg HDF5_USE_FILE_LOCKING=FALSE \
@@ -33,5 +36,7 @@ mkdir -p "$TNG_WORKDIR"
 
 cd "$RUN"            # trident reads ./config.tri at import
 CMD=("$PY" -m server.remote_worker --coordinator "$COORD" --name "$NODE_NAME" "$@")
-if [[ "${TNG_START_DRYRUN:-0}" == 1 ]]; then echo "DRYRUN cwd=$PWD ${CMD[*]}"; exit 0; fi
+if [[ "${TNG_START_DRYRUN:-0}" == 1 ]]; then
+  echo "DRYRUN paths TNG_CUTOUT=$TNG_CUTOUT TNG_ION_TABLE_DIR=$TNG_ION_TABLE_DIR TNG_INDEX_FILE=$TNG_INDEX_FILE TNG_WORKDIR=$TNG_WORKDIR"
+  echo "DRYRUN cwd=$PWD ${CMD[*]}"; exit 0; fi
 exec "${CMD[@]}"           # token travels via $WORKER_TOKEN, never on the command line (ps-visible)

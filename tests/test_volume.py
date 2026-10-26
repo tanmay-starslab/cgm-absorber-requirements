@@ -9,12 +9,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tngsight import config
 from tngsight import deposit as D
 from tngsight import volume as V
 
 ROOT = Path(__file__).resolve().parent.parent
 CM = V.CM_PER_KPC
-LOCK = Path(os.environ.get("TNG_HEAVY_LOCK", "/Volumes/cgm_work/scratch/p2/heavy.lock"))
+# the heavy-I/O lock of the slow tests: $TNG_HEAVY_LOCK, else $TNG_WORK/scratch/p2/heavy.lock (the TNG_WORK contract,
+# tngsight.config.heavy_lock_path); taken only when its directory exists (heavy_lock below)
+LOCK = config.heavy_lock_path()
 
 
 # ------------------------------------------------------------------------------- 1. constants and FIELDS
@@ -293,6 +296,142 @@ def test_build_script_clip_box():
     a, b = bv.clip_box([-300, 0, 0], [300, 10, 0], 100.0)
     np.testing.assert_allclose(a[0], -100.0) and np.testing.assert_allclose(b[0], 100.0)
     assert bv.clip_box([-300, 200, 0], [300, 200, 0], 100.0) is None
+
+
+# ------------------------------------------------------------------------------- 6b. column check reference (§4.3)
+def _build_script():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bv", ROOT / "deploy" / "data" / "build_volumes.py")
+    bv = importlib.util.module_from_spec(spec); spec.loader.exec_module(bv)
+    return bv
+
+
+def _clumps(seed, n=4000, box=25.0, nbg=2000, bgbox=60.0):
+    """Clumpy gas like the Phase-3 failure case (Si IV / C IV / N V): n sub-voxel clumps (h 0.3-2 kpc) inside ±box
+    over a diffuse background of nbg broad cells (h 4-12 kpc) inside ±bgbox. The gas fills the voxel footprint, as
+    real CGM gas does; isolated clumps sampled sparsely at the voxel scale are outside what the smoothed reference
+    models (the trilinear read reaches up to a voxel beyond the h_eff support, the ±Δ/2 bundle does not)."""
+    rng = np.random.default_rng(seed)
+    pos = np.vstack([rng.uniform(-box, box, (n, 3)), rng.uniform(-bgbox, bgbox, (nbg, 3))])
+    h = np.concatenate([rng.uniform(0.3, 2.0, n), rng.uniform(4.0, 12.0, nbg)])
+    nH = np.concatenate([10.0 ** rng.uniform(-4, -1, n), np.full(nbg, 3e-4)])
+    m = n + nbg
+    return _cells(pos, h, rng.uniform(1e64, 1e65, m), np.ones(m), np.full(m, 1e5), np.ones(m), nH)
+
+
+def test_smoothed_columns_reduces_to_line_integral():
+    """No floor and a single ray: the cylinder pre-selection keeps every cell the ray meets, so it is the plain SPH
+    line integral; a field smooth on the voxel scale is unchanged by the bundle; a zero-length segment gives 0."""
+    rng = np.random.default_rng(7)
+    pos = rng.uniform(-50, 50, (500, 3)); h = rng.uniform(0.5, 6.0, 500); q = rng.lognormal(0, 1, 500)
+    a, b = np.array([-100.0, 1.0, 0.0]), np.array([100.0, 2.0, 0.5])
+    sm = V.smoothed_columns(pos, h, {"q": q, "q2": 2 * q}, a, b, 6.25, h_min_vox=0.0, offsets=(0.0,))
+    ref = D.line_integral(pos, h, q, a, b)
+    assert ref > 0 and abs(sm["q"] / ref - 1) < 1e-12 and abs(sm["q2"] / (2 * ref) - 1) < 1e-12
+    big = np.full(500, 40.0)
+    s2 = V.smoothed_columns(pos, big, {"q": q}, a, b, 0.5)["q"]
+    assert abs(s2 / D.line_integral(pos, big, q, a, b) - 1) < 0.01
+    # the floor alone: one ray through the h_eff field
+    s3 = V.smoothed_columns(pos, h, {"q": q}, a, b, 2.0, offsets=(0.0,))["q"]
+    assert abs(s3 / D.line_integral(pos, np.maximum(h, V.GAS_H_MIN_VOX * 2.0), q, a, b) - 1) < 1e-12
+    assert V.smoothed_columns(pos, h, {"q": q}, a, a, 1.0) == {"q": 0.0}
+    assert V.SMOOTH_TOL == 0.05 and V.BUNDLE_OFFSETS == (-0.5, 0.0, 0.5)
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_cube_matches_smoothed_reference_not_thin_ray(seed):
+    """build_level (2 Δ floor) on sub-voxel clumps: every cube column is within SMOOTH_TOL of the smoothed
+    voxel-footprint reference, while a thin ray through the unsmoothed cells misses by far more on some rays (the
+    Phase-3 finding: the old thin-ray check failed on clumpy ions although the deposit was right)."""
+    cells = _clumps(seed)
+    N = cells["SiIV"] * cells["V_cm3"]
+    half, n = 100.0, 32                                  # Δ = 6.25 kpc, h_eff = 12.5 kpc ≫ the clumps' h
+    dx = 2 * half / n
+    cubes, _ = V.build_level(cells, "L1", n=n, keys=("nH", "SiIV"))
+    worst_s, worst_t = 0.0, 0.0
+    for y in np.linspace(-15, 15, 7):
+        a, b = np.array([-half, 3.0 + y, 1.0]), np.array([half, -4.0 + y, 2.0 - 0.3 * y])
+        c = D.cube_column(cubes["SiIV"], half, a, b, 4.0) * CM
+        s = V.smoothed_columns(cells["pos_disk"], cells["h"], {"q": N}, a, b, dx)["q"] / CM ** 2
+        t = D.line_integral(cells["pos_disk"], cells["h"], N, a, b) / CM ** 2
+        assert c > 0 and s > 0
+        worst_s = max(worst_s, abs(math.log10(c / s)))
+        worst_t = max(worst_t, abs(math.log10(c / t)) if t > 0 else math.inf)
+    assert worst_s <= V.SMOOTH_TOL, worst_s
+    assert worst_t > 3 * V.SMOOTH_TOL, worst_t
+
+
+FAKE_N = {"L0": 128, "L1": 32, "L2": 8}                    # the same Δ = 6.25 kpc on every level
+
+
+def _fake_cache(tmp_path, cells, scale=1.0, keys=("nH", "SiIV")):
+    """A build_volumes cache (<L>_<field>.npy + <L>.json) of small cubes; each level's own n is in its side file."""
+    cache = tmp_path / "cache"
+    cache.mkdir(parents=True)
+    for L in V.GAS_LEVELS:
+        cubes, _ = V.build_level(cells, L, n=FAKE_N[L], keys=keys)
+        for k, a in cubes.items():
+            np.save(cache / f"{L}_{k}.npy", (a * (scale if k != "nH" else 1.0)).astype(np.float32))
+        (cache / f"{L}.json").write_text(json.dumps({"n": FAKE_N[L], "gas_h_min_vox": V.GAS_H_MIN_VOX}))
+    return cache
+
+
+def test_build_script_column_checks_gate(tmp_path, monkeypatch):
+    """build_volumes.column_checks end to end on a synthetic cache: the right cube passes on every level although
+    the thin ray is far off (reported, not gated); a cube 0.1 dex high fails; the report is plain JSON."""
+    bv = _build_script()
+    cells = _clumps(4)
+    N = cells["SiIV"] * cells["V_cm3"]
+    p0, p1 = np.array([-300.0, 3.0, 1.0]), np.array([300.0, -4.0, 2.0])
+    ray = math.log10(D.line_integral(cells["pos_disk"], cells["h"], N, p0, p1) / CM ** 2)
+    monkeypatch.setattr(bv, "CHECKS", {L: ("s1",) for L in ("L0", "L1", "L2")})
+    monkeypatch.setattr(bv, "sightline", lambda lib, sid: (p0, p1, {"SiIV": ray}))
+    out = bv.column_checks(cells, _fake_cache(tmp_path, cells), None, tmp_path, tmp_path, keys=["SiIV"])
+    assert out["fails"] == [] and out["method"] == "smoothed_bundle" and out["tol"] == V.SMOOTH_TOL
+    assert [(r["level"], r["ion"], r["ref_kind"]) for r in out["rows"]] == [(L, "SiIV", "smoothed_bundle")
+                                                                           for L in ("L1", "L2", "L0")]
+    assert all(abs(r["d"]) <= V.SMOOTH_TOL for r in out["rows"])
+    assert out["rows"][-1]["thin_kind"] == "npz" and out["rows"][-1]["thin"] == round(ray, 3)
+    assert max(abs(r["d_thin"]) for r in out["rows"]) > V.SMOOTH_TOL          # the old check would have failed
+    assert out["summary"]["n_pass"] == 3 and out["summary"]["n_rows"] == 3
+    assert {L: out["levels"][L]["n"] for L in FAKE_N} == FAKE_N and out["levels"]["L0"]["dx_kpc"] == 6.25
+    assert len(out["reference"]) == 1 and out["reference"][0]["d"] == 0.0
+    json.loads(json.dumps(out, allow_nan=False))
+    high = bv.column_checks(cells, _fake_cache(tmp_path / "hi", cells, scale=10 ** 0.1), None, tmp_path, tmp_path,
+                            keys=["SiIV"])
+    assert len(high["fails"]) == 3 and all(f.startswith("physics ") for f in high["fails"])
+    assert high["summary"]["n_pass"] == 0
+
+
+def test_build_script_check_only_writes_the_report(tmp_path, monkeypatch):
+    """--check with --report reads the cache and the viz dir and writes only the report; --lock '' means no lock."""
+    bv = _build_script()
+    assert bv._opt_path("") is None and bv._opt_path("x.lock") == Path("x.lock")
+    cells = _clumps(4)
+    cache = _fake_cache(tmp_path, cells)
+    side = {"seconds": 0.0, "n_elements": 0, "n_straddling": 0, "conservation_rel": {"N_nH": 0.0, "m": 0.0},
+            "lost_fraction": {"N_nH": 0.0, "m": 0.0}}
+    for L in FAKE_N:                                       # the deposit numbers stage 4 reports
+        f = cache / f"{L}.json"
+        f.write_text(json.dumps({**json.loads(f.read_text()), **side}))
+    monkeypatch.setattr(bv, "get_cells", lambda cache, index, lock, force=False: cells)
+    frag = {"gas": {"fields": {}, "levels": {L: {} for L in V.GAS_LEVELS}}}
+    monkeypatch.setattr(bv, "old_fragment", lambda viz: frag)
+    monkeypatch.setattr(bv, "validate", lambda frag, viz: "skipped (test)")
+    monkeypatch.setattr(bv, "sizes", lambda frag: {"cubes": {}, "webp_total_MB": 0, "gz_total_MB": 0,
+                                                   "over_budget": []})
+    monkeypatch.setattr(bv, "CHECKS", {L: ("s1",) for L in ("L0", "L1", "L2")})
+    p0, p1 = np.array([-300.0, 3.0, 1.0]), np.array([300.0, -4.0, 2.0])
+    monkeypatch.setattr(bv, "sightline", lambda lib, sid: (p0, p1, {}))     # a v1 npz: no column for the line
+    before = sorted((p.name, p.stat().st_mtime_ns) for p in cache.iterdir())
+    rep = tmp_path / "out" / "r.json"
+    assert bv.main(["--check", "--library", str(tmp_path / "lib"), "--cache", str(cache),
+                    "--viz", str(tmp_path / "viz"), "--fields", "nH,SiIV", "--report", str(rep), "--lock", ""]) == 0
+    assert sorted((p.name, p.stat().st_mtime_ns) for p in cache.iterdir()) == before
+    assert not (tmp_path / "viz").exists() and not (tmp_path / "lib").exists()
+    r = json.loads(rep.read_text())
+    assert r["checks"]["summary"]["n_rows"] == 3 and r["checks"]["fails"] == [] and r["checks"]["reference"] == []
+    assert r["checks"]["rows"][-1]["thin"] is None and r["checks"]["rows"][-1]["d_thin"] is None
 
 
 # ------------------------------------------------------------------------------- 7. real data (slow)

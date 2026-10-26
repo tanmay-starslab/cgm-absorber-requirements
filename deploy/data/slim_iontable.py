@@ -2,6 +2,8 @@
 """Slim the Trident ion table to the elements the explorer needs (H, C, N, O, Ne, Mg, Si).
 
     python deploy/data/slim_iontable.py [--src FILE] [--out FILE] [--elements H C N O Ne Mg Si] [--no-trident-check]
+    (defaults: --src $TNG_WORK/data/trident/hm2012_ss_hr.h5, --out $TNG_WORK/data/trident_slim_v3/hm2012_ss_hr.h5;
+    TNG_WORK is the work root, default /Volumes/cgm_work)
 
 Each element dataset is copied with h5py's object copy (same dtype >f4, shape, layout and the three
 axis attributes Parameter1/Parameter2/Temperature, verbatim); file-level attributes are copied too.
@@ -23,8 +25,13 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-SRC = Path("/Volumes/cgm_work/data/trident/hm2012_ss_hr.h5")
-OUT = Path("/Volumes/cgm_work/data/trident_slim_v3/hm2012_ss_hr.h5")   # v1 (H, C, O): trident_slim/
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(1, str(ROOT))
+from tngsight.config import work_root  # noqa: E402  (TNG_WORK, default /Volumes/cgm_work)
+
+SRC = work_root() / "data" / "trident" / "hm2012_ss_hr.h5"                # the full HM2012 table
+OUT = work_root() / "data" / "trident_slim_v3" / "hm2012_ss_hr.h5"        # v1 (H, C, O): trident_slim/
 ELEMENTS = ("H", "C", "N", "O", "Ne", "Mg", "Si")
 MAX_BYTES = 190e6                    # design.md §8 U_server 2 (measured 185.7 MB)
 AXES = ("Parameter1", "Parameter2", "Temperature")
