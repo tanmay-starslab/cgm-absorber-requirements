@@ -4,18 +4,20 @@ This is a FastAPI coordinator for the TNG50 sightline explorer. It serves the si
 
 The same code runs in two places:
 
-- on the Hugging Face Space, as **coordinator + fallback compute**;
-- on a laptop, for local use, or as a **remote worker** that pulls jobs from the Space.
+- on the backend (the `deploy/hf_space` image, on an Oracle Cloud VM or as a Hugging Face Space), as **coordinator + fallback compute**;
+- on a laptop or a cluster node, for local use, or as a **remote worker** that pulls jobs from the backend.
 
 ## Run locally
 
 ```bash
-export MPLCONFIGDIR=/Volumes/cgm_work/cache/mpl XDG_CACHE_HOME=/Volumes/cgm_work/cache/xdg \
+# $TNG_WORK: the work root (env, data, caches, scratch); $PY: its python with the patched trident
+# (docs/TNG50_OPERATIONS.md, sections 1 and 6)
+export MPLCONFIGDIR=$TNG_WORK/cache/mpl XDG_CACHE_HOME=$TNG_WORK/cache/xdg \
        HDF5_USE_FILE_LOCKING=FALSE PYTHONDONTWRITEBYTECODE=1
-cd /Volumes/cgm_work/run            # contains config.tri (trident reads ./config.tri at import)
+cd $TNG_WORK/run                    # contains config.tri (trident reads ./config.tri at import)
 PYTHONPATH=/path/to/cgm-absorber-requirements \
-TNG_LIBRARY_DIR=/Volumes/cgm_work/data/library TNG_WORKDIR=/Volumes/cgm_work/scratch/server \
-  /Volumes/cgm_work/envs/trident/bin/python -m uvicorn server.app:app --host 127.0.0.1 --port 8787 --workers 1
+TNG_LIBRARY_DIR=$TNG_WORK/data/library_v3 TNG_WORKDIR=$TNG_WORK/scratch/server \
+  $PY -m uvicorn server.app:app --host 127.0.0.1 --port 8787 --workers 1
 ```
 
 `server.app:app` is built from the environment the first time it is accessed. Code that needs different settings calls `server.app.create_app(settings, generator=..., figure_renderer=..., hf=...)`.
@@ -34,7 +36,8 @@ The event loop stays responsive while a ray is being cast, because the cast runs
 
 | var | default | meaning |
 |---|---|---|
-| `TNG_LIBRARY_DIR` | `/Volumes/cgm_work/data/library` | library root (`catalog.json`, `sightlines/`, `web/`, `generated/`) |
+| `TNG_WORK` | the owner's work volume | work root; every default path below derives from it (`tngsight.config.work_root()`) |
+| `TNG_LIBRARY_DIR` | `$TNG_WORK/data/library` | library root (`catalog.json`, `sightlines/`, `web/`, `generated/`) |
 | `TNG_CUTOUT` | tngsight default | slim cutout HDF5 |
 | `TNG_ION_TABLE_DIR` | tngsight default | directory with `hm2012_ss_hr.h5` |
 | `TNG_INDEX_FILE` | `<library>/cutout.ewah` | writable yt index file |
@@ -69,7 +72,7 @@ The event loop stays responsive while a ray is being cast, because the cast runs
 | POST | `/sightlines` | same body → `200 {id,status:"ready",entry}` or `202 {id,job_id,status:"queued",position}` |
 | GET | `/jobs/{job_id}` | `{job_id,id,status,stage,frac,msg,position,error,entry,attempts}` |
 | GET | `/jobs/{job_id}/events` | SSE: `queued`, `progress`, `done`, `error`; `: ping` comment every 15 s; closes after done/error |
-| POST | `/figure` | `{id,ions,R,sn,vhw,vc,intrinsic,seed,fmt}` → PNG/PDF attachment (LRU cache of 64). `ions`: 1–6 registry keys present in the sightline (default: the registry defaults it has); `R`: `{band: [lo, hi]}` inside each band's range (default the band `pair`); `sn`: `[hi, lo]`, integers 2–100; `vhw` 10–1500 km/s; `vc` ±1500 km/s; `seed` 0–99999. The v2 fields `R_lo`, `R_hi` (uv band), `sn_hi`, `sn_lo` and `vwin` (= `vhw`) are still accepted for one release |
+| POST | `/figure` | `{id,ions,R,sn,vhw,vc,intrinsic,seed,layout,fmt}` → PNG/PDF attachment (LRU cache of 64). `ions`: 1–6 registry keys present in the sightline (default: the registry defaults it has); `R`: `{band: [lo, hi]}` inside each band's range (default the band `pair`); `sn`: `[hi, lo]`, integers 2–100; `vhw` 10–10000 km/s and `vc` ±10000 km/s (the damped H I window, registry `grid.damped_v_max_kms`; the renderer clamps the window to the shown lines' coverage); `layout`: `1`, `2R`, `2SN` or `4` (default the 2×2 grid); `seed` 0–99999. `/health` announces the caps under `figure`. The v2 fields `R_lo`, `R_hi` (uv band), `sn_hi`, `sn_lo` and `vwin` (= `vhw`) are still accepted for one release |
 | POST | `/worker/lease` | Bearer; `{name, caps}`; long-poll ≤25 s (`?wait=` lowers it) → `200 {job_id,geom,lease_s,attempt,lease,registry_tag}` / `204`; a worker with another registry fails the job before computing |
 | POST | `/worker/progress/{job_id}?lease=` | Bearer; `{stage,frac,msg}`; extends the lease; 409 if the job is not running under that lease token |
 | POST | `/worker/result/{job_id}` | Bearer; raw npz v2 bytes (≤5 MB; all 12 registry lines on their native grids, window W = `ions.gen_window`, finite τ ≥ 0, `generation.registry_tag` = the server's, optional `components_json` = `{ion: rows, "aod": ...}`); validated, claimed, then persisted → `200 {ok,id,entry}`. 422 `worker result is npz v1; update the worker` and `registry mismatch (worker <tag>, server <tag>)` name the two version errors |
@@ -124,9 +127,8 @@ Persistence: the HF Space disk is ephemeral. With `HF_TOKEN` + `HF_DATASET` set,
 ## Remote worker
 
 ```bash
-cd /Volumes/cgm_work/run && PYTHONPATH=/path/to/repo WORKER_TOKEN=... \
-  /Volumes/cgm_work/envs/trident/bin/python -m server.remote_worker \
-  --coordinator https://<user>-<space>.hf.space --name laptop
+cd $TNG_WORK/run && PYTHONPATH=/path/to/repo WORKER_TOKEN=... \
+  $PY -m server.remote_worker --coordinator <backend URL> --name laptop
 ```
 
 The worker loads the dataset once, then loops: lease, generate, upload. Transport errors and 5xx responses are retried with exponential backoff (capped at 60 s). A 401, a redirect, or a 400/403/404/405/422 from `/api/worker/lease` stops the worker (wrong token, wrong `--coordinator` URL, or an invalid `--name`; names must match `^[A-Za-z0-9._-]{1,64}$`). The result upload has its own 600 s timeout; a 409 on it counts as success when the job is in fact done with this sightline.
@@ -134,10 +136,10 @@ The worker loads the dataset once, then loops: lease, generate, upload. Transpor
 ## Tests
 
 ```bash
-/Volumes/cgm_work/envs/trident/bin/python -m pytest tests/test_server.py
+$PY -m pytest tests/test_server.py
 ```
 
-The tests use `server.testing.FakeGenerator` (no yt) and the thread executor. `test_local_worker_spawn_process` exercises the real spawn + Manager-queue path.
+The tests use `server.testing.FakeGenerator` (no yt) and the thread executor. `test_local_worker_spawn_process` exercises the real spawn + Manager-queue path. The HFSync tests poll their conditions with a 120 s ceiling (`TNG_TEST_HF_WAIT`) and gate the fake commits where the order matters, so a loaded machine slows them down instead of failing them.
 
 ## Registry-derived chat files
 
@@ -146,7 +148,7 @@ The tests use `server.testing.FakeGenerator` (no yt) and the thread executor. `t
 (`/*__GEN:QUERY__*/`) are generated from `tngsight/ions.json` and `tngsight.search.QUERY_SCHEMA`:
 
 ```bash
-/Volumes/cgm_work/envs/trident/bin/python -m server.make_chat_tools           # rewrite after a registry edit
-/Volumes/cgm_work/envs/trident/bin/python -m server.make_chat_tools --check   # exit 1 when stale
-PYTHON=/Volumes/cgm_work/envs/trident/bin/python node tests/js/chat_tools_sync.mjs
+$PY -m server.make_chat_tools           # rewrite after a registry edit
+$PY -m server.make_chat_tools --check   # exit 1 when stale
+PYTHON=$PY node tests/js/chat_tools_sync.mjs
 ```
