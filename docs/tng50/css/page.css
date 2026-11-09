@@ -275,4 +275,27 @@ body[data-tab="3d"] #shell{grid-template-columns:minmax(0,1fr)}
 }
 @media (max-width:480px){#top{gap:4px;padding:0 4px 0 10px}#title{font-size:11.5px}#tabs [role=tab]{padding:4px 8px}
   .ib{width:28px;height:28px}.ib svg{width:15px;height:15px}#pill{display:none}}
+/* ---- button visibility (2026-11): every control has a visible edge and full-contrast label ---- */
+:root{--bline:rgba(175,190,235,.30);--btnbg:rgba(150,165,215,.13);--accent-ink:#0a0d18}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bline:rgba(40,50,90,.26);--btnbg:rgba(255,255,255,.88);--accent-ink:#fff}}
+:root[data-theme="light"]{--bline:rgba(40,50,90,.26);--btnbg:rgba(255,255,255,.88);--accent-ink:#fff}
+.pbtn{border-color:var(--bline);background:var(--btnbg);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.10)}
+.pbtn svg{color:var(--ink)}
+.pbtn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.pbtn.primary svg{color:var(--accent-ink)}
+.pbtn.primary:hover,.pbtn.primary[aria-expanded=true]{background:var(--accent);border-color:var(--accent);filter:brightness(1.1)}
+.ib{border-color:var(--bline);background:var(--btnbg);color:var(--ink)}
+.ib:hover,.ib[aria-expanded=true],.ib[aria-pressed=true]{border-color:var(--accent)}
+.icons{gap:4px}
+#tabs,.seg{box-shadow:inset 0 0 0 1px var(--bline)}
+#tabs [role=tab]:hover{color:var(--ink);background:var(--hl)}
+.seg span{color:var(--ink);opacity:.8}.seg input:checked+span{opacity:1}
+.seg label:hover span{background:var(--hl)}
+.chip{border-color:var(--bline)}
+.row .pbtn,.pbtns button{color:var(--ink)}
+.pbtns button{border-color:var(--bline);background:var(--btnbg)}
+#chat-open.fab{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:45;height:46px;padding:0 18px 0 15px;border-radius:23px;font-size:14px;box-shadow:0 10px 28px rgba(0,0,0,.32)}
+#chat-open.fab svg{width:17px;height:17px}
+body.chat-on #chat-open.fab{display:none}
+@media (max-width:480px){.icons{gap:1px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
