@@ -465,32 +465,72 @@ export function claudeOptionLabel(api, defaults = []) { return isOverrideApi(api
 
 /* ------------------------------------------------------------------ UI */
 const STYLE = `
-.chat-drawer{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:100vw;z-index:60;display:flex;flex-direction:column;background:var(--panel);color:var(--ink);border-left:1px solid var(--rule);box-shadow:-8px 0 24px rgba(0,0,0,.18);font:14px/1.45 var(--body)}
-.chat-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--rule)}
-.chat-head h2{flex:1;margin:0;font:600 16px var(--display)}
-.chat-ctl{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--rule);font-size:13px}
-.chat-ctl label{color:var(--ink2)}
-.chat-ctl select{font:13px var(--body);color:var(--ink);background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:3px 6px}
-.chat-load{padding:8px 12px;border-bottom:1px solid var(--rule);font-size:13px;color:var(--ink2)}
-.chat-load progress{width:100%;margin-top:6px}
-.chat-log{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
-.chat-msg{padding:7px 10px;border-radius:8px;max-width:92%;white-space:pre-wrap;overflow-wrap:anywhere}
-.chat-user{align-self:flex-end;background:var(--accent);color:var(--accent-ink)}
-.chat-bot{align-self:flex-start;background:var(--bg);border:1px solid var(--rule)}
-.chat-err{align-self:flex-start;color:var(--bad);border:1px solid var(--bad);background:transparent}
-.chat-note{align-self:flex-start;color:var(--ink2);font-size:12.5px}
-.chat-tool{align-self:stretch;font:12px var(--mono);color:var(--ink2);min-width:0}
-.chat-tool summary{cursor:pointer;list-style:none;border:1px solid var(--rule);border-radius:999px;padding:2px 9px;display:block;width:fit-content;max-width:100%;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-drawer{position:fixed;top:10px;right:10px;bottom:10px;width:410px;max-width:calc(100vw - 20px);z-index:60;display:flex;flex-direction:column;background:linear-gradient(var(--glass2),var(--glass2)),var(--bg);color:var(--ink);border:1px solid var(--bline);border-radius:16px;box-shadow:var(--shadow);font:13.5px/1.5 var(--sans);overflow:hidden;outline:none}
+.chat-head{display:flex;align-items:center;gap:10px;padding:12px 12px 10px 16px}
+.chat-logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);flex:none}
+.chat-logo svg{width:16px;height:16px}
+.chat-title{flex:1;min-width:0}
+.chat-title h2{margin:0;font:600 15px var(--sans)}
+.chat-title p{margin:0;font-size:11.5px;color:var(--muted)}
+.cb{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;min-width:32px;padding:0 10px;border:1px solid var(--bline);border-radius:9px;background:var(--btnbg);color:var(--ink);font:500 12.5px var(--sans);cursor:pointer;flex:none}
+.cb:hover{border-color:var(--accent);background:var(--hl)}
+.cb:disabled{opacity:.45;cursor:not-allowed}
+.cb svg{width:14px;height:14px}
+.cb.sq{padding:0}
+.cb.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.cb.primary:hover{filter:brightness(1.1)}
+.chat-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:0 12px;padding:3px;border-radius:11px;background:rgba(127,127,160,.10);box-shadow:inset 0 0 0 1px var(--bline)}
+.chat-mode label{position:relative;cursor:pointer}
+.chat-mode input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.chat-mode span{display:flex;flex-direction:column;align-items:center;padding:5px 6px;border-radius:8px;font-weight:600;font-size:12.5px;line-height:1.25}
+.chat-mode small{font:400 10.5px var(--mono);color:var(--muted)}
+.chat-mode input:checked+span{background:var(--glass2);box-shadow:inset 0 0 0 1px var(--accent),0 2px 8px rgba(0,0,0,.14)}
+.chat-mode input:focus-visible+span{outline:2px solid var(--accent)}
+.chat-mode input:disabled+span{opacity:.45;cursor:not-allowed}
+.chat-notice{margin:8px 14px 0;font-size:11.5px;color:var(--muted)}
+.chat-notice summary{cursor:pointer;list-style:none}
+.chat-notice summary::-webkit-details-marker{display:none}
+.chat-notice summary b{font-weight:500;color:var(--accent);margin-left:4px}
+.chat-notice p{margin:6px 0 0}
+.chat-load{margin:10px 12px 0;padding:12px;border:1px solid var(--bline);border-radius:12px;background:var(--btnbg)}
+.chat-load h3{margin:0 0 3px;font:600 13px var(--sans)}
+.chat-load p{margin:0 0 10px;font-size:12px;color:var(--muted)}
+.chat-load .cb{width:100%;height:36px}
+.chat-load progress{width:100%;margin-top:8px;accent-color:var(--accent)}
+.chat-load .st{margin-top:6px;font-size:11.5px;color:var(--muted)}
+.chat-log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:9px;margin-top:8px;border-top:1px solid var(--gline)}
+.chat-empty{margin:auto 0;display:flex;flex-direction:column;gap:8px}
+.chat-empty h3{margin:0 0 2px;font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.chat-sug{text-align:left;padding:9px 12px;border:1px solid var(--bline);border-radius:11px;background:var(--btnbg);color:var(--ink);font:13px/1.4 var(--sans);cursor:pointer}
+.chat-sug:hover{border-color:var(--accent);background:var(--hl)}
+.chat-msg{padding:8px 12px;border-radius:12px;max-width:90%;white-space:pre-wrap;overflow-wrap:anywhere}
+.chat-user{align-self:flex-end;background:var(--accent);color:var(--accent-ink);border-bottom-right-radius:4px}
+.chat-bot{align-self:flex-start;background:var(--btnbg);border:1px solid var(--bline);border-bottom-left-radius:4px}
+.chat-err{align-self:flex-start;color:var(--bad);border:1px solid var(--bad)}
+.chat-note{align-self:center;max-width:100%;color:var(--muted);font-size:11.5px;text-align:center}
+.chat-typing{align-self:flex-start;display:flex;gap:4px;padding:12px 14px;border-radius:12px;background:var(--btnbg);border:1px solid var(--bline)}
+.chat-typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:chatdot 1.2s infinite ease-in-out}
+.chat-typing i:nth-child(2){animation-delay:.15s}.chat-typing i:nth-child(3){animation-delay:.3s}
+@keyframes chatdot{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+@media (prefers-reduced-motion:reduce){.chat-typing i{animation:none;opacity:.7}}
+.chat-tool{align-self:stretch;font:11.5px var(--mono);color:var(--muted);min-width:0}
+.chat-tool summary{cursor:pointer;list-style:none;border:1px solid var(--bline);border-radius:999px;padding:3px 10px;display:block;width:fit-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--btnbg)}
 .chat-tool summary::-webkit-details-marker{display:none}
-.chat-tool summary::before{content:"\\25B8 "}.chat-tool[open] summary::before{content:"\\25BE "}
+.chat-tool summary::before{content:"\\25B8 ";color:var(--accent)}.chat-tool[open] summary::before{content:"\\25BE "}
 .chat-tool.bad summary{border-color:var(--bad);color:var(--bad)}
-.chat-tool pre{margin:4px 0 0;padding:6px 8px;background:var(--bg);border:1px solid var(--rule);border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}
-.chat-idbtn{font:12.5px var(--mono);padding:0 5px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer}
+.chat-tool pre{margin:4px 0 0;padding:6px 8px;background:var(--bg);border:1px solid var(--gline);border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}
+.chat-idbtn{font:12.5px var(--mono);padding:0 6px;border:1px solid var(--accent);border-radius:5px;background:var(--hl);color:var(--accent);cursor:pointer}
 .chat-badge{display:block;margin-top:5px;font-size:12px;color:var(--warn)}
-.chat-form{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--rule)}
-.chat-form textarea{flex:1;resize:none;min-height:40px;max-height:120px;font:14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:6px 8px}
-.chat-disc{margin:0;padding:0 12px 10px;font-size:11.5px;color:var(--muted)}
-@media (max-width:720px){.chat-drawer{top:auto;left:0;width:auto;height:min(78vh,620px);border-left:0;border-top:1px solid var(--rule);border-radius:12px 12px 0 0;box-shadow:0 -8px 24px rgba(0,0,0,.2)}}
+.chat-form{display:flex;align-items:flex-end;gap:8px;margin:0 12px;padding:6px 6px 6px 12px;border:1px solid var(--bline);border-radius:14px;background:var(--btnbg)}
+.chat-form:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--hl)}
+.chat-form textarea{flex:1;resize:none;min-height:22px;max-height:140px;padding:5px 0;border:0;outline:none;background:transparent;color:var(--ink);font:13.5px/1.45 var(--sans)}
+.chat-form textarea::placeholder{color:var(--muted)}
+.chat-form textarea:disabled{cursor:not-allowed}
+.chat-form .cb{height:34px;width:34px;border-radius:10px}
+.chat-form .cb[aria-busy=true] svg{animation:chatspin 1s linear infinite}
+@keyframes chatspin{to{transform:rotate(360deg)}}
+.chat-disc{margin:0;padding:7px 16px 10px;font-size:11px;color:var(--muted)}
+@media (max-width:720px){.chat-drawer{top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;height:min(88vh,720px);border-radius:16px 16px 0 0;border-bottom:0}}
 `;
 
 function el(tag, props = {}, ...kids) {
@@ -518,41 +558,81 @@ export function renderAnswer(node, text, app) {
   return node;
 }
 
+const ICON = {
+  chat: '<path d="M2.5 3h11v7.5H8l-3.2 2.7v-2.7H2.5z"/>',
+  close: '<path d="m4 4 8 8M12 4l-8 8"/>',
+  reset: '<path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M3 2.5v3h3"/>',
+  send: '<path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"/>',
+  busy: '<path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"/>'};
+function svg(name) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 16 16"); s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor");
+  s.setAttribute("stroke-width", "1.7"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
+  s.setAttribute("aria-hidden", "true"); s.innerHTML = ICON[name]; return s;      // fixed markup from ICON only
+}
+/* Example questions on the empty chat; each maps onto the page's tools. */
+export const SUGGESTIONS = [
+  "Find edge-on sightlines with two O VI components 50–150 km/s apart",
+  "Show H I, C IV and O VI at R = 50,000 and S/N 20",
+  "Which sightlines have log N(Mg II) above 13 within 50 kpc?",
+  "Open the 3D view of O VI, face-on"];
+/* One-line data-flow summary per backend (the full text sits behind "More"). */
+export function noticeShort(backend, api, defaults = []) {
+  if (backend === "local") return "Runs in your browser: your questions stay on this device.";
+  return isOverrideApi(api, defaults) ? `Messages go to ${hostOf(api)}, a server this site does not run.`
+    : "Messages go through this site's server to Claude (Anthropic); the text is not logged.";
+}
+const LOCAL_DETAIL = "The local model needs WebGPU and about 2 GB of GPU memory. Nothing is downloaded until you start it. The files come from " +
+  LOCAL_HOSTS.join(", ") + " (WebLLM, the model library and the Qwen2.5-1.5B-Instruct weights), each pinned to a fixed version and hash-checked where the files are code.";
+
 /* mount(root, app, opts) -> {open(), close(), destroy()}.  `app` = window.tngApp. Opens immediately unless
-   opts.open === false. opts: {opener, fetch, loadSearch, generateFactory, webgpu} (the last ones for tests). */
+   opts.open === false. opts: {opener, fetch, loadSearch, generateFactory, webgpu} (the last ones for tests).
+   Backend: Claude through the sightline server when it offers chat (no download), else the in-browser model;
+   an explicit choice by the user is kept. */
 export async function mount(root, app, opts = {}) {
   if (!document.getElementById("chat-style")) document.head.append(el("style", {id: "chat-style"}, STYLE));
   const fetchImpl = opts.fetch || ((...a) => fetch(...a));
   const myJobs = new Set();
   const exec = createToolExecutor(app, {loadSearch: opts.loadSearch, onSubmitted: j => j.job_id && myJobs.add(j.job_id)});
   const knownId = id => !!(app.entry && app.entry(id));
-  let backend = "local", generate = null, busy = false, opener = opts.opener || null, claudeOk = false;
+  let backend = "local", generate = null, busy = false, opener = opts.opener || null, claudeOk = false, userChose = false;
   const hist = {messages: []};
 
-  const sel = el("select", {id: "chat-backend"}, el("option", {value: "local"}, "Local (in-browser)"));
-  const log = el("div", {class: "chat-log", role: "log", "aria-live": "polite", "aria-relevant": "additions"});
-  const prog = el("progress", {max: "1", value: "0", hidden: true});
-  const progText = el("div", {"aria-live": "polite"});
-  const loadBtn = el("button", {type: "button", class: "btn primary"}, "Load local model (~1 GB download, cached by the browser)");
-  const load = el("div", {class: "chat-load"}, loadBtn,
-    el("div", {text: "Runs entirely in your browser with WebGPU; needs about 2 GB of GPU memory. Nothing is downloaded until you click. " +
-      "Your questions stay in the browser. The download comes from " + LOCAL_HOSTS.join(", ") + " (WebLLM, the model library and the " +
-      "Qwen2.5-1.5B-Instruct weights), each pinned to a fixed version and hash-checked where the files are code."}), prog, progText);
-  const ta = el("textarea", {id: "chat-input", rows: "2", placeholder: "e.g. find edge-on sightlines with two O VI components 50–150 km/s apart"});
-  const send = el("button", {type: "submit", class: "btn primary"}, "Send");
-  const form = el("form", {class: "chat-form"}, el("label", {for: "chat-input", class: "sr-only", style: "position:absolute;left:-9999px"}, "Question"), ta, send);
-  const closeBtn = el("button", {type: "button", class: "btn", "aria-label": "Close chat"}, "✕");
-  const clearBtn = el("button", {type: "button", class: "btn"}, "Clear");
-  const drawer = el("div", {class: "chat-drawer", role: "dialog", "aria-modal": "true", "aria-label": "Ask about the sightlines", tabindex: "-1"},
-    el("div", {class: "chat-head"}, el("h2", {text: "Ask about the sightlines"}), clearBtn, closeBtn),
-    el("div", {class: "chat-ctl"}, el("label", {for: "chat-backend"}, "Model"), sel),
-    load, log, form,
-    el("p", {class: "chat-disc", text: "Answers come from the page's own tools (search, selection, instrument, 3D). The local model is small and can be wrong; numbers not found in the tool results are marked unverified."}));
-  root.replaceChildren(drawer);
+  const mode = (value, label, id) => { const cap = el("small"); const inp = el("input", {type: "radio", name: "chat-backend", id, value});
+    return {inp, cap, node: el("label", {for: id}, inp, el("span", {}, label, cap))}; };
+  const mClaude = mode("claude", "Claude", "chat-be-claude"), mLocal = mode("local", "In browser", "chat-be-local");
+  mLocal.cap.textContent = "private, 1 GB once";
+  const modeBar = el("div", {class: "chat-mode", role: "radiogroup", "aria-label": "Model"}, mClaude.node, mLocal.node);
+  const noticeText = el("span"), noticeMore = el("p");
+  const notice = el("details", {class: "chat-notice"}, el("summary", {}, noticeText, el("b", {text: "More"})), noticeMore);
 
-  const add = (cls, text) => { const n = el("div", {class: "chat-msg " + cls}); if (text != null) n.textContent = text; log.append(n); log.scrollTop = log.scrollHeight; return n; };
-  const toolNode = (name, args) => { const pre = el("pre"); const d = el("details", {class: "chat-tool"}, el("summary", {text: chipLabel(name, args)}), pre);
-    log.append(d); log.scrollTop = log.scrollHeight; return {d, pre}; };
+  const prog = el("progress", {max: "1", value: "0", hidden: true});
+  const progText = el("div", {class: "st", "aria-live": "polite"});
+  const loadBtn = el("button", {type: "button", class: "cb primary"}, "Download and start");
+  const load = el("div", {class: "chat-load"}, el("h3", {text: "Run the model in your browser"}),
+    el("p", {text: "Qwen2.5 1.5B, about 1 GB, downloaded once and cached by the browser. Needs WebGPU."}), loadBtn, prog, progText);
+
+  const log = el("div", {class: "chat-log", role: "log", "aria-live": "polite", "aria-relevant": "additions"});
+  const ta = el("textarea", {id: "chat-input", rows: "1", placeholder: "Ask about the sightlines"});
+  const send = el("button", {type: "submit", class: "cb primary sq", "aria-label": "Send"}, svg("send"));
+  const form = el("form", {class: "chat-form"}, el("label", {for: "chat-input", class: "sr-only", style: "position:absolute;left:-9999px"}, "Question"), ta, send);
+  const closeBtn = el("button", {type: "button", class: "cb sq", "aria-label": "Close chat", title: "Close (Esc)"}, svg("close"));
+  const clearBtn = el("button", {type: "button", class: "cb", title: "Start a new conversation"}, svg("reset"), "New");
+  const typing = el("div", {class: "chat-typing", "aria-label": "working"}, el("i"), el("i"), el("i"));
+  const sugs = SUGGESTIONS.map(q => el("button", {type: "button", class: "chat-sug", onclick: () => ask(q)}, q));
+  const empty = el("div", {class: "chat-empty"}, el("h3", {text: "Try asking"}), ...sugs);
+  const drawer = el("div", {class: "chat-drawer", role: "dialog", "aria-modal": "true", "aria-label": "Ask about the sightlines", tabindex: "-1"},
+    el("div", {class: "chat-head"}, el("div", {class: "chat-logo"}, svg("chat")),
+      el("div", {class: "chat-title"}, el("h2", {text: "Ask"}), el("p", {text: "Drive the explorer in plain language"})), clearBtn, closeBtn),
+    modeBar, notice, load, log, form,
+    el("p", {class: "chat-disc", text: "Answers come from the page's own tools. Numbers not found in the tool results are marked unverified."}));
+  root.replaceChildren(drawer);
+  log.append(empty);
+
+  const add = (cls, text) => { empty.remove(); const n = el("div", {class: "chat-msg " + cls}); if (text != null) n.textContent = text;
+    log.insertBefore(n, typing.isConnected ? typing : null); log.scrollTop = log.scrollHeight; return n; };
+  const toolNode = (name, args) => { empty.remove(); const pre = el("pre"); const d = el("details", {class: "chat-tool"}, el("summary", {text: chipLabel(name, args)}), pre);
+    log.insertBefore(d, typing.isConnected ? typing : null); log.scrollTop = log.scrollHeight; return {d, pre}; };
   const pending = [];
   const onEvent = ev => {
     if (ev.type === "tool") pending.push(toolNode(ev.name, ev.args));
@@ -560,70 +640,84 @@ export async function mount(root, app, opts = {}) {
     else if (ev.type === "repair") add("chat-note", "The model's reply was not valid JSON; asking it once to correct itself…");
     else if (ev.type === "text") renderAnswer(add("chat-bot"), ev.text, app);
   };
-  function refresh() {
-    load.hidden = backend !== "local" || !!generate;
-    const ready = backend === "claude" ? claudeOk : !!generate;
-    ta.disabled = send.disabled = busy || !ready;
-    send.textContent = busy ? "…" : "Send";
-  }
   const defaults = () => { try { return (app.config && app.config.backends) || []; } catch { return []; } };
+  const curApi = () => { try { return app.getState().api; } catch { return null; } };
+  const ready = () => backend === "claude" ? claudeOk : !!generate;
+  function refresh() {
+    mClaude.inp.checked = backend === "claude"; mLocal.inp.checked = backend === "local";
+    mClaude.inp.disabled = !claudeOk || busy; mLocal.inp.disabled = busy;
+    mClaude.cap.textContent = claudeOk ? (isOverrideApi(curApi(), defaults()) ? `via ${hostOf(curApi())}` : "via the server") : "server offline";
+    noticeText.textContent = noticeShort(backend, curApi(), defaults());
+    noticeMore.textContent = backend === "claude" ? claudeNote(curApi(), defaults()) : LOCAL_DETAIL;
+    load.hidden = backend !== "local" || !!generate;
+    ta.disabled = busy || !ready(); send.disabled = busy || !ready() ;
+    for (const b of sugs) b.disabled = busy;
+    ta.placeholder = ready() ? "Ask about the sightlines" : backend === "local" ? "Start the in-browser model above first" : "The server is offline";
+    send.replaceChildren(svg(busy ? "busy" : "send")); send.setAttribute("aria-busy", String(busy));
+    if (busy && !typing.isConnected) { log.append(typing); log.scrollTop = log.scrollHeight; } else if (!busy) typing.remove();
+  }
   let claudeApi = null;          // the server the Claude backend was consented to; a different one needs a new note
   async function checkClaude() {
-    let api = null; try { api = app.getState().api; } catch { api = null; }
+    const api = curApi();
     claudeOk = false;
     if (api) try { const r = await fetchImpl(api + "/api/health", {cache: "no-store"}); if (r.ok) { const h = await r.json(); claudeOk = !!(h.chat && h.chat.claude === true); } } catch { claudeOk = false; }
-    let opt = sel.querySelector('option[value="claude"]');
-    if (claudeOk && !opt) sel.append(opt = el("option", {value: "claude"}));
-    if (claudeOk) opt.textContent = claudeOptionLabel(api, defaults());
-    if (!claudeOk && opt) { opt.remove(); if (backend === "claude") { backend = "local"; sel.value = "local"; claudeApi = null; add("chat-note", "The Claude backend is no longer available; switched to the local model."); } }
-    if (claudeOk && backend === "claude" && normApi(api) !== normApi(claudeApi)) {      // the server changed under us: say so before anything is sent
+    if (!claudeOk && backend === "claude") { backend = "local"; claudeApi = null; add("chat-note", "The server's chat is no longer available; switched to the in-browser model."); }
+    else if (claudeOk && backend === "local" && !userChose && !generate && !hist.messages.length && !busy) { backend = "claude"; claudeApi = api; }
+    else if (claudeOk && backend === "claude" && normApi(api) !== normApi(claudeApi)) {      // the server changed under us: say so before anything is sent
       claudeApi = api; hist.messages = []; add("chat-note", "The sightline server changed. " + claudeNote(api, defaults()));
     }
     refresh(); return claudeOk ? api : null;
   }
-  sel.addEventListener("change", () => {
-    if (busy) { sel.value = backend; return; }
-    backend = sel.value; hist.messages = []; log.replaceChildren();
-    let api = null; try { api = app.getState().api; } catch { api = null; }
-    claudeApi = backend === "claude" ? api : null;
-    add("chat-note", backend === "claude" ? claudeNote(api, defaults()) : "Using the local in-browser model.");
-    refresh();
-  });
+  function choose(v) {
+    if (busy || v === backend) { refresh(); return; }
+    backend = v; userChose = true; hist.messages = []; log.replaceChildren(empty);
+    claudeApi = backend === "claude" ? curApi() : null;
+    refresh(); (ready() ? ta : backend === "local" ? loadBtn : closeBtn).focus();
+  }
+  for (const m of [mClaude, mLocal]) m.inp.addEventListener("change", () => choose(m.inp.value));
   loadBtn.addEventListener("click", async () => {
     loadBtn.disabled = true; progText.textContent = "Checking WebGPU…";
     const st = await (opts.webgpu || webgpuStatus)();
-    if (!st.ok) { progText.textContent = st.reason + (claudeOk ? " You can switch the model to Claude (server)." : ""); loadBtn.disabled = false; return; }
+    if (!st.ok) { progText.textContent = st.reason + (claudeOk ? " Choose Claude above instead." : ""); loadBtn.disabled = false; return; }
     prog.hidden = false; progText.textContent = "Downloading the model…";
     try {
       generate = await (opts.generateFactory || createLocalGenerate)(r => { if (r && Number.isFinite(r.progress)) prog.value = r.progress; if (r && r.text) progText.textContent = r.text; });
-      add("chat-note", "Local model ready.");
+      add("chat-note", "In-browser model ready.");
     } catch (e) { progText.textContent = "Could not load the local model: " + errMsg(e); loadBtn.disabled = false; }
-    refresh();
+    refresh(); if (generate) ta.focus();
   });
+  function ask(q) {
+    if (busy) return;
+    ta.value = q; grow();
+    if (ready()) form.requestSubmit(); else (backend === "local" ? loadBtn : ta).focus();
+  }
   form.addEventListener("submit", async ev => {
-    ev.preventDefault(); const q = ta.value.trim(); if (!q || busy) return;
+    ev.preventDefault(); const q = ta.value.trim(); if (!q || busy || !ready()) return;
     if (q.length > 2000) { add("chat-err", "Please keep questions under 2000 characters."); return; }
-    ta.value = ""; add("chat-user", q); busy = true; refresh();
+    ta.value = ""; grow(); add("chat-user", q); busy = true; refresh();
     let res;
     try {
       if (backend === "claude") {
-        const api = app.getState().api;
+        const api = curApi();
         if (normApi(api) !== normApi(claudeApi)) { await checkClaude(); throw new Error("The sightline server changed; read the note above and send again."); }
         res = await runClaudeTurn({post: createClaudePost(api, fetchImpl), state: hist, userText: q, exec, onEvent, knownId});
       } else res = await runLocalTurn({generate, state: hist, userText: q, exec, onEvent, knownId});
     } catch (e) { res = {answer: null, error: errMsg(e), unverified: []}; }
     pending.length = 0;
+    busy = false; refresh();
     if (res.answer) {
       const n = renderAnswer(add("chat-bot"), res.answer, app);
       if (res.unverified.length) n.append(el("span", {class: "chat-badge", text: "unverified: " + res.unverified.join(", ")}));
     }
     if (res.note) add("chat-note", res.note);
     if (res.error) add("chat-err", res.error);
-    busy = false; refresh(); log.scrollTop = log.scrollHeight; ta.focus();
+    log.scrollTop = log.scrollHeight; ta.focus();
   });
-  ta.addEventListener("keydown", ev => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); form.requestSubmit(); } });
+  const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 140) + "px"; };
+  ta.addEventListener("input", grow);
+  ta.addEventListener("keydown", ev => { if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); form.requestSubmit(); } });
   closeBtn.addEventListener("click", () => ctl.close());
-  clearBtn.addEventListener("click", () => { if (busy) return; hist.messages = []; log.replaceChildren(); ta.focus(); });
+  clearBtn.addEventListener("click", () => { if (busy) return; hist.messages = []; log.replaceChildren(empty); (ready() ? ta : closeBtn).focus(); });
   const focusables = () => [...drawer.querySelectorAll("button,select,textarea,summary,[href],input")].filter(e => !e.disabled && e.offsetParent !== null);
   drawer.addEventListener("keydown", ev => {
     if (ev.key === "Escape") { ev.preventDefault(); ctl.close(); return; }
@@ -639,15 +733,16 @@ export async function mount(root, app, opts = {}) {
   window.addEventListener("tng:done", onDone); window.addEventListener("tng:error", onErr); window.addEventListener("tng:backend", onBackend);
 
   const ctl = {
-    open() {
-      opener = opener || document.activeElement; root.hidden = false; checkClaude();
-      refresh(); (ta.disabled ? (load.hidden ? closeBtn : loadBtn) : ta).focus();
+    async open() {
+      opener = opener || document.activeElement; root.hidden = false; document.body.classList.add("chat-on");
+      refresh(); drawer.focus(); await checkClaude();
+      if (!root.hidden) (ready() ? ta : backend === "local" && !load.hidden ? loadBtn : closeBtn).focus();
     },
-    close() { root.hidden = true; if (opener && opener.focus) opener.focus(); },
-    destroy() { window.removeEventListener("tng:done", onDone); window.removeEventListener("tng:error", onErr); window.removeEventListener("tng:backend", onBackend); root.replaceChildren(); root.hidden = true; },
+    close() { root.hidden = true; document.body.classList.remove("chat-on"); if (opener && opener.focus) opener.focus(); },
+    destroy() { window.removeEventListener("tng:done", onDone); window.removeEventListener("tng:error", onErr); window.removeEventListener("tng:backend", onBackend); root.replaceChildren(); root.hidden = true; document.body.classList.remove("chat-on"); },
     get backend() { return backend; },
   };
   refresh();
-  if (opts.open !== false) ctl.open();
+  if (opts.open !== false) await ctl.open();
   return ctl;
 }

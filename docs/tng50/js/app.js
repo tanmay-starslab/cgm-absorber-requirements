@@ -685,10 +685,13 @@ $("#side-done").addEventListener("click", () => { toggleDrawer(false); $("#contr
 const mqMobile = matchMedia("(max-width:820px)");
 const HOME = ["#grp-sight", "#grp-lines", "#grp-layout"].map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
 const tools = document.createElement("div"); tools.className = "grp"; tools.id = "grp-tools"; tools.innerHTML = '<span class="gl">Tools</span><div class="row"></div>';
-const TOOL_HOME = ["#find-toggle", "#chat-open"].map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
+const ASK = (el => ({el, parent: el.parentNode, next: el.nextSibling}))($("#chat-open"));
+const TOOL_HOME = ["#find-toggle"].map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
 function placeControls() {
-  if (mqMobile.matches) { const slot = $("#mobslot"); for (const h of HOME) slot.appendChild(h.el); slot.appendChild(tools); for (const h of TOOL_HOME) { h.el.classList.remove("hide-m"); tools.lastChild.appendChild(h.el); } }
-  else { for (const h of HOME) h.parent.insertBefore(h.el, h.next); for (const h of TOOL_HOME) h.parent.insertBefore(h.el, h.next); TOOL_HOME[0].el.classList.add("hide-m"); tools.remove(); toggleDrawer(false); }
+  if (mqMobile.matches) { const slot = $("#mobslot"); for (const h of HOME) slot.appendChild(h.el); slot.appendChild(tools); for (const h of TOOL_HOME) { h.el.classList.remove("hide-m"); tools.lastChild.appendChild(h.el); }
+    document.body.appendChild(ASK.el); ASK.el.classList.add("fab"); }     // Ask floats bottom-right on phones (outside #top: its backdrop-filter would pin a fixed child to the bar)
+  else { for (const h of HOME) h.parent.insertBefore(h.el, h.next); for (const h of TOOL_HOME) h.parent.insertBefore(h.el, h.next); TOOL_HOME[0].el.classList.add("hide-m"); tools.remove(); toggleDrawer(false);
+    ASK.el.classList.remove("fab"); ASK.parent.insertBefore(ASK.el, ASK.next); }
   draw(); }
 mqMobile.addEventListener("change", placeControls);
 
