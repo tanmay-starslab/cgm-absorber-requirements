@@ -255,7 +255,7 @@ def main(argv=None) -> int:
     ap.add_argument("--local-url", default="http://127.0.0.1:8787", help="laptop server probed first ('' to omit)")
     ap.add_argument("--include-generated", action="store_true", help="also publish source=generated entries")
     ap.add_argument("--prune", action="store_true", help="delete <out>/data/s/*.bin not in the exported catalogue")
-    ap.add_argument("--default-id", default="edge_b100_a090", help="sightline shown first (if exported)")
+    ap.add_argument("--default-id", default="rand_b062_a062", help="sightline shown first (if exported)")
     ap.add_argument("--components", type=Path, default=None, help="components catalogue (default <library>/components.json)")
     ap.add_argument("--viz-dir", type=Path, default=None, help="3D cubes dir with manifest_v2.json (default <library>/viz)")
     ap.add_argument("--viz-base", default=VIZ_BASE, help=f"where the page fetches the cubes (default {VIZ_BASE})")
