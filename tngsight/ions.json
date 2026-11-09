@@ -65,9 +65,9 @@
   "ions": [
    "HI",
    "MgII",
+   "SiIII",
    "CIV",
-   "OVI",
-   "OVII"
+   "OVI"
   ],
   "layout": "4",
   "vhw_kms": 400
