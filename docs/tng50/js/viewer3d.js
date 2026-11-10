@@ -198,7 +198,7 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-seg input,.v3c-ions input{position:absolute;opacity:0;inset:0;margin:0;cursor:inherit}
 .v3c-seg span{display:flex;align-items:center;justify-content:center;height:26px;padding:0 8px;font:500 11.5px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);border-radius:7px;white-space:nowrap}
 .v3c-seg label:hover input:not(:checked):not(:disabled)+span{background:var(--cg-tint)}
-.v3c-seg input:checked+span{background:var(--cg-raised);color:var(--ink,#eef0f7);box-shadow:var(--cg-hi),0 0 0 1px var(--cg-edge),0 2px 8px rgba(0,0,0,.18)}
+.v3c-seg input:checked+span{background:var(--cg-raised);color:var(--ink,#eef0f7);box-shadow:var(--cg-hi),inset 0 0 0 1px var(--accent,#8fa8ff),0 2px 8px rgba(0,0,0,.18)}
 .v3c-ions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:8px}
 .v3c-ion{--c:var(--icd)}
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .v3c-ion{--c:var(--ic)}}
@@ -213,7 +213,7 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-seg input:focus-visible+span,.v3c-ions input:focus-visible+span{outline:2px solid var(--accent,#8fa8ff);outline-offset:1px}
 .v3c-row[hidden]{display:none}
 .v3c-seg.vel{grid-template-columns:repeat(5,minmax(0,1fr))}.v3c-seg.vel span{padding:0 2px}
-.v3c-seg.vel sub{font-size:.87em;line-height:0}
+.v3c-seg.vel span{display:block;text-align:center;line-height:26px}.v3c-seg.vel sub{font-size:.8em;line-height:0;vertical-align:-.3em}
 .v3c-row{display:grid;grid-template-columns:62px minmax(0,1fr) 44px;align-items:center;gap:8px;min-height:26px}
 .v3c-row>label,.v3c-row>.lab{font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .v3c-row output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right;color:var(--ink,#eef0f7)}
