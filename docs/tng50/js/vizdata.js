@@ -33,6 +33,76 @@ export function speciesList(ions, manifest) {
       color_dark: i.color_dark || i.color || null, available: have(i.key), reason: have(i.key) ? "" : !manifest ? why(i.key) : `${ion} cubes are not built yet`}); }
   return out;
 }
+/* vel3d: the gas velocity vector. Three gas fields vx, vy, vz (kind "velocity", encoding "linear", disk frame xhat, yhat,
+   Lhat, relative to SubhaloVel) named by the manifest block gas.vectors.v. The viewer packs them into one RGBA cube per
+   level and derives five views per sample, every frame (raymarch.js velQ): v_los and σ_los follow the camera ray. */
+export const VEL_COMP_KEYS = ["vx", "vy", "vz"];
+/* q of each view in the shader (raymarch uVq); signed views use a diverging LUT, with words at the legend's ends (v_los:
+   relative to you, the camera, so the reference frame is on screen); `spoken` names the view in plain text (radio
+   aria-label, status line, announcements, thumbnail tag), where the compact `label` would read like a typo */
+export const VEL_VIEWS = [
+  {key: "vlos", q: 1, signed: true, label: "v los", spoken: "line-of-sight velocity", html: "v<sub>los</sub>", long: "line-of-sight velocity, along the camera ray", words: ["toward you", "away from you"]},
+  {key: "vr", q: 2, signed: true, label: "v r", spoken: "radial velocity", html: "v<sub>r</sub>", long: "radial velocity", words: ["inflow", "outflow"]},
+  {key: "vphi", q: 3, signed: true, label: "v φ", spoken: "rotation velocity", html: "v<sub>φ</sub>", long: "rotational velocity about the disk normal", words: ["counter-rotating", "co-rotating"]},
+  {key: "vmag", q: 4, signed: false, label: "|v|", spoken: "speed", html: "|v|", long: "speed of the mean gas velocity", words: null},
+  {key: "sigmalos", q: 5, signed: false, label: "σ los", spoken: "line-of-sight dispersion", html: "σ<sub>los</sub>", long: "line-of-sight velocity dispersion along the camera ray, between voxels (no thermal or within-voxel motion)", words: null}];
+export const VEL_KEYS = VEL_VIEWS.map(x => x.key);
+/* the manifest's velocity vector, or null (an old manifest, or one whose vx, vy, vz cubes are missing) */
+export function velocityInfo(manifest) {
+  const v = manifest?.gas?.vectors?.v, F = manifest?.gas?.fields || {};
+  if (!v || !Array.isArray(v.components) || v.components.join() !== VEL_COMP_KEYS.join()) return null;
+  if (!VEL_COMP_KEYS.every(k => F[k]?.kind === "velocity" && F[k]?.cubes)) return null;
+  const V = isNum(v.V) ? v.V : F.vx.vmax;
+  return {V, units: v.units || "km/s", frame: v.frame || F.vx.frame || "", components: VEL_COMP_KEYS};
+}
+/* the Velocity group of the 3D species menu (pure, like speciesList): available only when the manifest names the vector */
+export function velocityList(manifest) {
+  const ok = !!velocityInfo(manifest), reason = ok ? "" : !manifest ? "no 3D data in this build" : "the velocity cubes are not built yet";
+  return VEL_VIEWS.map(x => ({...x, group: "vel", color: null, color_dark: null, available: ok, reason}));
+}
+/* linear u8 decoding (encoding "linear"): q = 0 empty (NaN), else v = vmin + (q − 1)(vmax − vmin)/254, so q = 128 is 0 for vmin = −vmax */
+export function decodeLinear(q, vmin, vmax) {
+  const out = new Float32Array(q.length), s = (vmax - vmin) / 254;
+  for (let i = 0; i < q.length; i++) out[i] = q[i] === 0 ? NaN : vmin + (q[i] - 1) * s;
+  return out;
+}
+export function encodeLinear(v, V) {   // the inverse (tests): NaN -> 0 (empty), else 1 + round((clip(v) + V) / 2V * 254)
+  const out = new Uint8Array(v.length);
+  for (let i = 0; i < v.length; i++) { const x = v[i]; out[i] = Number.isFinite(x) ? 1 + Math.round((Math.min(V, Math.max(-V, x)) + V) / (2 * V) * 254) : 0; }
+  return out;
+}
+/* CPU packing of the three component cubes into one RGBA cube (4n³ bytes): R, G, B = q of vx, vy, vz, A = 255 where
+   non-empty. Empty voxels are packed as q = 128 (0 km/s) with A = 0, so the hardware trilinear blend of R, G, B decodes
+   (the decoding is affine) to Σ wᵢ vᵢ over the non-empty corners and the blended A is Σ wᵢ: v = blend / A is the mean
+   over the non-empty corners on both the fast and the exact shader path. */
+export function packVelocity(qx, qy, qz) {
+  const N = qx.length; if (qy.length !== N || qz.length !== N) throw new Error("packVelocity: the component cubes differ in size");
+  const out = new Uint8Array(4 * N);
+  for (let i = 0, o = 0; i < N; i++, o += 4) {
+    const a = qx[i], b = qy[i], c = qz[i];
+    if (a === 0 || b === 0 || c === 0) { out[o] = out[o + 1] = out[o + 2] = 128; out[o + 3] = 0; }
+    else { out[o] = a; out[o + 1] = b; out[o + 2] = c; out[o + 3] = 255; } }
+  return out;
+}
+/* the derived quantity of one sample, as the shader computes it: v (km/s, disk frame), p (disk-frame kpc), d (unit camera
+   ray direction, disk frame). vlos > 0 moves away from the camera (redshift, the spectra's sign); vr > 0 outflow;
+   vphi > 0 co-rotation (about +Lhat = ẑ); vmag the speed. sigmalos per sample is dot(v, d) (its moment 2 is taken along the ray). */
+export function velQuantity(key, v, p, d) {
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  if (key === "vlos" || key === "sigmalos") return dot(v, d);
+  if (key === "vr") { const r = Math.hypot(...p); return r > 1e-4 ? dot(v, p) / r : 0; }
+  if (key === "vphi") { const r = Math.hypot(p[0], p[1]); return r > 1e-4 ? (-v[0] * p[1] + v[1] * p[0]) / r : 0; }
+  if (key === "vmag") return Math.hypot(...v);
+  throw new Error(`unknown velocity view ${key}`);
+}
+/* the weighted moments along a ray, as the shader's integral mode: samples [{w, v, p}] -> moment 1 (the mean of the view)
+   or, for sigmalos, sqrt(moment 2 − moment 1²) of dot(v, d). NaN when the weights sum to 0. */
+export function velRayMoment(key, samples, d) {
+  let s0 = 0, s1 = 0, s2 = 0;
+  for (const {w, v, p} of samples) { if (!(w > 0)) continue; const x = velQuantity(key, v, p, d); s0 += w; s1 += w * x; s2 += w * x * x; }
+  if (!(s0 > 0)) return NaN;
+  const m = s1 / s0; return key === "sigmalos" ? Math.sqrt(Math.max(0, s2 / s0 - m * m)) : m;
+}
 export const GAS_LEVELS = {L0: 400.0, L1: 100.0, L2: 25.0};
 export const STAR_LEVELS = {S0: 400.0, S1: 100.0, S2: 25.0};
 export const MU_ZERO = 36.57212566588;                 // mag arcsec^-2 of 1 L_AB0 per kpc^2 (design §2.7)
@@ -107,12 +177,33 @@ export function validateManifestV2(m) {
   need(m.gas, "gas", [["levels", x => Array.isArray(x) && x.every(L => /^L[012]$/.test(L))], ["fields", isObj]]);
   for (const [k, f] of Object.entries(m.gas.fields)) {
     const w = `gas.fields.${k}`;
+    /* vel3d: vx, vy, vz are linear velocity fields with no proj / vol_window (the viewer derives its windows) */
+    if (VEL_COMP_KEYS.includes(k)) {
+      need(f, w, [["label", isStr], ["units", isStr], ["kind", x => x === "velocity"], ["encoding", x => x === "linear"], ["component", x => x === k[1]],
+        ["vmin", isNum], ["vmax", isNum], ["cmap", isStr], ["cubes", isObj]]);
+      if (!(f.vmax > 0 && Math.abs(f.vmin + f.vmax) <= 1e-9 * f.vmax)) bad(w, "vmin must be −vmax < 0");
+      for (const L of m.gas.levels) cube(f.cubes[L], `${w}.cubes.${L}`, "gas", L, f.vmin, f.vmax);
+      continue;
+    }
     if (!VOL_KEYS.includes(k)) bad(w, "unknown field");
+    if (f.encoding !== undefined && !["log", "log10-u8"].includes(f.encoding)) bad(`${w}.encoding`, "unknown encoding");   // missing = log
     need(f, w, [["label", isStr], ["units", isStr], ["kind", x => ["density", "mass_weighted"].includes(x)], ["vmin", isNum], ["vmax", isNum],
       ["cmap", isStr], ["proj", isObj], ["vol_window", x => isVec(x, 2)], ["cubes", isObj]]);
     need(f.proj, `${w}.proj`, [["kind", x => ["column", "weighted_mean"].includes(x)], ["vmin", isNum], ["vmax", isNum]]);
     if (!(f.proj.vmax > f.proj.vmin)) bad(`${w}.proj`, "vmax ≤ vmin");
     for (const L of m.gas.levels) cube(f.cubes[L], `${w}.cubes.${L}`, "gas", L, f.vmin, f.vmax);
+  }
+  /* vel3d: optional gas.vectors (an old manifest has none: the velocity views are then shown as unavailable) */
+  if (m.gas.vectors !== undefined) {
+    if (!isObj(m.gas.vectors)) bad("gas.vectors", "not an object");
+    for (const [name, v] of Object.entries(m.gas.vectors)) {
+      const w = `gas.vectors.${name}`;
+      need(v, w, [["components", x => Array.isArray(x) && x.length === 3 && x.every(isStr)], ["units", isStr], ["frame", isStr], ["V", x => isNum(x) && x > 0]]);
+      for (const c of v.components) { const f = m.gas.fields[c];
+        if (!f) bad(`${w}.components`, `${c} is not a gas field`);
+        if (f.kind !== "velocity") bad(`${w}.components`, `${c} is not a velocity field`);
+        if (f.vmax !== v.V || f.vmin !== -v.V) bad(`${w}.V`, `${c} is not encoded on ±V`); }
+    }
   }
   need(m.stars, "stars", [["levels", x => Array.isArray(x) && x.every(L => /^S[012]$/.test(L))], ["bands", x => Array.isArray(x) && x.join() === "i,r,g"],
     ["display", isObj], ["cubes", isObj]]);

@@ -9,9 +9,16 @@
 image data of every WebP part as decoded by PIL (<part>.rgba, because node cannot decode WebP) and expect.json
 (raw bytes, dequantized values, layout probes, 200 Lupton golden values).
 
---full writes a complete manifest_v2 viz dir (L0-L2 x 6 fields, S0-S2) of an analytic galaxy: a thin exponential
-gas disk with spiral arms inside a cored halo with clumps, and a red bulge + bluer star-forming stellar disk. It is
-a stand-in until the real <library>/viz (default $TNG_WORK/data/library/viz) exists; it is not simulation data.
+--full writes a complete manifest_v2 viz dir (L0-L2 x 6 fields + vx, vy, vz, S0-S2) of an analytic galaxy: a thin
+exponential gas disk with spiral arms inside a cored halo with clumps, and a red bulge + bluer star-forming stellar
+disk. It is a stand-in until the real <library>/viz (default $TNG_WORK/data/library/viz) exists; it is not
+simulation data. Its velocity field (vel3d contract: disk frame, km/s, "linear" u8 with one ±V and gas.vectors):
+the disk rotates co-rotating about +z (v_c = 220 (1 - e^(-R/3 kpc)) km/s), the halo gas flows OUT at +120 km/s in a
+biconical wind (|cos θ| > 0.7) and IN at -60 km/s elsewhere, with a slow 40 km/s co-rotation.
+
+--out also writes vx, vy, vz 16^3 L1 cubes (V = 300 km/s; zero, ±V, clipped and empty probes) and
+manifest_v2_vel.json = manifest_v2.json + those three fields + gas.vectors (manifest_v2.json itself stays the old,
+velocity-free manifest, so the page can be tested against both); expect.json gains a "vel" block.
 
 Uses tngsight.vizpack (CORE) for quantize / dequantize / raw layout / atlas / WebP / gzip / Lupton when it is
 importable; otherwise the §2.3-§2.5 and §4.5 formulas written out below ("spec-fallback").
@@ -69,6 +76,45 @@ def quantize(v, mask, vmin, vmax):
         bad |= ~mask
     q[bad] = 0
     return q.astype(np.uint8)
+
+
+VEL_KEYS = ("vx", "vy", "vz")
+VEL_FRAME = "disk (xhat, yhat, Lhat), relative to SubhaloVel"
+
+
+def quantize_linear(v, mask, V):
+    """vel3d "linear" encoding: q = 0 empty (non-finite / masked), else 1 + rint((clip(v, -V, V) + V) / 2V * 254)."""
+    if VP is not None and hasattr(VP, "quantize_linear"):
+        return VP.quantize_linear(v, mask, V)
+    v = np.asarray(v, np.float64)
+    ok = np.isfinite(v) & (mask if mask is not None else True)
+    q = np.zeros(v.shape, np.uint8)
+    q[ok] = np.clip(1 + np.rint((np.clip(v[ok], -V, V) + V) / (2 * V) * 254), 1, 255).astype(np.uint8)
+    return q
+
+
+def dequantize_linear(q, V):
+    out = -V + (q.astype(np.float64) - 1) * 2 * V / 254
+    out[q == 0] = np.nan
+    return out
+
+
+def vel_field(k, V, cubes, source):
+    return {"label": f"v_{k[1]}", "units": "km/s", "kind": "velocity", "encoding": "linear", "component": k[1],
+            "vmin": -V, "vmax": V, "cmap": "tng_vel", "source": source, "frame": VEL_FRAME, "cubes": cubes}
+
+
+def vel_stats(q, V):
+    v = dequantize_linear(q, V)
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return {"frac_empty": 1.0, "p01": 0.0, "p50": 0.0, "p99": 0.0, "max": 0.0}
+    return {"frac_empty": float(1 - v.size / q.size), "p01": float(np.percentile(v, 1)), "p50": float(np.percentile(v, 50)),
+            "p99": float(np.percentile(v, 99)), "max": float(v.max())}
+
+
+def vectors(V):
+    return {"v": {"components": list(VEL_KEYS), "units": "km/s", "frame": VEL_FRAME, "V": V}}
 
 
 def dequantize(q, vmin, vmax):
@@ -236,6 +282,24 @@ def small(out: Path) -> int:
     (out / "stars" / "manifest_stars.json").write_text(json.dumps({"schema": "tng50-viz/2", "generator": {}, "levels": {"S1": levels["S1"]}, "stars": stars}))
     man = merged(levels, gas, stars)
     (out / "manifest_v2.json").write_text(json.dumps(man, indent=1))
+    # velocity cubes (vel3d contract) -> manifest_v2_vel.json; manifest_v2.json above stays velocity-free
+    VV = 300.0
+    vel_vals = {kk: 40.0 * ((i + 2 * j + 3 * k + 5 * c) % 21 - 10) for c, kk in enumerate(VEL_KEYS)}  # -400..400
+    vel_vals["vx"][0, 0, 0] = 0.0; vel_vals["vx"][1, 0, 0] = VV; vel_vals["vx"][2, 0, 0] = -VV
+    vel_vals["vx"][3, 0, 0] = 2 * VV; vel_vals["vx"][4, 0, 0] = -5 * VV                # clipped to ±V
+    for kk in VEL_KEYS:
+        vel_vals[kk][5, 0, 0] = np.nan                                         # one empty voxel (all components)
+    vel_q, vel_cubes = {}, {}
+    for kk in VEL_KEYS:
+        vel_q[kk] = quantize_linear(vel_vals[kk], None, VV)
+        vel_cubes[kk] = write_cube(out, "gas/L1", kk, raw_gas(vel_q[kk]), atlas_parts(vel_q[kk]), "gas", -VV, VV,
+                                   vel_stats(vel_q[kk], VV))
+        for p in vel_cubes[kk]["webp"]["paths"]:
+            im = Image.open(out / p).convert("RGBA")
+            (out / (p + ".rgba")).write_bytes(np.asarray(im, np.uint8).tobytes())
+    gas_v = {"levels": ["L1"], "fields": {**gas["fields"], **{kk: vel_field(kk, VV, {"L1": vel_cubes[kk]}, "fixture")
+                                                              for kk in VEL_KEYS}}, "vectors": vectors(VV)}
+    (out / "manifest_v2_vel.json").write_text(json.dumps(merged(levels, gas_v, stars), indent=1))
     rng = np.random.default_rng(7)                                     # 200 Lupton golden inputs (+ edge cases)
     S0 = 10 ** (0.4 * (MU_ZERO - 21.5))
     L = 10 ** rng.uniform(-3, 3.5, (200, 1)) * S0
@@ -251,7 +315,18 @@ def small(out: Path) -> int:
         "stars": {"vmin": svmin, "vmax": svmax, "raw_sha256": sha(raws)},
         "probe": {"i": 5, "j": 3, "k": 9, "gas_value_log10": float(np.log10(vals[5, 3, 9])),
                   "star_q": [int(qi[5, 3, 9]), int(qr[5, 3, 9]), int(qgg[5, 3, 9])]},
-        "lupton": {"Q": 8.0, "mu0": 21.5, "inputs": inp.tolist(), "rgb8": lup.tolist()}}))
+        "lupton": {"Q": 8.0, "mu0": 21.5, "inputs": inp.tolist(), "rgb8": lup.tolist()},
+        "vel": {"V": VV, "manifest": "manifest_v2_vel.json", "decode": "v = -V + (q - 1) * 2V / 254, q = 0 empty",
+                **{kk: {"raw_sha256": sha(raw_gas(vel_q[kk])), "q": list(raw_gas(vel_q[kk])),
+                        "decoded": [None if not np.isfinite(x) else float(x)
+                                    for x in dequantize_linear(vel_q[kk], VV).transpose(2, 1, 0).ravel()]}
+                   for kk in VEL_KEYS},
+                "probes": {"zero": {"i": 0, "j": 0, "k": 0, "q": 128, "v": 0.0},
+                           "plus_V": {"i": 1, "j": 0, "k": 0, "q": 255, "v": VV},
+                           "minus_V": {"i": 2, "j": 0, "k": 0, "q": 1, "v": -VV},
+                           "clip_hi": {"i": 3, "j": 0, "k": 0, "q": 255, "v": VV},
+                           "clip_lo": {"i": 4, "j": 0, "k": 0, "q": 1, "v": -VV},
+                           "empty": {"i": 5, "j": 0, "k": 0, "q": 0, "v": None}}}}))
     print(f"wrote 16^3 viz fixture ({'tngsight.vizpack' if VP else 'spec-fallback'}) to {out}")
     return 0
 
@@ -289,6 +364,32 @@ def galaxy_gas(half, n, mask_r):
     out = {"nH": nH, "T": T, "Z": Z, "OVI": OVI, "HI": HI, "CIII": CIII}
     m = (r <= mask_r) if mask_r else None
     return out, m
+
+
+def galaxy_vel(half, n, mask_r):
+    """Synthetic disk-frame velocity (km/s) of `galaxy_gas`: the mass-weighted mix of a co-rotating disk
+    (v_c = 220 (1 - e^(-R/3))) and a halo with a biconical +120 km/s outflow (|cos θ| > 0.7), -60 km/s inflow
+    elsewhere and a 40 km/s co-rotation. NaN outside the L0 mask (empty)."""
+    d, m = galaxy_gas(half, n, mask_r)
+    dx = 2 * half / n
+    c = -half + (np.arange(n) + 0.5) * dx
+    x, y, z = np.meshgrid(c, c, c, indexing="ij")
+    R = np.sqrt(x * x + y * y) + 1e-6
+    r = np.sqrt(x * x + y * y + z * z) + 1e-6
+    ph = (-y / R, x / R, 0 * x)
+    rh = (x / r, y / r, z / r)
+    zd = 0.25 + 0.03 * R
+    disk = 1.5 * np.exp(-R / 4.5) * _zavg_sech2(z, dx, zd) * (R < 40)
+    disk_f = np.clip(disk / d["nH"], 0, 1)
+    vc = 220 * (1 - np.exp(-R / 3.0))
+    vr_h = np.where(np.abs(z / r) > 0.7, 120.0, -60.0)
+    out = {}
+    for a, kk in enumerate(VEL_KEYS):
+        v = disk_f * vc * ph[a] + (1 - disk_f) * (vr_h * rh[a] + 40.0 * ph[a])
+        if m is not None:
+            v = np.where(m, v, np.nan)
+        out[kk] = v
+    return out, d["nH"], m
 
 
 def galaxy_stars(half, n, mask_r):
@@ -367,6 +468,24 @@ def full(out: Path, n: int, method: int) -> int:
             fields[k]["cubes"][L] = write_cube(out, f"gas/{L}", k, raw_gas(q), atlas_parts(q), "gas", vmin, vmax, stats_of(q, vmin, vmax), method)
         print(f"  gas {k}: range [{vmin}, {vmax}], proj [{proj['vmin']}, {proj['vmax']}], vol_window {fields[k]['vol_window']}  ({time.time() - t0:.0f} s)")
     del data
+    vel, wts = {}, {}
+    for L, half in GAS_LEVELS.items():
+        vel[L], wts[L], _ = galaxy_vel(half, n, 400.0 if L == "L0" else None)
+    a0 = np.concatenate([np.abs(vel["L0"][kk]).ravel() for kk in VEL_KEYS])
+    w0 = np.concatenate([wts["L0"].ravel()] * 3)
+    ok = np.isfinite(a0)
+    o = np.argsort(a0[ok], kind="stable")
+    cw = np.cumsum(w0[ok][o])
+    p999 = float(a0[ok][o][min(int(np.searchsorted(cw, 0.999 * cw[-1])), o.size - 1)])
+    VV = float(max(50.0, 50.0 * math.ceil(round(p999 / 50.0, 9))))                 # mass-weighted p99.9, up to 50
+    for kk in VEL_KEYS:
+        cubes = {}
+        for L in GAS_LEVELS:
+            q = quantize_linear(vel[L][kk], None, VV)
+            cubes[L] = write_cube(out, f"gas/{L}", kk, raw_gas(q), atlas_parts(q), "gas", -VV, VV, vel_stats(q, VV), method)
+        fields[kk] = vel_field(kk, VV, cubes, "synthetic fixture (not simulation data)")
+    print(f"  gas vx, vy, vz: linear [-{VV:.0f}, {VV:.0f}] km/s  ({time.time() - t0:.0f} s)")
+    del vel, wts
     scubes = {}
     for S, half in STAR_LEVELS.items():
         mask_r = 400.0 if S == "S0" else None
@@ -382,7 +501,7 @@ def full(out: Path, n: int, method: int) -> int:
         scubes[S] = write_cube(out, f"stars/{S}", "gri", raw_stars(qi, qr, qg), atlas_parts(np.stack([qi, qr, qg], -1)), "stars",
                                vmin, vmax, stats_of(qr, vmin, vmax), method)
         print(f"  stars {S}: range [{vmin}, {vmax}]  ({time.time() - t0:.0f} s)")
-    gas = {"levels": list(GAS_LEVELS), "fields": fields}
+    gas = {"levels": list(GAS_LEVELS), "fields": fields, "vectors": vectors(VV)}
     stars = {"levels": list(STAR_LEVELS), "bands": ["i", "r", "g"], "units": "L_AB0 kpc^-3 (L_AB0 = luminosity of an M_AB = 0 source)",
              "photometry": "synthetic fixture", "exclude": "GFM_StellarFormationTime <= 0", "display": star_display(), "cubes": scubes}
     (out / "manifest_v2.json").write_text(json.dumps(merged(levels, gas, stars), indent=1))

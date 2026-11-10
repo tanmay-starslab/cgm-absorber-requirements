@@ -414,7 +414,7 @@ def test_build_script_check_only_writes_the_report(tmp_path, monkeypatch):
     for L in FAKE_N:                                       # the deposit numbers stage 4 reports
         f = cache / f"{L}.json"
         f.write_text(json.dumps({**json.loads(f.read_text()), **side}))
-    monkeypatch.setattr(bv, "get_cells", lambda cache, index, lock, force=False: cells)
+    monkeypatch.setattr(bv, "get_cells", lambda cache, index, lock, force=False, **kw: cells)
     frag = {"gas": {"fields": {}, "levels": {L: {} for L in V.GAS_LEVELS}}}
     monkeypatch.setattr(bv, "old_fragment", lambda viz: frag)
     monkeypatch.setattr(bv, "validate", lambda frag, viz: "skipped (test)")
@@ -432,6 +432,173 @@ def test_build_script_check_only_writes_the_report(tmp_path, monkeypatch):
     r = json.loads(rep.read_text())
     assert r["checks"]["summary"]["n_rows"] == 3 and r["checks"]["fails"] == [] and r["checks"]["reference"] == []
     assert r["checks"]["rows"][-1]["thin"] is None and r["checks"]["rows"][-1]["d_thin"] is None
+
+
+# ------------------------------------------------------------------------------- 6c. velocity fields (vel3d)
+def _box_velocity(v_disk):
+    """Inverse of V.to_disk_velocity: box-axis peculiar velocity whose disk-frame value relative to SubhaloVel
+    is v_disk."""
+    return np.asarray(v_disk, float) @ D.disk_frame() + np.asarray(config.GALAXY["SubhaloVel_kms"], float)
+
+
+def test_to_disk_velocity_bulk_and_rotation():
+    R = D.disk_frame()
+    assert np.allclose(R @ R.T, np.eye(3), atol=1e-6)
+    rng = np.random.default_rng(1)
+    v_disk = rng.normal(0, 150, (100, 3))
+    np.testing.assert_allclose(V.to_disk_velocity(_box_velocity(v_disk)), v_disk, atol=1e-9)
+    # the galaxy's own bulk velocity is zero; a velocity along Lhat is pure +z; along xhat pure +x
+    S = np.asarray(config.GALAXY["SubhaloVel_kms"], float)
+    np.testing.assert_allclose(V.to_disk_velocity(S[None]), [[0, 0, 0]], atol=1e-9)
+    np.testing.assert_allclose(V.to_disk_velocity((S + 100 * np.asarray(config.GALAXY["Lhat"]))[None]),
+                               [[0, 0, 100]], atol=1e-4)
+    np.testing.assert_allclose(V.to_disk_velocity((S + 50 * np.asarray(config.GALAXY["xhat"]))[None]),
+                               [[50, 0, 0]], atol=1e-4)
+
+
+def test_cell_velocities_from_h5(tmp_path):
+    import h5py
+    rng = np.random.default_rng(2)
+    x_box = np.asarray(config.GALAXY["center_kpc"]) + rng.uniform(-50, 50, (40, 3))
+    v_disk = rng.normal(0, 100, (40, 3))
+    p = tmp_path / "cut.hdf5"
+    with h5py.File(p, "w") as f:
+        f.create_group("Header").attrs["Time"] = 1.0
+        g = f.create_group("PartType0")
+        g["Coordinates"] = (x_box * V.TNG_H).astype(np.float32)
+        g["Velocities"] = _box_velocity(v_disk).astype(np.float32)
+    pos = D.to_disk((x_box * V.TNG_H).astype(np.float32).astype(np.float64) / V.TNG_H)
+    np.testing.assert_allclose(V.cell_velocities(p, pos), v_disk, atol=0.05)     # float32 storage
+    with pytest.raises(RuntimeError, match="order"):
+        V.cell_velocities(p, pos[::-1])
+    with h5py.File(p, "a") as f:
+        f["Header"].attrs["Time"] = 0.5
+    with pytest.raises(ValueError, match="a = 0.5"):
+        V.cell_velocities(p)
+
+
+def _rotating_disk(omega=8.0, bulk=(0.0, 0.0, 0.0), spacing=2.0, rmax=60.0, zmax=6.0):
+    """A uniform lattice of equal cells filling a disk (R < rmax, |z| < zmax) in solid-body rotation about +Lhat,
+    v_disk = Ω ẑ × p (km/s, Ω in km/s/kpc), plus a bulk velocity, given as box-axis velocities."""
+    g = np.arange(-rmax, rmax + 1e-9, spacing)
+    gz = np.arange(-zmax, zmax + 1e-9, spacing)
+    x, y, z = (a.ravel() for a in np.meshgrid(g, g, gz, indexing="ij"))
+    keep = np.hypot(x, y) < rmax
+    pos = np.stack([x[keep], y[keep], z[keep]], axis=1)
+    v_disk = omega * np.stack([-pos[:, 1], pos[:, 0], np.zeros(len(pos))], axis=1) + np.asarray(bulk, float)
+    n = len(pos)
+    cells = _cells(pos, np.full(n, 1.5 * spacing), np.full(n, 1e64), np.ones(n), np.full(n, 1e4), np.ones(n))
+    cells["vel_disk"] = V.to_disk_velocity(_box_velocity(v_disk))
+    return cells, v_disk
+
+
+def test_solid_body_rotation_deposit_vphi_positive_vr_zero():
+    """Solid-body rotation about Lhat in the galaxy rest frame: after the deposit every filled voxel well inside the
+    disk has v_phi > 0 (co-rotating) and v_r ≈ 0, v_z ≈ 0; mass·velocity is conserved; empty voxels are NaN."""
+    omega = 8.0
+    cells, v_disk = _rotating_disk(omega)
+    n = 32                                                         # L1: Δ = 6.25 kpc
+    cubes, dep = V.build_level(cells, "L1", n=n, keys=("vx", "vy", "vz"))
+    assert set(cubes) == {"nH", "vx", "vy", "vz", "m"} and set(dep.grids) == {"N_nH", "m", "mvx", "mvy", "mvz"}
+    m = cubes["m"]
+    for i, k in enumerate(("vx", "vy", "vz")):                      # Σ m·v conserved (all elements inside)
+        assert abs(float(np.nansum(cubes[k] * m)) - float(np.sum(v_disk[:, i]))) <= 1e-9 * np.abs(v_disk).sum()
+    assert np.array_equal(np.isnan(cubes["vx"]), m <= 0) and np.isnan(cubes["vx"]).any()
+    c = (np.arange(n) + 0.5) * (200.0 / n) - 100.0
+    X, Y, Z = np.meshgrid(c, c, c, indexing="ij")
+    Rc = np.hypot(X, Y)
+    sel = (m > 0) & (Rc > 10) & (Rc < 45) & (np.abs(Z) < 4)
+    assert sel.sum() > 100
+    phi_x, phi_y = -Y / Rc, X / Rc
+    vphi = cubes["vx"] * phi_x + cubes["vy"] * phi_y
+    vr = cubes["vx"] * X / Rc + cubes["vy"] * Y / Rc
+    assert np.all(vphi[sel] > 0)
+    np.testing.assert_allclose(vphi[sel], omega * Rc[sel], rtol=0.03)          # the rotation curve itself
+    assert np.max(np.abs(vr[sel])) < 0.02 * np.max(vphi[sel])
+    assert np.max(np.abs(cubes["vz"][sel])) < 1e-9
+    # a bulk velocity of the gas relative to the galaxy shows up in every voxel; mass-weighted mean = the bulk
+    cb, _ = _rotating_disk(omega, bulk=(0.0, 0.0, 40.0))
+    cubes2, _ = V.build_level(cb, "L1", n=n, keys=("vx", "vy", "vz"))
+    mw = float(np.nansum(cubes2["vz"] * cubes2["m"]) / cubes2["m"].sum())
+    assert abs(mw - 40.0) < 1e-9 and abs(float(np.nansum(cubes["vx"] * m) / m.sum())) < 1e-9
+
+
+def test_velocity_level_cubes_masked_and_mixed_keys():
+    cells, _ = _rotating_disk(5.0, spacing=8.0, rmax=60.0)
+    cubes, dep = V.build_level(cells, "L0", n=16, keys=("nH", "T", "vx", "vy", "vz"))
+    assert set(cubes) == {"nH", "T", "vx", "vy", "vz", "m"}
+    # L0 mask: voxels with centre r > 400 kpc are empty (NaN) and carry no mass
+    msk = V.level_mask("L0", 16)
+    assert np.all(np.isnan(cubes["vx"][~msk])) and np.all(cubes["m"][~msk] == 0)
+    q = V.VP.quantize_linear(cubes["vx"], msk, 300.0)
+    assert np.array_equal(q > 0, np.isfinite(cubes["vx"]))
+    st = V.vel_stats(cubes["vx"], q, cubes["m"])
+    assert {"frac_empty", "p01", "p50", "p99", "max", "mean_mass_weighted"} <= set(st)
+    # default keys unchanged: no velocity, no m
+    c0, _ = V.build_level(cells, "L0", n=16, keys=("nH",))
+    assert set(c0) == {"nH"}
+
+
+def _vel_cells():
+    cells, _ = _rotating_disk(6.0, spacing=4.0, rmax=40.0, zmax=4.0)
+    return cells
+
+
+def test_build_script_velocity_merge_keeps_old_fields(tmp_path, monkeypatch):
+    """build_volumes main() end to end on small cubes: an nH build and a manifest_v2 from it, then
+    `--fields vx,vy,vz`: the velocity fields and gas.vectors are merged into manifest_v2.json, every old field and
+    block stays byte-identical, nothing is rebuilt for nH, and the cubes decode to the float cubes."""
+    import gzip
+    bv = _build_script()
+    nn = 16
+    cells = _vel_cells()
+    orig_build, orig_mask, orig_levels = V.build_level, V.level_mask, V.levels_block
+    monkeypatch.setattr(V, "N", nn)
+    monkeypatch.setattr(V, "build_level", lambda c, L, workers=1, n=None, progress=None, keys=V.VOL_KEYS:
+                        orig_build(c, L, workers=workers, n=nn, progress=progress, keys=keys))
+    monkeypatch.setattr(V, "level_mask", lambda L, n=None: orig_mask(L, nn))
+    monkeypatch.setattr(V, "levels_block", lambda levels=tuple(V.GAS_LEVELS), n=None: orig_levels(levels, nn))
+    monkeypatch.setattr(V, "proj_window", lambda cubes, key, r200=None: {"kind": "column", "units": "cm^-2",
+                                                                          "vmin": 18.0, "vmax": 22.0})
+    monkeypatch.setattr(bv, "get_cells", lambda cache, index, lock, force=False, **kw: cells)
+    monkeypatch.setattr(bv, "CHECKS", {L: () for L in ("L0", "L1", "L2")})
+    viz, cache = tmp_path / "viz", tmp_path / "cache"
+    common = ["--library", str(tmp_path / "lib"), "--cache", str(cache), "--viz", str(viz), "--lock", "",
+              "--workers", "1", "--allow-range", "nH"]
+    assert bv.main(common + ["--fields", "nH"]) == 0
+    frag0 = json.loads((viz / "gas" / "manifest_gas.json").read_text())
+    man0 = V.merged_for_validation(frag0)
+    (viz / "manifest_v2.json").write_text(json.dumps(man0, indent=1) + "\n")
+    before = json.loads((viz / "manifest_v2.json").read_text())
+    nh_npy = {L: (cache / f"{L}_nH.npy").stat().st_mtime_ns for L in V.GAS_LEVELS}
+    nh_files = sorted(p.name for p in (viz / "gas").rglob("nH.*"))
+    assert bv.main(common + ["--fields", "vx,vy,vz"]) == 0
+    man = json.loads((viz / "manifest_v2.json").read_text())
+    assert list(man["gas"]["fields"]) == ["nH", "vx", "vy", "vz"]
+    assert json.dumps(man["gas"]["fields"]["nH"]) == json.dumps(before["gas"]["fields"]["nH"])
+    for k in before:
+        if k != "gas":
+            assert json.dumps(man[k]) == json.dumps(before[k]), k
+    assert sorted(p.name for p in (viz / "gas").rglob("nH.*")) == nh_files
+    VV = man["gas"]["vectors"]["v"]["V"]
+    assert VV > 0 and VV % 50 == 0 and man["gas"]["vectors"]["v"]["components"] == ["vx", "vy", "vz"]
+    for k in V.VEL_KEYS:
+        f = man["gas"]["fields"][k]
+        assert f["kind"] == "velocity" and f["encoding"] == "linear" and f["vmin"] == -VV and f["vmax"] == VV
+        assert "proj" not in f and "vol_window" not in f and f["cmap"] == "tng_vel"
+        for L, c in f["cubes"].items():
+            raw = gzip.decompress((viz / c["gz"]["path"]).read_bytes())
+            q = np.frombuffer(raw, np.uint8).reshape(nn, nn, nn).transpose(2, 1, 0)
+            fl = np.load(cache / f"{L}_{k}.npy").astype(np.float64)
+            assert np.array_equal(q > 0, np.isfinite(fl))
+            fin = np.isfinite(fl)
+            assert np.max(np.abs(V.VP.dequantize_linear(q[fin], VV) - np.clip(fl[fin], -VV, VV))) <= VV / 254 + 1e-6
+    V.VP.validate_manifest_v2(man, base_dir=viz, sections=("gas",))
+    side = json.loads((cache / "L1.json").read_text())
+    assert max(side["momentum_conservation_rel"].values()) < 1e-9
+    # a partial velocity build is refused (one V for the three components)
+    with pytest.raises(SystemExit):
+        bv.main(common + ["--fields", "vx"])
 
 
 # ------------------------------------------------------------------------------- 7. real data (slow)

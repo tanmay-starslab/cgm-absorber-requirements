@@ -52,6 +52,13 @@ MU_ZERO = 5 * math.log10(100 * 206264.80624709636)        # 36.57212566588 mag a
 BANDS = {"g": 4, "r": 5, "i": 6}
 LUT_NAMES = ("tng_dusk", "tng_ice", "magma", "inferno", "viridis", "cividis", "grey")
 PARTS, SLICES_PER_PART, COLS, ROWS = 4, 64, 16, 4
+# Velocity components (vel3d contract): disk-frame (xhat, yhat, Lhat) mass-weighted mean velocity relative to
+# SubhaloVel, km/s, "linear" u8 encoding with one symmetric range ±V shared by the three components and all levels.
+VEL_KEYS = ("vx", "vy", "vz")
+VEL_COMPONENT = {"vx": "x", "vy": "y", "vz": "z"}
+VEL_LUTS = ("tng_vel",)                        # diverging map the viewer supplies (not in luts.json / LUT_NAMES)
+VEL_STEP = 50.0                                # V is rounded UP to a multiple of this (km/s)
+VEL_FRAME = "disk (xhat, yhat, Lhat), relative to SubhaloVel"
 
 
 # ============================================================================== geometry
@@ -127,6 +134,54 @@ def dequantize(q, vmin, vmax) -> np.ndarray:
     out = vmin + (q.astype(np.float64) - 1.0) * (vmax - vmin) / 254.0
     out[q == 0] = np.nan
     return out
+
+
+# ------------------------------------------------------------------------------ "linear" encoding (velocities)
+def quantize_linear(values, mask, V) -> np.ndarray:
+    """Signed linear u8 (vel3d contract): q = 0 empty (non-finite value or mask False), else
+    q = 1 + rint((clip(v, −V, V) + V) / (2V) · 254), so v = 0 → q = 128, v ≤ −V → 1, v ≥ V → 255."""
+    V = float(V)
+    if not V > 0:
+        raise ValueError(f"quantize_linear: V must be > 0, got {V}")
+    v = np.asarray(values, dtype=np.float64)
+    ok = np.isfinite(v)
+    if mask is not None:
+        ok &= np.asarray(mask, dtype=bool)
+    q = np.zeros(v.shape, dtype=np.uint8)
+    s = (np.clip(v[ok], -V, V) + V) / (2.0 * V) * 254.0
+    q[ok] = np.clip(1.0 + np.rint(s), 1, 255).astype(np.uint8)
+    return q
+
+
+def dequantize_linear(q, V) -> np.ndarray:
+    """Inverse of `quantize_linear`: v = −V + (q − 1)·2V/254 (km/s); NaN where q = 0."""
+    q = np.asarray(q)
+    out = -float(V) + (q.astype(np.float64) - 1.0) * 2.0 * float(V) / 254.0
+    out[q == 0] = np.nan
+    return out
+
+
+def weighted_percentile(values, weights, pct) -> float:
+    """Weighted percentile (inverse of the weight CDF at pct/100, lower step; no interpolation)."""
+    v = np.asarray(values, dtype=np.float64).ravel()
+    w = np.asarray(weights, dtype=np.float64).ravel()
+    ok = np.isfinite(v) & np.isfinite(w) & (w > 0)
+    v, w = v[ok], w[ok]
+    if v.size == 0:
+        raise ValueError("weighted_percentile: no positive weight")
+    o = np.argsort(v, kind="stable")
+    c = np.cumsum(w[o])
+    i = int(np.searchsorted(c, float(pct) / 100.0 * c[-1], side="left"))
+    return float(v[o][min(i, v.size - 1)])
+
+
+def vel_range(components, weights, step=VEL_STEP) -> float:
+    """V of the vel3d contract: the weight(mass)-weighted 99.9th percentile of |v_i| pooled over the given
+    component arrays (non-empty voxels: finite v and weight > 0), rounded UP to a multiple of `step` (≥ step)."""
+    a = np.concatenate([np.abs(np.asarray(c, dtype=np.float64)).ravel() for c in components])
+    w = np.concatenate([np.asarray(weights, dtype=np.float64).ravel()] * len(components))
+    p = weighted_percentile(a, w, 99.9)
+    return float(max(step, step * math.ceil(round(p / step, 9))))
 
 
 # ============================================================================== §2.2 raw bytes
@@ -464,6 +519,9 @@ def _validate_gas(gas, need, bad, cube, isstr, isobj):
                       ("fields", lambda x: isinstance(x, dict) and len(x) > 0)])
     for k, f in gas["fields"].items():
         w = f"gas.fields.{k}"
+        if k in VEL_KEYS:
+            _validate_vel_field(k, f, w, gas, need, bad, cube, isstr, isobj)
+            continue
         if k not in VOL_KEYS:
             bad(w, "unknown field")
         need(f, w, [("label", isstr), ("units", lambda x: isinstance(x, str)),
@@ -486,6 +544,66 @@ def _validate_gas(gas, need, bad, cube, isstr, isobj):
             bad(f"{w}.cubes", f"{sorted(f['cubes'])} != gas.levels {gas['levels']}")
         for L in gas["levels"]:
             cube(f["cubes"][L], f"{w}.cubes.{L}", "gas", L, f"gas/{L}/{k}", f["vmin"], f["vmax"])
+    if "vectors" in gas:
+        _validate_vectors(gas, need, bad, isstr, isobj)
+
+
+def _validate_vel_field(k, f, w, gas, need, bad, cube, isstr, isobj):
+    """A velocity component (vel3d contract): kind velocity, linear encoding, symmetric ±V, no proj/vol_window."""
+    need(f, w, [("label", isstr), ("units", lambda x: x == "km/s"), ("kind", lambda x: x == "velocity"),
+                ("encoding", lambda x: x == "linear"), ("component", lambda x: x == VEL_COMPONENT[k]),
+                ("source", isstr), ("frame", isstr), ("vmin", _num), ("vmax", _num),
+                ("cmap", lambda x: x in VEL_LUTS or x in LUT_NAMES), ("cubes", isobj)])
+    if not (f["vmax"] > 0 and f["vmin"] == -f["vmax"]):
+        bad(w, f"range [{f['vmin']}, {f['vmax']}] must be [-V, V] with V > 0")
+    for x in ("proj", "vol_window"):
+        if x in f:
+            bad(f"{w}.{x}", "not allowed on a velocity field (the viewer derives it)")
+    if set(f["cubes"]) != set(gas["levels"]):
+        bad(f"{w}.cubes", f"{sorted(f['cubes'])} != gas.levels {gas['levels']}")
+    for L in gas["levels"]:
+        cube(f["cubes"][L], f"{w}.cubes.{L}", "gas", L, f"gas/{L}/{k}", f["vmin"], f["vmax"])
+
+
+def _validate_vectors(gas, need, bad, isstr, isobj):
+    if not isobj(gas["vectors"]):
+        bad("gas.vectors", "not an object")
+    for name, vec in gas["vectors"].items():
+        w = f"gas.vectors.{name}"
+        need(vec, w, [("components", lambda x: isinstance(x, list) and len(x) == 3 and all(isstr(c) for c in x)),
+                      ("units", isstr), ("frame", isstr), ("V", _num)])
+        for c in vec["components"]:
+            f = gas["fields"].get(c)
+            if not isinstance(f, dict) or f.get("kind") != "velocity":
+                bad(w, f"component {c!r} is not a velocity field of gas.fields")
+            if f["vmax"] != vec["V"] or f["vmin"] != -vec["V"]:
+                bad(w, f"V {vec['V']} differs from {c} range [{f['vmin']}, {f['vmax']}]")
+
+
+def merge_gas_fields(viz_dir, frag, keys) -> dict:
+    """Merge the gas fields `keys` (and `gas.vectors`, when the fragment has it) of the gas fragment `frag` into
+    an EXISTING viz_dir/manifest_v2.json, in place: every other key of the manifest (other fields, stars, levels,
+    created, generator, luts) is kept exactly as it was; a new field is appended after the existing ones, an
+    existing one is replaced at its position. The result is validated against the files in viz_dir, then
+    written atomically (indent=1, like `merge`). Returns the merged manifest."""
+    viz = Path(viz_dir)
+    p = viz / "manifest_v2.json"
+    man = json.loads(p.read_text())
+    if man.get("schema") != SCHEMA or "gas" not in man:
+        raise ValueError(f"merge_gas_fields: {p} is not a {SCHEMA} manifest with a gas section")
+    fields = man["gas"]["fields"]
+    for k in keys:
+        if k not in frag["gas"]["fields"]:
+            raise ValueError(f"merge_gas_fields: field {k!r} not in the fragment")
+        if set(frag["gas"]["fields"][k]["cubes"]) != set(man["gas"]["levels"]):
+            raise ValueError(f"merge_gas_fields: {k} levels {sorted(frag['gas']['fields'][k]['cubes'])} != "
+                             f"manifest gas.levels {man['gas']['levels']}")
+        fields[k] = frag["gas"]["fields"][k]
+    if "vectors" in frag["gas"]:
+        man["gas"]["vectors"] = frag["gas"]["vectors"]
+    validate_manifest_v2(man, base_dir=viz, sections=tuple(k for k in ("gas", "stars") if k in man))
+    _atomic(p, (json.dumps(man, indent=1) + "\n").encode())
+    return man
 
 
 def _validate_stars(st, need, bad, cube, isstr, isobj):

@@ -14,8 +14,17 @@ export const STOPS = {
   grey: "00000000070707070f0f0f0f171717171f1f1f1f272727272f2f2f2f373737373f3f3f3f474747474f4f4f4f575757575f5f5f5f676767676f6f6f6f777777777f7f7f7f878787878f8f8f8f979797979f9f9f9fa7a7a7a7afafafafb7b7b7b7bfbfbfbfc7c7c7c7cfcfcfcfd7d7d7d7dfdfdfdfe7e7e7e7efefefeff7f7f7f7ffffffff"
 };
 export const NAMES = ["tng_dusk", "tng_ice", "magma", "inferno", "viridis", "cividis", "grey"];
+/* vel3d: the velocity views' maps (OKLab, same stop format; not in luts.json, so not in NAMES or the field-colour list).
+   tng_vel is diverging: blue (approaching, inflow, counter-rotating) through a neutral grey at 0 to red (receding,
+   outflow, co-rotating), lightness rising from 0.66 at 0 to 0.80 at both ends so neither sign fades into the dark stage.
+   tng_speed is sequential (violet to pale yellow, OKLab L 0.40 to 0.96) for |v| and σ_los. */
+export const VEL_STOPS = {
+  tng_vel: "006ec2ff0870c0ff1072bdff1875bbff2077b8ff2879b6fa307bb3f2387db1eb407faee34881abdb5083a8d25885a5ca6087a2c168899fb7708b9bad788e97a18094929287a1928f8fac938d97b6938c9fbf938aa7c79489afcf9488b7d69487bfde9486c7e59584cfec9583d7f29582dff99581e7ff9580efff957ff7ff957effff957d",
+  tng_speed: "00503975085a3b7b10643c80186e3d8520793f892884408c308f418d389a428e40a5438e48b0458e50bb478c58c64a8960d04d8668d9508270e2557d78eb5a7980f2607387f9666f8fff6d6a97ff75659fff7e60a7ff875dafff915bb7ff9a5abfffa45bc7ffae5fcfffb864d7ffc26bdfffcc74e7ffd57fefffde8af7ffe796fffff0a3"
+};
+export const VEL_NAMES = {signed: ["tng_vel"], unsigned: ["tng_speed", "magma", "inferno", "viridis", "cividis", "grey"]};
 export function lut(name, n = 256) {      // -> Uint8Array(n*4) RGBA
-  const hex = STOPS[name] || STOPS.tng_dusk, m = hex.length / 8, out = new Uint8Array(n * 4);
+  const hex = STOPS[name] || VEL_STOPS[name] || STOPS.tng_dusk, m = hex.length / 8, out = new Uint8Array(n * 4);
   const c = (i, j) => parseInt(hex.substr(8 * i + 2 * j, 2), 16);     // j = 0: entry index, 1..3: R, G, B
   for (let k = 0, i = 0; k < n; k++) {
     const x = k / (n - 1) * 255;

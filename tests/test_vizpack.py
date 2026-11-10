@@ -238,3 +238,122 @@ def test_cli(tmp_path, capsys):
     assert VP.main(["validate", str(viz)]) == 0
     assert "OK" in capsys.readouterr().out
     assert VP.main(["bogus"]) == 2
+
+
+# ------------------------------------------------------------------------------- velocity fields (vel3d contract)
+def test_linear_encoding_roundtrip_zero_clip_empty():
+    V = 300.0
+    v = np.array([0.0, -V, V, -2 * V, 5 * V, 1.0, -1.0, np.nan, np.inf, 150.0])
+    q = VP.quantize_linear(v, None, V)
+    assert q.dtype == np.uint8
+    assert q[0] == 128                                         # v = 0 -> q = 128 exactly
+    assert q[1] == 1 and q[2] == 255 and q[3] == 1 and q[4] == 255   # ±V ends and clipping
+    assert q[7] == 0 and q[8] == 0                             # non-finite -> empty
+    assert q[9] == 1 + round((150 + V) / (2 * V) * 254)
+    d = VP.dequantize_linear(q, V)
+    assert d[0] == 0.0 and d[1] == -V and d[2] == V and np.isnan(d[7])
+    # round trip within half a step everywhere inside ±V
+    x = np.linspace(-V, V, 10001)
+    err = np.abs(VP.dequantize_linear(VP.quantize_linear(x, None, V), V) - x)
+    assert err.max() <= V / 254 + 1e-9
+    # mask False -> empty; all-empty input
+    m = np.ones(v.shape, bool); m[0] = False
+    assert VP.quantize_linear(v, m, V)[0] == 0
+    assert not VP.quantize_linear(np.full(5, np.nan), None, V).any()
+    with pytest.raises(ValueError):
+        VP.quantize_linear(v, None, 0.0)
+
+
+def test_vel_range_weighted_and_rounded():
+    a = np.array([10.0, 20.0, 1000.0])
+    w = np.array([1.0, 1.0, 1e-6])                             # a tiny-mass outlier does not set V
+    assert VP.vel_range([a, -a, a], w) == 50.0
+    w2 = np.array([1.0, 1.0, 1.0])
+    assert VP.vel_range([a], w2) == 1000.0                    # exact multiple stays
+    assert VP.vel_range([a + 0.5], w2) == 1050.0               # rounded UP
+    assert VP.vel_range([np.array([np.nan, 120.0])], np.array([5.0, 1.0])) == 150.0   # NaN = empty voxel
+    assert VP.weighted_percentile([1, 2, 3, 4], [1, 1, 1, 1], 50) == 2.0
+
+
+def _vel_frag(root, n=16, V=250.0, levels=("L1",)):
+    rng = np.random.default_rng(3)
+    fields = {}
+    for i, k in enumerate(VP.VEL_KEYS):
+        cubes = {}
+        for L in levels:
+            q = VP.quantize_linear(rng.normal(0, 100, (n, n, n)), None, V)
+            cubes[L] = VP.write_cube(root, f"gas/{L}", k, VP.raw_gas(q), VP.atlas_parts(q), kind="gas",
+                                     vmin=-V, vmax=V, stats=_stats(), deposit=_dep())
+        fields[k] = {"label": f"v_{'xyz'[i]}", "units": "km/s", "kind": "velocity", "encoding": "linear",
+                     "component": "xyz"[i], "vmin": -V, "vmax": V, "cmap": "tng_vel", "source": "synthetic",
+                     "frame": VP.VEL_FRAME, "cubes": cubes}
+    return {"schema": VP.SCHEMA, "generator": {}, "levels": {},
+            "gas": {"levels": list(levels), "fields": fields,
+                    "vectors": {"v": {"components": list(VP.VEL_KEYS), "units": "km/s", "frame": VP.VEL_FRAME,
+                                      "V": V}}}}
+
+
+def test_merge_gas_fields_keeps_old_fields_byte_identical(tmp_path):
+    viz = make_viz(tmp_path / "viz")
+    VP.merge(viz)
+    before = (viz / "manifest_v2.json").read_bytes()
+    old = json.loads(before)
+    frag = _vel_frag(viz)
+    man = VP.merge_gas_fields(viz, frag, VP.VEL_KEYS)
+    after = json.loads((viz / "manifest_v2.json").read_bytes())
+    assert after == man
+    assert list(after["gas"]["fields"]) == list(old["gas"]["fields"]) + list(VP.VEL_KEYS)
+    for k, f in old["gas"]["fields"].items():                  # every old field byte-identical
+        assert json.dumps(after["gas"]["fields"][k], indent=1) == json.dumps(f, indent=1)
+    for k in old:                                              # every other block untouched (created included)
+        if k != "gas":
+            assert json.dumps(after[k]) == json.dumps(old[k]), k
+    assert after["gas"]["vectors"]["v"]["V"] == 250.0 and after["gas"]["levels"] == old["gas"]["levels"]
+    VP.validate_manifest_v2(after, base_dir=viz)
+    # merging the same fields again is idempotent byte for byte
+    b1 = (viz / "manifest_v2.json").read_bytes()
+    VP.merge_gas_fields(viz, frag, VP.VEL_KEYS)
+    assert (viz / "manifest_v2.json").read_bytes() == b1
+    # removing the velocity fields again gives back the old manifest bytes
+    for k in VP.VEL_KEYS:
+        del after["gas"]["fields"][k]
+    del after["gas"]["vectors"]
+    assert (json.dumps(after, indent=1) + "\n").encode() == before
+    # the full merge carries gas.vectors along too
+    (viz / "gas" / "manifest_gas.json").write_text(json.dumps(
+        {**json.loads((viz / "gas" / "manifest_gas.json").read_text()),
+         "gas": {**man["gas"]}}))
+    assert VP.merge(viz)["gas"]["vectors"] == man["gas"]["vectors"]
+
+
+@pytest.mark.parametrize("damage", ["symmetric", "proj", "kind", "encoding", "component", "vectorV", "vectorc",
+                                    "levels"])
+def test_validate_rejects_bad_velocity_fields(tmp_path, damage):
+    viz = make_viz(tmp_path / "viz")
+    VP.merge(viz)
+    man = VP.merge_gas_fields(viz, _vel_frag(viz), VP.VEL_KEYS)
+    f = man["gas"]["fields"]["vy"]
+    if damage == "symmetric":
+        f["vmin"] = -200.0
+        for c in f["cubes"].values():
+            c["vmin"] = -200.0
+    elif damage == "proj":
+        f["proj"] = {"kind": "weighted_mean", "weight": "nH", "units": "km/s", "vmin": -1.0, "vmax": 1.0}
+    elif damage == "kind":
+        f["kind"] = "mass_weighted"
+    elif damage == "encoding":
+        f["encoding"] = "log10"
+    elif damage == "component":
+        f["component"] = "x"
+    elif damage == "vectorV":
+        man["gas"]["vectors"]["v"]["V"] = 300.0
+    elif damage == "vectorc":
+        man["gas"]["vectors"]["v"]["components"] = ["vx", "vy", "nH"]
+    elif damage == "levels":
+        frag = _vel_frag(viz, levels=("L1",))
+        frag["gas"]["fields"]["vx"]["cubes"]["L0"] = frag["gas"]["fields"]["vx"]["cubes"]["L1"]
+        with pytest.raises(ValueError):
+            VP.merge_gas_fields(viz, frag, VP.VEL_KEYS)
+        return
+    with pytest.raises(ValueError):
+        VP.validate_manifest_v2(man)

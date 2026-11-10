@@ -9,7 +9,8 @@ import {execFileSync} from "node:child_process";
 import {tmpdir} from "node:os";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
-import {atlasToRaw, gunzipIfNeeded, sha256Hex, sha256Js, decodeU8, validateManifestV2, cubeRef, cubeUrls, VOL_KEYS, ION_KEYS, ION_FALLBACK, speciesList} from "../../docs/tng50/js/vizdata.js";
+import {atlasToRaw, gunzipIfNeeded, sha256Hex, sha256Js, decodeU8, validateManifestV2, cubeRef, cubeUrls, VOL_KEYS, ION_KEYS, ION_FALLBACK, speciesList,
+  velocityInfo, velocityList, decodeLinear, packVelocity} from "../../docs/tng50/js/vizdata.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 let dir = process.argv[2];
@@ -79,5 +80,53 @@ check(ION_FALLBACK.length === REG.length && ION_FALLBACK.every((f, i) => f.key =
   const N = speciesList(null, null);
   check(N.length === 15 && N.every(x => !x.available && x.reason) && N[3].label === "H I", "speciesList without CFG.ions or a manifest: the fallback ladder, all disabled with a reason");
   check(!speciesList([], M).find(x => x.key === "OVII").available, "speciesList: an ion with no cubes (O VII) is disabled, no exception"); }
+/* vel3d: velocity fields vx, vy, vz (kind "velocity", encoding "linear", no proj / vol_window) and gas.vectors. An old
+   manifest (none of them) stays valid and lists the velocity views as unavailable; a new one validates and enables them. */
+{ const VV = 300, M3 = JSON.parse(JSON.stringify(M));
+  for (const [k, c] of [["vx", "x"], ["vy", "y"], ["vz", "z"]]) {
+    const f = JSON.parse(JSON.stringify(M3.gas.fields.nH).replaceAll("/nH.", `/${k}.`));
+    delete f.proj; delete f.vol_window; Object.assign(f, {label: `v_${c}`, units: "km/s", kind: "velocity", encoding: "linear", component: c, vmin: -VV, vmax: VV, cmap: "tng_vel",
+      frame: "disk (xhat, yhat, Lhat), relative to SubhaloVel"});
+    for (const L of Object.keys(f.cubes)) Object.assign(f.cubes[L], {vmin: -VV, vmax: VV});
+    M3.gas.fields[k] = f; }
+  M3.gas.vectors = {v: {components: ["vx", "vy", "vz"], units: "km/s", frame: "disk (xhat, yhat, Lhat), relative to SubhaloVel", V: VV}};
+  let e = null; try { validateManifestV2(M3); } catch (x) { e = x.message; }
+  check(e === null, "validateManifestV2 accepts vx, vy, vz (linear, kind velocity) with gas.vectors" + (e ? ": " + e : ""));
+  check(velocityInfo(M3)?.V === VV && velocityList(M3).every(x => x.available), "velocityInfo: V from gas.vectors; the 5 velocity views are available");
+  check(velocityInfo(M) === null && velocityList(M).every(x => !x.available && /not built/.test(x.reason)) && speciesList(null, M).length === 15,
+    "old manifest (no velocity): valid, velocity views unavailable, the gas / ion menu unchanged");
+  { const M4 = JSON.parse(JSON.stringify(M3)); delete M4.gas.vectors; e = null; try { validateManifestV2(M4); } catch (x) { e = x.message; }
+    check(e === null && velocityInfo(M4) === null, "vx, vy, vz without gas.vectors: valid, but no velocity views"); }
+  const vmut = [
+    ["vx log-encoded", m => { m.gas.fields.vx.encoding = "log"; }],
+    ["vx vmin ≠ −vmax", m => { m.gas.fields.vx.vmin = -200; for (const c of Object.values(m.gas.fields.vx.cubes)) c.vmin = -200; }],
+    ["vx wrong component", m => { m.gas.fields.vx.component = "y"; }],
+    ["vectors.V ≠ field range", m => { m.gas.vectors.v.V = 250; }],
+    ["vectors names a missing field", m => { delete m.gas.fields.vz; }],
+    ["vectors names a non-velocity field", m => { m.gas.vectors.v.components = ["vx", "vy", "nH"]; }],
+    ["unknown encoding on a log field", m => { m.gas.fields.nH.encoding = "sqrt"; }],
+  ];
+  for (const [name, f] of vmut) { const m = JSON.parse(JSON.stringify(M3)); f(m); let x2 = null; try { validateManifestV2(m); } catch (x) { x2 = x.message; }
+    check(x2 !== null, `validateManifestV2 rejects velocity mutation "${name}": ${x2}`); }
+  { const m = JSON.parse(JSON.stringify(M3)); m.gas.fields.nH.encoding = "log"; e = null; try { validateManifestV2(m); } catch (x) { e = x.message; }
+    check(e === null, "a log field may say encoding \"log\" (missing means log)"); } }
+/* vel3d: the data unit's velocity fixture (make_viz_fixture.py --out: manifest_v2_vel.json + vx, vy, vz L1 cubes), when
+   present: the manifest validates, the atlases decode to the raw bytes, decodeLinear matches dequantize_linear, the probes
+   (0, ±V, clipped, empty) decode as specified, and packVelocity packs them into one RGBA cube */
+if (E.vel) {
+  const MV = JSON.parse(readFileSync(join(dir, E.vel.manifest), "utf8")), VV = E.vel.V;
+  let e = null; try { validateManifestV2(MV); } catch (x) { e = x.message; }
+  check(e === null && velocityInfo(MV)?.V === VV, `validateManifestV2 accepts ${E.vel.manifest} (V ${VV} km/s)` + (e ? ": " + e : ""));
+  const q = {};
+  for (const k of ["vx", "vy", "vz"]) {
+    const c = cubeRef(MV, "gas", k, "L1"), raw = atlasToRaw(c.webp.paths.map(p => rd(p + ".rgba")), n, "gas"), d = decodeLinear(raw, -VV, VV); q[k] = raw;
+    let dm = 0, nanOk = true; E.vel[k].decoded.forEach((x, i) => { if (x === null) { if (!Number.isNaN(d[i])) nanOk = false; } else dm = Math.max(dm, Math.abs(d[i] - x)); });
+    check(await sha256Hex(raw) === c.raw_sha256 && raw.every((x, i) => x === E.vel[k].q[i]) && dm <= 1e-4 && nanOk, `${k}: atlas → raw bytes (sha256), decodeLinear vs dequantize_linear max|Δ| ${dm.toExponential(1)}, NaN where q = 0`); }
+  const P = E.vel.probes, at = p => p.i + n * (p.j + n * p.k), dx = decodeLinear(q.vx, -VV, VV);
+  check(Object.values(P).every(p => q.vx[at(p)] === p.q && (p.v === null ? Number.isNaN(dx[at(p)]) : Math.abs(dx[at(p)] - p.v) < 1e-9)),
+    `probes: ${Object.entries(P).map(([nm, p]) => `${nm} q ${p.q}`).join(", ")}`);
+  const pk = packVelocity(q.vx, q.vy, q.vz), z = at(P.zero), em = at(P.empty);
+  check(pk.length === 4 * n ** 3 && pk[4 * z] === 128 && pk[4 * z + 3] === 255 && [...pk.slice(4 * em, 4 * em + 4)].join() === "128,128,128,0", "packVelocity on the fixture: zero voxel R = 128, A = 255; empty voxel (128, 128, 128, 0)");
+}
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nall checks passed");
 process.exit(fails ? 1 : 0);

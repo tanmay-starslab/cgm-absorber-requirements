@@ -86,6 +86,19 @@ $PY deploy/data/upload_viz_dataset.py --verify-only
   `magma`) on L0 ±400 kpc (3.125 kpc voxels), L1 ±100 kpc (0.78 kpc) and L2 ±25 kpc (0.195 kpc), each 256³. A level
   whose cubes for `--fields` are cached is reused, so new ions are added to an existing cache. Phase 3: 15 fields,
   240 cube files, 619.5 MB.
+- **Velocity fields.** `vx`, `vy`, `vz` (gas fields, `kind` `velocity`) hold the mass-weighted mean gas velocity
+  per voxel, Σ m v / Σ m, in the disk frame (x, y, z = xhat, yhat, Lhat of `tngsight.deposit`) relative to
+  `SubhaloVel`, the spectra's systemic zero point; no Hubble flow. Encoding `linear`: q = 0 empty, else
+  q = 1 + round((clip(v, −V, V) + V)/(2V) × 254), so v = 0 is q = 128; V (shared by the three components and all
+  levels) is the mass-weighted 99.9th percentile of |v_i| over L0, rounded up to 50 km/s, and is also in
+  `gas.vectors.v`. Build them like any gas field, then check, merge and upload as in steps 2 to 5:
+  `build_volumes.py --library $LIB --fields vx,vy,vz --workers 2`. The page derives v_los, v_r, v_φ, |v| and
+  σ_los (species `vlos`, `vr`, `vphi`, `vmag`, `sigmalos`) in the shader; v_los and σ_los follow the camera ray
+  every frame. Old manifests leave the velocity views unavailable; old pages reject a manifest with velocity fields
+  (3D shows as unavailable), which is harmless because each page ships with its own manifest copy. Components beyond
+  ±V are clipped to ±V; with V = 600 km/s (from L0) about 4 % of L2 voxels (0.2 % of L2 mass, fast low-density outflow
+  above the disk) clip, which shifts L2 σ_los by more than 20 km/s on about 3 % of face-on pixels. A per-level V (L2
+  about 1000 km/s) would remove this but needs a contract change and a cube rebuild.
 - **Column checks** (stage 4; `--check` runs it alone). Gas is deposited with h_eff = max(h, 2Δ) (`GAS_H_MIN_VOX`,
   a visual floor), so each cube column is checked against that smoothed field: the h_eff SPH line integral averaged
   over a 3 × 3 bundle of rays offset by ±Δ/2 across the beam (`volume.smoothed_columns`), within 0.05 dex

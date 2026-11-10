@@ -6,6 +6,9 @@
 // the fast path decodes the hardware-interpolated q (a log-space blend, used only while moving).
 // Integral mode: gas column (or n_H-weighted mean of T, Z) -> LUT; stars: Σ_b = Σ ℓ_b dt -> Lupton asinh composite;
 // the two layers combine by a screen blend. Volume mode: front-to-back emission/absorption of the gas over uBg.
+// vel3d (uVq > 0): the gas layer is a velocity view derived per sample and per frame from the packed vector cube (uVel*)
+// and the camera ray; integral = the weight-weighted mean along the ray (σ_los: the weighted dispersion of dot(v, d)), volume =
+// opacity from the weight (uW*) with the colour of the view.
 /* tune2: uSub shifts the whole raster by a sub-pixel offset (clip units) so the progressive refine frames average
    several sample positions per pixel (anti-aliasing of sub-pixel structure) */
 export const VERT = `out vec3 vPos; uniform vec2 uSub;
@@ -23,6 +26,7 @@ uniform float uGasMix, uStarMix, uStarQ, uStarS0; uniform vec3 uStarBal, uBg;
 uniform float uFadeDex, uStarKnee, uStarOcc;
 uniform float uPxAng, uAccW, uStarSat; uniform vec2 uLodC, uNear;
 uniform float uVolK, uVolGain, uStarFloor, uGasW; uniform vec2 uOccRange; uniform int uCompMode;
+uniform sampler3D uVel0, uVel1, uVel2; uniform vec3 uVelHave; uniform float uVelV; uniform int uVq; uniform vec2 uWWin;
 in vec3 vPos; out vec4 fragColor;
 const float LOG2_10 = 3.321928094887362, LOG10_CM_PER_KPC = 21.489350545189;
 
@@ -90,6 +94,31 @@ float wVal(vec3 p, int l) { float v = wAt(p, l), f = hv(uWHave, l);
 vec3 starVal(vec3 p, int l) { vec3 v = starAt(p, l); float f = hv(uStarHave, l);
   if (f < 0.999) { int c = pick(uStarHave, p, l); v = mix(c >= 0 ? starAt(p, c) : vec3(0.0), v, f); } return v; }
 
+/* vel3d: the packed velocity cube (vizdata.packVelocity): R, G, B = linear q of vx, vy, vz on ±uVelV, A = 1 where
+   non-empty, empty voxels packed as q 128 (0 km/s). The trilinear blend of q decodes (affine) to Σ wᵢ vᵢ over the
+   non-empty corners and the blended A is Σ wᵢ, so velAt returns the premultiplied pair (Σ wᵢ vᵢ, Σ wᵢ): LOD and fade
+   mixes stay linear, and v = xyz / w is the mean over the non-empty corners. */
+vec4 velRaw(sampler3D s, vec3 p, float h) {
+  if (uExact == 1) {
+    vec3 g = (p / (2.0 * h) + 0.5) * uN - 0.5, i0 = floor(g), f = g - i0; ivec3 b = ivec3(i0), hi = ivec3(int(uN) - 1); vec4 v = vec4(0.0);
+    for (int c = 0; c < 8; c++) { ivec3 o = ivec3(c & 1, (c >> 1) & 1, (c >> 2) & 1); vec3 w = mix(1.0 - f, f, vec3(o));
+      vec4 t = texelFetch(s, clamp(b + o, ivec3(0), hi), 0); v += w.x * w.y * w.z * vec4(floor(t.rgb * 255.0 + 0.5), t.a); }
+    return v; }
+  vec4 t = texture(s, p / (2.0 * h) + 0.5); return vec4(t.rgb * 255.0, t.a); }
+vec4 velAt(vec3 p, int l) {
+  if (l == 0 && length(p) > uMask0) return vec4(0.0);
+  float h = hl(l); vec4 r = l == 0 ? velRaw(uVel0, p, h) : l == 1 ? velRaw(uVel1, p, h) : velRaw(uVel2, p, h);
+  return vec4(-uVelV + (r.rgb - 1.0) * (2.0 * uVelV / 254.0), r.a); }
+vec4 velVal(vec3 p, int l) { vec4 v = velAt(p, l); float f = hv(uVelHave, l);
+  if (f < 0.999) { int c = pick(uVelHave, p, l); v = mix(c >= 0 ? velAt(p, c) : vec4(0.0), v, f); } return v; }
+/* the view of one sample (uVq 1 v_los, 2 v_r, 3 v_phi, 4 |v|, 5 σ_los: dot(v, d) here, its moment 2 along the ray at the end).
+   Disk frame: ẑ = Lhat, d = the camera ray direction, so v_los > 0 moves away from the camera (redshift) */
+float velQ(vec3 v, vec3 p, vec3 d) {
+  if (uVq == 1 || uVq == 5) return dot(v, d);
+  if (uVq == 2) { float r = length(p); return r > 1e-4 ? dot(v, p) / r : 0.0; }
+  if (uVq == 3) { vec2 t = vec2(-p.y, p.x); float r = length(t); return r > 1e-4 ? dot(v.xy, t) / r : 0.0; }
+  return length(v); }
+
 vec2 slab(vec3 o, vec3 d, float h) { vec3 inv = 1.0 / d, a = (vec3(-h) - o) * inv, b = (vec3(h) - o) * inv;
   vec3 lo = min(a, b), hi = max(a, b); return vec2(max(max(lo.x, lo.y), lo.z), min(min(hi.x, hi.y), hi.z)); }
 float hash(vec2 p, float f) { p = fract(p * vec2(0.1031, 0.1030) + f * 0.61803399); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.x); }
@@ -113,8 +142,13 @@ void main() {
   d = mix(d, vec3(1e-7), vec3(lessThan(abs(d), vec3(1e-7))));
   vec2 tb = slab(o, d, uHalf.x); float t0 = max(tb.x, 0.0), t1 = tb.y;
   if (t1 <= t0) { fragColor = vec4(uBg, uAccW); return; }
-  bool gasOn = uGasMix > 0.0 && (uGasHave.x + uGasHave.y + uGasHave.z) > 0.0, starOn = uStarMix > 0.0 && (uStarHave.x + uStarHave.y + uStarHave.z) > 0.0;
-  bool weighted = uKind == 1 && uMode == 0;
+  /* vel3d: in a velocity view (uVq > 0) the gas layer is the velocity cube with its weight (uW*: n_H or an ion); a level
+     is usable where both are resident */
+  bool velMode = uVq > 0;
+  vec3 gHave = velMode ? min(uVelHave, uWHave) : uGasHave;
+  bool gasOn = uGasMix > 0.0 && (gHave.x + gHave.y + gHave.z) > 0.0, starOn = uStarMix > 0.0 && (uStarHave.x + uStarHave.y + uStarHave.z) > 0.0;
+  bool weighted = !velMode && uKind == 1 && uMode == 0;
+  float num2 = 0.0, wspan = max(uWWin.y - uWWin.x, 1e-6);
   /* segment breakpoints: entry/exit of the ±100 and ±25 boxes (nested, so already ordered) */
   vec2 s1 = slab(o, d, uHalf.y), s2 = slab(o, d, uHalf.z);
   if (s1.x >= s1.y) s1 = vec2(t1); if (s2.x >= s2.y) s2 = vec2(clamp(s1.x, t0, t1));
@@ -128,9 +162,9 @@ void main() {
   for (int s = 0; s < 5; s++) {
     float ta = bp[s], tl = bp[s + 1] - ta; if (tl <= 1e-5) continue;
     vec3 pm = o + d * (ta + 0.5 * tl);
-    int lg = gasOn ? pick(uGasHave, pm, 3) : -1, lw = weighted ? pick(uWHave, pm, 3) : -1, ls = starOn ? pick(uStarHave, pm, 3) : -1;
+    int lg = gasOn ? pick(gHave, pm, 3) : -1, lw = weighted ? pick(uWHave, pm, 3) : -1, ls = starOn ? pick(uStarHave, pm, 3) : -1;
     float fp = uPxAng * max(length(pm - o), 1.0), mg = 1.0, mw = 1.0, ms = 1.0; int cg = -1, cw = -1, cs = -1;
-    lg = lodLevel(uGasHave, pm, lg, fp, uLodC.x, cg, mg); lw = lodLevel(uWHave, pm, lw, fp, uLodC.x, cw, mw);
+    lg = lodLevel(gHave, pm, lg, fp, uLodC.x, cg, mg); lw = lodLevel(uWHave, pm, lw, fp, uLodC.x, cw, mw);
     ls = lodLevel(uStarHave, pm, ls, fp, uLodC.y, cs, ms);
     bool doGas = lg >= 0 && !(uMode == 1 && A > 0.99);
     if (!doGas && ls < 0) continue;
@@ -142,7 +176,16 @@ void main() {
       /* tune2 near fade: material closer to the camera than uNear.x is left out, fading in by uNear.y, so cells right in
          front of the lens no longer swell into out-of-focus discs when the camera is inside the halo */
       float hw = h * smoothstep(uNear.x, uNear.y, tk); if (hw <= 0.0) continue;
-      if (lg >= 0 && !(uMode == 1 && A > 0.99)) {
+      if (velMode && lg >= 0 && !(uMode == 1 && A > 0.99)) {
+        /* vel3d: weight w (density) and the premultiplied velocity at p, mixed with the coarser level like the gas */
+        float w = wVal(p, lg); vec4 m = velVal(p, lg); if (cg >= 0) { w = mix(wVal(p, cg), w, mg); m = mix(velVal(p, cg), m, mg); }
+        if (w > 0.0 && m.w > 1e-3) {
+          float qv = velQ(m.xyz / m.w, p, d);
+          if (uMode == 0) { float ww = w * hw; num += ww * qv; num2 += ww * qv * qv; den += ww; }
+          else { float xw = clamp((log2(w) / LOG2_10 - uWWin.x) / wspan, 0.0, 1.0);   /* opacity from the weight's volume window */
+            if (xw > 0.0) { float a = 1.0 - exp(-kappa * xw * xw * hw); C += (1.0 - A) * a * lutc((qv - uWin.x) / span); A += (1.0 - A) * a; } }
+        }
+      } else if (lg >= 0 && !(uMode == 1 && A > 0.99)) {
         float v = gasVal(p, lg); if (cg >= 0) v = mix(gasVal(p, cg), v, mg);
         if (uMode == 0) {
           if (weighted) { float w = lw >= 0 ? wVal(p, lw) : 0.0; if (lw >= 0 && cw >= 0) w = mix(wVal(p, cw), w, mw); num += w * v * hw; den += w * hw; }
@@ -158,7 +201,13 @@ void main() {
   vec3 gas = vec3(0.0);
   if (gasOn) {
     if (uMode == 1) gas = min(C * uVolGain, vec3(1.0)) + (1.0 - A) * uBg;
-    else {
+    else if (velMode) {
+      /* vel3d integral: the weight-weighted mean of the view along the ray (moment 1), or for σ_los the weighted dispersion
+         of dot(v, d), sqrt(moment 2 − moment 1²); it fades into the background below the weight column floor uWWin.x */
+      float m1 = den > 0.0 ? num / den : 0.0, qv = uVq == 5 ? (den > 0.0 ? sqrt(max(num2 / den - m1 * m1, 0.0)) : 0.0) : m1;
+      float lc = den > 0.0 ? log2(den) / LOG2_10 + LOG10_CM_PER_KPC : -1e30;
+      gas = mix(uBg, lutc((qv - uWin.x) / span), smoothstep(uWWin.x - max(uFadeDex, 1e-3), uWWin.x, lc));
+    } else {
       float lv = weighted ? (den > 0.0 && num > 0.0 ? log2(num / den) / LOG2_10 : -1e30) : (sumG > 0.0 ? log2(sumG) / LOG2_10 + LOG10_CM_PER_KPC : -1e30);
       float x = (lv - uWin.x) / span;
       /* tune1: columns below the window fade from LUT(0) into the background over uFadeDex dex (soft floor), so
@@ -167,7 +216,7 @@ void main() {
     }
     /* tune1: a vignette at the limb of the r = uMask0 sphere (rays whose closest approach to the centre is within the
        outer 25 %; tune2: was 15 %), so wide views show no hard disc edge where the L0 mask cuts the CGM; columns are not changed */
-    if (uGasHave.x > 0.0) { float bimp = length(cross(o, d)); gas = mix(uBg, gas, smoothstep(uMask0, 0.75 * uMask0, bimp)); }
+    if (gHave.x > 0.0) { float bimp = length(cross(o, d)); gas = mix(uBg, gas, smoothstep(uMask0, 0.75 * uMask0, bimp)); }
   } else gas = uBg;                  /* gas layer off or not resident yet: stars over the background */
   vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);
   /* tune3: the faint stellar envelope fades out below a floor of its max channel (uStarFloor .. 3 uStarFloor), so it no
@@ -214,7 +263,10 @@ export function makeMaterial(T, opts = {}) {
     uBg: u(V3(5 / 255, 7 / 255, 11 / 255)),
     uFadeDex: u(1.0), uStarKnee: u(0.75), uStarOcc: u(0.9),
     uSub: u(V2(0, 0)), uPxAng: u(0), uAccW: u(1), uLodC: u(V2(0, 0)), uNear: u(V2(0, 0)), uStarSat: u(1),
-    uVolK: u(0.25), uVolGain: u(1.0), uStarFloor: u(0.0), uGasW: u(1.0), uOccRange: u(V2(0.04, 0.45)), uCompMode: u(0)};
+    uVolK: u(0.25), uVolGain: u(1.0), uStarFloor: u(0.0), uGasW: u(1.0), uOccRange: u(V2(0.04, 0.45)), uCompMode: u(0),
+    /* vel3d: packed velocity cubes (13 of the 16 texture units with the 9 cubes and the LUT), ±V of the linear encoding,
+       the view (0 = none), and the weight's log window (column floor in integral mode, volume window in volume mode) */
+    uVel0: u(e4), uVel1: u(e4), uVel2: u(e4), uVelHave: u(V3(0, 0, 0)), uVelV: u(1), uVq: u(0), uWWin: u(V2(0, 1))};
   const mat = new T.ShaderMaterial({glslVersion: T.GLSL3, vertexShader: VERT, fragmentShader: FRAG, uniforms,
     side: T.BackSide, transparent: true, depthWrite: false, depthTest: false,
     /* tune2: the refine frames blend into the accumulation target with weight uAccW (running mean) */

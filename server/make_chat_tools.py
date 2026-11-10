@@ -29,6 +29,7 @@ ID_PATTERN = r"^((face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?|cust_[0-9a-f]{10})$"
 LAYOUTS = ["1", "2R", "2SN", "4"]
 VHW_MIN = 10
 SPECIES_GAS = ["nH", "T", "Z"]
+SPECIES_VEL = ["vlos", "vr", "vphi", "vmag", "sigmalos"]   # derived in the 3D shader from the stored (vx, vy, vz)
 
 SET_INSTRUMENT_DESC = (
     "Set the spectrograph and view. R: resolving power per band (one value, or two for the two R cases). "
@@ -104,9 +105,11 @@ def build_tools(ions=None, query_schema=None) -> list:
                               "p1_kpc": {"type": "array", "items": {"type": "number", "minimum": -395, "maximum": 395},
                                          "minItems": 3, "maxItems": 3}}}},
         {"name": "show_3d",
-         "description": "Open the 3D tab, optionally choosing the gas field and camera preset.",
+         "description": "Open the 3D tab, optionally choosing the gas field and camera preset. Velocity views "
+                        "(km/s, galaxy rest frame): vlos line-of-sight velocity, vr radial, vphi rotational, "
+                        "vmag speed, sigmalos line-of-sight dispersion; vlos and sigmalos follow the camera.",
          "input_schema": {"type": "object", "additionalProperties": False, "properties": {
-             "species": {"type": "string", "enum": SPECIES_GAS + keys},
+             "species": {"type": "string", "enum": SPECIES_GAS + keys + SPECIES_VEL},
              "preset": {"type": "string", "enum": ["face-on", "edge-on", "sightline"]}}}},
     ]
 
@@ -144,7 +147,9 @@ def build_prompt(ions=None) -> str:
         f"({bands}), the S/N per resolution element ({int(s['min'])} to {int(s['max'])}), the layout, the ions "
         "shown and the velocity window, show_3d for the gas distribution, and request_sightline or "
         "request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes "
-        "and the page opens it when ready). Velocities are km/s relative to the galaxy's systemic velocity; "
+        "and the page opens it when ready). The show_3d velocity views are mass-weighted gas velocities in the "
+        "galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr "
+        "positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the galaxy's systemic velocity; "
         "column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower "
         "(saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it "
         "as a measured column. Keep answers short.")
