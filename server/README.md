@@ -145,7 +145,8 @@ The tests use `server.testing.FakeGenerator` (no yt) and the thread executor. `t
 
 `server/chat_tools.json`, `server/chat_system_prompt.txt` and the marked blocks of `docs/tng50/js/chat.js`
 (`/*__GEN:TOOLS__*/`, `/*__GEN:PROMPT__*/`, `/*__GEN:IONS__*/`) and `docs/tng50/js/search.js`
-(`/*__GEN:QUERY__*/`) are generated from `tngsight/ions.json` and `tngsight.search.QUERY_SCHEMA`:
+(`/*__GEN:QUERY__*/`) are generated from `tngsight/ions.json` and `tngsight.search.QUERY_SCHEMA`
+(the `show_3d` species also list the velocity views `vlos`, `vr`, `vphi`, `vmag`, `sigmalos`, `SPECIES_VEL`):
 
 ```bash
 $PY -m server.make_chat_tools           # rewrite after a registry edit

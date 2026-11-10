@@ -24,7 +24,8 @@ check(!/[·•‧⋅・]| \. /.test(prompt), "system prompt holds no dot separat
 const si = C.TOOLS.find(t => t.name === "set_instrument").input_schema.properties;
 const ions = si.ions.items.enum;
 check(ions.length === 12 && deq(C.TOOLS.find(t => t.name === "show_3d").input_schema.properties.species.enum,
-  ["nH", "T", "Z", ...ions]), "set_instrument ions and show_3d species cover the 12 registry keys");
+  ["nH", "T", "Z", ...ions, "vlos", "vr", "vphi", "vmag", "sigmalos"]),
+  "set_instrument ions and show_3d species cover the 12 registry keys and the 5 velocity views");
 const q = C.TOOLS.find(t => t.name === "search_sightlines").input_schema.properties.query;
 check(deq(q.properties.ion.enum, ions), "search_sightlines ion enum == registry keys");
 const fx = join(HERE, "fixtures", "query_schema.json");

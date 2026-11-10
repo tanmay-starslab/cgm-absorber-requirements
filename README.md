@@ -92,7 +92,8 @@ b ≤ 300 kpc; azimuth Φ; or a ray picked in 3D), cast on demand with yt + Trid
   N V and Ne VIII. Flags: 1 SAT, 2 BOUND, 4 MAXCOMP, 8 POORFIT, 16 EDGE, 32 NOERR, 64 DAMPED, 128 BUDGET.
 - **3D tab.** Every gas cell is deposited with its own kernel onto three nested 256³ cubes (L0 ±400, L1 ±100 and
   L2 ±25 kpc) of n_H, T, Z and all 12 ion densities, next to the stellar g, r, i light (a Lupton et al. 2004
-  composite), and drawn as column maps or volumes in a square stage. The cubes live on the public dataset
+  composite), and drawn as column maps or volumes in a square stage. Velocity views (v_los, v_r, v_φ, |v|, σ_los)
+  are derived per frame from stored mass-weighted velocity cubes in the galaxy rest frame. The cubes live on the public dataset
   [`tanmay-starslab/tng50-sub488530-viz`](https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz);
   git keeps only the pinned `manifest_v2.json` and the LUTs. If huggingface.co is unreachable, everything except the
   3D stage keeps working.

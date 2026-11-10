@@ -338,7 +338,7 @@
  },
  {
   "name": "show_3d",
-  "description": "Open the 3D tab, optionally choosing the gas field and camera preset.",
+  "description": "Open the 3D tab, optionally choosing the gas field and camera preset. Velocity views (km/s, galaxy rest frame): vlos line-of-sight velocity, vr radial, vphi rotational, vmag speed, sigmalos line-of-sight dispersion; vlos and sigmalos follow the camera.",
   "input_schema": {
    "type": "object",
    "additionalProperties": false,
@@ -360,7 +360,12 @@
       "NV",
       "OVI",
       "NeVIII",
-      "OVII"
+      "OVII",
+      "vlos",
+      "vr",
+      "vphi",
+      "vmag",
+      "sigmalos"
      ]
     },
     "preset": {

@@ -21,6 +21,7 @@ from server import chat  # noqa: E402
 from server.settings import Settings
 
 KEY = "sk-ant-test-SENTINEL-KEY-0123456789"
+VEL_VIEWS = ["vlos", "vr", "vphi", "vmag", "sigmalos"]  # 3D velocity views (design vel3d)
 SECRET_TEXT = "PURPLE-OKAPI-7731"           # sentinel message text that must never reach the logs
 THINK = {"type": "thinking", "thinking": "", "signature": "EqQBCkYIAxgCKkB+sig/with==paddingé"}
 REDACT = {"type": "redacted_thinking", "data": "EmwKAhgBEgy3va3pzix/LafPsn4aDFIT2Xlxh0L5L8rLVyIwxtE3rAFBa8cr3qpP"}
@@ -487,12 +488,14 @@ def test_tools_and_prompt_follow_the_registry():
     assert p["vc"] == {"type": "number", "minimum": -1500, "maximum": 1500} and p["fit"] == {"type": "boolean"}
     assert t["search_sightlines"]["input_schema"]["properties"]["query"] == QUERY_SCHEMA
     assert QUERY_SCHEMA["properties"]["ion"]["enum"] == keys
-    assert t["show_3d"]["input_schema"]["properties"]["species"]["enum"] == ["nH", "T", "Z", *keys]
+    assert t["show_3d"]["input_schema"]["properties"]["species"]["enum"] == ["nH", "T", "Z", *keys, *VEL_VIEWS]
+    assert all(v in t["show_3d"]["description"] for v in VEL_VIEWS)
     for name in ("select_sightline", "request_sightline", "request_custom_ray"):
         assert t[name]["input_schema"]["additionalProperties"] is False
     prompt = chat.SYSTEM_PROMPT
     assert all(ions.get(k)["label"] in prompt for k in keys) and "12 ions" in prompt and "HILyb" not in prompt
     assert not any(c in prompt for c in ("·", "•", "‧", "⋅", "・", " . "))
+    assert "vlos is positive moving away from the camera" in prompt and "outflow" in prompt
     assert "\n" not in prompt                     # one paragraph
 
 
