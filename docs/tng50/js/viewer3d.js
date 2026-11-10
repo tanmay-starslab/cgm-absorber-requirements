@@ -31,22 +31,30 @@
 //   viewer keeps the v2 surface: setSpecies(k) -> Promise<bool> (false, no exception, for a species whose cubes are not
 //   built: viewer.loadError = {key, message}), setPreset, setMode, setStars, setGuides, setTransfer, setLines, select,
 //   toggleFullscreen, levels, gpuBytes, bench, render, resize, dispose, hooks, stats, species, wanted, mode, message.
+//   vel3d: setSpecies also takes the velocity views vlos, vr, vphi, vmag, sigmalos (vizdata VEL_VIEWS; false with a manifest
+//   that has no gas.vectors). setWeight(k) picks their weight (nH or an ion with cubes; viewer.weight reads it),
+//   setTransfer({W, opacity, cmap}) their window (±W km/s, 0..W for vmag and sigmalos); viewer.velocity = {V, units, frame} or null.
 // ------------------------------------------------------------------------------------------------------------------------
-import {lut, cssGradient, NAMES as CMAPS} from "./colormaps.js";
-import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, speciesList, MU_ZERO} from "./vizdata.js";
+import {lut, cssGradient, NAMES as CMAPS, VEL_NAMES} from "./colormaps.js";
+import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, speciesList, MU_ZERO,
+  VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity} from "./vizdata.js";
 import {makeMaterial} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
 
-export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList};
+export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList};
 /* fix-ui V8: no literal underscores; COL_HTML is the colour-bar title with real subscripts (plain text elsewhere) */
 const COL_HTML = {nH: "N<sub>H</sub>", T: "⟨T⟩ (n<sub>H</sub>-weighted)", Z: "⟨Z⟩ (n<sub>H</sub>-weighted)"};
 const COL_TXT = {nH: "NH", T: "⟨T⟩ (nH-weighted)", Z: "⟨Z⟩ (nH-weighted)"};
 const VOL_HTML = {nH: "n<sub>H</sub>"};
 const isIon = k => ION_KEYS.includes(k);
+/* vel3d: the five velocity views (vizdata VEL_VIEWS). Default window ±VEL_W km/s (0..VEL_W for |v| and σ_los), the
+   slider from VEL_WMIN to the encoding's V; the weight is n_H unless the Weight control names an ion */
+const isVel = k => VEL_KEYS.includes(k);
+const VEL_W = 200, VEL_WMIN = 10;
 /* Phase 3 thumbnail: steps per voxel, frame rate of the slow turn, its speed, refine frames when still */
 const THUMB = {spv: 0.6, fps: 12, degPerSec: 5, acc: 2};
 const GAS_L = ["L0", "L1", "L2"], STAR_L = ["S0", "S1", "S2"];
-const BYTES = {gas: 256 ** 3, stars: 4 * 256 ** 3};
+const BYTES = {gas: 256 ** 3, stars: 4 * 256 ** 3, vel: 4 * 256 ** 3};
 const BG = "#05070b";
 /* tune1 display defaults (integral mode), applied over the manifest's proj windows: a lower n_H floor keeps the outer
    CGM visible in wide views, and a Z floor of −2 keeps the low-metallicity inflow out of the clip (tune1.md) */
@@ -144,6 +152,9 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d-lines i.sel{border-top-width:5px;outline:1px dashed var(--s-ink);outline-offset:2px}
 .v3d-scale{left:50%;bottom:12px;transform:translateX(-50%);font:11px var(--mono,ui-monospace,monospace);text-align:center;padding:3px 8px}
 .v3d-scale i{display:block;height:6px;border:1.5px solid var(--s-ink2);border-top:0;margin:0 auto 2px}
+/* vel3d: the words at the two ends of a diverging velocity bar */
+.v3d-leg .ends{display:flex;justify-content:space-between;gap:8px;font:11px var(--sans,system-ui,sans-serif);color:var(--s-ink2);margin-top:1px}
+.v3d-leg .ends[hidden]{display:none}
 .v3d-leg .off{margin-top:4px;font:11px var(--sans,system-ui,sans-serif);color:var(--s-ink2)}
 .v3d-leg .gd{margin-top:4px;font:11px var(--sans,system-ui,sans-serif);color:var(--s-ink2)}.v3d-leg .gd i{display:inline-block;width:18px;height:0;border-top:2px solid #d9c38c;vertical-align:middle;margin-right:6px}
 .v3d-tt{display:none}
@@ -189,6 +200,9 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-ions input:disabled+span i{background:none;border:1px solid var(--c)}
 .v3c-ions label:has(input:disabled),.v3c-seg label:has(input:disabled){cursor:not-allowed}
 .v3c-seg input:focus-visible+span,.v3c-ions input:focus-visible+span{outline:2px solid var(--accent,#8fa8ff);outline-offset:1px}
+.v3c-row[hidden]{display:none}
+.v3c-seg.vel{grid-template-columns:repeat(5,minmax(0,1fr))}.v3c-seg.vel span{padding:0 2px}
+.v3c-seg.vel sub{font-size:.87em;line-height:0}
 .v3c-row{display:grid;grid-template-columns:62px minmax(0,1fr) 44px;align-items:center;gap:8px;min-height:26px}
 .v3c-row>label,.v3c-row>.lab{font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .v3c-row output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right;color:var(--ink,#eef0f7)}
@@ -292,26 +306,31 @@ async function create(app, opts = {}) {
   const mobile = isMobile(), deviceMemory = navigator.deviceMemory ?? 8;
 
   /* ---- DOM: the stage (el, moved between the full host and the thumbnail) and the control column (ctlBox) ---- */
-  const SPEC = speciesList(cfg.ions, manifest), specOf = k => SPEC.find(x => x.key === k);
+  const SPEC = [...speciesList(cfg.ions, manifest), ...velocityList(manifest)], specOf = k => SPEC.find(x => x.key === k);
+  const VELI = velocityInfo(manifest);   // vel3d: null with an old manifest (the Velocity buttons are then disabled)
+  { const vc = document.getElementById("methods-vcap"); if (vc && VELI?.V) vc.textContent = `±${Math.round(VELI.V)} km/s`; }   // the methods text names the clip from the manifest
   const el = document.createElement("div"); el.className = "v3d";
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl">Controls</button><button type="button" id="v3-fs-exit" title="Exit fullscreen (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
-    <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off (Layers)</div><div class="gd" hidden></div></div>
+    <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="ends" hidden><span></span><span></span></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off (Layers)</div><div class="gd" hidden></div></div>
     <div class="v3d-ov v3d-lines" aria-hidden="true"><span><i style="border-color:var(--lib-line)"></i>library</span><span><i style="border-color:var(--s-accent)"></i>generated</span><span><i style="border-color:var(--s-fit)"></i>custom</span><span><i class="sel" style="border-color:var(--s-ink)"></i>selected</span></div>
     <div class="v3d-tt" aria-hidden="true"><span class="f"></span><span>3D</span></div></div>`;
   const escH = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
   const radio = (x, name) => `<label${x.available ? "" : ` title="${escH(x.reason)}"`}${x.group === "ion" ? ` class="v3c-ion" style="--ic:${x.color};--icd:${x.color_dark}"` : ""}>` +
-    `<input type="radio" name="${name}" value="${x.key}" data-testid="v3-species-${x.key}"${x.available ? "" : " disabled"} aria-label="${escH(x.label)}">` +
-    `<span${x.available ? ` title="${escH(x.long)}"` : ""}>${x.group === "ion" ? "<i></i>" : ""}${escH(x.label)}</span></label>`;
+    `<input type="radio" name="${name}" value="${x.key}" data-testid="v3-species-${x.key}"${x.available ? "" : " disabled"} aria-label="${escH(x.spoken || x.label)}">` +
+    `<span${x.available ? ` title="${escH(x.long)}"` : ""}>${x.group === "ion" ? "<i></i>" : ""}${x.group === "vel" ? x.html : escH(x.label)}</span></label>`;   // vel html: our own constant (vizdata VEL_VIEWS)
   const ctlBox = document.createElement("div"); ctlBox.className = "v3c"; ctlBox.id = "v3-ctl"; ctlBox.setAttribute("role", "group"); ctlBox.setAttribute("aria-label", "3D view settings");
   ctlBox.innerHTML = `<section class="v3c-card" data-group="field"><h2>Field</h2>
       <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
-        <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div></div>
-      <div class="v3c-row"><label for="v3-lo" title="window low (log10)">low</label><input id="v3-lo" type="range" step="0.1"><output id="v3-lo-o" for="v3-lo"></output></div>
-      <div class="v3c-row"><label for="v3-hi" title="window high (log10)">high</label><input id="v3-hi" type="range" step="0.1"><output id="v3-hi-o" for="v3-hi"></output></div>
-      <div class="v3c-row"><label for="v3-cmap">colours</label><select id="v3-cmap"></select></div></section>
+        <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div>
+        <span class="k">Velocity</span><div class="v3c-seg vel">${SPEC.filter(x => x.group === "vel").map(x => radio(x, "v3-species")).join("")}</div></div>
+      <div class="v3c-row" id="v3-lo-row"><label for="v3-lo" title="window low (log10)">low</label><input id="v3-lo" type="range" step="0.1"><output id="v3-lo-o" for="v3-lo"></output></div>
+      <div class="v3c-row" id="v3-hi-row"><label for="v3-hi" title="window high (log10)">high</label><input id="v3-hi" type="range" step="0.1"><output id="v3-hi-o" for="v3-hi"></output></div>
+      <div class="v3c-row" id="v3-vw-row" hidden><label for="v3-vw" title="colour window in km/s">window</label><input id="v3-vw" type="range" step="10"><output id="v3-vw-o" for="v3-vw"></output></div>
+      <div class="v3c-row" id="v3-weight-row" hidden><label for="v3-weight" title="the density that weights the velocity along the ray">weight</label><select id="v3-weight"></select></div>
+      <div class="v3c-row" id="v3-cmap-row"><label for="v3-cmap">colours</label><select id="v3-cmap"></select></div></section>
     <section class="v3c-card" data-group="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" title="face-on (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" title="edge-on (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" title="along the selected sightline (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" title="default view (R)">Reset</button></div>
@@ -480,9 +499,27 @@ async function create(app, opts = {}) {
     balance: manifest?.stars?.display?.balance ?? [1, 1, 1]};
   const tf = {integral: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
   const stats = {};
-  const fld = k => manifest?.gas?.fields?.[k], lab = k => specOf(k)?.label || k;
+  const fld = k => manifest?.gas?.fields?.[k], lab = k => specOf(k)?.spoken || specOf(k)?.label || k;   // vel3d: velocity views by their spoken names
   const weighted = k => fld(k)?.kind === "mass_weighted" || fld(k)?.proj?.kind === "weighted_mean";
-  function fieldTf(k, m = mode) { const f = fld(k), d = m === "integral" ? WIN_DEFAULT[k] || {} : {},
+  /* vel3d: a velocity view is shown when the vector is in the manifest; velW = the weight field (a density: nH or an ion
+     with cubes), shared by the five views; the velocity window per view and mode lives in tf like any field's */
+  const velView = k => specOf(k)?.group === "vel" ? specOf(k) : null;
+  const canShow = k => !!fld(k) && fld(k).kind !== "velocity" || (isVel(k) && !!VELI);
+  const WEIGHTS = ["nH", ...ION_KEYS].filter(k => fld(k)?.cubes && fld(k).kind === "density");
+  let velW = WEIGHTS[0] || "nH";
+  /* boundW = the weight whose cubes are bound and drawn (uW*, uWRange, uWWin, legend); velW = the one requested. A Weight
+     change loads velW while boundW stays drawn, then switches both at once, without a fade, once the new weight is resident
+     at every level the old one is drawn at (setWeight), so the view does not drop levels (unless a new level fails) or
+     draw new-weight cubes under the old weight's window */
+  let boundW = velW;
+  /* the gas-field key whose cubes a view draws with: the view's own (nH, T, ..., ions) or, for a velocity view, its weight */
+  const wKey = k => (isVel(k) ? boundW : weighted(k) ? "nH" : null);
+  function velTf(k, m = mode) { const v = velView(k), V = VELI?.V || 1000, W = Math.min(VEL_W, V);
+    return tf[m][k] ||= {W, lo: v.signed ? -W : 0, hi: W, opacity: m === "volume" ? VOL.opacity : 0.5, cmap: v.signed ? VEL_NAMES.signed[0] : VEL_NAMES.unsigned[0]}; }
+  /* σ_los is a property of the whole ray (its moment 2), so it has no volume rendering: integral only */
+  const modeOk = (k, m) => !(k === "sigmalos" && m === "volume");
+  function fieldTf(k, m = mode) { if (isVel(k)) return velTf(k, m);
+    const f = fld(k), d = m === "integral" ? WIN_DEFAULT[k] || {} : {},
       w = m === "integral" ? [d.lo ?? f.proj.vmin, d.hi ?? f.proj.vmax] : f.vol_window;
     const cm = CMAP_DEFAULT[k] || f.cmap;
     return tf[m][k] ||= {lo: w[0], hi: w[1], opacity: m === "volume" ? VOL.opacity : 0.5, cmap: CMAPS.includes(cm) ? cm : "tng_dusk"}; }
@@ -510,33 +547,43 @@ async function create(app, opts = {}) {
   function needed(k = wanted || species) {
     const plan = viewPlan({ratio: ratios(k), hVisKpc: hVis(), mobile, stars: layer.stars && !!manifest.stars}), keys = [];
     for (const [kind, L] of plan.order) {
-      if (kind === "gas") { if (!k) continue; keys.push(keyOf("gas", k, L)); if (weighted(k) && mode === "integral") keys.push(keyOf("gas", "nH", L)); }
+      if (kind === "gas") { if (!k) continue;
+        /* vel3d: a velocity view needs the packed velocity cube of the level ("vel||L") and its weight field */
+        if (isVel(k)) { keys.push(keyOf("vel", "", L), keyOf("gas", velW, L)); continue; }
+        keys.push(keyOf("gas", k, L)); if (weighted(k) && mode === "integral") keys.push(keyOf("gas", "nH", L)); }
       else if (manifest.stars?.cubes?.[L]) keys.push(keyOf("stars", "", L)); }
-    let ks = keys.filter(x => { const [kind, kk, L] = x.split("|"); return kind === "stars" || fld(kk)?.cubes?.[L]; });
+    let ks = keys.filter(x => { const [kind, kk, L] = x.split("|"); return kind === "stars" || (kind === "vel" ? VEL_COMP_KEYS.every(c => fld(c)?.cubes?.[L]) : fld(kk)?.cubes?.[L]); });
     /* Phase 3 thumbnail: only L0 / L1 of the field (and nH weights) are fetched for it; stars and finer levels are used only
        when the full stage already loaded them */
-    if (docked === "thumb") ks = ks.filter(x => TEX.has(x) || /^gas\|.*\|L[01]$/.test(x));
+    if (docked === "thumb") ks = ks.filter(x => TEX.has(x) || /^(gas|vel)\|.*\|L[01]$/.test(x));
     /* fix-ui FE-06: the needed set itself must fit the GPU budget (with the render targets): drop S0, then S2, then the L2
        field (with its weights), then S1, until it does; evict() can only free what is not needed */
     const over = () => ks.reduce((a, x) => a + keyBytes(x), 0) + rtBytes() > BUDGET, dropped = [];
-    for (const grp of [[keyOf("stars", "", "S0")], [keyOf("stars", "", "S2")], [keyOf("gas", k, "L2"), keyOf("gas", "nH", "L2")], [keyOf("stars", "", "S1")]]) {
+    const l2 = isVel(k) ? [keyOf("vel", "", "L2"), keyOf("gas", velW, "L2")] : [keyOf("gas", k, "L2"), keyOf("gas", "nH", "L2")];
+    for (const grp of [[keyOf("stars", "", "S0")], [keyOf("stars", "", "S2")], l2, [keyOf("stars", "", "S1")]]) {
       if (!over()) break;
       const hit = ks.filter(x => grp.includes(x)); if (hit.length) { ks = ks.filter(x => !grp.includes(x)); dropped.push(...hit.map(x => x.split("|")[2])); } }
     budgetDropped = [...new Set(dropped)];
     return {keys: ks};
   }
   let budgetDropped = [];
-  function keyBytes(key) { const [kind, kk, L] = key.split("|"), c = kind === "stars" ? manifest.stars?.cubes?.[L] : fld(kk)?.cubes?.[L]; return c?.raw_bytes ?? BYTES[kind]; }
+  function keyBytes(key) { const [kind, kk, L] = key.split("|");
+    if (kind === "vel") { const n = manifest.levels?.[L]?.n; return n ? 4 * n ** 3 : BYTES.vel; }
+    const c = kind === "stars" ? manifest.stars?.cubes?.[L] : fld(kk)?.cubes?.[L]; return c?.raw_bytes ?? BYTES[kind]; }
+  /* vel3d: the download size of a key (the three component cubes for "vel||L") */
+  const dlBytes = key => { const [kind, kk, L] = key.split("|"), sum = c => c?.webp?.bytes?.reduce((a, b) => a + b, 0) ?? 0;
+    return kind === "vel" ? VEL_COMP_KEYS.reduce((a, c) => a + sum(fld(c)?.cubes?.[L]), 0) : sum(kind === "stars" ? manifest.stars?.cubes?.[L] : fld(kk)?.cubes?.[L]); };
   function rtBytes() { const v = new T.Vector2(); renderer.getDrawingBufferSize(v); return v.x * v.y * ((accType === T.HalfFloatType ? 8 : 4) + (AA ? 4 : 1) * 8); }
   function makeTex(r) {
     const n = r.n, tex = new T.Data3DTexture(r.data, n, n, n);
-    tex.format = r.kind === "stars" ? T.RGBAFormat : T.RedFormat; tex.type = T.UnsignedByteType; tex.minFilter = tex.magFilter = T.LinearFilter;
+    tex.format = r.kind === "stars" || r.kind === "vel" ? T.RGBAFormat : T.RedFormat; tex.type = T.UnsignedByteType; tex.minFilter = tex.magFilter = T.LinearFilter;
     tex.wrapS = tex.wrapT = tex.wrapR = T.ClampToEdgeWrapping; tex.unpackAlignment = 1; tex.generateMipmaps = false; tex.needsUpdate = true;
     return tex;
   }
   function getTex(key, prio = 1) {
     if (TEX.has(key)) { TEX.get(key).used = performance.now(); return Promise.resolve(TEX.get(key)); }
     if (!PEND.has(key)) { const pend = (async () => { const [kind, k, L] = key.split("|");
+      if (kind === "vel") return velTex(key, L, prio);
       const c = kind === "stars" ? manifest.stars.cubes[L] : fld(k).cubes[L], pr = {got: 0, total: c.webp.bytes.reduce((a, b) => a + b, 0)}; PROG.set(key, pr);
       const r = await loader.load(kind, k || null, L, {prio, onBytes: b => { pr.got += b; progressSoon(); }}).finally(() => { PROG.delete(key); progressSoon(); });
       const sk = kind === "stars" ? "stars" : k, np = smoothPasses(sk) ? smoothPasses(sk)[+L[1]] || 0 : 0;
@@ -550,49 +597,78 @@ async function create(app, opts = {}) {
       evict(); return it; })().finally(() => { if (PEND.get(key) === pend) PEND.delete(key); }); PEND.set(key, pend); }
     return PEND.get(key);
   }
+  /* vel3d: the three component cubes of level L (fetched and hash-checked like any gas cube, never smoothed: a velocity
+     prefilter would mix unweighted means) are packed on the CPU into one RGBA cube (vizdata.packVelocity) and uploaded
+     as one texture; the component bytes are dropped once packed */
+  async function velTex(key, L, prio) {
+    const pr = {got: 0, total: dlBytes(key)}; PROG.set(key, pr);
+    let rs;
+    try { rs = await Promise.all(VEL_COMP_KEYS.map(c => loader.load("gas", c, L, {prio, onBytes: b => { pr.got += b; progressSoon(); }}))); }
+    finally { PROG.delete(key); progressSoon(); }
+    /* the user left the velocity views while this level downloaded: do not upload it (freeVel already ran). A velocity
+       view still shown while another field loads keeps it (the user may come back) */
+    if (!isVel(wanted) && !isVel(species)) throw Object.assign(new Error("velocity view left"), {cancelled: true});
+    const r = {n: rs[0].n, kind: "vel", data: packVelocity(rs[0].data, rs[1].data, rs[2].data)};
+    const tex = makeTex(r); renderer.initTexture?.(tex);
+    const it = {tex, bytes: r.data.length, used: performance.now(), format: rs.map(x => x.format).join(","), ms: Math.max(...rs.map(x => x.ms))};
+    if (!ctxLost) tex.image.data = null;
+    TEX.set(key, it); stats.loads = (stats.loads || []).concat([{key, format: it.format, ms: Math.round(it.ms), decodeMs: 0, smoothed: 0}]);
+    evict(); return it;
+  }
+  /* vel3d: leaving the velocity views frees their packed cubes (4 bytes per voxel, the largest gas textures) */
+  function freeVel() { for (const [key, it] of [...TEX]) if (key.startsWith("vel|") && !isBound(key)) { it.tex.dispose(); TEX.delete(key); } }
   function evict() {
     let total = gpuBytes(); if (total <= BUDGET) return;
     const need = new Set(needed().keys), hv = hVis();
     const rank = key => { const [kind, k, L] = key.split("|");
-      if (kind === "gas" && k !== species && !(k === "nH" && weighted(species))) return 0;   // other fields first
+      if (kind === "gas" && k !== species && k !== wKey(species)) return 0;   // other fields first
+      if (kind === "vel" && !isVel(species)) return 0;
       if ((L === "L2" || L === "S2") && hv > 150) return 1; if (L === "S0" && hv < 60) return 1; return 2; };
     const cand = [...TEX.keys()].filter(k => !need.has(k) && !isBound(k)).sort((a, b) => rank(a) - rank(b) || TEX.get(a).used - TEX.get(b).used);
     for (const k of cand) { if (total <= BUDGET) break; const it = TEX.get(k); it.tex.dispose(); TEX.delete(k); total -= it.bytes; }
   }
   const gpuBytes = () => [...TEX.values()].reduce((a, it) => a + it.bytes, 0);
-  const SLOT = {gas: ["uGas0", "uGas1", "uGas2"], w: ["uW0", "uW1", "uW2"], stars: ["uStar0", "uStar1", "uStar2"]};
+  const SLOT = {gas: ["uGas0", "uGas1", "uGas2"], w: ["uW0", "uW1", "uW2"], stars: ["uStar0", "uStar1", "uStar2"], vel: ["uVel0", "uVel1", "uVel2"]};
+  const haveOf = slot => (slot === SLOT.gas ? U.uGasHave.value : slot === SLOT.w ? U.uWHave.value : slot === SLOT.vel ? U.uVelHave.value : U.uStarHave.value);
   const isBound = key => { const [kind, k, L] = key.split("|"), i = +L[1];
     if (kind === "stars") return U[SLOT.stars[i]].value === TEX.get(key)?.tex;
+    if (kind === "vel") return U[SLOT.vel[i]].value === TEX.get(key)?.tex;
     return U[SLOT.gas[i]].value === TEX.get(key)?.tex || U[SLOT.w[i]].value === TEX.get(key)?.tex; };
-  /* bind every resident level of the current field (and weights, stars); new bindings fade in over 300 ms */
-  function bindAll() {
+  /* bind every resident level of the current field (and weights, stars); new bindings fade in over 300 ms, except the
+     weights of a Weight switch (wInstant): those replace a drawn weight level for level, so they appear at once */
+  function bindAll(wInstant = false) {
     if (!manifest) return;
     const now = performance.now(), fade = (slot, i, tex, ok) => { const cur = U[slot[i]].value;
-      const haveVec = slot === SLOT.gas ? U.uGasHave.value : slot === SLOT.w ? U.uWHave.value : U.uStarHave.value, comp = ["x", "y", "z"][i];
-      if (!ok) { U[slot[i]].value = slot === SLOT.stars ? RM.empty4 : RM.empty1; haveVec[comp] = 0; FADE.delete(slot[i]); return; }
-      if (cur !== tex) { U[slot[i]].value = tex; if (reduced() || !FADE.has("init:" + slot[0])) haveVec[comp] = 1; else { haveVec[comp] = 0.001; FADE.set(slot[i], now); } } };
+      const haveVec = haveOf(slot), comp = ["x", "y", "z"][i];
+      if (!ok) { U[slot[i]].value = slot === SLOT.stars || slot === SLOT.vel ? RM.empty4 : RM.empty1; haveVec[comp] = 0; FADE.delete(slot[i]); return; }
+      if (cur !== tex) { U[slot[i]].value = tex; if (reduced() || !FADE.has("init:" + slot[0]) || wInstant && slot === SLOT.w) { haveVec[comp] = 1; FADE.delete(slot[i]); } else { haveVec[comp] = 0.001; FADE.set(slot[i], now); } } };
+    const vel = isVel(species), wk = wKey(species);
     for (let i = 0; i < 3; i++) {
-      const g = species && TEX.get(keyOf("gas", species, GAS_L[i])); fade(SLOT.gas, i, g?.tex, !!g);
-      const w = species && weighted(species) && TEX.get(keyOf("gas", "nH", GAS_L[i])); fade(SLOT.w, i, w?.tex, !!w);
+      const g = species && !vel && TEX.get(keyOf("gas", species, GAS_L[i])); fade(SLOT.gas, i, g?.tex, !!g);
+      const w = species && wk && TEX.get(keyOf("gas", wk, GAS_L[i])); fade(SLOT.w, i, w?.tex, !!w);
+      const v = vel && TEX.get(keyOf("vel", "", GAS_L[i])); fade(SLOT.vel, i, v?.tex, !!v);
       const s = layer.stars && TEX.get(keyOf("stars", "", STAR_L[i])); fade(SLOT.stars, i, s?.tex, !!s);
     }
-    for (const s of [SLOT.gas, SLOT.w, SLOT.stars]) FADE.set("init:" + s[0], 1);   // the first binding of a slot set is instant
-    if (species) { const f = fld(species); U.uGasRange.value.set(f.vmin, f.vmax); }
-    if (fld("nH")) U.uWRange.value.set(fld("nH").vmin, fld("nH").vmax);
+    for (const s of [SLOT.gas, SLOT.w, SLOT.vel, SLOT.stars]) FADE.set("init:" + s[0], 1);   // the first binding of a slot set is instant
+    if (species && !vel) { const f = fld(species); U.uGasRange.value.set(f.vmin, f.vmax); }
+    if (vel) U.uVelV.value = VELI.V;
+    if (fld(wk || "nH")) U.uWRange.value.set(fld(wk || "nH").vmin, fld(wk || "nH").vmax);
     STAR_L.forEach((S, i) => { const c = manifest.stars?.cubes?.[S]; if (c) U["uStarRange" + i].value.set(c.vmin, c.vmax); });
     lodStatus(); aria(); render();
   }
   function stepFades(now) {
     let active = false;
     for (const [slot, t0] of FADE) { if (slot.startsWith("init:")) continue;
-      const set = SLOT.gas.includes(slot) ? [SLOT.gas, U.uGasHave.value] : SLOT.w.includes(slot) ? [SLOT.w, U.uWHave.value] : [SLOT.stars, U.uStarHave.value];
+      const ss = [SLOT.gas, SLOT.w, SLOT.vel, SLOT.stars].find(s => s.includes(slot)), set = [ss, haveOf(ss)];
       const f = Math.min(1, (now - t0) / 300), comp = ["x", "y", "z"][set[0].indexOf(slot)]; set[1][comp] = Math.max(f, 0.001);
       if (f >= 1) FADE.delete(slot); else active = true; }
     return active;
   }
+  /* vel3d: a velocity level is bound when both the packed cube and its weight are */
+  const velSt = (st, L) => { const a = st("vel", "", L), b = st("gas", boundW, L); return a === "bound" && b === "bound" ? "bound" : a === "loading" || b === "loading" ? "loading" : "absent"; };
   function levels() {
     const st = (kind, k, L) => { const key = keyOf(kind, k, L); return TEX.has(key) && isBound(key) ? "bound" : PEND.has(key) ? "loading" : "absent"; };
-    return {gas: Object.fromEntries(GAS_L.map(L => [L, species ? st("gas", species, L) : "absent"])), stars: Object.fromEntries(STAR_L.map(S => [S, st("stars", "", S)]))};
+    return {gas: Object.fromEntries(GAS_L.map(L => [L, !species ? "absent" : isVel(species) ? velSt(st, L) : st("gas", species, L)])), stars: Object.fromEntries(STAR_L.map(S => [S, st("stars", "", S)]))};
   }
   /* tune2 download progress: the stage message while the first field level loads, the LOD line for the rest */
   let progT = 0, progMsg = null;
@@ -610,7 +686,7 @@ async function create(app, opts = {}) {
     if (species && (!wanted || wanted === species)) {
       const rest = plan.filter(x => !TEX.has(x) && !failed.has(x));
       if (rest.length && (!msgEl.textContent || msgEl.dataset.prog)) {
-        const tot2 = rest.reduce((a, x) => a + (PROG.get(x)?.total ?? cubeOf(x)?.webp?.bytes?.reduce((s, b) => s + b, 0) ?? 0), 0), got2 = rest.reduce((a, x) => a + (PROG.get(x)?.got ?? 0), 0);
+        const tot2 = rest.reduce((a, x) => a + (PROG.get(x)?.total ?? dlBytes(x)), 0), got2 = rest.reduce((a, x) => a + (PROG.get(x)?.got ?? 0), 0);
         const lvls = [...new Set(rest.map(x => x.split("|")[2]))].join(", ");
         say(`${lab(species)} shown, loading ${lvls} for this view, ${mb(got2)} of ${mb(tot2)}`, false, false, "", true); }
       else if (!rest.length) clearProg(); }
@@ -641,8 +717,9 @@ async function create(app, opts = {}) {
   }
   async function ensure() {
     if (!manifest) return false;
-    const k = wanted || species, {keys} = needed(k), first = keys.find(x => x.startsWith(`gas|${k}|`));
-    const firstKeys = first ? [first, ...(weighted(k) && mode === "integral" ? [keyOf("gas", "nH", first.split("|")[2])] : [])].filter(x => keys.includes(x)) : [];
+    const k = wanted || species, {keys} = needed(k), first = keys.find(x => x.startsWith(isVel(k) ? "vel||" : `gas|${k}|`));
+    const wk = isVel(k) ? velW : weighted(k) && mode === "integral" ? "nH" : null;
+    const firstKeys = first ? [first, ...(wk ? [keyOf("gas", wk, first.split("|")[2])] : [])].filter(x => keys.includes(x)) : [];
     for (const [key, ws] of [...waiters]) if (!keys.includes(key)) { waiters.delete(key); for (const w of ws) w[1](Object.assign(new Error("superseded by a newer view"), {cancelled: true})); }
     plan = keys; planFirst = new Set(firstKeys); failed.clear(); lodStatus(); pump();
     await Promise.all(firstKeys.map(waitKey));
@@ -655,8 +732,8 @@ async function create(app, opts = {}) {
     say("The graphics context was lost (GPU reset or memory pressure). Restoring the 3D view…", true); });
   canvas.addEventListener("webglcontextrestored", () => { ctxLost = false;
     for (const [key, it] of [...TEX]) if (!it.tex.image?.data) TEX.delete(key);
-    for (const sl of [...SLOT.gas, ...SLOT.w]) U[sl].value = RM.empty1; for (const sl of SLOT.stars) U[sl].value = RM.empty4;
-    U.uGasHave.value.set(0, 0, 0); U.uWHave.value.set(0, 0, 0); U.uStarHave.value.set(0, 0, 0); FADE.clear();
+    for (const sl of [...SLOT.gas, ...SLOT.w]) U[sl].value = RM.empty1; for (const sl of [...SLOT.stars, ...SLOT.vel]) U[sl].value = RM.empty4;
+    U.uGasHave.value.set(0, 0, 0); U.uWHave.value.set(0, 0, 0); U.uStarHave.value.set(0, 0, 0); U.uVelHave.value.set(0, 0, 0); FADE.clear();
     lastCmap = null; calibrated = ""; accK = 0;
     if (!manifest || !species) { say(""); render(); return; }
     bindAll(); applyTf();
@@ -667,24 +744,33 @@ async function create(app, opts = {}) {
   }
   async function setSpecies(k) {
     if (!manifest) { say(viz ? `3D data not available${manErr ? ` (${manErr})` : ""}. Sightlines, ray picking and the spectra still work.` : "3D data not published for this build. Sightlines, ray picking and the spectra still work.", false); return false; }
-    if (!fld(k)) { const x = specOf(k);   // Phase 3: an ion whose cubes are not built yet (or an unknown key): no exception
+    if (!canShow(k)) { const x = specOf(k);   // Phase 3: an ion whose cubes are not built yet (or an unknown key): no exception
       viewer.loadError = {key: k, message: x ? x.reason || "not available" : `unknown field ${k}`};
       if (x) say(`${x.reason.charAt(0).toUpperCase()}${x.reason.slice(1)}.`, false, true); markSpecies(species); return false; }
-    if (species === k && (TEX.has(keyOf("gas", k, "L0")) || TEX.has(keyOf("gas", k, "L1")))) { if (wanted !== k) { loadTok++; wanted = k; progMsg = null; clearProg(); } markSpecies(k); thumbLabel(); return true; }
+    const vel = isVel(k), firstKey = L => (vel ? keyOf("vel", "", L) : keyOf("gas", k, L));
+    /* back to the field still shown: re-plan its levels (another field's plan may have replaced them); a velocity view
+       whose Weight changed meanwhile takes the full path, so the new weights load and are switched in */
+    if (species === k && (TEX.has(firstKey("L0")) || TEX.has(firstKey("L1"))) && (!vel || boundW === velW)) {
+      if (wanted !== k) { loadTok++; wanted = k; progMsg = null; clearProg(); ensure().catch(() => {}); } markSpecies(k); thumbLabel(); return true; }
     const tok = ++loadTok; wanted = k; markSpecies(k); viewer.loadError = null;
+    /* σ_los has no volume rendering: choosing it switches to integral mode, said in the loading and shown messages */
+    const toInteg = !modeOk(k, mode) && setMode("integral"), modeNote = toInteg ? ", integral mode: the dispersion has no volume view" : "";
     /* final: the first frame waits for L0 alone (the coarse, whole-halo level); L1 and the rest follow (ensure / pump) */
-    const L1st = fld(k).cubes.L0 ? "L0" : "L1", c1 = fld(k).cubes[L1st];
-    const tot1 = c1.webp.bytes.reduce((a, b) => a + b, 0), k1 = keyOf("gas", k, L1st);
-    say(`loading ${lab(k)} (${L1st}, ${mb(tot1)})…`, false, false, "", true); announce(`loading ${lab(k)}`);
+    const cubes = fld(vel ? "vx" : k).cubes, L1st = cubes.L0 ? "L0" : "L1";
+    const k1 = firstKey(L1st), tot1 = dlBytes(k1);
+    say(`loading ${lab(k)} (${L1st}, ${mb(tot1)})${modeNote}…`, false, false, "", true); announce(`loading ${lab(k)}${modeNote}`);
     progMsg = () => { if (tok !== loadTok || species === k) { progMsg = null; return; } const p = PROG.get(k1);
       if (p) say(`loading ${lab(k)} (${L1st}), ${mb(p.got)} of ${mb(p.total)}…`, false, false, "", true); else if (TEX.has(k1) || PEND.has(k1)) say(`preparing ${lab(k)}…`, false, false, "", true); };
     try {
-      const t0 = performance.now(); stats.speciesAt ??= Math.round(t0); await ensure();
+      const t0 = performance.now(); stats.speciesAt ??= Math.round(t0);
+      /* a Weight change while this view loads re-plans without a new token and cancels this wait (its old weight key left
+         the plan): wait again for the current plan rather than report a false failure */
+      for (;;) { try { await ensure(); break; } catch (x) { if (!(x?.cancelled && tok === loadTok)) throw x; } }
       if (tok !== loadTok) return false;
-      species = k; bindAll(); syncTfInputs(); applyTf();
+      species = k; if (vel) boundW = velW; bindAll(); if (!vel) freeVel(); syncTfInputs(); applyTf();
       const gl = renderer.getContext(), t1 = performance.now(); draw(true); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
       stats.firstFrameMs = performance.now() - t1; stats.firstBindMs = t1 - t0; stats.firstFrameAt ??= Math.round(performance.now());
-      say(""); announce(`${lab(k)} shown`); hostErr = null; lodStatus(); thumbLabel(); spinKick();
+      if (toInteg) { const m = `${lab(k)} shown${modeNote}.`; say(m, false, true); setTimeout(() => { if (msgEl.textContent === m) say(""); }, 5000); } else say(""); announce(`${lab(k)} shown${modeNote}`); hostErr = null; lodStatus(); thumbLabel(); spinKick();
       setTimeout(() => { ensure().catch(() => {}); calibrate(); }, 0);
       return true;
     } catch (x) {
@@ -700,7 +786,9 @@ async function create(app, opts = {}) {
   function speciesUnits() { for (const i of ctlBox.querySelectorAll('input[name="v3-species"]')) { const f = fld(i.value), x = specOf(i.value); if (!f || !x) continue;
     const u = mode === "integral" && !weighted(i.value) ? (f.proj?.units || "cm^-2") : f.units;
     i.nextElementSibling.title = `${x.long}, ${mode === "integral" ? (weighted(i.value) ? "projected mean" : "column") : "density"} in ${pretty(u)}`; } }
-  function setMode(m) { if (!["integral", "volume"].includes(m)) return false; if (m === mode) return true; mode = m; markMode(m); speciesUnits();
+  function setMode(m) { if (!["integral", "volume"].includes(m)) return false; if (m === mode) return true;
+    if (!modeOk(wanted || species, m)) { markMode(mode); say("The line-of-sight dispersion is a property of the whole ray, so it has no volume view.", false, true); return false; }
+    mode = m; markMode(m); speciesUnits();
     if (species) { syncTfInputs(); applyTf(); ensure().catch(() => {}); bindAll(); } else { aria(); render(); } return true; }
   function setStars(o = {}) {
     if (o.on !== undefined) layer.stars = !!o.on && !!manifest?.stars;
@@ -721,7 +809,28 @@ async function create(app, opts = {}) {
     q("#v3-guides").checked = guides.visible; q("#v3-scale").checked = scaleOn; render(); return {ring: guides.visible, scale: scaleOn}; }
   let scaleOn = true;
 
-  function syncTfInputs() { if (!manifest || !species) return; const s = fieldTf(species), [a, b] = winRange(species);
+  /* vel3d: the Field card's rows follow the view: low / high (log windows) for the gas and ion fields; the ±W window and
+     the Weight control for the velocity views; the colour list offers the diverging map for signed views */
+  let cmapSet = "";
+  function syncVelUi() { const v = velView(species), vs = !!v;
+    q("#v3-lo-row").hidden = q("#v3-hi-row").hidden = vs; q("#v3-vw-row").hidden = q("#v3-weight-row").hidden = !vs;
+    const want = !vs ? "field" : v.signed ? "signed" : "unsigned", names = want === "field" ? CMAPS : VEL_NAMES[want];
+    if (cmapSet !== want) { const sel = q("#v3-cmap"); sel.textContent = ""; for (const c of names) { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); } cmapSet = want; }
+    q("#v3-cmap").disabled = !manifest || names.length < 2; q("#v3-cmap-row").hidden = !!manifest && names.length < 2;   // a one-map list (signed views) is no choice: row hidden
+    for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) { const off = !manifest || !modeOk(species, i.value); i.disabled = off;
+      i.closest("label").title = off && manifest ? "line-of-sight dispersion: integral only (a property of the whole ray)"
+        : i.value === "integral" ? (vs ? `integral: the weighted ${species === "sigmalos" ? "spread" : "mean"} along each ray` : "integral: a column-density map from any angle")
+        : vs ? "volume: colour from the velocity, opacity from the weight" : "volume: emission and absorption with a transfer function"; }
+    if (!vs) return;
+    const s = fieldTf(species), r = q("#v3-vw"); r.min = VEL_WMIN; r.max = Math.max(VEL_WMIN, Math.round(VELI.V)); r.value = s.W;
+    q("#v3-vw-o").textContent = v.signed ? `±${Math.round(s.W)}` : `${Math.round(s.W)}`; r.setAttribute("aria-valuetext", `${v.signed ? "plus or minus " : "0 to "}${Math.round(s.W)} km/s`);
+    const ws = q("#v3-weight"); if (ws.options.length !== WEIGHTS.length) { ws.textContent = "";
+      for (const k of WEIGHTS) { const o = document.createElement("option"); o.value = k; o.textContent = k === "nH" ? "nH (all gas)" : lab(k); ws.appendChild(o); } }
+    ws.value = velW; }
+  function syncTfInputs() { if (!manifest || !species) return; syncVelUi();
+    if (isVel(species)) { const s = fieldTf(species); q("#v3-cmap").value = s.cmap; q("#v3-op").value = s.opacity; q("#v3-op-o").textContent = (+s.opacity).toFixed(2);
+      q("#v3-op").disabled = mode !== "volume"; fillRanges(); return; }
+    const s = fieldTf(species), [a, b] = winRange(species);
     for (const id of ["#v3-lo", "#v3-hi"]) { const i = q(id); i.min = a; i.max = b; }
     q("#v3-lo").value = s.lo; q("#v3-hi").value = s.hi; q("#v3-op").value = s.opacity; q("#v3-cmap").value = s.cmap;
     q("#v3-lo-o").textContent = (+s.lo).toFixed(1); q("#v3-hi-o").textContent = (+s.hi).toFixed(1); q("#v3-op-o").textContent = (+s.opacity).toFixed(2);
@@ -730,14 +839,56 @@ async function create(app, opts = {}) {
   function applyTf() { if (!manifest || !species) return; const s = fieldTf(species);
     U.uWin.value.set(s.lo, s.hi); U.uOpacity.value = +s.opacity; U.uMode.value = mode === "volume" ? 1 : 0; U.uKind.value = weighted(species) ? 1 : 0;
     U.uFadeDex.value = fadeDex(species); U.uVolK.value = VOL.k; U.uVolGain.value = VOL.gain;
+    /* vel3d: the view, and the weight's log window: its column floor (the field's own integral low) in integral mode, its
+       volume window in volume mode; the soft floor fades like the weight field's own map */
+    const v = velView(species); U.uVq.value = v ? v.q : 0;
+    if (v) { const f = fld(boundW); U.uKind.value = 0; U.uFadeDex.value = fadeDex(boundW); U.uVolGain.value = 1;   // gain 1: the velocity LUT is already light; 1.8 clipped its hues toward white
+      if (mode === "volume") U.uWWin.value.set(...f.vol_window); else { const lo = WIN_DEFAULT[boundW]?.lo ?? f.proj.vmin; U.uWWin.value.set(lo, Math.max(lo + 1, WIN_DEFAULT[boundW]?.hi ?? f.proj.vmax)); } }
     if (s.cmap !== lastCmap) { RM.lutTex.image.data.set(lut(s.cmap)); RM.lutTex.needsUpdate = true; lastCmap = s.cmap; }
     legend(); aria(); render(); }
-  function setTransfer(o = {}) { if (!species) return; const s = fieldTf(species), [a, b] = winRange(species);
+  function setTransfer(o = {}) { if (!species) return;
+    if (isVel(species)) {   // vel3d: {W} (km/s, the symmetric window ±W, or 0..W), opacity, cmap from the view's list
+      const v = velView(species), s = fieldTf(species), names = v.signed ? VEL_NAMES.signed : VEL_NAMES.unsigned;
+      if (o.W !== undefined && o.W !== null && Number.isFinite(+o.W)) s.W = Math.min(Math.max(+o.W, VEL_WMIN), Math.max(VEL_WMIN, VELI.V));
+      if (o.opacity !== undefined && o.opacity !== null && Number.isFinite(+o.opacity)) s.opacity = Math.min(Math.max(+o.opacity, 0), 1);
+      if (o.cmap && names.includes(o.cmap)) s.cmap = o.cmap;
+      s.lo = v.signed ? -s.W : 0; s.hi = s.W; syncTfInputs(); applyTf(); return; }
+    const s = fieldTf(species), [a, b] = winRange(species);
     for (const k of ["lo", "hi", "opacity"]) if (o[k] !== undefined && o[k] !== null && Number.isFinite(+o[k])) s[k] = +o[k];
     s.lo = Math.min(Math.max(s.lo, a), b); s.hi = Math.min(Math.max(s.hi, a), b); s.opacity = Math.min(Math.max(s.opacity, 0), 1);
     if (o.cmap && CMAPS.includes(o.cmap)) s.cmap = o.cmap; if (s.lo > s.hi) [s.lo, s.hi] = [s.hi, s.lo];
     syncTfInputs(); applyTf(); }
+  /* vel3d: the weight field in words (legend, aria, Weight options) */
+  const wName = (k, html) => (k === "nH" ? (html ? "n<sub>H</sub>" : "nH") : lab(k));
+  function velLegend(L) { const v = velView(species), s = fieldTf(species), integ = mode === "integral";
+    const what = species === "sigmalos" ? "dispersion along your view" : `⟨${v.html}⟩`;
+    L.querySelector(".ttl").innerHTML = integ ? `${what}, ${wName(boundW, true)}-weighted [km/s]` : `${v.html} [km/s], volume, opacity ${wName(boundW, true)}`;
+    L.querySelector(".bar").style.background = cssGradient(s.cmap);
+    const tk = L.querySelector(".ticks"); tk.textContent = ""; const span = s.hi - s.lo || 1;
+    const st = [10, 20, 25, 50, 100, 200, 250, 500, 1000].find(x => span / x <= 4.01) || 1000;
+    for (let x = Math.ceil(s.lo / st - 1e-9) * st; x <= s.hi + 1e-9; x += st) { const sp = document.createElement("span");
+      sp.style.left = Math.min(96, Math.max(4, 100 * (x - s.lo) / span)) + "%"; sp.textContent = (x < -1e-9 ? "−" : x > 1e-9 && v.signed ? "+" : "") + Math.round(Math.abs(x)); tk.appendChild(sp); }
+    const ends = L.querySelector(".ends"); ends.hidden = !v.words;
+    if (v.words) { ends.children[0].textContent = v.words[0]; ends.children[1].textContent = v.words[1]; } }
+  /* vel3d: the Weight control: n_H (all gas) or an ion density; its cubes load like a field's, the view redraws once bound */
+  function setWeight(k) { if (!WEIGHTS.includes(k)) return false; if (k === velW) return true; velW = k;
+    if (species && isVel(species) && isVel(wanted || species)) { syncTfInputs(); const tok = loadTok;   // the old weights (boundW) stay bound and drawn until the new first level is
+      say(`loading the ${wName(k)} weights…`, false, false, "", true);
+      ensure().then(() => { if (tok !== loadTok || velW !== k) return;
+          /* also wait for the new weight at every finer level the old one is drawn at (when the plan names it), so the
+             switch keeps the view's levels; a level that fails or leaves the plan is not waited for */
+          const more = GAS_L.filter(L => isBound(keyOf("gas", boundW, L)) && plan.includes(keyOf("gas", k, L))).map(L => waitKey(keyOf("gas", k, L)).catch(() => {}));
+          return Promise.all(more).then(() => { if (tok !== loadTok || velW !== k) return;
+            boundW = k; bindAll(true); clearProg(); applyTf(); announce(`weighted by ${wName(k)}`); }); })
+        .catch(x => { if (x.cancelled || velW !== k) return;
+          velW = boundW; syncTfInputs(); ensure().catch(() => {});   // keep drawing the old weight
+          if (x instanceof HostError) hostMessage(x); else say(`Could not load the ${wName(k)} weights: ${x.message}`, true); }); }
+    else { if (!isVel(species)) boundW = k;   // a velocity view still shown while another field loads keeps boundW until setSpecies switches it
+      if (q("#v3-weight")) q("#v3-weight").value = k; }
+    return true; }
   function legend() { const L = q(".v3d-leg"); if (!manifest || !species) { L.hidden = true; return; }
+    if (isVel(species)) { L.hidden = false; velLegend(L); legendTail(L); return; }
+    L.querySelector(".ends").hidden = true;
     const f = fld(species), s = fieldTf(species); L.hidden = false;
     const integ = mode === "integral", units = integ ? (weighted(species) ? f.units : (f.proj.units || "cm^-2")) : f.units;
     const esc = t => String(t).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"})[c]);
@@ -746,13 +897,18 @@ async function create(app, opts = {}) {
     const tk = L.querySelector(".ticks"); tk.textContent = ""; const span = s.hi - s.lo || 1, st = span > 6 ? 2 : span > 2.5 ? 1 : span > 1.2 ? 0.5 : span > 0.5 ? 0.2 : 0.1;
     for (let v = Math.ceil(s.lo / st) * st; v <= s.hi + 1e-9; v += st) { const sp = document.createElement("span");
       sp.style.left = Math.min(96, Math.max(4, 100 * (v - s.lo) / span)) + "%"; sp.textContent = (v < -1e-9 ? "−" : "") + Math.abs(+v.toFixed(1)); tk.appendChild(sp); }
+    legendTail(L); }
+  function legendTail(L) {
     const stl = L.querySelector(".st"); stl.hidden = !layer.stars; L.querySelector(".off").hidden = layer.stars || !manifest.stars; lastMuTxt = ""; starLegend();
     /* final: with the gas layer at 0 the gas colour bar describes nothing on screen: hide it (and the legend, if stars are off too) */
     const gasOn = layer.gasMix > 0; for (const s2 of [".ttl", ".bar", ".ticks"]) L.querySelector(s2).hidden = !gasOn;
-    if (!gasOn) { L.querySelector(".off").hidden = true; if (!layer.stars) L.hidden = true; } }
-  function aria() { const f = manifest && species ? fld(species) : null, s = f ? fieldTf(species) : null, lv = levels();
+    if (!gasOn) { L.querySelector(".ends").hidden = true; L.querySelector(".off").hidden = true; if (!layer.stars) L.hidden = true; } }
+  function aria() { const f = manifest && species ? fld(species) : null, s = f || (species && isVel(species)) ? fieldTf(species) : null, lv = levels();
     const fin = GAS_L.filter(L => lv.gas[L] === "bound").pop(), sfin = STAR_L.filter(S => lv.stars[S] === "bound").pop();
-    const al = `3D view, ${mode} mode${f ? `: ${lab(species)}, window ${s.lo.toFixed(1)} to ${s.hi.toFixed(1)} log ${pretty(mode === "integral" && !weighted(species) ? "cm^-2" : f.units)}` : ""}` +
+    const v = manifest && species ? velView(species) : null;
+    const what = v ? `: ${v.long}, ${wName(boundW)}-weighted, window ${Math.round(s.lo)} to ${Math.round(s.hi)} km/s${v.words ? ` (${v.words[0]} to ${v.words[1]})` : ""}`
+      : f ? `: ${lab(species)}, window ${s.lo.toFixed(1)} to ${s.hi.toFixed(1)} log ${pretty(mode === "integral" && !weighted(species) ? "cm^-2" : f.units)}` : "";
+    const al = `3D view, ${mode} mode${what}` +
       `; stars ${layer.stars ? "on" : "off"}; finest level ${fin || "none"}${layer.stars ? `, stars ${sfin || "none"}` : ""}` +
       `; ${LINE_IDS.length} sightlines drawn${nNoEnds ? ` (${nNoEnds} more have no stored endpoints)` : ""}${selId ? `; selected ${selId}${hasEnds(app.entry(selId)) ? "" : " (not drawn: no stored endpoints)"}` : ""}.` +
       ` Arrow keys rotate, + and − zoom, F face-on, E edge-on, A along the selected sightline, R reset, P pick a ray, M mode, S stars, G guides, Shift+F fullscreen.`;
@@ -893,7 +1049,7 @@ async function create(app, opts = {}) {
     lod: LOD_C, uniforms: U,
     presetError: null, loadError: null, get manifest() { return manifest; }, get species() { return species; },
     get res() { const lv = levels(); return GAS_L.filter(L => lv.gas[L] === "bound").pop() || null; }, get wanted() { return wanted; },
-    get mode() { return mode; }, get message() { return msgEl.textContent; }, get fullscreen() { return isFs(); }, get stars() { return layer.stars; },
+    get mode() { return mode; }, get weight() { return velW; }, get weightBound() { return boundW; }, get velocity() { return VELI; }, get message() { return msgEl.textContent; }, get fullscreen() { return isFs(); }, get stars() { return layer.stars; },
     tune: {SMOOTH, WIN_DEFAULT, FADE_DEX, VOL, SEL_GAL, CMAP_DEFAULT, STAR_COMP, STAR_ZOOM, STAR_CLOSE, LOD_C}};
   function nearestLine(x, y, maxPx = 8) {
     const r = canvas.getBoundingClientRect(), v = new T.Vector3(); let best = null, bd = maxPx;
@@ -989,7 +1145,7 @@ async function create(app, opts = {}) {
   speciesUnits();
   for (const c of CMAPS) { const o = document.createElement("option"); o.value = c; o.textContent = c; q("#v3-cmap").appendChild(o); }
   for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.disabled = !manifest;
-  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars"]) q(id).disabled = !manifest;
+  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
   if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0"]) q(id).disabled = true;
   q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) setSpecies(ev.target.value); });
   q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) setMode(ev.target.value); });
@@ -997,6 +1153,8 @@ async function create(app, opts = {}) {
   q("#v3-hi").addEventListener("input", ev => setTransfer({hi: Math.max(+ev.target.value, fieldTf(species).lo + 0.1)}));
   q("#v3-op").addEventListener("input", ev => setTransfer({opacity: +ev.target.value}));
   q("#v3-cmap").addEventListener("change", ev => setTransfer({cmap: ev.target.value}));
+  q("#v3-vw").addEventListener("input", ev => setTransfer({W: +ev.target.value}));
+  q("#v3-weight").addEventListener("change", ev => setWeight(ev.target.value));
   q("#v3-gasmix").addEventListener("input", ev => setStars({gasMix: +ev.target.value}));
   q("#v3-starmix").addEventListener("input", ev => setStars({mix: +ev.target.value}));
   q("#v3-mu0").addEventListener("input", ev => setStars({mu0: +ev.target.value}));
@@ -1009,8 +1167,8 @@ async function create(app, opts = {}) {
 
   const onSel = ev => select(ev.detail?.id), onCat = () => refreshLines();
   addEventListener("tng:select", onSel); addEventListener("tng:catalog", onCat);
-  Object.assign(viewer, {drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
-    setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes,
+  Object.assign(viewer, {drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setWeight, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
+    setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes, texKeys: () => [...TEX.keys()],
     dispose() { loadTok++; anim++; progMsg = null; ENGINE = null; io?.disconnect(); if (spinRaf) cancelAnimationFrame(spinRaf); spinRaf = 0;
       document.removeEventListener("visibilitychange", spinKick); if (thumbHost && thumbClick) thumbHost.removeEventListener("click", thumbClick); ctlBox.remove(); clearTimeout(quietT); clearTimeout(progT); clearTimeout(liveT); if (accT) cancelAnimationFrame(accT); accT = 0;
       if (fallbackFs) toggleFullscreen(false); else if (fsEl() === el) document.exitFullscreen?.().catch(() => {});
@@ -1108,7 +1266,7 @@ async function create(app, opts = {}) {
     return started ||= (async () => {
       if (!manifest && hostDown) { hostMessage(new HostError(manErr || "no answer", hostDown)); return false; }
       if (!manifest) { say(viz ? `3D data not available${manErr ? ` (${manErr})` : ""}. Sightlines, ray picking and the spectra still work.` : "3D data not published for this build. Sightlines, ray picking and the spectra still work."); return false; }
-      return setSpecies(k && fld(k) ? k : fld("nH") ? "nH" : Object.keys(manifest.gas.fields)[0]);
+      return setSpecies(k && canShow(k) ? k : fld("nH") ? "nH" : Object.keys(manifest.gas.fields)[0]);
     })();
   }
   Object.assign(viewer, {dock, _attachFull, _attachThumb, _start});

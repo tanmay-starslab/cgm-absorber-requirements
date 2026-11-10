@@ -72,7 +72,7 @@ export function attachPicker(viewer, root, app) {
   const msg = h("p", {class: "msg", id: "pk-msg", "aria-live": "polite"});
   const form = h("form", {class: "pk", id: "pk-form", novalidate: ""},
     h("div", {class: "row"}, bMode, bUse, bClear),
-    h("p", {class: "hint", id: "pk-hint", text: viewer ? "Click two points on the plane facing you, then drag the handles; Esc stops. Or type endpoints in kpc (box axes)." :
+    h("p", {class: "hint", id: "pk-hint", text: viewer ? "Click two points (Esc stops) or type endpoints in kpc." :
       "Type the ray's endpoints in kpc from the galaxy centre (simulation box axes)."}),
     h("fieldset", {}, h("legend", {class: "label", text: "start p0 [kpc]"}), h("div", {class: "pk-xyz"}, inp("pk-p0-x", "x"), inp("pk-p0-y", "y"), inp("pk-p0-z", "z"))),
     h("fieldset", {}, h("legend", {class: "label", text: "end p1 [kpc]"}), h("div", {class: "pk-xyz"}, inp("pk-p1-x", "x"), inp("pk-p1-y", "y"), inp("pk-p1-z", "z"))),

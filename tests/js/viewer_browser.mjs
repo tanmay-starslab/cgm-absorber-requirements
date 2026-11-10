@@ -39,6 +39,7 @@ const PROFILE_PARENT = A.profile || process.env.TNG_EDGE_PROFILE || undefined;  
   const r = PROFILE_PARENT ? relative(real(VIZ), real(PROFILE_PARENT)) : "..";
   if (r === "" || (!r.startsWith("..") && !isAbsolute(r))) { console.error("--profile / TNG_EDGE_PROFILE must not be inside the viz dir"); process.exit(2); } }
 if (SHOTS) mkdirSync(SHOTS, {recursive: true});
+const MAN = JSON.parse(readFileSync(join(VIZ, "manifest_v2.json"), "utf8"));   // vel3d: the velocity checks run when it names gas.vectors
 let fails = 0; const check = (ok, msg) => { console.log(`${ok ? "ok  " : "FAIL"} ${msg}`); if (!ok) fails++; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -139,9 +140,10 @@ else {
       return JSON.stringify({keys: R.map(i => i.value), enabled: R.filter(i => !i.disabled).map(i => i.value), fields: Object.keys(m.gas.fields),
         tips: R.filter(i => i.disabled).map(i => i.closest("label").title), names: R.map(i => i.nextElementSibling.textContent),
         civ: sw ? getComputedStyle(sw).backgroundColor : null, dark: matchMedia("(prefers-color-scheme: dark)").matches}); })()`));
-    const ladder = ["nH", "T", "Z", "HI", "MgII", "SiII", "CII", "SiIII", "CIII", "SiIV", "CIV", "NV", "OVI", "NeVIII", "OVII"];
-    check(S.keys.join() === ladder.join() && S.enabled.slice().sort().join() === S.fields.filter(k => ladder.includes(k)).sort().join() && S.tips.every(t => /not built/.test(t)),
-      `species menu: ${S.keys.length} entries in ladder order (${S.names.join(", ")}); enabled = manifest fields (${S.enabled.join(", ")}); ${S.tips.length} disabled with a tooltip`);
+    const ladder = ["nH", "T", "Z", "HI", "MgII", "SiII", "CII", "SiIII", "CIII", "SiIV", "CIV", "NV", "OVI", "NeVIII", "OVII"], VELK = ["vlos", "vr", "vphi", "vmag", "sigmalos"];
+    const velOn = S.fields.includes("vx") && S.fields.includes("vy") && S.fields.includes("vz") && MAN.gas?.vectors?.v;
+    check(S.keys.join() === [...ladder, ...VELK].join() && S.enabled.slice().sort().join() === [...S.fields.filter(k => ladder.includes(k)), ...(velOn ? VELK : [])].sort().join() && S.tips.every(t => /not built/.test(t)),
+      `species menu: ${S.keys.length} entries, the ladder then the Velocity group (${S.names.join(", ")}); enabled = manifest fields${velOn ? " and the velocity views" : ""} (${S.enabled.join(", ")}); ${S.tips.length} disabled with a tooltip`);
     check(!S.dark || S.civ === "rgb(251, 122, 60)", `O VI swatch in the registry colour (${S.dark ? "dark" : "light"}: ${S.civ})`);
     const miss = ladder.find(k => !S.fields.includes(k));
     if (miss) { const r = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d, s0 = v.species; let ok, err = null; try { ok = await v.setSpecies(${JSON.stringify(miss)}); } catch (x) { err = x.message; }
@@ -151,6 +153,35 @@ else {
     const sep = await ev(`(() => { const F = /[\\u00B7\\u2022\\u2027\\u22C5\\u30FB]| \\. /; const t = [document.querySelector("#v3-ctl").innerText, document.querySelector(".v3d-stage").innerText, document.querySelector(".v3d-stage canvas").getAttribute("aria-label"),
         ...[...document.querySelectorAll("#v3-ctl [title], .v3d [title], #v3-ctl [aria-label]")].flatMap(e => [e.title, e.getAttribute("aria-label") || ""])].join("\\n"); const m = t.match(F); return m ? m[0] + " in " + t.slice(Math.max(0, m.index - 40), m.index + 40) : ""; })()`);
     check(sep === "", `no dot separators in the viewer's text, titles and labels${sep ? ": " + sep : ""}`); }
+  /* ---- vel3d: the velocity views. v_los is projected on the camera ray every frame: edge-on, the co-rotating disk recedes on
+     one side and approaches on the other, and the two sides swap when the camera moves to the opposite side ---- */
+  if (MAN.gas?.vectors?.v) {
+    const vel = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d, gpu0 = v.gpuBytes(); v.setStars({on: false});
+      const ok = await v.setSpecies("vlos"); v.setPreset("edge-on"); await new Promise(r => setTimeout(r, 900));
+      const d = v.camera.position.clone().sub(v.controls.target).setLength(90); v.camera.position.copy(v.controls.target).add(d); v.controls.update();
+      for (let i = 0; i < 100 && !Object.values(v.levels().gas).includes("bound"); i++) await new Promise(r => setTimeout(r, 100));
+      const gl = v.renderer.getContext(), patch = (fx, fy) => { v.drawNow(); const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight, px = new Uint8Array(4 * 25);
+        gl.readPixels(Math.round(fx * W) - 2, Math.round(fy * H) - 2, 5, 5, gl.RGBA, gl.UNSIGNED_BYTE, px); const m = [0, 0, 0]; for (let i = 0; i < 25; i++) for (let c = 0; c < 3; c++) m[c] += px[4 * i + c] / 25; return m.map(Math.round); };
+      const a = {left: patch(0.38, 0.5), right: patch(0.62, 0.5)};
+      v.camera.position.copy(v.controls.target).sub(d); v.controls.update(); await new Promise(r => setTimeout(r, 300));
+      const b = {left: patch(0.38, 0.5), right: patch(0.62, 0.5)};
+      const leg = document.querySelector(".v3d-leg"), ends = [...leg.querySelectorAll(".ends span")].map(s => s.textContent);
+      const rows = {lo: document.querySelector("#v3-lo-row").hidden, vw: document.querySelector("#v3-vw-row").hidden, w: document.querySelector("#v3-weight-row").hidden};
+      const sig = await v.setSpecies("sigmalos"), volOk = v.setMode("volume"), modeNow = v.mode;
+      const back = await v.setSpecies("nH"); await new Promise(r => setTimeout(r, 200));
+      return JSON.stringify({ok, a, b, ends, ttl: leg.querySelector(".ttl").textContent, rows, sig, volOk, modeNow, back, gpu0, gpu1: v.gpuBytes(), label: v.canvas.getAttribute("aria-label")}); })()`));
+    const red = c => c[0] > c[2] + 25, blue = c => c[2] > c[0] + 25;
+    check(vel.ok, `setSpecies("vlos") shows the line-of-sight velocity (aria: ${vel.label?.slice(0, 110)})`);
+    check(red(vel.a.right) && blue(vel.a.left), `v_los edge-on: receding (red) right ${vel.a.right}, approaching (blue) left ${vel.a.left}`);
+    check(blue(vel.b.left) && red(vel.b.right), `v_los from the opposite side: the +y half (now on the left, ${vel.b.left}) approaches, the −y half recedes (${vel.b.right}): it follows the camera`);
+    check(vel.ends.join() === "toward you,away from you" && /km\/s/.test(vel.ttl) && vel.rows.lo && !vel.rows.vw && !vel.rows.w,
+      `legend "${vel.ttl}" with words ${vel.ends.join(" / ")}; ±W window and Weight rows shown, log rows hidden`);
+    check(vel.sig && vel.volOk === false && vel.modeNow === "integral", "σ_los is integral only (setMode(\"volume\") refused)");
+    check(vel.back && vel.gpu1 < vel.gpu0 + 1, `leaving the velocity views frees their packed cubes (GPU ${(vel.gpu1 / 1e6).toFixed(1)} MB, was ${(vel.gpu0 / 1e6).toFixed(1)} MB before vlos)`);
+  } else {
+    const r = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d; const ok = await v.setSpecies("vlos"); return JSON.stringify({ok, le: v.loadError}); })()`));
+    check(r.ok === false && /not built/.test(r.le?.message || ""), `old manifest: setSpecies("vlos") false, "${r.le?.message}"`);
+  }
   const B = await ev(`window.tngViewer3d.bench(${NB})`);
   console.log(`     bench: exact ${B.exact_ms_median.toFixed(1)} ms, moving exact ${B.moving_exact_ms_median.toFixed(1)} ms, moving fast ${B.moving_fast_ms_median.toFixed(1)} ms → moving path ${B.moving_path}; canvas ${B.size.join("×")} px`);
   check(B.exact_ms_median <= 300, `exact refine frame ${B.exact_ms_median.toFixed(1)} ms ≤ 300 ms`);
@@ -174,7 +205,18 @@ else {
     await setView(`${V}.setMode("integral"); ${V}.setSpecies("nH").then(() => ${V}.setPreset("reset"))`, 1500);
     const sel = await ev(`(() => { const e = tngApp.entries().find(e => e.p0 && /^edge_b100/.test(e.id)) || tngApp.entries().find(e => e.p0); tngApp.select(e.id, {source: "3d"}); return e.id; })()`);
     await sleep(800); await ev(`window.tngPicker && document.querySelector("#v3d-root") && ${V}.hooks.togglePick && ${V}.hooks.togglePick()`); await sleep(500);
-    await shot("14_selected_pick.png"); await ev(`${V}.hooks.exitPick && ${V}.hooks.exitPick()`); console.log("     selected " + sel);
+    await shot("14_selected_pick.png");
+    if (MAN.gas?.vectors?.v) {    // vel3d screenshots
+      await ev(`${V}.hooks.exitPick && ${V}.hooks.exitPick()`);
+      await setView(`${V}.setStars({on: false}); ${V}.setSpecies("vlos").then(() => ${V}.setPreset("edge-on")); (() => { const v = ${V}; const d = v.camera.position.clone().sub(v.controls.target).setLength(120); v.camera.position.copy(v.controls.target).add(d); v.controls.update(); })()`, 1500);
+      await shot("16_vlos_edgeon.png");
+      await setView(`(() => { const v = ${V}; v.camera.position.multiplyScalar(-1); v.camera.lookAt(v.controls.target); v.controls.update(); })()`, 900); await shot("17_vlos_edgeon_other_side.png");
+      await setView(`${V}.setSpecies("vphi").then(() => ${V}.setPreset("face-on"))`, 1500); await shot("18_vphi_faceon.png");
+      await setView(`${V}.setSpecies("vr").then(() => { ${V}.setMode("volume"); ${V}.setPreset("reset"); })`, 1500); await shot("19_vr_volume.png");
+      await setView(`${V}.setMode("integral"); ${V}.setSpecies("sigmalos").then(() => ${V}.setPreset("edge-on"))`, 1500); await shot("20_sigmalos_edgeon.png");
+      await setView(`${V}.setSpecies("vlos").then(() => ${V}.setWeight("OVI"))`, 2500); await shot("21_vlos_OVI_weight.png");
+      await setView(`${V}.setWeight("nH"); ${V}.setSpecies("nH")`, 1200);
+    } await ev(`${V}.hooks.exitPick && ${V}.hooks.exitPick()`); console.log("     selected " + sel);
     await ev(`window.scrollTo(0, 0)`); await sleep(300);
     const r = await send("Page.captureScreenshot", {format: "png", captureBeyondViewport: true}); writeFileSync(join(SHOTS, "10_page_layout_full.png"), Buffer.from(r.result.data, "base64"));
   }
