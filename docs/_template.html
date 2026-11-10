@@ -6,25 +6,58 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
 <style>
-/* Layout: one reading column; a control strip that stays in reach on wide screens; each concept is a figure + caption pair. */
+/* Layout: one reading column; a control strip that stays in reach on wide screens; each concept is a figure + caption pair.
+   Materials (Apple-style glass): thin = buttons, chips, cards inside panels; regular = control strip, figure frames;
+   thick = popovers (map tooltips). Plot surfaces (--panel, painted by every canvas) stay opaque. */
 :root{
-  --bg:#f4f6f9; --panel:#ffffff; --ink:#0f151c; --ink2:#4b5563; --muted:#7b8592; --rule:#d6dce4; --grid:#e3e8ee;
+  --bg:#eef2f7; --panel:#ffffff; --ink:#0f151c; --ink2:#4b5563; --muted:#5d6773; --rule:#d6dce4; --grid:#e3e8ee;
   --accent:#1c5cab; --accent-ink:#ffffff; --truth:#1c5cab; --fit:#d4572a; --intr:#0f151c; --noise:#5b6573;
-  --good:#0c8a3e; --warn:#b26b00; --bad:#b4232a;
+  --good:#0a7a37; --warn:#9a5c00; --bad:#b4232a;
   --display:"Newsreader","Iowan Old Style",Georgia,serif;
   --body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --mat-thin:rgba(255,255,255,.52); --mat-regular:rgba(255,255,255,.62); --mat-thick:rgba(255,255,255,.80);
+  --mat-blur-thin:blur(14px) saturate(1.7); --mat-blur-regular:blur(24px) saturate(1.8); --mat-blur-thick:blur(40px) saturate(1.9);
+  --mat-edge-c:rgba(15,21,28,.10); --mat-edge-top:rgba(255,255,255,.95);
+  --mat-highlight:inset 0 1px 0 rgba(255,255,255,.85); --mat-sheen:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0) 60%);
+  --mat-shadow:0 1px 2px rgba(15,21,28,.05),0 12px 36px -10px rgba(25,45,80,.18);
+  --mat-fill:linear-gradient(180deg,rgba(255,255,255,.80),rgba(255,255,255,.42)); --mat-fill-hover:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,255,255,.60));
+  --mat-press:rgba(15,21,28,.07); --mat-row:rgba(28,92,171,.07);
+  --glow1:rgba(28,92,171,.20); --glow2:rgba(212,87,42,.13); --glow3:rgba(27,175,122,.13);
+  --r-s:10px; --r-m:16px; --r-l:22px;
+  --mat-bar:rgba(255,255,255,.76); --mat-blur-bar:blur(24px) saturate(1.3); --mat-track:rgba(15,21,28,.16);
+  --mat-edge:1px solid var(--mat-edge-c); --mat-thick-o:color-mix(in srgb,var(--panel) 96%,transparent);
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --bg:#0f1318; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#7d8896; --rule:#28303a; --grid:#222a33;
+  --bg:#0b0f14; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#8a95a3; --rule:#2a323d; --grid:#222a33;
   --accent:#6da7ec; --accent-ink:#0b1016; --truth:#6da7ec; --fit:#f08f62; --intr:#e9eef4; --noise:#9aa5b2;
-  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark } }
+  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark;
+  --mat-thin:rgba(40,48,60,.42); --mat-regular:rgba(26,32,42,.55); --mat-thick:rgba(30,37,48,.78); --mat-bar:rgba(22,27,35,.86); --mat-track:rgba(255,255,255,.20);
+  --mat-edge-c:rgba(255,255,255,.09); --mat-edge-top:rgba(255,255,255,.20);
+  --mat-highlight:inset 0 1px 0 rgba(255,255,255,.10); --mat-sheen:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0) 60%);
+  --mat-shadow:0 1px 2px rgba(0,0,0,.30),0 16px 40px -12px rgba(0,0,0,.55);
+  --mat-fill:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.04)); --mat-fill-hover:linear-gradient(180deg,rgba(255,255,255,.17),rgba(255,255,255,.07));
+  --mat-press:rgba(0,0,0,.28); --mat-row:rgba(109,167,236,.10);
+  --glow1:rgba(56,120,220,.26); --glow2:rgba(240,143,98,.13); --glow3:rgba(40,190,140,.12) } }
 :root[data-theme="dark"]{
-  --bg:#0f1318; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#7d8896; --rule:#28303a; --grid:#222a33;
+  --bg:#0b0f14; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#8a95a3; --rule:#2a323d; --grid:#222a33;
   --accent:#6da7ec; --accent-ink:#0b1016; --truth:#6da7ec; --fit:#f08f62; --intr:#e9eef4; --noise:#9aa5b2;
-  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark }
+  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark;
+  --mat-thin:rgba(40,48,60,.42); --mat-regular:rgba(26,32,42,.55); --mat-thick:rgba(30,37,48,.78); --mat-bar:rgba(22,27,35,.86); --mat-track:rgba(255,255,255,.20);
+  --mat-edge-c:rgba(255,255,255,.09); --mat-edge-top:rgba(255,255,255,.20);
+  --mat-highlight:inset 0 1px 0 rgba(255,255,255,.10); --mat-sheen:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0) 60%);
+  --mat-shadow:0 1px 2px rgba(0,0,0,.30),0 16px 40px -12px rgba(0,0,0,.55);
+  --mat-fill:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.04)); --mat-fill-hover:linear-gradient(180deg,rgba(255,255,255,.17),rgba(255,255,255,.07));
+  --mat-press:rgba(0,0,0,.28); --mat-row:rgba(109,167,236,.10);
+  --glow1:rgba(56,120,220,.26); --glow2:rgba(240,143,98,.13); --glow3:rgba(40,190,140,.12) }
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;margin:0;position:relative;isolation:isolate}
+/* static colour glows behind the glass; fixed so the blur has something to refract at every scroll position */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(42vmax 34vmax at 8% 6%,var(--glow1),transparent 70%),
+    radial-gradient(38vmax 30vmax at 96% 22%,var(--glow2),transparent 70%),
+    radial-gradient(46vmax 36vmax at 70% 104%,var(--glow3),transparent 70%),
+    radial-gradient(30vmax 26vmax at 12% 78%,var(--glow1),transparent 72%)}
 .wrap{max-width:1080px;margin:0 auto;padding-inline:18px;padding-block:28px 64px;display:flex;flex-direction:column;gap:30px}
 h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,4.4vw,42px);line-height:1.08;margin:0;text-wrap:balance}
 h2{font-family:var(--display);font-weight:600;font-size:clamp(21px,2.6vw,26px);line-height:1.15;margin:0;text-wrap:balance}
@@ -32,57 +65,85 @@ p{margin:0;max-width:72ch} .lede{color:var(--ink2);font-size:16px}
 .mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .label{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:500}
 header{display:flex;flex-direction:column;gap:10px}
+/* page switcher: a thin glass segmented control */
+.seg{align-self:flex-start;display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--mat-thin);border:var(--mat-edge);border-top-color:var(--mat-edge-top);box-shadow:var(--mat-highlight),var(--mat-shadow);-webkit-backdrop-filter:var(--mat-blur-thin);backdrop-filter:var(--mat-blur-thin)}
+.seg a{padding:4px 12px;border-radius:999px;color:var(--ink2);text-decoration:none;transition:background .15s,color .15s}
+.seg a:hover{color:var(--ink);background:var(--mat-thin)}
+.seg a[aria-current="page"]{color:var(--ink);background:var(--mat-fill-hover);box-shadow:var(--mat-highlight),0 1px 3px rgba(15,21,28,.12)}
+.seg a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .ions{display:flex;flex-wrap:wrap;gap:14px 18px}
 .ions .grp{display:flex;flex-direction:column;gap:6px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{border:1px solid var(--rule);background:var(--panel);color:var(--ink);border-radius:6px;padding:5px 9px;font:500 13.5px var(--body);cursor:pointer;white-space:nowrap}
+/* chips and buttons: thin material by tint, gradient and highlight only (no per-chip backdrop blur) */
+.chip,.btn{border:var(--mat-edge);border-top-color:var(--mat-edge-top);background:var(--mat-thin) var(--mat-fill);color:var(--ink);box-shadow:var(--mat-highlight),0 1px 2px rgba(15,21,28,.06);cursor:pointer;transition:background .15s,box-shadow .15s,transform .1s}
+.chip{border-radius:var(--r-s);padding:5px 9px;font:500 13.5px var(--body);white-space:nowrap}
 .chip small{font-family:var(--mono);color:var(--ink2);font-size:11.5px;margin-left:3px}
-.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chip:hover,.btn:hover{background:var(--mat-thin) var(--mat-fill-hover)}
+.chip:active,.btn:active{background:var(--mat-press);box-shadow:inset 0 1px 2px rgba(0,0,0,.12)}
+.chip[aria-pressed="true"],.btn.primary{background:var(--accent) linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 55%);border-color:var(--accent);color:var(--accent-ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 2px 8px -2px color-mix(in srgb,var(--accent) 60%,transparent)}
+.chip[aria-pressed="true"]:hover,.btn.primary:hover{background:color-mix(in srgb,var(--accent) 90%,#fff) linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,0) 55%)}
+.chip[aria-pressed="true"]:active,.btn.primary:active{background:color-mix(in srgb,var(--accent) 82%,#000);box-shadow:inset 0 1px 2px rgba(0,0,0,.25)}
 .chip[aria-pressed="true"] small{color:var(--accent-ink);opacity:.85}
 .chip:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.controls{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 18px;z-index:5}
-@media (min-width:900px){.controls{position:sticky;top:env(safe-area-inset-top,0px)}}
+/* control strip: regular material, floats over the page when sticky */
+.controls{background:var(--mat-bar) var(--mat-sheen);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-l);box-shadow:var(--mat-highlight),var(--mat-shadow);-webkit-backdrop-filter:var(--mat-blur-bar);backdrop-filter:var(--mat-blur-bar);padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 18px;z-index:5}
+@media (min-width:900px){.controls{position:sticky;top:max(8px,env(safe-area-inset-top,0px))}}
 .ctl{display:flex;flex-direction:column;gap:2px;min-width:0}
 .ctl .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .ctl output{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
-input[type=range]{width:100%;accent-color:var(--accent)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:16px;margin:0;background:transparent;cursor:pointer;--pc:50%}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--accent) var(--pc),var(--mat-track) var(--pc))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 1px 3px rgba(0,0,0,.30)}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--mat-track)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--accent)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 1px 3px rgba(0,0,0,.30)}
 .presets{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.btn{border:1px solid var(--rule);background:var(--panel);color:var(--ink);border-radius:6px;padding:5px 10px;font:500 13px var(--body);cursor:pointer}
-.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
-.btn[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.btn{border-radius:var(--r-s);padding:5px 10px;font:500 13px var(--body)}
+.btn[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent),var(--mat-highlight)}
 section{display:flex;flex-direction:column;gap:12px}
-.fig{background:var(--panel);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
-.fig canvas{display:block;width:100%}
-.figbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--rule)}
+/* figure: a glass frame around an opaque plot surface (the canvas paints var(--panel)) */
+.fig{background:var(--mat-regular) var(--mat-sheen);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-m);box-shadow:var(--mat-highlight),var(--mat-shadow);-webkit-backdrop-filter:var(--mat-blur-regular);backdrop-filter:var(--mat-blur-regular);overflow:hidden}
+.fig canvas{display:block;width:100%;background:var(--panel)}
+.figbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:var(--mat-edge)}
 .stages{display:flex;flex-wrap:wrap;gap:6px}
-.readouts{display:flex;flex-wrap:wrap;gap:6px 20px;padding:10px 14px;border-top:1px solid var(--rule);font-size:13.5px}
+.readouts{display:flex;flex-wrap:wrap;gap:6px 20px;padding:10px 14px;border-top:var(--mat-edge);font-size:13.5px}
 .readouts div{display:flex;gap:6px;align-items:baseline} .readouts b{font-weight:500;color:var(--ink2)}
-.cap{padding:10px 14px 14px;color:var(--ink2);font-size:14px;border-top:1px solid var(--rule);min-height:3.2em}
+.cap{padding:10px 14px 14px;color:var(--ink2);font-size:14px;border-top:var(--mat-edge);min-height:3.2em}
 .cap strong{color:var(--ink);font-weight:600}
-.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600;border:1px solid currentColor}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600;border:1px solid currentColor;background:var(--mat-thin)}
 .pill.good{color:var(--good)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)}
 .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .maps{display:grid;grid-template-columns:1fr 1fr;gap:14px} @media (max-width:760px){.maps{grid-template-columns:1fr}}
 .maps .fig{position:relative}
-.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:5px 8px;font:12px var(--mono);color:var(--ink);white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,.12)}
-.tablebox{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--panel)}
+/* map tooltip: thick material, near-opaque and unblurred because it sits inside a blurred .fig (no nested backdrop-filter) */
+.tip{position:absolute;pointer-events:none;background:var(--mat-thick-o);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-s);padding:5px 8px;font:12px var(--mono);color:var(--ink);white-space:nowrap;box-shadow:var(--mat-highlight),var(--mat-shadow)}
+.tablebox{overflow-x:auto;border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-m);background:var(--mat-regular) var(--mat-sheen);box-shadow:var(--mat-highlight),var(--mat-shadow);-webkit-backdrop-filter:var(--mat-blur-regular);backdrop-filter:var(--mat-blur-regular)}
 table{border-collapse:collapse;width:100%;font-size:13px}
-th,td{padding:6px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid)}
+th,td{padding:6px 10px;text-align:right;white-space:nowrap;border-bottom:var(--mat-edge)}
 th:first-child,td:first-child{text-align:left}
-thead th{font-weight:500;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);background:var(--panel)}
-tbody tr{cursor:pointer} tbody tr:hover{background:var(--grid)} tbody tr.on{box-shadow:inset 3px 0 0 var(--accent)}
+thead th{font-weight:500;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);background:transparent}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--mat-row)} tbody tr.on{box-shadow:inset 3px 0 0 var(--accent)}
+tbody tr:last-child td{border-bottom:0}
 td .a{font-family:var(--mono);font-variant-numeric:tabular-nums} td .d{font-family:var(--mono);color:var(--ink2);font-size:12px;margin-left:6px}
-td.col-on{background:color-mix(in srgb,var(--accent) 9%,transparent)}
-.eq{font-family:var(--display);font-size:17px;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:10px 14px;overflow-x:auto;white-space:nowrap}
+td.col-on{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.eq{font-family:var(--display);font-size:17px;background:var(--mat-thin) var(--mat-sheen);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-m);box-shadow:var(--mat-highlight);-webkit-backdrop-filter:var(--mat-blur-thin);backdrop-filter:var(--mat-blur-thin);padding:10px 14px;overflow-x:auto;white-space:nowrap}
 .foot{color:var(--muted);font-size:13px}
 .foot a{color:var(--accent)}
+/* fallbacks: no backdrop blur, or the user asks for less transparency -> near-opaque fills */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
+  :root:not(#_){--mat-thin:color-mix(in srgb,var(--panel) 92%,transparent);--mat-regular:color-mix(in srgb,var(--panel) 96%,transparent);--mat-bar:color-mix(in srgb,var(--panel) 96%,transparent);--mat-thick:var(--panel)} }
+@media (prefers-reduced-transparency: reduce){
+  :root:not(#_){--mat-thin:color-mix(in srgb,var(--panel) 94%,transparent);--mat-regular:var(--panel);--mat-bar:var(--panel);--mat-thick:var(--panel)}
+  .controls,.fig,.tablebox,.eq,.seg{-webkit-backdrop-filter:none;backdrop-filter:none} }
+@media (prefers-contrast: more){
+  :root:not(#_){--mat-edge-c:var(--ink2);--mat-edge-top:var(--ink2);--mat-regular:var(--panel);--mat-bar:var(--panel);--mat-thick:var(--panel);--mat-track:var(--ink2)} }
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}
 </style>
 
 <div class="wrap">
 <header>
   <span class="label">Interactive companion to <span class="mono">cgm-absorber-requirements</span></span>
-  <nav class="label" aria-label="Pages"><a href="./" aria-current="page" style="color:var(--ink);text-decoration:none">Detect &amp; resolve</a> · <a href="tng50/" style="color:var(--accent);text-decoration:none">TNG50 sightlines</a></nav>
+  <nav class="label seg" aria-label="Pages"><a href="./" aria-current="page">Detect &amp; resolve</a><a href="tng50/">TNG50 sightlines</a></nav>
   <h1>What does it take to detect an absorber, and to split it into components?</h1>
   <p class="lede">Every number here is computed from real atomic data (Trident line list, plus Morton 2003 and Verner et al. 1996 where Trident has no entry) and the same model as the paper figures: Doppler profiles, a Gaussian line-spread function, and matched-filter statistics with S/N quoted per resolution element.</p>
 </header>
@@ -308,6 +369,7 @@ function syncControls() {
 function writeOutputs() {
   $("#oR").textContent = fmt(S.R); $("#oS").textContent = fmt(S.snr, S.snr < 10 ? 1 : 0);
   $("#oN").textContent = S.logN.toFixed(2); $("#oB").textContent = S.b.toFixed(1) + " km/s"; $("#oV").textContent = S.dv.toFixed(1) + " km/s";
+  document.querySelectorAll(".controls input[type=range]").forEach(el => { const lo = +el.min, hi = +el.max; el.style.setProperty("--pc", (hi > lo ? 100 * (+el.value - lo) / (hi - lo) : 0) + "%"); });
 }
 [["#cR", v => S.R = Math.pow(10, v)], ["#cS", v => S.snr = Math.pow(10, v)], ["#cN", v => S.logN = v], ["#cB", v => S.b = Math.pow(10, v)], ["#cV", v => S.dv = Math.pow(10, v)]]
   .forEach(([id, set]) => $(id).addEventListener("input", e => { set(+e.target.value); writeOutputs(); update(); }));
