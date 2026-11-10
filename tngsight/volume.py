@@ -86,6 +86,23 @@ PRIMARY = {"nH": "N_nH", **{k: f"N_{k}" for k in ION_KEYS}, "T": "m", "Z": "m"}
 CELL_NAMES = ("pos_disk", "h", "V_cm3", "m", "nH") + ION_KEYS + ("T", "Z")
 # expected encoding ranges (design §3.4 as amended at integration: nH and HI vmin are the masked p0.5 of the
 # r <= 400 kpc data, measured -6.00 and -12.29): field -> ((vmin, tol), (vmax, tol)); T/Z are measured
+# Velocity components (vel3d contract, notes/vel3d/design.md): per cell v_disk = (Velocities − SubhaloVel) @ Rᵀ
+# (km/s; Velocities are km/s·√a with a = 1 at z = 0; no Hubble flow added), deposited as the extensive m·v_i through
+# the same scatter/kernel/floor as T and Z, so v_i = Σ m·v_i / Σ m per voxel (NaN = empty where Σ m = 0 or outside
+# the L0 mask). Shipped with the signed "linear" u8 encoding (vizpack.quantize_linear) and one ±V for all three
+# components and levels (vizpack.vel_range over L0).
+VEL_KEYS = ("vx", "vy", "vz")
+ALL_KEYS = VOL_KEYS + VEL_KEYS
+VEL_QUANTITIES = ("mvx", "mvy", "mvz")
+ALL_QUANTITIES = QUANTITIES + VEL_QUANTITIES
+VEL_CELL_NAMES = ("vel_disk",)                    # (N, 3) float64 km/s, slim-cutout (h5py) order
+VEL_FRAME = "disk (xhat, yhat, Lhat), relative to SubhaloVel"
+for _i, _k in enumerate(VEL_KEYS):
+    FIELDS[_k] = {"label": f"v_{'xyz'[_i]}", "units": "km/s", "kind": "velocity", "encoding": "linear",
+                  "component": "xyz"[_i], "cmap": "tng_vel"}
+    SOURCES[_k] = (f"mass-weighted PartType0/Velocities (km/s, a = 1) minus SubhaloVel, rotated to the disk frame "
+                   f"(component {'xyz'[_i]} = {('xhat', 'yhat', 'Lhat')[_i]}); no Hubble flow")
+    PRIMARY[_k] = "m"
 EXPECTED_RANGE = {"nH": ((-6.0, 0.3), (0.5, 0.2)), "OVI": ((-16.2, 0.4), (-5.6, 0.2)),
                   "HI": ((-12.3, 0.4), (-0.6, 0.2)), "CIII": ((-20.5, 0.5), (-2.8, 0.2))}
 
@@ -155,6 +172,33 @@ class _Compat:
         out = vmin + (q.astype(np.float64) - 1.0) * (vmax - vmin) / 254.0
         out[q == 0] = np.nan
         return out
+
+    @staticmethod
+    def quantize_linear(values, mask, V):
+        V = float(V)
+        v = np.asarray(values, dtype=np.float64)
+        ok = np.isfinite(v) if mask is None else np.isfinite(v) & np.asarray(mask, dtype=bool)
+        q = np.zeros(v.shape, dtype=np.uint8)
+        q[ok] = np.clip(1.0 + np.rint((np.clip(v[ok], -V, V) + V) / (2.0 * V) * 254.0), 1, 255).astype(np.uint8)
+        return q
+
+    @staticmethod
+    def dequantize_linear(q, V):
+        q = np.asarray(q)
+        out = -float(V) + (q.astype(np.float64) - 1.0) * 2.0 * float(V) / 254.0
+        out[q == 0] = np.nan
+        return out
+
+    @staticmethod
+    def vel_range(components, weights, step=50.0):
+        a = np.concatenate([np.abs(np.asarray(c, dtype=np.float64)).ravel() for c in components])
+        w = np.concatenate([np.asarray(weights, dtype=np.float64).ravel()] * len(components))
+        ok = np.isfinite(a) & np.isfinite(w) & (w > 0)
+        a, w = a[ok], w[ok]
+        o = np.argsort(a, kind="stable")
+        c = np.cumsum(w[o])
+        p = float(a[o][min(int(np.searchsorted(c, 0.999 * c[-1], side="left")), a.size - 1)])
+        return float(max(step, step * math.ceil(round(p / step, 9))))
 
     @staticmethod
     def raw_gas(q3):
@@ -331,9 +375,34 @@ def check_order(cells_pos_disk, cutout) -> float:
     return float(np.max(np.abs(D.to_disk(x) - np.asarray(cells_pos_disk))))
 
 
-def save_cells(cells: dict, cache) -> None:
+def cell_velocities(cutout, pos_disk=None) -> np.ndarray:
+    """Per-cell disk-frame velocity (N, 3) float64 km/s in h5py (= slim-cutout = yt) order:
+    v_disk = (PartType0/Velocities − SubhaloVel) @ Rᵀ (vel3d contract). Velocities are km/s·√a, a = 1 at z = 0
+    (asserted from Header/Time); no Hubble flow is added. With `pos_disk` (cached cell positions), the file's
+    Coordinates are checked to map onto it exactly, so the velocities line up with every other cell array."""
+    import h5py
+    with h5py.File(cutout, "r") as f:
+        a = float(f["Header"].attrs.get("Time", 1.0))
+        if abs(a - 1.0) > 1e-6:
+            raise ValueError(f"cell_velocities: snapshot a = {a}; the √a factor is only handled for a = 1")
+        if pos_disk is not None:
+            x = f["PartType0"]["Coordinates"][:].astype(np.float64) / TNG_H
+            d = float(np.max(np.abs(D.to_disk(x) - np.asarray(pos_disk))))
+            if d != 0.0:
+                raise RuntimeError(f"cell_velocities: cutout order differs from the cached cells (max|Δpos| {d} kpc)")
+        v = f["PartType0"]["Velocities"][:].astype(np.float64) * math.sqrt(a)
+    return to_disk_velocity(v)
+
+
+def to_disk_velocity(v_box_kms) -> np.ndarray:
+    """Box-axis peculiar velocity (N, 3) km/s → galaxy rest frame, disk axes: (v − SubhaloVel) @ Rᵀ."""
+    v = np.asarray(v_box_kms, dtype=np.float64)
+    return (v - np.asarray(GALAXY["SubhaloVel_kms"], dtype=np.float64)) @ D.disk_frame().T
+
+
+def save_cells(cells: dict, cache, names=CELL_NAMES) -> None:
     cache = Path(cache); cache.mkdir(parents=True, exist_ok=True)
-    for k in CELL_NAMES:
+    for k in names:
         p = cache / f"cells_{k}.npy"
         tmp = p.with_name(p.name + ".part.npy")
         np.save(tmp, np.asarray(cells[k], dtype=np.float64)); tmp.replace(p)
@@ -349,15 +418,17 @@ def load_cells(cache, names=CELL_NAMES):
 
 
 def quantities_for(keys) -> tuple:
-    """The extensive quantities a set of fields needs, in QUANTITIES order. N_nH and m are always included (the
-    conservation checks use them)."""
+    """The extensive quantities a set of fields needs, in ALL_QUANTITIES order. N_nH and m are always included
+    (the conservation checks use them)."""
     need = {"N_nH", "m"}
     for k in keys:
         if k in ("T", "Z"):
             need |= {"m", f"m{k}"}
+        elif k in VEL_KEYS:
+            need |= {"m", f"m{k}"}
         else:
             need.add(PRIMARY[k])
-    return tuple(q for q in QUANTITIES if q in need)
+    return tuple(q for q in ALL_QUANTITIES if q in need)
 
 
 def extensive(cells, quantities=QUANTITIES) -> dict:
@@ -370,6 +441,8 @@ def extensive(cells, quantities=QUANTITIES) -> dict:
             out[q] = m
         elif q in ("mT", "mZ"):
             out[q] = m * cells[q[1:]]
+        elif q in VEL_QUANTITIES:                                # m·v_i, v_disk relative to SubhaloVel
+            out[q] = m * np.asarray(cells["vel_disk"], dtype=np.float64)[:, "xyz".index(q[2])]
         else:
             out[q] = cells[q[2:]] * V
     return out
@@ -378,7 +451,9 @@ def extensive(cells, quantities=QUANTITIES) -> dict:
 # ============================================================================== deposition
 def level_cubes(dep, level) -> dict:
     """Deposited totals -> the shipped fields present (float64 [i,j,k]): densities N/V_vox [cm⁻³], T = mT/m,
-    Z = mZ/m (0 where Σ m = 0); L0 voxel centres at r > 400 kpc → 0."""
+    Z = mZ/m (0 where Σ m = 0); L0 voxel centres at r > 400 kpc → 0. Velocity components v_i = m·v_i / m
+    [km/s] are NaN where empty (Σ m = 0 or masked: 0 km/s is a valid value); when any is present the voxel
+    mass "m" [Msun] (0 where masked) is returned too (the mass weight of `vel_range`)."""
     g = dep.grids
     n = g["m"].shape[0]
     dx = 2.0 * GAS_LEVELS[level] / n
@@ -399,7 +474,16 @@ def level_cubes(dep, level) -> dict:
     if msk is not None:
         for k in out:
             out[k] = np.where(msk, out[k], 0.0)
-    return {k: out[k] for k in VOL_KEYS if k in out}
+    keep = (pos if msk is None else pos & msk)
+    vel = {}
+    for k in VEL_KEYS:
+        if f"m{k}" in g:
+            a = np.full(m.shape, np.nan)
+            np.divide(g[f"m{k}"], m, out=a, where=keep)
+            vel[k] = a
+    if vel:
+        vel["m"] = np.where(keep, m, 0.0)
+    return {**{k: out[k] for k in VOL_KEYS if k in out}, **vel}
 
 
 def deposit_numbers(dep) -> dict:
@@ -560,6 +644,48 @@ def cube_stats(values, q) -> dict:
             "p99": round(float(np.percentile(lv, 99)), 4), "max": round(float(np.max(lv)), 4)}
 
 
+def vel_V(cubes_by_level: dict) -> float:
+    """Shared V [km/s] of vx, vy, vz (vel3d contract): mass-weighted 99.9th percentile of |v_i| over the non-empty
+    L0 voxels (pooled over the three components), rounded up to a multiple of 50 km/s. Falls back to the coarsest
+    level given when L0 is not built."""
+    L = "L0" if "L0" in cubes_by_level else [x for x in GAS_LEVELS if x in cubes_by_level][0]
+    c = cubes_by_level[L]
+    return float(VP.vel_range([c[k] for k in VEL_KEYS], c["m"]))
+
+
+def vel_stats(values, q, m=None) -> dict:
+    """Per-cube numbers of a velocity component [km/s]: the stats keys every CUBE carries (frac_empty, p01, p50,
+    p99, max of v over non-empty voxels) plus the mass-weighted mean and the fraction clipped at ±V."""
+    v = np.asarray(values, dtype=np.float64)
+    ok = np.asarray(q) > 0
+    x = v[ok] if ok.any() else np.array([0.0])
+    out = {"frac_empty": round(float(1.0 - ok.mean()), 6),
+           "p01": round(float(np.percentile(x, 1)), 3), "p50": round(float(np.percentile(x, 50)), 3),
+           "p99": round(float(np.percentile(x, 99)), 3), "max": round(float(np.max(x)), 3),
+           "min": round(float(np.min(x)), 3),
+           "frac_clipped": round(float(np.mean((np.asarray(q)[ok] == 1) | (np.asarray(q)[ok] == 255)))
+                                 if ok.any() else 0.0, 6)}
+    if m is not None:
+        w = np.asarray(m, dtype=np.float64)[ok]
+        out["mean_mass_weighted"] = round(float((w * x).sum() / w.sum()), 4) if ok.any() and w.sum() > 0 else 0.0
+    return out
+
+
+def vel_field_entry(key, V, cubes: dict) -> dict:
+    f = FIELDS[key]
+    return {"label": f["label"], "units": f["units"], "kind": f["kind"], "encoding": f["encoding"],
+            "component": f["component"], "vmin": -float(V), "vmax": float(V), "cmap": f["cmap"],
+            "source": SOURCES[key], "frame": VEL_FRAME, "cubes": dict(cubes)}
+
+
+def vectors_block(fields: dict):
+    """gas.vectors = {"v": {...}} when vx, vy, vz are all present (else None)."""
+    if not all(k in fields for k in VEL_KEYS):
+        return None
+    return {"v": {"components": list(VEL_KEYS), "units": "km/s", "frame": VEL_FRAME,
+                  "V": float(fields["vx"]["vmax"])}}
+
+
 def check_expected_range(key, vmin, vmax) -> list:
     """Problems with (vmin, vmax) against design §3.4 (empty list = inside the bounds)."""
     if key not in EXPECTED_RANGE:
@@ -624,9 +750,12 @@ def field_entry(key, vmin, vmax, proj, vwin, cubes: dict) -> dict:
 
 def gas_fragment(fields: dict, levels=tuple(GAS_LEVELS), n=N) -> dict:
     """`gas/manifest_gas.json` = {"schema", "generator", "levels" (L*), "gas"} (design §3.3)."""
-    order = [k for k in VOL_KEYS if k in fields]
-    return {"schema": "tng50-viz/2", "generator": generator_block(), "levels": levels_block(levels, n),
-            "gas": {"levels": list(levels), "fields": {k: fields[k] for k in order}}}
+    order = [k for k in ALL_KEYS if k in fields]
+    gas = {"levels": list(levels), "fields": {k: fields[k] for k in order}}
+    vec = vectors_block(fields)
+    if vec is not None:
+        gas["vectors"] = vec
+    return {"schema": "tng50-viz/2", "generator": generator_block(), "levels": levels_block(levels, n), "gas": gas}
 
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -650,16 +779,23 @@ def validate_gas_fragment(frag, base_dir=None) -> None:
         need(lv["r_mask_kpc"] == R_MASK_KPC.get(L), f"levels.{L}.r_mask_kpc")
     need(isinstance(gas["fields"], dict) and gas["fields"], "gas.fields empty")
     for key, e in gas["fields"].items():
-        need(key in VOL_KEYS, f"unknown field {key!r}")
-        for k in ("label", "units", "kind", "source", "vmin", "vmax", "cmap", "proj", "vol_window", "cubes"):
+        need(key in ALL_KEYS, f"unknown field {key!r}")
+        vel = key in VEL_KEYS
+        for k in ("label", "units", "kind", "source", "vmin", "vmax", "cmap", "cubes") + (
+                ("encoding", "component", "frame") if vel else ("proj", "vol_window")):
             need(k in e, f"{key}: missing {k!r}")
         need(all(isinstance(e[k], (int, float)) and math.isfinite(e[k]) for k in ("vmin", "vmax"))
              and e["vmin"] < e["vmax"], f"{key}: vmin/vmax")
-        pr = e["proj"]
-        need(pr.get("kind") == ("column" if e["kind"] == "density" else "weighted_mean"), f"{key}: proj.kind")
-        need(pr["vmin"] < pr["vmax"], f"{key}: proj window")
-        w = e["vol_window"]
-        need(len(w) == 2 and w[0] < w[1] and w[1] == e["vmax"], f"{key}: vol_window")
+        if vel:
+            need(e["kind"] == "velocity" and e["encoding"] == "linear" and e["vmin"] == -e["vmax"]
+                 and e["component"] == FIELDS[key]["component"] and "proj" not in e and "vol_window" not in e,
+                 f"{key}: velocity entry")
+        else:
+            pr = e["proj"]
+            need(pr.get("kind") == ("column" if e["kind"] == "density" else "weighted_mean"), f"{key}: proj.kind")
+            need(pr["vmin"] < pr["vmax"], f"{key}: proj window")
+            w = e["vol_window"]
+            need(len(w) == 2 and w[0] < w[1] and w[1] == e["vmax"], f"{key}: vol_window")
         need(set(e["cubes"]) == set(gas["levels"]), f"{key}: cubes {sorted(e['cubes'])}")
         for L, c in e["cubes"].items():
             n = frag["levels"][L]["n"]
@@ -675,6 +811,10 @@ def validate_gas_fragment(frag, base_dir=None) -> None:
                                                  "workers")), f"{key}/{L}: deposit")
             if base_dir is not None:
                 need(cube_files_ok(base_dir, c), f"{key}/{L}: file size/sha256 mismatch or missing")
+    if "vectors" in gas:
+        for name, vec in gas["vectors"].items():
+            need(all(c in gas["fields"] and gas["fields"][c]["kind"] == "velocity" for c in vec["components"])
+                 and all(gas["fields"][c]["vmax"] == vec["V"] for c in vec["components"]), f"vectors.{name}")
 
 
 def write_fragment(viz_dir, frag) -> Path:

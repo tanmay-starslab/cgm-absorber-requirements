@@ -46,8 +46,8 @@ ORIGIN = "https://tanmay-starslab.github.io"
 PAGE_URL = "https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/"
 COMMIT_MAX = 100
 PREVIEW_MAX = 1_000_000
-from tngsight import ions as _ions  # noqa: E402  (the gas fields are nH, T, Z plus every registry ion)
-_GAS = "|".join(["nH", "T", "Z"] + [re.escape(k) for k in _ions.KEYS])
+from tngsight import ions as _ions  # noqa: E402  (the gas fields are nH, T, Z, every registry ion and vx, vy, vz)
+_GAS = "|".join(["nH", "T", "Z"] + [re.escape(k) for k in _ions.KEYS] + ["vx", "vy", "vz"])
 ALLOW_RE = re.compile(
     r"^(README\.md|manifest_v2\.json|luts/luts\.json|previews/[a-z0-9_]+\.png"
     rf"|gas/L[012]/({_GAS})\.[0-9a-f]{{12}}\.(p[0-3]\.webp|u8\.gz)"

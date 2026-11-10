@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Build the nested raw-resolution gas cubes of the 3D viewer (Phase-2b design §4.1–4.3).
 
-    python deploy/data/build_volumes.py [--library DIR] [--viz DIR] [--cache DIR] [--index FILE]
-                                        [--levels L0,L1,L2] [--fields nH,T,Z,<ion keys>] [--workers 4]
+    python deploy/data/build_volumes.py [--library DIR] [--viz DIR] [--cache DIR] [--index FILE] [--cutout FILE]
+                                        [--levels L0,L1,L2] [--fields nH,T,Z,<ion keys>,vx,vy,vz] [--workers 4]
                                         [--deposit-workers 1] [--lock FILE] [--force] [--check] [--report FILE]
+                                        [--no-merge-manifest]
 
 Stages (each resumable from --cache):
   1. cells   — every gas cell of the slim cutout through `Generator.load()` (yt + trident, same metallicity override
@@ -18,9 +19,16 @@ Stages (each resumable from --cache):
                each cube column against the field the cube holds, the h_eff = max(h, 2Δ) SPH line integral averaged
                over a 3×3 voxel-footprint bundle (`volume.smoothed_columns`), within `volume.SMOOTH_TOL` (0.05 dex).
                The thin-ray difference (npz ray column, or the cell-h line integral) is reported only.
+Velocity fields (vel3d contract): vx, vy, vz are the mass-weighted disk-frame velocity relative to SubhaloVel
+(`volume.cell_velocities`, read from the cutout's PartType0/Velocities in h5py order and cached as cells_vel_disk.npy;
+a velocity-only run needs only the cached pos_disk, h, V_cm3, m and nH cells, not the yt load), deposited as m·v_i
+with the T/Z kernel and floor, and encoded "linear" with one ±V (vizpack.vel_range over L0) shared by the three
+components and all levels. A velocity-only run skips the ion column checks and instead checks the u8 round trip.
+When <viz>/manifest_v2.json exists, the fields built in this run (and gas.vectors) are merged into it in place
+(`vizpack.merge_gas_fields`): every other field and block stays byte-identical. --no-merge-manifest skips that.
 --check alone runs only stage 4 (+ manifest validation) from the cache and writes nothing but the report (--report,
 default <cache>/check_report.json), so --cache and --viz may be read-only. viz/manifest_v2.json is never written
-here (`python -m tngsight.vizpack merge` does that at integration).
+here except by the velocity/field merge above (`python -m tngsight.vizpack merge` rebuilds it at integration).
 Defaults: --library tngsight.config.library_dir(), --viz <library>/viz, --cache <library>/viz_cache/gas, --index
 $TNG_INDEX_FILE or <library>/cutout.ewah. Heavy I/O (stage 1) runs under the fcntl lock --lock (default
 $TNG_HEAVY_LOCK; unset or '' = no lock). --deposit-workers sets the scatter processes (CORE measured 1 as fastest
@@ -85,8 +93,33 @@ def rss_gb():
 
 
 # ------------------------------------------------------------------------------------------ stage 1: cells
-def get_cells(cache: Path, index, lock, force=False) -> dict:
-    cells = None if force else V.load_cells(cache)
+BASE_CELLS = ("pos_disk", "h", "V_cm3", "m", "nH")          # what a velocity-only deposit needs (N_nH, m, m·v)
+
+
+def cell_names_for(keys) -> tuple:
+    return V.CELL_NAMES if [k for k in keys if k not in V.VEL_KEYS] else BASE_CELLS
+
+
+def get_cells(cache: Path, index, lock, force=False, keys=V.VOL_KEYS, cutout=None) -> dict:
+    cells = _get_base_cells(cache, index, lock, force, cell_names_for(keys))
+    if [k for k in keys if k in V.VEL_KEYS]:
+        vc = None if force else V.load_cells(cache, V.VEL_CELL_NAMES)
+        if vc is None:
+            t = time.time()
+            cut = cutout or config.cutout_path()
+            vd = V.cell_velocities(cut, cells["pos_disk"])
+            V.save_cells({"vel_disk": vd}, cache, V.VEL_CELL_NAMES)
+            print(f"[cells] velocities from {Path(cut).name}: (v - SubhaloVel) @ R^T, order checked, "
+                  f"{time.time() - t:.0f}s", flush=True)
+            vc = {"vel_disk": vd}
+        if vc["vel_disk"].shape != (len(cells["m"]), 3):
+            raise RuntimeError(f"cells_vel_disk shape {vc['vel_disk'].shape} != ({len(cells['m'])}, 3)")
+        cells.update(vc)
+    return cells
+
+
+def _get_base_cells(cache: Path, index, lock, force, names) -> dict:
+    cells = None if force else V.load_cells(cache, names)
     if cells is not None:
         print(f"[cells] cached: {len(cells['m']):,} cells from {cache}", flush=True)
         return cells
@@ -118,13 +151,19 @@ def get_cells(cache: Path, index, lock, force=False) -> dict:
 
 # ------------------------------------------------------------------------------------------ stage 2: deposit
 def level_paths(cache: Path, L):
-    return {k: cache / f"{L}_{k}.npy" for k in V.VOL_KEYS}, cache / f"{L}.json"
+    """{cube name: npy} (every field + "m", the voxel mass of the velocity weight) and the level side file."""
+    return {k: cache / f"{L}_{k}.npy" for k in V.ALL_KEYS + ("m",)}, cache / f"{L}.json"
+
+
+def cache_names(keys) -> set:
+    """The cached cubes a set of fields needs: the fields, nH (always deposited) and m with any velocity."""
+    return set(keys) | {"nH"} | ({"m"} if set(keys) & set(V.VEL_KEYS) else set())
 
 
 def level_cached(cache, L, keys=V.VOL_KEYS) -> bool:
-    """True when the level's side file is current and the cubes of every field in `keys` (+ nH) exist."""
+    """True when the level's side file is current and the cubes of every field in `keys` (+ nH, + m) exist."""
     npys, side = level_paths(cache, L)
-    if not side.is_file() or not all(npys[k].is_file() for k in set(keys) | {"nH"}):
+    if not side.is_file() or not all(npys[k].is_file() for k in cache_names(keys)):
         return False
     try:
         s = json.loads(side.read_text())
@@ -143,12 +182,22 @@ def deposit_level(cells, L, cache: Path, workers, keys=V.VOL_KEYS) -> dict:
         if time.time() - last[0] > 20:
             last[0] = time.time()
             print(f"[deposit] {L} {done / max(total, 1):6.1%} of {total / 1e6:.0f} M pairs", flush=True)
-    keys = tuple(k for k in V.VOL_KEYS if k in set(keys) | {"nH"})
+    keys = tuple(k for k in V.ALL_KEYS if k in set(keys) | {"nH"})
     cubes, dep = V.build_level(cells, L, workers=workers, progress=prog, keys=keys)
     nums = V.deposit_numbers(dep)
     for q in ("N_nH", "m"):
         if nums["conservation_rel"][q] > 1e-6:
             raise RuntimeError(f"{L}: conservation {q} {nums['conservation_rel'][q]:.2e} > 1e-6")
+    mom = {}
+    for q in V.VEL_QUANTITIES:                 # Σ m·v_i ≈ 0 after bulk subtraction: relative to Σ m·|v_i| instead
+        if q in dep.grids:
+            i = "xyz".index(q[2])
+            scale = float(np.sum(cells["m"] * np.abs(cells["vel_disk"][:, i])))
+            mom[q] = abs(float(dep.grids[q].sum()) - dep.q_in[q]) / max(scale, 1e-300)
+    if mom:
+        nums["momentum_conservation_rel"] = mom
+        if max(mom.values()) > 1e-6:
+            raise RuntimeError(f"{L}: momentum conservation {mom} > 1e-6 of sum m|v|")
     npys, side = level_paths(cache, L)
     cache.mkdir(parents=True, exist_ok=True)
     for k, a in cubes.items():
@@ -158,8 +207,9 @@ def deposit_level(cells, L, cache: Path, workers, keys=V.VOL_KEYS) -> dict:
         try:
             prev = json.loads(side.read_text())
             if prev.get("side_version") == SIDE_VERSION and prev.get("n") == V.N:
-                for d in ("conservation_rel", "lost_fraction", "q_in", "q_full_inside", "q_lost"):
-                    nums[d] = {**(prev.get(d) or {}), **nums[d]}
+                for d in ("conservation_rel", "lost_fraction", "q_in", "q_full_inside", "q_lost",
+                          "momentum_conservation_rel"):
+                    nums[d] = {**(prev.get(d) or {}), **(nums.get(d) or {})}
         except ValueError:
             pass
     nums.update({"side_version": SIDE_VERSION, "volume": V.GENERATOR, "level": L, "n": V.N,
@@ -169,7 +219,8 @@ def deposit_level(cells, L, cache: Path, workers, keys=V.VOL_KEYS) -> dict:
     print(f"[deposit] {L}: {nums['n_elements']:,} elements, {nums['n_straddling']:,} straddling, "
           f"levels {nums['level_counts']}, {nums['pairs'] / 1e6:.0f} M pairs, scatter {nums['seconds']:.1f}s, "
           f"wall {nums['wall_s']:.1f}s; conservation N_nH {nums['conservation_rel']['N_nH']:.1e} "
-          f"m {nums['conservation_rel']['m']:.1e}; lost m {nums['lost_fraction']['m']:.3%}", flush=True)
+          f"m {nums['conservation_rel']['m']:.1e}; lost m {nums['lost_fraction']['m']:.3%}"
+          + (f"; m·v {max(mom.values()):.1e} of sum m|v|" if mom else ""), flush=True)
     return nums
 
 
@@ -200,6 +251,15 @@ def encode(cubes: dict, nums: dict, keys, viz: Path, workers: int, force=False, 
     old_fields = (old or {}).get("gas", {}).get("fields", {})
     entries, jobs, reuse = {}, [], {}
     problems = []
+    vel_keys = [k for k in keys if k in V.VEL_KEYS]
+    keys = [k for k in keys if k not in V.VEL_KEYS]
+    VV = None
+    if vel_keys:
+        VV = V.vel_V(cubes)
+        for k in vel_keys:
+            entries[k] = V.vel_field_entry(k, VV, {})
+        print(f"[range] {','.join(vel_keys)} linear [-{VV:.0f}, +{VV:.0f}] km/s (mass-weighted p99.9 of |v_i| "
+              f"over L0, rounded up to {V.VP.VEL_STEP if hasattr(V.VP, 'VEL_STEP') else 50:.0f})", flush=True)
     for k in keys:
         vmin, vmax = V.field_range(cubes, k)
         problems += V.check_expected_range(k, vmin, vmax)
@@ -215,10 +275,15 @@ def encode(cubes: dict, nums: dict, keys, viz: Path, workers: int, force=False, 
         raise SystemExit("stop: encoding range outside the design §3.4 sanity bounds (nothing written)")
     for L in levels:
         msk = V.level_mask(L)
-        for k in keys:
+        for k in vel_keys + keys:
             e = entries[k]
-            q = V.VP.quantize(cubes[L][k], msk, e["vmin"], e["vmax"])
-            stats = V.cube_stats(cubes[L][k], q)
+            if k in V.VEL_KEYS:
+                q = V.VP.quantize_linear(cubes[L][k], msk, VV)
+                vel_roundtrip(cubes[L][k], q, VV, f"{L}/{k}")
+                stats = V.vel_stats(cubes[L][k], q, cubes[L]["m"])
+            else:
+                q = V.VP.quantize(cubes[L][k], msk, e["vmin"], e["vmax"])
+                stats = V.cube_stats(cubes[L][k], q)
             prim = V.PRIMARY[k]
             dep = {"n_elements": nums[L]["n_elements"], "n_straddling": nums[L]["n_straddling"],
                    "lost_fraction": round(nums[L]["lost_fraction"][prim], 6), "seconds": nums[L]["seconds"],
@@ -243,6 +308,21 @@ def encode(cubes: dict, nums: dict, keys, viz: Path, workers: int, force=False, 
         entries[k]["cubes"][L] = cube
     print(f"[encode] done in {time.time() - t:.0f}s", flush=True)
     return entries
+
+
+def vel_roundtrip(v, q, VV, where) -> float:
+    """Hard check of the linear encoding: empty exactly where v is NaN, and |decode(q) − clip(v, ±V)| ≤ V/254
+    (half a step) everywhere else. Returns the max error [km/s]."""
+    v = np.asarray(v, dtype=np.float64)
+    fin = np.isfinite(v)
+    if not np.array_equal(q > 0, fin):
+        raise RuntimeError(f"{where}: empty voxels (q = 0) differ from the NaN voxels of the float cube")
+    if not fin.any():
+        return 0.0
+    err = float(np.max(np.abs(V.VP.dequantize_linear(q[fin], VV) - np.clip(v[fin], -VV, VV))))
+    if err > VV / 254.0 * (1 + 1e-9):
+        raise RuntimeError(f"{where}: linear u8 round trip error {err:.3f} km/s > V/254 = {VV / 254:.3f}")
+    return err
 
 
 # ------------------------------------------------------------------------------------------ stage 4: checks
@@ -443,6 +523,10 @@ def main(argv=None):
     ap.add_argument("--cache", type=Path, default=None, help="default <library>/viz_cache/gas")
     ap.add_argument("--index", type=Path, default=None, help="writable yt index (default $TNG_INDEX_FILE, else "
                     "<library>/cutout.ewah)")
+    ap.add_argument("--cutout", type=Path, default=None, help="slim cutout the velocities are read from "
+                    "(default tngsight.config.cutout_path(), i.e. $TNG_CUTOUT)")
+    ap.add_argument("--no-merge-manifest", action="store_true", help="do not merge the built fields into an "
+                    "existing <viz>/manifest_v2.json")
     ap.add_argument("--levels", default=",".join(V.GAS_LEVELS))
     ap.add_argument("--fields", default=",".join(V.VOL_KEYS))
     ap.add_argument("--workers", type=int, default=4, help="WebP/gzip encoder processes")
@@ -464,12 +548,15 @@ def main(argv=None):
     levels = [s.strip() for s in a.levels.split(",") if s.strip()]
     keys = [s.strip() for s in a.fields.split(",") if s.strip()]
     if [x for x in levels if x not in V.GAS_LEVELS] or [k for k in keys if k not in V.FIELDS]:
-        ap.error(f"levels from {list(V.GAS_LEVELS)}, fields from {V.VOL_KEYS}")
+        ap.error(f"levels from {list(V.GAS_LEVELS)}, fields from {V.ALL_KEYS}")
+    vel_only = bool(keys) and all(k in V.VEL_KEYS for k in keys)
+    if set(keys) & set(V.VEL_KEYS) and not set(V.VEL_KEYS) <= set(keys):
+        ap.error("vx, vy and vz share one range V and the gas.vectors block: build them together")
     T0 = time.time()
     timings = {}
     print(f"[build] volume {V.GENERATOR}, deposit {D.GENERATOR}, vizpack impl {V.VIZPACK_IMPL}", flush=True)
     t = time.time()
-    cells = get_cells(a.cache, a.index, a.lock, force=a.force and not a.check)
+    cells = get_cells(a.cache, a.index, a.lock, force=a.force and not a.check, keys=keys, cutout=a.cutout)
     timings["cells_s"] = round(time.time() - t, 1)
 
     if not a.check:
@@ -486,7 +573,8 @@ def main(argv=None):
         if missing:
             print(f"[deposit] WARNING levels {missing} are not built: ranges use {list(nums)} only", flush=True)
         t = time.time()
-        need = sorted(set(keys) | {"nH"})
+        need = sorted(set(keys) | ({"nH"} if not vel_only else set())
+                      | ({"m"} if set(keys) & set(V.VEL_KEYS) else set()))
         cubes = {L: load_level(a.cache, L, need) for L in nums}
         allow = tuple(x.strip() for x in a.allow_range.split(",") if x.strip())
         entries = encode(cubes, nums, keys, a.viz, a.workers, force=a.force, allow_range=allow)
@@ -500,6 +588,11 @@ def main(argv=None):
                 print(f"[manifest] kept {k} from the previous fragment", flush=True)
         frag = V.gas_fragment(entries, built)
         V.write_fragment(a.viz, frag)
+        if not a.no_merge_manifest and (a.viz / "manifest_v2.json").is_file():
+            V.VP.merge_gas_fields(a.viz, frag, [k for k in V.ALL_KEYS if k in keys])
+            print(f"[manifest] merged {','.join(k for k in V.ALL_KEYS if k in keys)}"
+                  f"{' + gas.vectors' if 'vectors' in frag['gas'] else ''} into {a.viz / 'manifest_v2.json'} "
+                  f"(other fields unchanged)", flush=True)
         timings["encode_s"] = round(time.time() - t, 1)
     frag = old_fragment(a.viz)
     if frag is None:
@@ -519,7 +612,13 @@ def main(argv=None):
         print(f"[mass] {L}: conservation N_nH {cons[L]['conservation_N_nH']:.1e}, m {cons[L]['conservation_m']:.1e}; "
               f"lost m {cons[L]['lost_m']:.3%}, N_nH {cons[L]['lost_N_nH']:.3%}", flush=True)
     t = time.time()
-    chk = column_checks(cells, a.cache, frag, lib, a.viz, keys=[k for k in keys if k in V.ION_KEYS] or None)
+    if vel_only:
+        chk = {"rows": [], "reference": [], "fails": [], "method": "skipped (velocity-only run)",
+               "summary": {"skipped": "velocity-only run: no ion column checks; linear u8 round trip checked "
+                                      "at encode"}}
+        print("[check] velocity-only run: ion column checks skipped (u8 round trip checked at encode)", flush=True)
+    else:
+        chk = column_checks(cells, a.cache, frag, lib, a.viz, keys=[k for k in keys if k in V.ION_KEYS] or None)
     timings["checks_s"] = round(time.time() - t, 1)
     timings["total_s"] = round(time.time() - T0, 1)
     rs, rc = rss_gb()
