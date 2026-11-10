@@ -127,17 +127,22 @@ export function webgl2Available() {
 }
 
 const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
-  --s-panel:#0c1016;--s-ink:#e9eef4;--s-ink2:#b3bdc9;--s-rule:#2f3844;--s-accent:#7db2f0;--s-fit:#f39a5c;--s-bad:#ff8a8a;--lib-line:#8d97a6}
+  --s-panel:#0c1016;--s-ink:#e9eef4;--s-ink2:#b3bdc9;--s-rule:#2f3844;--s-accent:#7db2f0;--s-fit:#f39a5c;--s-bad:#ff8a8a;--lib-line:#8d97a6;
+  --s-mat:color-mix(in srgb,#0c1016 74%,transparent);--s-blur:blur(24px) saturate(1.5);--s-edge:rgba(200,215,240,.16);--s-hi:inset 0 1px 0 rgba(255,255,255,.10)}
 .v3d-stage{position:relative;width:100%;height:100%;touch-action:none;color-scheme:dark;background:${BG};color:var(--s-ink);overflow:hidden}
 .v3d-stage canvas{display:block;width:100%;height:100%;outline:none}
 .v3d-stage canvas:focus-visible{outline:2px solid var(--s-accent);outline-offset:-2px}
 #v3d-stage{position:relative}
 #v3d-stage .v3d:not(.v3d-thumb):not(.v3d-fs){position:absolute;inset:0}
-.v3d-ov{position:absolute;font-size:12.5px;color:var(--s-ink2);pointer-events:none;background:color-mix(in srgb,${BG} 72%,transparent);border-radius:6px}
+.v3d-ov{position:absolute;font-size:12.5px;color:var(--s-ink2);pointer-events:none;background:var(--s-mat);border-radius:var(--r-s,10px);
+  box-shadow:inset 0 0 0 1px var(--s-edge),var(--s-hi),0 6px 20px rgba(0,0,0,.30);backdrop-filter:var(--s-blur);-webkit-backdrop-filter:var(--s-blur)}
 .v3d-msg{left:12px;top:10px;max-width:min(560px,calc(100% - 24px));padding:4px 8px;overflow-wrap:anywhere;color:var(--s-ink)}
 .v3d-msg:empty{display:none}.v3d-msg.bad{color:var(--s-bad);background:${BG};z-index:2}.v3d-msg small{display:block;color:var(--s-ink2);font:11px var(--mono,ui-monospace,monospace)}
 .v3d-tr{position:absolute;right:10px;top:10px;display:none;gap:6px;z-index:3}
-.v3d-tr button{background:color-mix(in srgb,${BG} 70%,transparent);color:var(--s-ink);border:1px solid var(--s-rule);border-radius:8px;font-size:12.5px;padding:4px 10px;cursor:pointer}
+.v3d-tr button{background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,0) 70%),var(--s-mat);color:var(--s-ink);border:1px solid var(--s-edge);border-radius:var(--r-s,10px);font-size:12.5px;padding:4px 10px;cursor:pointer;
+  box-shadow:var(--s-hi),0 4px 14px rgba(0,0,0,.28);backdrop-filter:var(--s-blur);-webkit-backdrop-filter:var(--s-blur)}
+.v3d-tr button:hover{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04)),var(--s-mat)}
+.v3d-tr button:active{background:var(--s-mat);box-shadow:inset 0 1px 2px rgba(0,0,0,.35)}
 .v3d-tr button:focus-visible{outline:2px solid var(--s-accent);outline-offset:1px}
 .v3d:fullscreen .v3d-tr,.v3d.v3d-fs .v3d-tr{display:flex}
 /* final: no focus ring from the viewer's own programmatic focus (entering / leaving fullscreen); Tab or a pointer brings it back */
@@ -164,38 +169,44 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d-thumb .v3d-tr,.v3d-thumb .v3d-leg,.v3d-thumb .v3d-lines,.v3d-thumb .v3d-scale{display:none}
 .v3d-thumb .v3d-msg{left:8px;top:8px;max-width:calc(100% - 16px);font-size:10.5px;padding:3px 6px}.v3d-thumb .v3d-msg small{display:none}
 .v3d-thumb .v3d-tt{display:flex;position:absolute;left:10px;right:10px;bottom:10px;justify-content:space-between;align-items:center;pointer-events:none;font:500 10.5px var(--mono,ui-monospace,monospace)}
-.v3d-tt span{background:rgba(8,6,18,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:3px 8px;border-radius:6px;color:#f1ecff}
+.v3d-tt span{background:rgba(8,10,18,.58);backdrop-filter:blur(14px) saturate(1.5);-webkit-backdrop-filter:blur(14px) saturate(1.5);padding:3px 8px;border-radius:7px;color:#f1ecff;box-shadow:inset 0 0 0 1px var(--s-edge),var(--s-hi)}
 .v3d-tt span:empty{display:none}
 .v3d-notags .v3d-tt{display:none!important}
 /* the layout the viewer builds when the page gives no square #v3d-stage (§6.2 C13: square, a fraction of the width, centred,
    controls beside it at ≥ 1024 px and below it otherwise) */
 .v3d-layout{display:flex;justify-content:center;align-items:flex-start;gap:16px;padding:12px 0;min-width:0}
-.v3d-layout>.v3d-sq{position:relative;flex:none;aspect-ratio:1/1;width:min(60vw,calc(100vh - 120px),900px);width:min(60vw,calc(100svh - 120px),900px);border-radius:16px;overflow:hidden;
-  border:1px solid var(--gline,rgba(160,175,220,.14));background:${BG}}
+.v3d-layout>.v3d-sq{position:relative;flex:none;aspect-ratio:1/1;width:min(60vw,calc(100vh - 120px),900px);width:min(60vw,calc(100svh - 120px),900px);border-radius:var(--r-m,16px);overflow:hidden;
+  border:var(--mat-edge,1px solid var(--gline,rgba(160,175,220,.14)));background:${BG};box-shadow:var(--mat-shadow,0 18px 50px rgba(0,0,0,.4))}
 .v3d-layout>.v3d-side{width:300px;flex:none;min-width:0}
 @media (max-width:1023px){.v3d-layout{flex-direction:column;align-items:center}.v3d-layout>.v3d-sq{width:min(100%,calc(100vh - 140px),900px);width:min(100%,calc(100svh - 140px),900px)}
   .v3d-layout>.v3d-side{width:min(100%,560px)}}
 /* the grouped control column (B look, A's explicit labels); page tokens with dark fallbacks */
 .v3c{display:flex;flex-direction:column;gap:12px;min-width:0;font:13px/1.4 var(--sans,system-ui,sans-serif);color:var(--ink,#eef0f7)}
 .v3c[hidden]{display:none}
-.v3c-card{background:var(--glass,rgba(22,27,42,.62));border:1px solid var(--gline,rgba(160,175,220,.14));border-radius:14px;padding:11px 12px 12px;
-  backdrop-filter:blur(18px) saturate(1.3);-webkit-backdrop-filter:blur(18px) saturate(1.3);min-width:0}
+.v3c{--cg-hi:var(--mat-highlight,inset 0 1px 0 rgba(255,255,255,.12));--cg-thin:var(--mat-thin,rgba(127,127,160,.10));--cg-edge:var(--mat-edge-c,var(--gline,rgba(160,175,220,.14)));
+  --cg-sheen:var(--mat-fill,linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,0) 70%));--cg-sheen-h:var(--mat-fill-hover,linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04)));
+  --cg-press:var(--mat-press,linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.06)));--cg-gloss:var(--mat-gloss,linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,0) 55%));
+  --cg-tint:var(--mat-tint,rgba(127,127,160,.08));--cg-well:var(--mat-well,rgba(127,127,160,.12));--cg-raised:var(--mat-raised,var(--glass2,rgba(30,36,56,.72)))}
+.v3c-card{background:var(--mat-regular,var(--glass,rgba(22,27,42,.62)));border:1px solid var(--cg-edge);border-radius:var(--r-m,16px);padding:11px 12px 12px;
+  box-shadow:var(--cg-hi),var(--mat-shadow-s,0 1px 2px rgba(0,0,0,.18));
+  backdrop-filter:var(--mat-blur-regular,blur(24px) saturate(1.8));-webkit-backdrop-filter:var(--mat-blur-regular,blur(24px) saturate(1.8));min-width:0}
 .v3c-card>h2{margin:0 0 9px;font:500 10px var(--mono,ui-monospace,monospace);letter-spacing:.14em;text-transform:uppercase;color:var(--muted,#98a0b8)}
 .v3c .k{display:block;font:500 10px var(--mono,ui-monospace,monospace);color:var(--faint,#7a83a0);margin:2px 0 5px}
-.v3c-seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:3px;border-radius:10px;background:rgba(127,127,160,.10);gap:2px;margin-bottom:8px}
+.v3c-seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:3px;border-radius:var(--r-s,10px);background:var(--cg-well);box-shadow:inset 0 0 0 1px var(--cg-edge),inset 0 1px 2px rgba(0,0,0,.12);gap:2px;margin-bottom:8px}
 .v3c-seg.two{grid-template-columns:1fr 1fr}
 .v3c-seg label,.v3c-ions label{position:relative;cursor:pointer;min-width:0}
 .v3c-seg input,.v3c-ions input{position:absolute;opacity:0;inset:0;margin:0;cursor:inherit}
 .v3c-seg span{display:flex;align-items:center;justify-content:center;height:26px;padding:0 8px;font:500 11.5px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);border-radius:7px;white-space:nowrap}
-.v3c-seg input:checked+span{background:var(--glass2,rgba(30,36,56,.72));color:var(--ink,#eef0f7);box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.v3c-seg label:hover input:not(:checked):not(:disabled)+span{background:var(--cg-tint)}
+.v3c-seg input:checked+span{background:var(--cg-raised);color:var(--ink,#eef0f7);box-shadow:var(--cg-hi),0 0 0 1px var(--cg-edge),0 2px 8px rgba(0,0,0,.18)}
 .v3c-ions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:8px}
 .v3c-ion{--c:var(--icd)}
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .v3c-ion{--c:var(--ic)}}
 :root[data-theme="light"] .v3c-ion{--c:var(--ic)}
 .v3d .v3c-ion{--c:var(--icd)}
-.v3c-ions span{display:flex;align-items:center;gap:6px;height:28px;padding:0 7px;border:1px solid var(--gline,rgba(160,175,220,.14));border-radius:8px;font-size:11.5px;white-space:nowrap;overflow:hidden}
+.v3c-ions span{display:flex;align-items:center;gap:6px;height:28px;padding:0 7px;border:1px solid var(--cg-edge);border-radius:8px;font-size:11.5px;white-space:nowrap;overflow:hidden;background:var(--cg-tint);box-shadow:var(--cg-hi)}
 .v3c-ions i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
-.v3c-ions input:checked+span{border-color:var(--c);background:var(--hl,rgba(143,168,255,.16))}
+.v3c-ions input:checked+span{border-color:var(--c);background:linear-gradient(var(--hl,rgba(143,168,255,.16)),var(--hl,rgba(143,168,255,.16))),var(--cg-raised)}
 .v3c-ions input:disabled+span,.v3c-seg input:disabled+span{opacity:.42;cursor:not-allowed}
 .v3c-ions input:disabled+span i{background:none;border:1px solid var(--c)}
 .v3c-ions label:has(input:disabled),.v3c-seg label:has(input:disabled){cursor:not-allowed}
@@ -207,13 +218,14 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-row>label,.v3c-row>.lab{font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .v3c-row output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right;color:var(--ink,#eef0f7)}
 .v3c-row input[type=range]{width:100%;min-width:0;margin:0}
-.v3c-row select{grid-column:2/4;min-width:0;width:100%;height:28px;border:1px solid var(--gline,rgba(160,175,220,.14));border-radius:8px;background:rgba(127,127,160,.08);color:inherit;font:inherit;font-size:12px;padding:0 6px}
+.v3c-row select{grid-column:2/4;min-width:0;width:100%;height:28px;border:1px solid var(--cg-edge);border-radius:8px;background-color:var(--cg-well);color:inherit;font:inherit;font-size:12px;padding:0 6px}
 .v3c-row input[type=checkbox]{margin:0 6px 0 0;vertical-align:middle}
 .v3c-btns{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
-.v3c-btn{height:30px;border:1px solid var(--gline,rgba(160,175,220,.14));background:none;border-radius:8px;cursor:pointer;font:inherit;font-size:12px;color:var(--muted,#98a0b8);padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.v3c-btn:hover{background:var(--hl,rgba(143,168,255,.16));color:var(--ink,#eef0f7)}
+.v3c-btn{height:30px;border:1px solid var(--bline,var(--cg-edge));background:var(--cg-sheen),var(--cg-thin);box-shadow:var(--cg-hi),var(--mat-shadow-s,0 1px 2px rgba(0,0,0,.12));border-radius:8px;cursor:pointer;font:inherit;font-size:12px;color:var(--muted,#98a0b8);padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v3c-btn:hover{background:var(--cg-sheen-h),var(--cg-thin);color:var(--ink,#eef0f7)}
+.v3c-btn:active,.v3c #picker-root button:active:not(:disabled){background:var(--cg-press),var(--cg-thin);box-shadow:inset 0 1px 2px rgba(0,0,0,.18)}
 .v3c-btn:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:1px}
-.v3c-btn[aria-pressed=true]{background:var(--hl,rgba(143,168,255,.16));border-color:var(--accent,#8fa8ff);color:var(--ink,#eef0f7)}
+.v3c-btn[aria-pressed=true]{background:linear-gradient(var(--hl,rgba(143,168,255,.16)),var(--hl,rgba(143,168,255,.16))),var(--cg-sheen),var(--cg-thin);border-color:var(--accent,#8fa8ff);color:var(--ink,#eef0f7)}
 .v3c-wide{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:6px}
 .v3c-wide svg{width:14px;height:14px;flex:none}
 .v3c-sw{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--muted,#98a0b8)}
@@ -222,9 +234,13 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-lod{font:10.5px/1.45 var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:pre-line;overflow-wrap:anywhere;padding:0 4px}
 .v3c-lod:empty{display:none}
 .v3c #picker-root .pk{margin:0}
-.v3c #picker-root button{height:28px;border:1px solid var(--gline,rgba(160,175,220,.14));background:rgba(127,127,160,.08);border-radius:8px;padding:0 9px;cursor:pointer;color:var(--ink,#eef0f7);font:inherit;font-size:12px}
-.v3c #picker-root button[aria-pressed=true]{border-color:var(--accent,#8fa8ff);background:var(--hl,rgba(143,168,255,.16))}.v3c #picker-root button:disabled{opacity:.5;cursor:not-allowed}
-.v3c #picker-root input[type=number]{height:26px;border:1px solid var(--gline,rgba(160,175,220,.14));background:rgba(127,127,160,.08);border-radius:7px;padding:0 5px;color:inherit;font:inherit;font-size:12px}
+.v3c #picker-root button{height:28px;border:1px solid var(--bline,var(--cg-edge));background:var(--cg-sheen),var(--cg-thin);box-shadow:var(--cg-hi),var(--mat-shadow-s,0 1px 2px rgba(0,0,0,.12));border-radius:8px;padding:0 9px;cursor:pointer;color:var(--ink,#eef0f7);font:inherit;font-size:12px}
+.v3c #picker-root button:hover:not(:disabled){background:var(--cg-sheen-h),var(--cg-thin)}
+.v3c #picker-root button[aria-pressed=true]{border-color:var(--accent,#8fa8ff);background:linear-gradient(var(--hl,rgba(143,168,255,.16)),var(--hl,rgba(143,168,255,.16))),var(--cg-sheen),var(--cg-thin)}
+.v3c #picker-root button.primary{background:var(--cg-gloss),var(--accent,#8fa8ff);border-color:var(--accent,#8fa8ff);color:var(--accent-ink,#0a0d18);font-weight:600;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 14px -4px var(--accent-glow,rgba(110,140,255,.45))}
+.v3c #picker-root button.primary:hover:not(:disabled){filter:brightness(1.08);background:var(--cg-gloss),var(--accent,#8fa8ff)}.v3c #picker-root button:disabled{opacity:.5;cursor:not-allowed}
+.v3c #picker-root input[type=number]{height:26px;border:1px solid var(--cg-edge);background:var(--cg-well);border-radius:7px;padding:0 5px;color:inherit;font:inherit;font-size:12px}
 .v3c #picker-root .row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
 .v3c #picker-root .pk-xyz{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 .v3c #picker-root .pk-in{display:flex;align-items:center;gap:4px;min-width:0}.v3c #picker-root .pk-in input{width:100%;min-width:0}
@@ -234,9 +250,15 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d:fullscreen{position:fixed;inset:0;z-index:1000;background:${BG};width:100vw;height:100vh}
 /* fix-ui FE-08: the CSS fallback (iPhone Safari has no element Fullscreen API) uses the dynamic viewport */
 .v3d.v3d-fs{position:fixed;inset:0;z-index:1000;background:${BG};width:auto;height:100vh;height:100dvh}
-.v3d .v3c{position:absolute;top:52px;right:10px;bottom:10px;width:min(340px,90vw);overflow:auto;z-index:2;padding:10px;border:1px solid var(--s-rule);border-radius:12px;
-  background:color-mix(in srgb,#0c1016 88%,transparent);color-scheme:dark;--ink:#eef0f7;--muted:#98a0b8;--faint:#7a83a0;--gline:rgba(160,175,220,.16);
-  --glass:rgba(22,27,42,.7);--glass2:rgba(40,46,70,.9);--hl:rgba(143,168,255,.16);--accent:#8fa8ff;color:var(--ink)}
+.v3d .v3c{position:absolute;top:52px;right:10px;bottom:10px;width:min(340px,90vw);overflow:auto;z-index:2;padding:10px;border:1px solid var(--s-edge);border-radius:var(--r-l,22px);
+  background:color-mix(in srgb,#0c1016 80%,transparent);backdrop-filter:blur(40px) saturate(1.6);-webkit-backdrop-filter:blur(40px) saturate(1.6);box-shadow:var(--s-hi),0 24px 60px rgba(0,0,0,.5);
+  color-scheme:dark;--ink:#eef0f7;--muted:#98a0b8;--faint:#7a83a0;--gline:rgba(160,175,220,.16);
+  --glass:rgba(22,27,42,.7);--glass2:rgba(40,46,70,.9);--hl:rgba(143,168,255,.16);--accent:#8fa8ff;--accent-ink:#0a0d18;color:var(--ink);
+  --bline:rgba(175,190,235,.30);--accent-glow:rgba(110,140,255,.45);--cg-thin:rgba(40,47,72,.40);--cg-edge:rgba(200,215,240,.14);--cg-hi:inset 0 1px 0 rgba(255,255,255,.08);
+  --cg-sheen:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.035));--cg-sheen-h:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,.07));
+  --cg-press:linear-gradient(180deg,rgba(0,0,0,.26),rgba(0,0,0,.16));--cg-tint:rgba(255,255,255,.045);--cg-well:rgba(0,0,0,.26);--cg-raised:rgba(255,255,255,.13)}
+/* nested glass inside the fullscreen panel: tint and edge only, no second backdrop blur */
+.v3d .v3c-card{background:var(--cg-tint);box-shadow:var(--cg-hi);backdrop-filter:none;-webkit-backdrop-filter:none}
 .v3d:fullscreen .v3d-lines,.v3d.v3d-fs .v3d-lines{right:auto;left:12px;bottom:auto;top:52px}
 body.v3d-noscroll{overflow:hidden}
 .v3d-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
@@ -248,7 +270,12 @@ body.v3d-noscroll{overflow:hidden}
   /* tune3: the scale bar moves to the top-left corner on narrow screens, so it never shares a row with the colour bar */
   .v3d-scale{left:12px;top:12px;bottom:auto;transform:none}
   /* fix-ui V9: in fullscreen with the settings panel open, the panel is opaque and the colour bar under it is hidden */
-  .v3d.v3d-panel .v3c{background:#0c1016}.v3d.v3d-panel .v3d-leg{visibility:hidden}}`;
+  .v3d.v3d-panel .v3c{background:#0c1016}.v3d.v3d-panel .v3d-leg{visibility:hidden}}
+/* glass fallbacks: no backdrop blur or reduced transparency -> near-opaque fills; more contrast -> stronger edges */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.v3d{--s-mat:color-mix(in srgb,#0c1016 90%,transparent)}.v3c-card{background:var(--mat-regular-o,var(--glass2,rgba(30,36,56,.94)))}.v3d .v3c{background:#0c1016}}
+@media (prefers-reduced-transparency:reduce){.v3d{--s-mat:color-mix(in srgb,#0c1016 92%,transparent);--s-blur:none}.v3c-card{background:var(--mat-regular-o,var(--glass2,rgba(30,36,56,.94)));backdrop-filter:none;-webkit-backdrop-filter:none}
+  .v3d .v3c{background:#0c1016;backdrop-filter:none;-webkit-backdrop-filter:none}.v3d-tt span{background:rgba(8,10,18,.9);backdrop-filter:none;-webkit-backdrop-filter:none}}
+@media (prefers-contrast:more){.v3d{--s-edge:rgba(220,230,250,.5)}.v3c{--cg-edge:var(--mat-edge-hc,var(--muted,#98a0b8))}}`;
 
 const pretty = u => String(u || "").replace("cm^-3", "cm⁻³").replace("cm^-2", "cm⁻²").replace("Zsun", "Z☉");
 const isMobile = () => matchMedia("(max-width: 720px)").matches;
