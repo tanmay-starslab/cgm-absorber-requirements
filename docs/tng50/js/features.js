@@ -96,7 +96,7 @@ const KEYS = [
   ["Page", [["j k", "next, previous sightline"], ["d", "random sightline"], ["1 2", "Spectra, 3D"], ["u", "undo instrument change"],
     ["shift U", "redo"], ["l", "copy a link to this view"], ["?", "this list"], ["Esc", "close"]]],
   ["Spectra", [["← →", "pan"], ["+ −", "zoom"], ["Home", "reset the window"], ["shift click", "a line chip shows only it"]]],
-  ["3D", [["drag", "orbit"], ["double-click", "orbit around that point"], ["c", "back to the galaxy centre"], ["f e a r", "face, edge, sightline, reset"],
+  ["3D", [["drag", "orbit"], ["double-click", "orbit around that point"], ["c", "back to the galaxy centre"], ["o", "start or stop the orbit"], ["f e a r", "face, edge, sightline, reset"],
     ["m", "integral or volume"], ["s g", "stars, guides"], ["p", "pick a ray"], ["shift F", "fullscreen"]]]
 ];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
