@@ -370,8 +370,11 @@ function setIons(l) { S.ions = reg.KEYS.filter(k => l.includes(k)); if (!S.ions.
 let hoverT = 0, hoverOpen = null, lastOpener = null;
 function place(btn, pop) {
   if (innerWidth < 640) { pop.classList.add("sheet"); pop.style.left = pop.style.top = ""; return; } pop.classList.remove("sheet");
-  const r = btn.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight; let x = r.left, y = r.bottom + 6;
-  if (x + pw > innerWidth - 12) x = Math.max(12, r.right - pw); if (y + ph > innerHeight - 12) y = Math.max(12, innerHeight - ph - 12);
+  /* rects are in screen px; with CSS zoom on <html> (125 % on large screens) left/top and offset sizes are page px */
+  const z = parseFloat(getComputedStyle(document.documentElement).zoom) || 1, W = innerWidth / z, H = innerHeight / z;
+  const b = btn.getBoundingClientRect(), r = {left: b.left / z, right: b.right / z, bottom: b.bottom / z}, pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let x = r.left, y = r.bottom + 6;
+  if (x + pw > W - 12) x = Math.max(12, r.right - pw); if (y + ph > H - 12) y = Math.max(12, H - ph - 12);
   pop.style.left = x + "px"; pop.style.top = y + "px"; }
 function openPop(btn, pop, focus = true) {
   closePops(pop); pop.hidden = false; btn.setAttribute("aria-expanded", "true"); lastOpener = btn; place(btn, pop);
