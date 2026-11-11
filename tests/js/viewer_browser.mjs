@@ -209,6 +209,46 @@ else {
     check(T.twoD, "2D gradient TF and shading reach the shader (uTF2D 1, uShade 0.5), gradient row shown");
     check(T.thor && T.emis && T.st.emis === "nH" && T.st.bands.length === 3 && /[?&]tf=T~P?thor/.test(T.url), `"Gas phases (THOR)": field T, 3 bands, emissivity n_H bound (uTFW 1, gamma 1), URL ${T.url.slice(0, 60)}`);
     check(T.reset && T.hidAgain, "Reset returns to the default ramp; integral mode hides the card and drops tf= from the URL"); }
+  { /* ux4 pivot (spec §A): orbit centre moves by API, double-click, the View card (ray, kpc) and comes back by the
+       stage chip and key C; camera direction and distance kept; ?pv= in the URL while off-centre */
+    const P = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d, c = v.canvas, out = {};
+      const wait = async f => { for (let i = 0; i < 400 && !f(); i++) await new Promise(r => setTimeout(r, 50)); return f(); };
+      const chip = document.getElementById("v3-pivot"), near = (a, b, e = 0.6) => a.every((x, i) => Math.abs(x - b[i]) <= e);
+      const off = () => v.camera.position.clone().sub(v.controls.target);
+      await v.setSpecies("nH"); v.setPreset("reset"); await wait(() => near(v.pivot, [0, 0, 0])); await new Promise(r => setTimeout(r, 700));
+      out.start = v.pivot; out.chip0 = chip.hidden; out.gal0 = document.getElementById("v3-pv-gal").getAttribute("aria-pressed");
+      const o0 = off();
+      v.setPivot([40, -20, 10]); out.moved = await wait(() => near(v.pivot, [40, -20, 10]) && !chip.hidden);
+      const o1 = off(); out.keep = o1.distanceTo(o0) < 0.5; out.url1 = location.search; out.chip1 = !chip.hidden;
+      out.aria = /Orbit centre 40, −20, 10 kpc/.test(c.getAttribute("aria-label"));
+      /* double-click at the stage centre: the pick lies on the view axis (densest gas or the current centre) */
+      const r = c.getBoundingClientRect(), pc = v.pickPivot(r.width / 2, r.height / 2), ax = off().normalize();
+      out.onAxis = !!pc && pc.clone().sub(v.controls.target).cross(ax).length() < 3;
+      c.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, clientX: r.left + r.width * 0.7, clientY: r.top + r.height * 0.4}));
+      out.dbl = await wait(() => !near(v.pivot, [40, -20, 10], 2)) && !chip.hidden;
+      /* key C: back to the galaxy, chip hidden, pv dropped */
+      c.focus(); c.dispatchEvent(new KeyboardEvent("keydown", {key: "c", bubbles: true, cancelable: true}));
+      out.keyC = await wait(() => near(v.pivot, [0, 0, 0]) && chip.hidden) && !/[?&]pv=/.test(location.search);
+      /* typed kpc (expander form; blank = 0) */
+      document.getElementById("v3-pv-x").value = "-60"; document.getElementById("v3-pv-y").value = "15"; document.getElementById("v3-pv-z").value = "";
+      document.getElementById("v3-pv-form").requestSubmit(); out.typed = await wait(() => near(v.pivot, [-60, 15, 0]));
+      /* the stage chip returns, then the selected sightline */
+      chip.click(); out.chipBack = await wait(() => near(v.pivot, [0, 0, 0]) && chip.hidden);
+      const e = tngApp.entries().find(e => e.p0 && e.p1); tngApp.select(e.id, {source: "3d"}); await new Promise(r => setTimeout(r, 100));
+      document.getElementById("v3-pv-ray").click();
+      const d = e.p1.map((x, i) => x - e.p0[i]), s = Math.max(0, Math.min(1, -(e.p0[0] * d[0] + e.p0[1] * d[1] + e.p0[2] * d[2]) / (d[0] ** 2 + d[1] ** 2 + d[2] ** 2)));
+      const want = e.p0.map((x, i) => x + s * d[i]); out.want = want.map(x => +x.toFixed(1));
+      out.ray = await wait(() => near(v.pivot, want, 0.6) && document.getElementById("v3-pv-ray").getAttribute("aria-pressed") === "true");
+      out.zoom = (() => { const d0 = off().length(); c.dispatchEvent(new KeyboardEvent("keydown", {key: "+", bubbles: true, cancelable: true})); return off().length() < d0 && near(v.pivot, want, 0.6); })();
+      v.setPreset("reset"); out.reset = await wait(() => near(v.pivot, [0, 0, 0]) && chip.hidden && !/[?&]pv=/.test(location.search));
+      out.pivotNow = v.pivot; return JSON.stringify(out); })()`));
+    check(P.start.every(x => x === 0) && P.chip0 && P.gal0 === "true", `pivot starts at the galaxy centre, chip hidden, View "galaxy" pressed (${JSON.stringify(P.start)})`);
+    check(P.moved && P.keep && P.chip1 && /[?&]pv=40,-20,10\b/.test(P.url1) && P.aria, `setPivot([40, −20, 10]): camera slides with it (direction and distance kept), chip shown, URL ${P.url1.slice(0, 60)}, aria names it`);
+    check(P.onAxis && P.dbl, "double-click: pick on the clicked ray (centre click on the view axis); off-centre double-click moves the pivot");
+    check(P.keyC, "key C: back to the galaxy, chip hidden, pv dropped from the URL");
+    check(P.typed && P.chipBack, "kpc form moves the pivot (blank = 0); the stage chip returns it");
+    check(P.ray && P.zoom, `"ray": pivot at the selected sightline's closest approach ${JSON.stringify(P.want)}, ray button pressed; zoom keeps the pivot`);
+    check(P.reset, `Reset returns camera and pivot to the galaxy (${JSON.stringify(P.pivotNow)})`); }
   const B = await ev(`window.tngViewer3d.bench(${NB})`);
   console.log(`     bench: exact ${B.exact_ms_median.toFixed(1)} ms, moving exact ${B.moving_exact_ms_median.toFixed(1)} ms, moving fast ${B.moving_fast_ms_median.toFixed(1)} ms → moving path ${B.moving_path}; canvas ${B.size.join("×")} px`);
   check(B.exact_ms_median <= 300, `exact refine frame ${B.exact_ms_median.toFixed(1)} ms ≤ 300 ms`);
