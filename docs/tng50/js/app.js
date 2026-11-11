@@ -7,10 +7,11 @@
 import {makeRegistry, cloneState, casesFor, bandsOf, clampView, parseHash, formatHash, instrumentPatch, ID_RE, LAYOUTS,
   fmtR, fmtNum, minus, nf, annotateLimits, fitClass, fitLimits} from "./state.js";
 import {createSpectra} from "./spectra.js";
-import {createGallery, kindOf, nShow} from "./gallery.js";
+import {createGallery, kindOf, nShow, sightLabel, sightTip, copyText} from "./gallery.js";
 import {createInstrument} from "./instrument.js";
 import * as FITM from "./fit.js";
 import {initTips, ION_TIPS} from "./tips.js";
+import {initFeatures} from "./features.js";   /* ux4 features: share, keys, random, undo, solo, CSV, loading */
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
 /* ---------------- config ---------------- */
@@ -77,7 +78,7 @@ function sorted() {
   gen.sort((a, b) => b._seq - a._seq);
   return lib.concat(gen);
 }
-const gallery = createGallery({pop: $("#gal-pop"), search: $("#gal-search"), filter: $("#filter"), showcase: $("#showcase"), list: $("#gal-list"), count: $("#galcount")},
+const gallery = createGallery({pop: $("#gal-pop"), cur: $("#gal-id"), search: $("#gal-search"), filter: $("#filter"), showcase: $("#showcase"), list: $("#gal-list"), count: $("#galcount")},
   {entries: sorted, current: () => S.id, onPick: id => { closePops(); select(id, false, "gallery"); }});
 function catalogChanged() { gallery.render(); if (CATV !== catEmitted) { catEmitted = CATV; emit("tng:catalog", {n: CAT.size}); } }
 function step(d) { const list = gallery.visible.length ? gallery.visible : sorted(); if (!list.length) return;
@@ -353,7 +354,7 @@ function buildIons() {
   $("#ion-list").innerHTML = reg.IONS.map(i => { const absent = present && !present.includes(i.key);
     return `<label class="ion-row${absent ? " absent" : ""}" style="--ic:${ionColor(i.key)}"><input type="checkbox" data-ion="${i.key}" data-testid="ion-${i.key}" data-tip="${esc(absent ? "Not in this sightline's spectra" : ION_TIPS[i.key] || `${i.label}, a ${reg.BANDS[i.band]?.label || i.band} line`)}"${S.ions.includes(i.key) ? " checked" : ""}>` +
       `<span class="sw"></span><span class="nm">${esc(i.label)}</span><span class="bd">${esc(reg.BANDS[i.band]?.label || i.band)}</span></label>`; }).join("");
-  $("#ion-chips").innerHTML = S.ions.map(k => `<button type="button" class="chip" data-ion="${k}" style="--ic:${ionColor(k)}" data-tip="${esc(S.ions.length < 2 ? "The last line stays; add another to remove it" : `${ION_TIPS[k] || ION[k].label}; × removes it`)}" aria-label="Remove ${esc(ION[k].label)}"${S.ions.length < 2 ? " disabled" : ""}><span class="sw"></span>${esc(ION[k].label)}<span class="x" aria-hidden="true">×</span></button>`).join("");
+  $("#ion-chips").innerHTML = S.ions.map(k => `<button type="button" class="chip" data-ion="${k}" style="--ic:${ionColor(k)}" data-tip="${esc(S.ions.length < 2 ? "The last line stays; add another to remove it" : `${ION_TIPS[k] || ION[k].label}; × removes, shift-click solos`)}" aria-label="Remove ${esc(ION[k].label)}"${S.ions.length < 2 ? " disabled" : ""}><span class="sw"></span>${esc(ION[k].label)}<span class="x" aria-hidden="true">×</span></button>`).join("");
   $("#ion-open .n").textContent = S.ions.length;
 }
 $("#ion-list").addEventListener("change", ev => { const c = ev.target.closest("input[data-ion]"); if (!c) return;
@@ -411,7 +412,7 @@ let loadTok = 0;
 async function select(id, auto = false, source = "gallery") {
   if (!CAT.has(id)) return; if (!auto || id === pendingId) pendingId = null; const changed = S.id !== id; S.id = id; const tok = ++loadTok; SIGHT_FAIL.delete(id);
   if (changed) emit("tng:select", {id, source});
-  $("#gal-open .gid").textContent = id; status(); writeHashSoon(); syncGeom(CAT.get(id)); gallery.render();
+  status(); writeHashSoon(); syncGeom(CAT.get(id)); gallery.render();
   if (S.fit) ensureComps(id).then(() => { if (id === S.id) draw(); });
   try { await getSight(id); } catch (x) { if (tok === loadTok) { $("#statusline").innerHTML = `<span class="bad">could not load <b>${esc(id)}</b>: ${esc(x.message)}</span>`; draw(); } return; }
   if (tok !== loadTok) return;
@@ -419,12 +420,28 @@ async function select(id, auto = false, source = "gallery") {
   const list = gallery.visible.length ? gallery.visible : sorted(), i = list.findIndex(e => e.id === id);   // prefetch neighbours
   for (const d of [1, -1]) { const n = list[(i + d + list.length) % list.length]; if (n && n._static) getSight(n.id).catch(() => {}); }
 }
+/* ux4 B: the top-bar button shows the clean parameters (orientation, b, Φ; custom: L, b); the id is in its tip, in the
+   picker's copy button (#gal-copy), the status line and the URL */
+function barLabel() {
+  const e = CAT.get(S.id), b = $("#gal-open"), lab = b && b.querySelector(".slab"); if (!lab) return;
+  lab.dataset.id = S.id || "";
+  if (e) { const L = sightLabel(e); lab.innerHTML = L.html; b.setAttribute("aria-label", `Sightline ${L.text.replace(/ {2}/g, ", ")}`); }
+  else { lab.textContent = S.id || "loading"; b.removeAttribute("aria-label"); }
+  b.dataset.tip = sightTip(e);
+  const cp = $("#gal-copy"); if (cp && S.id) { cp.dataset.tip = `Copy the id ${S.id}`; cp.setAttribute("aria-label", `Copy the sightline id ${S.id}`); }
+}
+$("#gal-copy")?.addEventListener("click", async () => { const id = S.id, btn = $("#gal-copy"); if (!id) return;
+  const ok = await copyText(id); btn.dataset.state = ok ? "done" : "fail"; note(ok ? `copied ${id}` : "could not copy the id", ok ? "" : "bad");
+  setTimeout(() => { delete btn.dataset.state; }, 1400); });
 function status() {
+  barLabel();
   const e = CAT.get(S.id), st = $("#statusline"); st.dataset.id = S.id || "";
   if (!e) { st.textContent = S.id ? S.id : "no sightline selected"; return; }
-  const geo = kindOf(e) === "custom" ? `custom ray  L ${fb(e.length_kpc)} kpc  b ${fb(e.b_kpc)} kpc` : `${esc(e.orientation)}  b ${fb(e.b_kpc)} kpc  Φ ${fb(e.azimuth_deg)}°`;
-  /* tune1 F13: log N moved onto each spectrum row (spectra.js), so the line holds the id and the geometry only */
-  st.innerHTML = `<b>${esc(e.id)}</b>  ${geo}${e.source === "generated" ? "  new" : ""}`;
+  /* fix F1: the bar already shows orientation, b and Φ; the line adds only what it lacks (seed, rich-line count, your ray)
+     and ends with the id, muted */
+  const n = nShow(e), extra = [e.orientation === "random" && e.seed != null ? `seed ${esc(e.seed)}` : "",
+    n ? `${n} rich ${n === 1 ? "line" : "lines"}` : "", kindOf(e) !== "library" ? "your ray" : ""].filter(Boolean);
+  st.innerHTML = [...extra, `<span class="sid">${esc(e.id)}</span>`].join("  ");
   st.title = st.textContent;
 }
 
@@ -638,7 +655,7 @@ function open3d() {
   V3P = (async () => { try { const [V, Pk] = await loadV3();
       const v = await V.mount($("#v3d-root"), window.tngApp, {viz: vizCfg(), controls: $("#v3d-controls")}); V3 = v; window.tngViewer3d = v; $("#v3d-wait").hidden = true;
       $("#v3d-status").textContent = !v.webgl2 ? "The interactive 3D view is not available here; type a ray's endpoints under Pick ray to generate it."
-        : matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches ? "drag to orbit, pinch to zoom, tap a line" : "drag to orbit, scroll to zoom, click a line";
+        : matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches ? "drag to orbit, pinch to zoom, tap a line" : "drag to orbit, scroll to zoom, click a line, double-click to re-centre";
       window.tngPicker = Pk.attachPicker(v.webgl2 ? v : null, $("#picker-root"), window.tngApp);
       if (v.webgl2 && thumbOk()) openThumb();     // the engine is up: the thumbnail shares it at no cost, ready for the Spectra tab
       return v;
@@ -769,6 +786,17 @@ window.tngApp = {
       return (r && r.comps || []).filter(c => v == null || Math.abs(c.v - v) < 1e-6).map(c => ({v: c.v, logN: c.logN, flag: c.flag, ...compQuality(c, ion, r, d)})); },
     get drawMs() { return spectra.lastMs; }, get nDraw() { return spectra.nDraw; }, draw: () => spectra.draw(), fitMode: () => FIT.mode, fitCache: () => FIT.res.size}
 };
+
+/* ---------------- ux4 features (js/features.js): wiring only ---------------- */
+const FEAT = initFeatures({get S() { return S; }, ION, note, save, writeHash, openPop, closePops, showTab,
+  select: id => select(id, false, "gallery"), pool: () => (gallery.visible.length ? gallery.visible : sorted()),
+  loaded: id => SIGHT.has(id), failed: id => SIGHT_FAIL.has(id), panels: () => spectra.geometry().panels,
+  data: (ion, ci) => (S.id && SIGHT.has(S.id) ? dataFor(ion, ci) : null), fit: fitResult, quality: compQuality, caseRS,
+  entry: id => CAT.get(id) || null, setIons,
+  getSnap: () => ({layout: S.layout, ions: S.ions.slice(), R: cloneState(S.R), sn: S.sn.slice(), vhw: S.vhw, vc: S.vc, fit: S.fit, intr: S.intr}),
+  applySnap(s) { Object.assign(S, {layout: s.layout, ions: s.ions.slice(), R: cloneState(s.R), sn: s.sn.slice(), vhw: s.vhw, vc: s.vc, intr: s.intr});
+    clampView(S, vmax()); syncAll(); setFit(s.fit); }});
+window.tngApp._debug.features = FEAT;
 
 /* ---------------- start ---------------- */
 initTips();
