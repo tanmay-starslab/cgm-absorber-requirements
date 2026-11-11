@@ -3,6 +3,12 @@
 // sliders #sn-0 and #sn-1 (log, integers 2 to 100) and the half-window #vhw (log, 10 km/s to vmax).
 import {bandsOf, twoR, twoSN, rToT, tToR, snStops, snToT, vToT, tToV, SLIDER_MAX, fmtR} from "./state.js";
 
+/* one line of help per R slider; the EUV band says it is seen only redshifted (its band note) */
+function rTip(key, B, k) {
+  return key === "euv" ? `Resolving power${k ? " " + k : ""} R = λ/Δλ for EUV lines, observable only redshifted`
+    : `Resolving power${k ? " " + k : ""} R = λ/Δλ for ${B.label} lines; line-spread FWHM = c/R`;
+}
+
 /* els: {rsliders, sn: [input, input], snOut: [out, out], sn1wrap, vhw, vhwOut}; ctx: {S, reg, vmax(), onChange(kind)} */
 export function createInstrument(els, ctx) {
   const {reg} = ctx, STOPS = snStops(reg.SNR.min, reg.SNR.max);
@@ -13,8 +19,8 @@ export function createInstrument(els, ctx) {
     if (sig !== built) {
       built = sig;
       els.rsliders.innerHTML = bands.map(b => [0, 1].filter(i => i === 0 || two).map(i => { const B = reg.BANDS[b];
-        return `<label class="ctl"${B.note ? ` title="${B.note}"` : ""}><span class="k">R${two ? `<sub>${i + 1}</sub>` : ""} <em>${B.label}</em></span>` +
-          `<input type="range" id="R-${b}-${i}" data-testid="R-${b}-${i}" min="0" max="${SLIDER_MAX}" step="1" aria-label="R ${B.label}${two ? " " + (i + 1) : ""}">` +
+        return `<label class="ctl"><span class="k">R${two ? `<sub>${i + 1}</sub>` : ""} <em>${B.label}</em></span>` +
+          `<input type="range" id="R-${b}-${i}" data-testid="R-${b}-${i}" min="0" max="${SLIDER_MAX}" step="1" aria-label="R ${B.label}${two ? " " + (i + 1) : ""}" data-tip="${rTip(b, B, two ? i + 1 : 0)}">` +
           `<output id="R-${b}-${i}-out" for="R-${b}-${i}"></output></label>`; }).join("")).join("");
       for (const inp of els.rsliders.querySelectorAll("input")) inp.addEventListener("input", () => {
         const [, b, i] = inp.id.split("-"); ctx.S.R[b][+i] = tToR(reg.BANDS[b].R, +inp.value); syncR(inp); ctx.onChange("R"); });

@@ -611,9 +611,10 @@ export async function mount(root, app, opts = {}) {
   let backend = "local", generate = null, busy = false, opener = opts.opener || null, claudeOk = false, userChose = false;
   const hist = {messages: []};
 
-  const mode = (value, label, id) => { const cap = el("small"); const inp = el("input", {type: "radio", name: "chat-backend", id, value});
+  const mode = (value, label, id, tip) => { const cap = el("small"); const inp = el("input", {type: "radio", name: "chat-backend", id, value, "data-tip": tip});
     return {inp, cap, node: el("label", {for: id}, inp, el("span", {}, label, cap))}; };
-  const mClaude = mode("claude", "Claude", "chat-be-claude"), mLocal = mode("local", "In browser", "chat-be-local");
+  const mClaude = mode("claude", "Claude", "chat-be-claude", "Claude answers through the sightline server; your messages leave the browser"),
+    mLocal = mode("local", "In browser", "chat-be-local", "Local model (Qwen2.5 1.5B, about 1 GB) on WebGPU; messages stay here");
   mLocal.cap.textContent = "private, 1 GB once";
   const modeBar = el("div", {class: "chat-mode", role: "radiogroup", "aria-label": "Model"}, mClaude.node, mLocal.node);
   const noticeText = el("span"), noticeMore = el("p");
@@ -629,8 +630,8 @@ export async function mount(root, app, opts = {}) {
   const ta = el("textarea", {id: "chat-input", rows: "1", placeholder: "Ask about the sightlines"});
   const send = el("button", {type: "submit", class: "cb primary sq", "aria-label": "Send"}, svg("send"));
   const form = el("form", {class: "chat-form"}, el("label", {for: "chat-input", class: "sr-only", style: "position:absolute;left:-9999px"}, "Question"), ta, send);
-  const closeBtn = el("button", {type: "button", class: "cb sq", "aria-label": "Close chat", title: "Close (Esc)"}, svg("close"));
-  const clearBtn = el("button", {type: "button", class: "cb", title: "Start a new conversation"}, svg("reset"), "New");
+  const closeBtn = el("button", {type: "button", class: "cb sq", "aria-label": "Close chat", "data-tip": "Close the chat (Esc)"}, svg("close"));
+  const clearBtn = el("button", {type: "button", class: "cb", "data-tip": "Start a new conversation; the page keeps its state"}, svg("reset"), "New");
   const typing = el("div", {class: "chat-typing", "aria-label": "working"}, el("i"), el("i"), el("i"));
   const sugs = SUGGESTIONS.map(q => el("button", {type: "button", class: "chat-sug", onclick: () => ask(q)}, q));
   const empty = el("div", {class: "chat-empty"}, el("h3", {text: "Try asking"}), ...sugs);

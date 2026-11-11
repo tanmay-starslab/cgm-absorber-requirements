@@ -10,6 +10,7 @@ import {createSpectra} from "./spectra.js";
 import {createGallery, kindOf, nShow} from "./gallery.js";
 import {createInstrument} from "./instrument.js";
 import * as FITM from "./fit.js";
+import {initTips, ION_TIPS} from "./tips.js";
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
 /* ---------------- config ---------------- */
@@ -48,7 +49,8 @@ let API = null, HEALTH = null, PROBES = [], pendingId = null;
 const THEMES = ["auto", "light", "dark"];
 let theme = THEMES.includes(store.get("tngsight.theme")) ? store.get("tngsight.theme") : "auto";
 function applyTheme(t) { if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
-  const b = $("#theme"); b.dataset.mode = t; b.setAttribute("aria-label", "Theme: " + t); b.title = "Theme: " + t; }
+  const b = $("#theme"), nx = THEMES[(THEMES.indexOf(t) + 1) % 3]; b.dataset.mode = t; b.setAttribute("aria-label", "Theme: " + t);
+  b.dataset.tip = `Theme ${t}: ${t === "auto" ? "follows your system" : "fixed"}; click for ${nx}`; }
 applyTheme(theme);
 $("#theme").addEventListener("click", () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; store.set("tngsight.theme", theme); applyTheme(theme); });
 function themeChanged() { buildIons(); build3dField(); spectra.schedule(); }
@@ -349,9 +351,9 @@ function presentLines() { const e = CAT.get(S.id), s = SIGHT.get(S.id); return s
 function buildIons() {
   const present = presentLines();
   $("#ion-list").innerHTML = reg.IONS.map(i => { const absent = present && !present.includes(i.key);
-    return `<label class="ion-row${absent ? " absent" : ""}" style="--ic:${ionColor(i.key)}"${absent ? ' title="not in this sightline"' : ""}><input type="checkbox" data-ion="${i.key}" data-testid="ion-${i.key}"${S.ions.includes(i.key) ? " checked" : ""}>` +
+    return `<label class="ion-row${absent ? " absent" : ""}" style="--ic:${ionColor(i.key)}"><input type="checkbox" data-ion="${i.key}" data-testid="ion-${i.key}" data-tip="${esc(absent ? "Not in this sightline's spectra" : ION_TIPS[i.key] || `${i.label}, a ${reg.BANDS[i.band]?.label || i.band} line`)}"${S.ions.includes(i.key) ? " checked" : ""}>` +
       `<span class="sw"></span><span class="nm">${esc(i.label)}</span><span class="bd">${esc(reg.BANDS[i.band]?.label || i.band)}</span></label>`; }).join("");
-  $("#ion-chips").innerHTML = S.ions.map(k => `<button type="button" class="chip" data-ion="${k}" style="--ic:${ionColor(k)}" title="Remove ${esc(ION[k].label)}" aria-label="Remove ${esc(ION[k].label)}"${S.ions.length < 2 ? " disabled" : ""}><span class="sw"></span>${esc(ION[k].label)}<span class="x" aria-hidden="true">×</span></button>`).join("");
+  $("#ion-chips").innerHTML = S.ions.map(k => `<button type="button" class="chip" data-ion="${k}" style="--ic:${ionColor(k)}" data-tip="${esc(S.ions.length < 2 ? "The last line stays; add another to remove it" : `${ION_TIPS[k] || ION[k].label}; × removes it`)}" aria-label="Remove ${esc(ION[k].label)}"${S.ions.length < 2 ? " disabled" : ""}><span class="sw"></span>${esc(ION[k].label)}<span class="x" aria-hidden="true">×</span></button>`).join("");
   $("#ion-open .n").textContent = S.ions.length;
 }
 $("#ion-list").addEventListener("change", ev => { const c = ev.target.closest("input[data-ion]"); if (!c) return;
@@ -495,7 +497,7 @@ const orient = () => (document.querySelector('input[name="orient"]:checked') || 
 function seedState() { $("#gseed").disabled = orient() !== "random"; }
 for (const r of $$('input[name="orient"]')) r.addEventListener("change", seedState);
 let JOB = null, busy = false;
-function setGeoEnabled() { $("#submit").disabled = !!JOB || busy; $("#submit").title = API ? `generate on ${API}` : "offline: only library sightlines can be loaded"; }
+function setGeoEnabled() { $("#submit").disabled = !!JOB || busy; $("#submit").dataset.tip = API ? "Load from the library, or cast on the sightline server" : "Offline: only library sightlines can be loaded"; }
 function syncGeom(e) { if (!e || kindOf(e) === "custom") return; for (const r of $$('input[name="orient"]')) r.checked = r.value === e.orientation;
   $("#gb").value = Math.round(+e.b_kpc); $("#gaz").value = Math.round(+e.azimuth_deg) % 360; if (e.seed != null) $("#gseed").value = e.seed; seedState(); }
 class GeomError extends Error { constructor(m, code) { super(m); this.code = code; } }
@@ -662,7 +664,16 @@ function armThumb() { thumbArmed = true;
 
 /* ---------------- Find, Ask ---------------- */
 let FINDP = null;
-function mountFind() { if (FINDP) return; FINDP = import(modUrl("search.js")).then(m => m.mountFind($("#find-body"), window.tngApp))
+/* one line of help per Find field (the form is built by search.js) */
+const FIND_TIPS = {fq_ion: "Ion whose fitted components are searched",
+  fq_n_lo: "Fewest matching components per sightline", fq_n_hi: "Most matching components per sightline",
+  fq_sep_lo: "A matching pair must be at least this far apart, km/s", fq_sep_hi: "A matching pair must be at most this far apart, km/s",
+  fq_logN_lo: "Lowest column density, log10 cm⁻²; saturated fits count as lower limits", fq_logN_hi: "Highest column density, log10 cm⁻²; leave empty to keep saturated fits",
+  fq_b_lo: "Components with Doppler b below this do not match, km/s", fq_b_hi: "Components with Doppler b above this do not match, km/s",
+  fq_bkpc_lo: "Smallest sightline impact parameter, kpc", fq_bkpc_hi: "Largest sightline impact parameter, kpc",
+  fq_orient: "Sightline orientation relative to the disk", fq_sort: "Rank by match score, impact parameter or component count"};
+function tipFind() { for (const [id, t] of Object.entries(FIND_TIPS)) { const e = document.getElementById(id); if (e) e.dataset.tip = t; } }
+function mountFind() { if (FINDP) return; FINDP = import(modUrl("search.js")).then(m => { const r = m.mountFind($("#find-body"), window.tngApp); tipFind(); return r; })
   .catch(x => { FINDP = null; $("#find-body").insertAdjacentHTML("beforeend", `<p class="msg bad">Search failed to load: ${esc(x.message)}</p>`); }); }
 let CHAT = null;
 $("#chat-open").hidden = !(CFG.chat && CFG.chat.enabled);
@@ -671,7 +682,7 @@ $("#chat-open").addEventListener("click", async () => { try { if (!CHAT) { const
 
 /* ---------------- side column (collapsible, remembered) and the phone drawer ---------------- */
 function setSide(on) { document.body.classList.toggle("side-off", !on); const b = $("#side-toggle"); b.setAttribute("aria-expanded", String(on));
-  const t = on ? "Hide the side column" : "Show the side column"; b.setAttribute("aria-label", t); b.title = t; b.setAttribute("aria-pressed", String(!on));
+  const t = on ? "Hide the side column" : "Show the side column"; b.setAttribute("aria-label", t); b.dataset.tip = t; b.setAttribute("aria-pressed", String(!on));
   store.set("tngsight.side", on ? "1" : "0"); draw(); if (on && thumbArmed) armThumb(); }
 $("#side-toggle").addEventListener("click", () => setSide(document.body.classList.contains("side-off")));
 /* B_fix F3: opening the drawer moves the focus into it (its Done button); closing it with Esc or Done returns the focus
@@ -760,6 +771,7 @@ window.tngApp = {
 };
 
 /* ---------------- start ---------------- */
+initTips();
 (async function init() {
   if (new URLSearchParams(location.search).has("debug")) document.body.classList.add("debug");   // shows the 3D LOD line (B_fix F8)
   const H = parseHash(location.hash, reg, S); const hashId = H.id; Object.assign(S, H, {id: null, tab: "spectra"});

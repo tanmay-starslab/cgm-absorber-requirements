@@ -438,3 +438,14 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
 #v3d-controls .v3tf-bands input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
 #v3d-controls .v3tf-bands input[type=color]::-webkit-color-swatch{border:0;border-radius:6px}
 #v3d-controls .v3tf-bands input[type=color]::-moz-color-swatch{border:0;border-radius:6px}
+/* tips: the one-line help of every control (js/tips.js; data-tip on the control): one glass tooltip, thick material,
+   never takes the pointer; near-opaque under the reduced-transparency and no-backdrop fallbacks above */
+.tip{position:fixed;z-index:2000;left:0;top:0;max-width:min(280px,calc(100vw - 16px));padding:6px 10px;border-radius:var(--r-s,10px);
+  background:var(--mat-thick);border:var(--mat-edge);backdrop-filter:var(--mat-blur-thick);-webkit-backdrop-filter:var(--mat-blur-thick);
+  box-shadow:var(--mat-highlight),var(--mat-shadow-m);color:var(--ink);font:500 12px/1.35 var(--sans);letter-spacing:.01em;text-wrap:pretty;
+  pointer-events:none;opacity:0;transform:translateY(2px);transition:opacity .12s ease-out,transform .12s ease-out}
+.tip[data-side=bottom]{transform:translateY(-2px)}
+.tip.on{opacity:1;transform:none}
+/* touch: a long press on a tipped control shows its tip, so it must not start a text selection or the iOS callout */
+@media (hover:none){[data-tip]:not(input[type=text],input[type=number],input[type=search],input[type=url],textarea),
+  label:has(> [data-tip]){-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}}

@@ -42,24 +42,24 @@ export function createTfEditor({onChange = () => {}} = {}) {
   el.className = "v3c-card v3tf"; el.dataset.group = "tf"; el.id = "v3-tf"; el.hidden = true;
   const opts = PRESETS.map(p => `<option value="${p}">${PRESET_LABELS[p]}</option>`).join("") + `<option value="custom" disabled>custom</option>`;
   el.innerHTML = `<h2 id="${uid}-h">Transfer function</h2>
-    <div class="v3c-row"><label for="v3-tf-preset">preset</label><select id="v3-tf-preset" data-testid="v3-tf-preset">${opts}</select></div>
+    <div class="v3c-row"><label for="v3-tf-preset">preset</label><select id="v3-tf-preset" data-testid="v3-tf-preset" data-tip="Starting look: default ramp, THOR gas phases, iso bands or clouds">${opts}</select></div>
     <div class="v3tf-plot"><canvas id="v3-tf-cv" data-testid="v3-tf-canvas" tabindex="0" role="application" aria-roledescription="transfer function editor"
-      aria-labelledby="${uid}-h" aria-describedby="${uid}-help" title="drag to move, shift-drag for width, double-click to add a band"></canvas>
+      aria-labelledby="${uid}-h" aria-describedby="${uid}-help" data-tip="Drag a band to move it, shift-drag for width, double-click adds"></canvas>
       <div class="v3tf-ax" aria-hidden="true"><span class="lo"></span><span class="u"></span><span class="hi"></span></div></div>
     <p class="v3d-sr" id="${uid}-help">Histogram of the field (log counts) under the transfer function: height is opacity, fill is colour. Drag a band or a ramp end to move it, shift-drag to change a band's width, double-click to add a band. Keys: left and right move the selected band or ramp, up and down change its opacity, plus and minus its width, page up and page down select another band or the ramp, Insert adds, Delete removes.</p>
     <p class="v3d-sr" id="v3-tf-live" role="status" aria-live="polite"></p>
-    <div class="v3c-row" id="v3-tf-w-row"><label for="v3-tf-w" title="band width: Gaussian sigma in dex">width</label><input id="v3-tf-w" data-testid="v3-tf-w" type="range" min="0.01" max="2" step="0.01"><output for="v3-tf-w" id="v3-tf-w-o"></output></div>
-    <div class="v3c-row"><label for="v3-tf-a" title="peak opacity of the selected band or ramp">alpha</label><input id="v3-tf-a" data-testid="v3-tf-a" type="range" min="0" max="1" step="0.01"><output for="v3-tf-a" id="v3-tf-a-o"></output></div>
-    <div class="v3tf-bands"><input type="color" id="v3-tf-col" aria-label="band colour" title="band colour">
-      <button type="button" class="v3c-btn" id="v3-tf-add" data-testid="v3-tf-add" title="add a band (Insert)">+ band</button>
-      <button type="button" class="v3c-btn" id="v3-tf-del" data-testid="v3-tf-del" title="remove the selected band or ramp (Delete)">remove</button>
-      <button type="button" class="v3c-btn" id="v3-tf-reset" data-testid="v3-tf-reset" title="back to the field's default look">Reset</button></div>
-    <div class="v3c-sw"><label title="2D: opacity also depends on the gradient magnitude, which picks out cloud edges and shells"><input type="checkbox" id="v3-tf-2d" data-testid="v3-tf-2d">2D gradient</label></div>
-    <div class="v3c-row" id="v3-tf-g-row" hidden><span class="lab" title="gradient range of the selected band or ramp (0 flat, 1 steepest)">gradient</span>
-      <span class="v3tf-g"><input id="v3-tf-g0" type="range" min="0" max="1" step="0.01" aria-label="gradient low"><input id="v3-tf-g1" type="range" min="0" max="1" step="0.01" aria-label="gradient high"></span><output id="v3-tf-g-o"></output></div>
-    <div class="v3c-row"><label for="v3-tf-shade" title="surface shading from the gradient (a headlight)">shade</label><input id="v3-tf-shade" data-testid="v3-tf-shade" type="range" min="0" max="1" step="0.05"><output for="v3-tf-shade" id="v3-tf-shade-o"></output></div>
-    <div class="v3c-row"><label for="v3-tf-emis" title="emissivity: brightness times (w / w_ref)^γ of this density field">emit</label><select id="v3-tf-emis" data-testid="v3-tf-emis"></select></div>
-    <div class="v3c-row"><label for="v3-tf-gamma" title="emissivity exponent gamma (0 off)" aria-label="gamma"><span class="gam">γ</span></label><input id="v3-tf-gamma" data-testid="v3-tf-gamma" type="range" min="0" max="3" step="0.1"><output for="v3-tf-gamma" id="v3-tf-gamma-o"></output></div>`;
+    <div class="v3c-row" id="v3-tf-w-row"><label for="v3-tf-w">width</label><input id="v3-tf-w" data-testid="v3-tf-w" type="range" min="0.01" max="2" step="0.01" data-tip="Width of the selected band: Gaussian sigma in dex"><output for="v3-tf-w" id="v3-tf-w-o"></output></div>
+    <div class="v3c-row"><label for="v3-tf-a">alpha</label><input id="v3-tf-a" data-testid="v3-tf-a" type="range" min="0" max="1" step="0.01" data-tip="Peak opacity of the selected band or ramp"><output for="v3-tf-a" id="v3-tf-a-o"></output></div>
+    <div class="v3tf-bands"><input type="color" id="v3-tf-col" aria-label="band colour" data-tip="Colour of the selected band">
+      <button type="button" class="v3c-btn" id="v3-tf-add" data-testid="v3-tf-add" data-tip="Add a Gaussian opacity band (Insert in the editor)">+ band</button>
+      <button type="button" class="v3c-btn" id="v3-tf-del" data-testid="v3-tf-del" data-tip="Remove the selected band or ramp (Delete in the editor)">remove</button>
+      <button type="button" class="v3c-btn" id="v3-tf-reset" data-testid="v3-tf-reset" data-tip="Back to this field's default transfer function">Reset</button></div>
+    <div class="v3c-sw"><label><input type="checkbox" id="v3-tf-2d" data-testid="v3-tf-2d" data-tip="Opacity also follows the gradient magnitude, picking out cloud edges">2D gradient</label></div>
+    <div class="v3c-row" id="v3-tf-g-row" hidden><span class="lab">gradient</span>
+      <span class="v3tf-g"><input id="v3-tf-g0" type="range" min="0" max="1" step="0.01" aria-label="gradient low" data-tip="Lowest gradient the selected item covers: 0 flat, 1 steepest"><input id="v3-tf-g1" type="range" min="0" max="1" step="0.01" aria-label="gradient high" data-tip="Highest gradient the selected item covers: 0 flat, 1 steepest"></span><output id="v3-tf-g-o"></output></div>
+    <div class="v3c-row"><label for="v3-tf-shade">shade</label><input id="v3-tf-shade" data-testid="v3-tf-shade" type="range" min="0" max="1" step="0.05" data-tip="Surface shading from the gradient, lit by a headlight"><output for="v3-tf-shade" id="v3-tf-shade-o"></output></div>
+    <div class="v3c-row"><label for="v3-tf-emis">emit</label><select id="v3-tf-emis" data-testid="v3-tf-emis" data-tip="Density field w that scales brightness as (w / w_ref)^γ"></select></div>
+    <div class="v3c-row"><label for="v3-tf-gamma" aria-label="gamma"><span class="gam">γ</span></label><input id="v3-tf-gamma" data-testid="v3-tf-gamma" type="range" min="0" max="3" step="0.1" data-tip="Emissivity exponent γ on the density weight; 0 turns it off"><output for="v3-tf-gamma" id="v3-tf-gamma-o"></output></div>`;
   const q = s => el.querySelector(s), cv = q("#v3-tf-cv"), live = q("#v3-tf-live");
   let st = {preset: "ramp", ramp: null, bands: [], twoD: false, shade: 0, emis: "", gamma: 1, win: [0, 1]}, ctx = {lut: null, hist: null, hist2: null, emis: [], field: ""}, sel = 0, baked = null;
   const ed = {el, get state() { return copy(st); }, set, select, redraw: () => draw()};
@@ -85,7 +85,8 @@ export function createTfEditor({onChange = () => {}} = {}) {
   const g2 = x => String(+(+x).toFixed(2));
   function syncInputs() { const B = band(), I = item(), has = !!B, R = !B && !!I;
     const p = q("#v3-tf-preset"); p.value = PRESETS.includes(st.preset) ? st.preset : "custom";
-    p.title = st.preset === "thor" ? THOR_NOTE : "transfer-function preset"; p.setAttribute("aria-description", st.preset === "thor" ? THOR_NOTE : "");
+    p.dataset.tip = st.preset === "thor" ? "THOR phases: 2×10⁴ K blue, 10⁵ K orange, 3×10⁵ K red" : "Starting look: default ramp, THOR gas phases, iso bands or clouds";
+    p.setAttribute("aria-description", st.preset === "thor" ? THOR_NOTE : "");
     /* band-only controls (width, colour) are off for the ramp; with nothing selectable, everything but + band is off */
     for (const s of ["#v3-tf-w", "#v3-tf-col"]) q(s).disabled = !has;
     for (const s of ["#v3-tf-a", "#v3-tf-del", "#v3-tf-g0", "#v3-tf-g1"]) q(s).disabled = !I;

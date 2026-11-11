@@ -62,11 +62,13 @@ export function attachPicker(viewer, root, app) {
     for (const [k, v] of Object.entries(attrs)) if (k === "text") el.textContent = v; else el.setAttribute(k, v);
     for (const c of kids) el.appendChild(typeof c === "string" ? doc.createTextNode(c) : c); return el; };
   const inp = (id, lab) => h("label", {class: "pk-in"}, h("span", {text: lab}),
-    h("input", {id, type: "number", step: "0.1", min: String(-RM), max: String(RM), inputmode: "decimal", "aria-label": id.replace("pk-", "").replace("-", " ") + " [kpc]"}));
-  const bMode = h("button", {type: "button", class: "btn", id: "pk-mode", "aria-pressed": "false", text: "Pick ray"});
-  const bUse = h("button", {type: "button", class: "btn", id: "pk-use", text: "Use selected sightline"});
-  const bClear = h("button", {type: "button", class: "btn", id: "pk-clear", text: "Clear"});
-  const bSub = h("button", {type: "submit", class: "btn primary", id: "pk-submit", text: "Generate this ray"});
+    h("input", {id, type: "number", step: "0.1", min: String(-RM), max: String(RM), inputmode: "decimal", "aria-label": id.replace("pk-", "").replace("-", " ") + " [kpc]",
+      "data-tip": `${lab} of the ${id.includes("p0") ? "start" : "end"} point, kpc from the galaxy centre`}));
+  const bMode = h("button", {type: "button", class: "btn", id: "pk-mode", "aria-pressed": "false", text: "Pick ray", "data-tip": "Click two points in 3D to set a ray (Esc stops)"});
+  const bUse = h("button", {type: "button", class: "btn", id: "pk-use", text: "Use selected sightline", "data-tip": "Copy the current sightline's endpoints into the form"});
+  const bClear = h("button", {type: "button", class: "btn", id: "pk-clear", text: "Clear", "data-tip": "Clear both endpoints"});
+  const SUB_TIP = "Cast this ray on the sightline server and compute its spectra";
+  const bSub = h("button", {type: "submit", class: "btn primary", id: "pk-submit", text: "Generate this ray", "data-tip": SUB_TIP});
   const read = h("div", {class: "readouts pk-read", id: "pk-read"});
   const live = h("p", {class: "msg", id: "pk-live", "aria-live": "polite"});
   const msg = h("p", {class: "msg", id: "pk-msg", "aria-live": "polite"});
@@ -100,7 +102,7 @@ export function attachPicker(viewer, root, app) {
     read.textContent = ""; for (const [k, val] of rows) read.appendChild(h("div", {}, h("b", {text: k}), h("span", {class: "num", text: val})));
     const online = !!api();
     bSub.disabled = !(v && v.ok) || !online || !!(app.getState().job);
-    bSub.title = !online ? "needs a sightline server" : v && !v.ok ? v.errors.join("; ") : "";
+    bSub.dataset.tip = !online ? "Needs a sightline server; none is online" : v && !v.ok ? "Fix the endpoints first; the message below says why" : SUB_TIP;
     if (v && !v.ok) setMsg(v.errors.join("; "), "bad");
     else if (!online) setMsg("Generating needs a sightline server; none is online.", "");
     else if (msg.dataset.kind === "val" || msg.dataset.kind === "off" || msg.dataset.kind === "use") setMsg("", "");
@@ -176,7 +178,7 @@ export function attachPicker(viewer, root, app) {
   if (T) {
     viewer.el.addEventListener("pointerdown", onDown, true); addEventListener("pointermove", onMove, {passive: false}); addEventListener("pointerup", onUp, true);
     viewer.hooks.togglePick = () => (mode ? exit() : enter()); viewer.hooks.exitPick = exit;
-  } else { bMode.disabled = true; bMode.title = "needs the 3D view (WebGL2)"; }
+  } else { bMode.disabled = true; bMode.dataset.tip = "Needs the 3D view (WebGL2); type the endpoints instead"; }
   bMode.addEventListener("click", () => (mode ? exit() : enter()));
   addEventListener("keydown", ev => { if (ev.key === "Escape" && mode) exit(); });
   bClear.addEventListener("click", () => { if (msg.dataset.kind !== "job") setMsg("", ""); setEndpoints(null, null); live.textContent = mode ? "Cleared; click the start point." : "Endpoints cleared."; });
