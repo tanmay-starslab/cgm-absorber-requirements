@@ -42,6 +42,7 @@ import {makeMaterial} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
 import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, TF_W, TF_H} from "./tf.js";
 import {createTfEditor, histCodes, histWindow} from "./tfeditor.js";
+import {initTips} from "./tips.js";
 
 export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList};
 /* fix-ui V8: no literal underscores; COL_HTML is the colour-bar title with real subscripts (plain text elsewhere) */
@@ -320,7 +321,7 @@ let ENGINE = null;   // Promise<viewer>: the one engine of this page (see the AP
 export function current() { return ENGINE; }
 function engine(app, opts) { if (!ENGINE) ENGINE = create(app, opts).catch(x => { ENGINE = null; throw x; }); return ENGINE; }
 export async function mount(root, app, opts = {}) {
-  const v = await engine(app, opts); v._attachFull(root, opts); await v._start(opts.species); return v;
+  initTips(); const v = await engine(app, opts); v._attachFull(root, opts); await v._start(opts.species); return v;
 }
 export async function mountThumb(host, app, opts = {}) {
   const v = await engine(app, opts), t = v._attachThumb(host, opts); v._start(opts.species).catch(() => {}); return t;
@@ -358,39 +359,53 @@ async function create(app, opts = {}) {
   const el = document.createElement("div"); el.className = "v3d";
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
-    <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl">Controls</button><button type="button" id="v3-fs-exit" title="Exit fullscreen (Esc)">Exit fullscreen</button></div>
+    <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
     <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="ends" hidden><span></span><span></span></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off (Layers)</div><div class="gd" hidden></div></div>
     <div class="v3d-ov v3d-lines" aria-hidden="true"><span><i style="border-color:var(--lib-line)"></i>library</span><span><i style="border-color:var(--s-accent)"></i>generated</span><span><i style="border-color:var(--s-fit)"></i>custom</span><span><i class="sel" style="border-color:var(--s-ink)"></i>selected</span></div>
     <div class="v3d-tt" aria-hidden="true"><span class="f"></span><span>3D</span></div></div>`;
   const escH = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
-  const radio = (x, name) => `<label${x.available ? "" : ` title="${escH(x.reason)}"`}${x.group === "ion" ? ` class="v3c-ion" style="--ic:${x.color};--icd:${x.color_dark}"` : ""}>` +
-    `<input type="radio" name="${name}" value="${x.key}" data-testid="v3-species-${x.key}"${x.available ? "" : " disabled"} aria-label="${escH(x.spoken || x.label)}">` +
-    `<span${x.available ? ` title="${escH(x.long)}"` : ""}>${x.group === "ion" ? "<i></i>" : ""}${x.group === "vel" ? x.html : escH(x.label)}</span></label>`;   // vel html: our own constant (vizdata VEL_VIEWS)
+  /* tips: one line per field button; speciesUnits() adds what is drawn and its unit, a disabled button gives the reason */
+  const GAS_TIP = {nH: "Hydrogen number density nH", T: "Gas temperature, nH-weighted", Z: "Gas metallicity, nH-weighted"};
+  const GAS_COL = {nH: "Hydrogen column density N_H", T: "nH-weighted mean temperature along each ray", Z: "nH-weighted mean metallicity along each ray"};
+  const VEL_TIP = {vlos: "Velocity along the camera ray; positive recedes from you",
+    vr: "Radial velocity about the galaxy centre; positive is outflow",
+    vphi: "Rotation about the disk normal; positive co-rotates with the disk",
+    vmag: "Speed of the mean gas velocity in each voxel",
+    sigmalos: "Velocity spread between voxels along the ray, no thermal motion"};
+  const fieldTip = (x, m, u) => { if (!x.available) return x.reason || "not available";
+    if (x.group === "vel") return VEL_TIP[x.key] || x.long;
+    const gas = x.group === "gas";
+    if (!u) return gas ? GAS_TIP[x.key] || x.long : `${x.label} ions`;
+    const name = m === "integral" ? (gas ? GAS_COL[x.key] || x.long : `${x.label} column density`) : (gas ? GAS_TIP[x.key] || x.long : `${x.label} number density`);
+    return `${name}, ${pretty(u)}`; };
+  const radio = (x, name) => `<label${x.group === "ion" ? ` class="v3c-ion" style="--ic:${x.color};--icd:${x.color_dark}"` : ""}>` +
+    `<input type="radio" name="${name}" value="${x.key}" data-testid="v3-species-${x.key}"${x.available ? "" : " disabled"} aria-label="${escH(x.spoken || x.label)}" data-tip="${escH(fieldTip(x))}">` +
+    `<span>${x.group === "ion" ? "<i></i>" : ""}${x.group === "vel" ? x.html : escH(x.label)}</span></label>`;   // vel html: our own constant (vizdata VEL_VIEWS)
   const ctlBox = document.createElement("div"); ctlBox.className = "v3c"; ctlBox.id = "v3-ctl"; ctlBox.setAttribute("role", "group"); ctlBox.setAttribute("aria-label", "3D view settings");
   ctlBox.innerHTML = `<section class="v3c-card" data-group="field"><h2>Field</h2>
       <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Velocity</span><div class="v3c-seg vel">${SPEC.filter(x => x.group === "vel").map(x => radio(x, "v3-species")).join("")}</div></div>
-      <div class="v3c-row" id="v3-lo-row"><label for="v3-lo" title="window low (log10)">low</label><input id="v3-lo" type="range" step="0.1"><output id="v3-lo-o" for="v3-lo"></output></div>
-      <div class="v3c-row" id="v3-hi-row"><label for="v3-hi" title="window high (log10)">high</label><input id="v3-hi" type="range" step="0.1"><output id="v3-hi-o" for="v3-hi"></output></div>
-      <div class="v3c-row" id="v3-vw-row" hidden><label for="v3-vw" title="colour window in km/s">window</label><input id="v3-vw" type="range" step="10"><output id="v3-vw-o" for="v3-vw"></output></div>
-      <div class="v3c-row" id="v3-weight-row" hidden><label for="v3-weight" title="the density that weights the velocity along the ray">weight</label><select id="v3-weight"></select></div>
-      <div class="v3c-row" id="v3-cmap-row"><label for="v3-cmap">colours</label><select id="v3-cmap"></select></div></section>
+      <div class="v3c-row" id="v3-lo-row"><label for="v3-lo">low</label><input id="v3-lo" type="range" step="0.1" data-tip="Bottom of the colour scale, log10 of the field"><output id="v3-lo-o" for="v3-lo"></output></div>
+      <div class="v3c-row" id="v3-hi-row"><label for="v3-hi">high</label><input id="v3-hi" type="range" step="0.1" data-tip="Top of the colour scale, log10 of the field"><output id="v3-hi-o" for="v3-hi"></output></div>
+      <div class="v3c-row" id="v3-vw-row" hidden><label for="v3-vw">window</label><input id="v3-vw" type="range" step="10" data-tip="Velocity range of the colour scale, km/s; beyond it colours saturate"><output id="v3-vw-o" for="v3-vw"></output></div>
+      <div class="v3c-row" id="v3-weight-row" hidden><label for="v3-weight">weight</label><select id="v3-weight" data-tip="Density that weights the velocities: all gas or one ion"></select></div>
+      <div class="v3c-row" id="v3-cmap-row"><label for="v3-cmap">colours</label><select id="v3-cmap" data-tip="Colour map of the field"></select></div></section>
     <section class="v3c-card" data-group="view"><h2>View</h2>
-      <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" title="face-on (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" title="edge-on (E)">Edge-on</button>
-        <button type="button" class="v3c-btn" data-p="sightline" title="along the selected sightline (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" title="default view (R)">Reset</button></div>
-      <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" title="Fullscreen (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button></section>
+      <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
+        <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
+      <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button></section>
     <section class="v3c-card" data-group="layers"><h2>Layers</h2>
-      <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
-      <div class="v3c-row"><label class="lab" title="stars (g, r, i true colour)"><input type="checkbox" id="v3-stars">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
-      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0" title="the base value; the legend shows the effective μ₀,eff, which follows the zoom">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
-      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines"><option value="selected">selected only</option><option value="showcase">showcase and new</option><option value="all">all</option><option value="none">none</option></select></div>
-      <div class="v3c-sw"><label title="R200c ring and disk normal"><input type="checkbox" id="v3-guides">guides</label><label><input type="checkbox" id="v3-scale" checked>scale bar</label></div></section>
+      <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
+      <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
+      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
+      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase">showcase and new</option><option value="all">all</option><option value="none">none</option></select></div>
+      <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section>
     <section class="v3c-card" data-group="mode"><h2>Mode</h2>
-      <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label title="integral: a column-density map from any angle"><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral"><span>integral</span></label>
-        <label title="volume: emission and absorption with a transfer function"><input type="radio" name="v3-mode" value="volume" data-testid="v3-mode-volume"><span>volume</span></label></div>
-      <div class="v3c-row"><label for="v3-op">opacity</label><input id="v3-op" type="range" min="0" max="1" step="0.01"><output id="v3-op-o" for="v3-op"></output></div></section>
+      <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
+        <label><input type="radio" name="v3-mode" value="volume" data-testid="v3-mode-volume" data-tip="Ray-marched emission and absorption through a transfer function"><span>volume</span></label></div>
+      <div class="v3c-row"><label for="v3-op">opacity</label><input id="v3-op" type="range" min="0" max="1" step="0.01" data-tip="Overall opacity of the volume rendering; volume mode only"><output id="v3-op-o" for="v3-op"></output></div></section>
     <section class="v3c-card" data-group="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section>
     <div class="v3c-lod" id="v3-lod" aria-hidden="true"></div>`;
   const q = s => el.querySelector(s) || ctlBox.querySelector(s), canvas = q("canvas"), stage = q(".v3d-stage"), msgEl = q(".v3d-msg");
@@ -851,7 +866,7 @@ async function create(app, opts = {}) {
   /* fix-ui V8 / Phase 3: each field button's tooltip names what is drawn and its unit (a column in integral mode) */
   function speciesUnits() { for (const i of ctlBox.querySelectorAll('input[name="v3-species"]')) { const f = fld(i.value), x = specOf(i.value); if (!f || !x) continue;
     const u = mode === "integral" && !weighted(i.value) ? (f.proj?.units || "cm^-2") : f.units;
-    i.nextElementSibling.title = `${x.long}, ${mode === "integral" ? (weighted(i.value) ? "projected mean" : "column") : "density"} in ${pretty(u)}`; } }
+    i.dataset.tip = fieldTip(x, mode, u); } }
   function setMode(m) { if (!["integral", "volume"].includes(m)) return false; if (m === mode) return true;
     if (!modeOk(wanted || species, m)) { markMode(mode); say("The line-of-sight dispersion is a property of the whole ray, so it has no volume view.", false, true); return false; }
     mode = m; markMode(m); speciesUnits();
@@ -884,9 +899,9 @@ async function create(app, opts = {}) {
     if (cmapSet !== want) { const sel = q("#v3-cmap"); sel.textContent = ""; for (const c of names) { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); } cmapSet = want; }
     q("#v3-cmap").disabled = !manifest || names.length < 2; q("#v3-cmap-row").hidden = !!manifest && names.length < 2;   // a one-map list (signed views) is no choice: row hidden
     for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) { const off = !manifest || !modeOk(species, i.value); i.disabled = off;
-      i.closest("label").title = off && manifest ? "line-of-sight dispersion: integral only (a property of the whole ray)"
-        : i.value === "integral" ? (vs ? `integral: the weighted ${species === "sigmalos" ? "spread" : "mean"} along each ray` : "integral: a column-density map from any angle")
-        : vs ? "volume: colour from the velocity, opacity from the weight" : "volume: emission and absorption with a transfer function"; }
+      i.dataset.tip = off && manifest ? "Integral only: the dispersion belongs to the whole ray"
+        : i.value === "integral" ? (vs ? `Weighted ${species === "sigmalos" ? "spread" : "mean"} velocity along each ray` : "Projected map: column or weighted mean along each ray")
+        : vs ? "Colour from the velocity, opacity from the weight density" : "Ray-marched emission and absorption through a transfer function"; }
     if (!vs) return;
     const s = fieldTf(species), r = q("#v3-vw"); r.min = VEL_WMIN; r.max = Math.max(VEL_WMIN, Math.round(VELI.V)); r.value = s.W;
     q("#v3-vw-o").textContent = v.signed ? `±${Math.round(s.W)}` : `${Math.round(s.W)}`; r.setAttribute("aria-valuetext", `${v.signed ? "plus or minus " : "0 to "}${Math.round(s.W)} km/s`);
@@ -944,13 +959,13 @@ async function create(app, opts = {}) {
      (st.win: the editor's x axis and uTFWin, a zoom); the colours select is off when every band has its own colour */
   const tfWinMode = () => !!species && tfOn() && !tfs[species].ramp;
   function tfWinUi() { if (!manifest || !species) return;
-    if (isVel(species)) { q("#v3-cmap").disabled = false; q("#v3-cmap").title = ""; return; }
+    if (isVel(species)) { q("#v3-cmap").disabled = false; q("#v3-cmap").dataset.tip = "Colour map of the velocity"; return; }
     const tw = tfWinMode(), ts = tfs[species], s = fieldTf(species), lo = tw ? ts.win[0] : s.lo, hi = tw ? ts.win[1] : s.hi;
     q("#v3-lo").value = lo; q("#v3-hi").value = hi; q("#v3-lo-o").textContent = (+lo).toFixed(1); q("#v3-hi-o").textContent = (+hi).toFixed(1);
-    q('label[for="v3-lo"]').title = tw ? "transfer-function window low (log10)" : "window low (log10)";
-    q('label[for="v3-hi"]').title = tw ? "transfer-function window high (log10)" : "window high (log10)";
+    q("#v3-lo").dataset.tip = tw ? "Low edge of the transfer-function window, log10" : "Bottom of the colour scale, log10 of the field";
+    q("#v3-hi").dataset.tip = tw ? "High edge of the transfer-function window, log10" : "Top of the colour scale, log10 of the field";
     const fixed = tfOn() && !ts.ramp && ts.bands.length > 0 && ts.bands.every(b => b.rgb), c = q("#v3-cmap");
-    c.disabled = !manifest || fixed; c.title = fixed ? "set by the transfer function (its bands have their own colours)" : "";
+    c.disabled = !manifest || fixed; c.dataset.tip = fixed ? "Set by the transfer function: each band has its colour" : "Colour map of the field";
     fillRanges(); }
   function setTfWin(lo, hi) { const ts = tfs[species], f = fld(species); let [a, b] = ts.win;
     if (lo !== null) a = Math.max(f.vmin, Math.min(lo, b - 0.1)); if (hi !== null) b = Math.min(f.vmax, Math.max(hi, a + 0.1));

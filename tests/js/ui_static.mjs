@@ -11,6 +11,9 @@
 //   - the exporter's config marker and the module/stylesheet tags;
 //   - node unit checks of the pure page state js/state.js (when present): cases, R/S/N/window slider maps, view clamp,
 //     hash v3 + legacy + clamping, setInstrument validation.
+//   - tips (js/tips.js): every control of the help coverage list carries data-tip (template, page modules, generators),
+//     no element has both title and data-tip, every tip line <= 12 words and free of dot separators, tips.js is
+//     initialised and styled with the glass tokens.
 // Browser part (TNG_BROWSER=1; served page = --serve FILE, else <dir>/index.html when it is a Phase-3 export):
 //   - every 6.1 id/test id in the live DOM incl. generated ones (R-<band>-0, ion-<key>, panel-<key>-0, chips);
 //   - #title computed font-size <= 14 px; no "Interactive companion" in the document;
@@ -105,6 +108,74 @@ if (basename(PAGE) === "_template.html") {   // the exporter contract (scripts/e
   check(/<script type="module" src="js\/app\.js"><\/script>/.test(html) && /href="css\/page\.css"/.test(html), "the template loads js/app.js and css/page.css");
 }
 
+/* ---------------------------------------------------------------- tips: one-line help on every control (tips spec) */
+export const TIP_IDS = ["tab-spectra", "tab-3d", "prev", "gal-open", "next", "geo-open", "find-toggle", "chat-open", "info-read", "info-methods",
+  "info-licence", "theme", "side-toggle", "controls-open", "ion-open", "ion-none", "ion-default", "sn-0", "sn-1", "vhw", "vreset", "fit", "intr",
+  "reroll", "dl-open", "dlpng", "dlpdf", "filter", "showcase", "gb", "gaz", "gseed", "submit", "apiurl", "v3d-mini",
+  "v3-ctl-toggle", "v3-fs-exit", "v3-lo", "v3-hi", "v3-vw", "v3-weight", "v3-cmap", "v3-fs", "v3-gasmix", "v3-stars", "v3-starmix", "v3-mu0",
+  "v3-lines", "v3-guides", "v3-scale", "v3-op", "v3-tf-preset", "v3-tf-cv", "v3-tf-w", "v3-tf-a", "v3-tf-col", "v3-tf-add", "v3-tf-del",
+  "v3-tf-reset", "v3-tf-2d", "v3-tf-g0", "v3-tf-g1", "v3-tf-shade", "v3-tf-emis", "v3-tf-gamma", "pk-mode", "pk-use", "pk-clear", "pk-submit"];
+export const FIND_IDS = ["fq_ion", "fq_n_lo", "fq_n_hi", "fq_sep_lo", "fq_sep_hi", "fq_logN_lo", "fq_logN_hi", "fq_b_lo", "fq_b_hi", "fq_bkpc_lo", "fq_bkpc_hi", "fq_orient", "fq_sort"];
+export const tipWords = s => String(s).replace(/\$\{[^}]*\}/g, "X").split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w)).length;
+{ const raw = srcs.map(x => ({f: basename(x.f), src: x.src.replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, " "))}));
+  const tipsMod = srcs.find(x => basename(x.f) === "tips.js");
+  check(!!tipsMod && /export function initTips/.test(tipsMod.src) && /export function placeTip/.test(tipsMod.src) && /export function createLongPress/.test(tipsMod.src),
+    "tips: js/tips.js exports initTips, placeTip and createLongPress");
+  check(raw.some(x => x.f === "app.js" && /import \{[^}]*\binitTips\b[^}]*\} from "\.\/tips\.js"/.test(x.src) && /\binitTips\(\)/.test(x.src)), "tips: app.js imports and calls initTips()");
+  check(/(^|\})\s*\.tip\s*\{[^}]*var\(--mat-thick\)[^}]*var\(--mat-blur-thick\)/m.test(cssText) && /\.tip\s*\{[^}]*pointer-events\s*:\s*none/.test(cssText), "tips: .tip styled with the glass tokens (--mat-thick, --mat-blur-thick), pointer-events none");
+  /* the opening tag (template or a JS template string) or the h()/el() attribute object that declares an id */
+  const declOf = id => { const out = [], e = esc(id);
+    for (const m of htmlText.matchAll(new RegExp(`<[a-z]+\\b[^>]*\\bid="${e}"[^>]*>`, "g"))) out.push({f: basename(PAGE), s: m[0]});
+    for (const x of raw) { for (const m of x.src.matchAll(new RegExp(`<[a-z]+\\b[^>]*\\bid=\\\\?"${e}\\\\?"[^>]*>`, "g"))) out.push({f: x.f, s: m[0]});
+      for (const m of x.src.matchAll(new RegExp(`\\{[^{}]*\\bid:\\s*"${e}"[^{}]*\\}`, "g"))) out.push({f: x.f, s: m[0]}); }
+    return out; };
+  const hasTip = s => /data-tip\s*=|"data-tip"\s*:/.test(s);
+  const missing = TIP_IDS.filter(id => { const d = declOf(id); return !d.length || !d.some(x => hasTip(x.s)); });
+  check(!missing.length, `tips: ${TIP_IDS.length - missing.length} of ${TIP_IDS.length} listed controls declare data-tip${missing.length ? "; missing " + missing.join(" ") : ""}`);
+  /* grouped and generated controls */
+  const lay = [...htmlText.matchAll(/<input\b[^>]*\bname="layout"[^>]*>/g)].map(m => m[0]), ori = [...htmlText.matchAll(/<input\b[^>]*\bname="orient"[^>]*>/g)].map(m => m[0]);
+  const src = f => (raw.find(x => x.f === f) || {src: ""}).src;
+  const gen = {
+    "layout radios (4)": lay.length === 4 && lay.every(hasTip),
+    "orientation radios (3)": ori.length === 3 && ori.every(hasTip),
+    "R sliders (instrument.js)": /<input type="range" id="R-\$\{b\}-\$\{i\}"[^>]*data-tip="\$\{rTip\(/.test(src("instrument.js")),
+    "Lines menu rows and chips (app.js)": /data-testid="ion-\$\{i\.key\}" data-tip=/.test(src("app.js")) && /class="chip"[^>]*data-tip=/.test(src("app.js")),
+    "3D field buttons (viewer3d.js radio)": /name="\$\{name\}"[^>]*data-tip="\$\{escH\(fieldTip\(x\)\)\}"/.test(src("viewer3d.js")),
+    "3D mode radios": ["integral", "volume"].every(v => new RegExp(`<input type="radio" name="v3-mode" value="${v}"[^>]*data-tip=`).test(src("viewer3d.js"))),
+    "3D view buttons (4)": ["face-on", "edge-on", "sightline", "reset"].every(p => new RegExp(`data-p="${p}" data-tip="`).test(src("viewer3d.js"))),
+    "Pick ray endpoint inputs (picker.js inp)": /const inp = \(id, lab\)[\s\S]{0,400}"data-tip":/.test(src("picker.js")),
+    "Ask backend radios and New, Close (chat.js)": /const mode = \(value, label, id, tip\)[^\n]*"data-tip": tip/.test(src("chat.js")) && (src("chat.js").match(/mode\("(claude|local)", "[^"]+", "chat-be-\w+", "[^"]+"\)/g) || []).length === 2
+      && /closeBtn = el\("button", \{[^}]*"data-tip"/.test(src("chat.js")) && /clearBtn = el\("button", \{[^}]*"data-tip"/.test(src("chat.js")),
+    "Find fields (app.js FIND_TIPS for search.js)": FIND_IDS.every(id => new RegExp(`\\b${id}:\\s*"`).test((src("app.js").match(/const FIND_TIPS = \{[\s\S]*?\};/) || [""])[0]))
+      && FIND_IDS.every(id => src("search.js").includes(`"${id.replace(/_(lo|hi)$/, "")}"`))};
+  const bad = Object.entries(gen).filter(([, ok]) => !ok).map(([k]) => k);
+  check(!bad.length, `tips: generated and grouped controls carry data-tip (${Object.keys(gen).length - bad.length} of ${Object.keys(gen).length})${bad.length ? "; missing " + bad.join(", ") : ""}`);
+  /* no element with both title and data-tip: tags, attribute objects, and .title set on a tipped id */
+  const both = [];
+  for (const m of htmlText.matchAll(/<[a-z]+\b[^>]*>/g)) if (/\btitle=/.test(m[0]) && hasTip(m[0])) both.push(`${basename(PAGE)}: ${m[0].slice(0, 60)}`);
+  for (const x of raw) { for (const m of x.src.matchAll(/<[a-z]+\b[^<>]*>/g)) if (/\btitle=/.test(m[0]) && hasTip(m[0])) both.push(`${x.f}: ${m[0].slice(0, 60)}`);
+    for (const m of x.src.matchAll(/\{[^{}]*\}/g)) if (/\btitle:/.test(m[0]) && hasTip(m[0])) both.push(`${x.f}: ${m[0].slice(0, 60)}`); }
+  const tipped = TIP_IDS.concat(FIND_IDS, ["R-", "pk-p0", "pk-p1"]);
+  for (const x of raw) for (const m of x.src.matchAll(/(?:\$|q|getElementById|querySelector)\(\s*["'`]#?([\w-]+)["'`]\s*\)\.title\s*=/g)) if (tipped.some(t => m[1].startsWith(t))) both.push(`${x.f}: #${m[1]}.title =`);
+  for (const id of ["theme", "side-toggle", "submit", "pk-submit", "pk-mode", "v3-tf-preset"]) for (const x of raw) {
+    const v = {"side-toggle": /\$\("#side-toggle"\)/, theme: /\$\("#theme"\)/, submit: /\$\("#submit"\)/, "pk-submit": /bSub/, "pk-mode": /bMode/, "v3-tf-preset": /q\("#v3-tf-preset"\)/}[id];
+    for (const line of x.src.split("\n")) if (v.test(line) && /\b(b|p|bSub|bMode|\$\("#submit"\))\.title\s*=/.test(line)) both.push(`${x.f}: ${id} .title in "${line.trim().slice(0, 50)}"`); }
+  check(!both.length, `tips: no element has both title and data-tip${both.length ? ": " + [...new Set(both)].slice(0, 8).join("; ") : ""}`);
+  /* the copy: every literal tip line <= 12 words, no dot separators */
+  const lines = [];
+  const lit = (f, expr) => { for (const m of expr.matchAll(/"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)) { const t = m[1] ?? m[2]; if (/[\p{L}]{3}/u.test(t) && !/^[\w-]+$/.test(t)) lines.push({f, t}); } };
+  for (const m of htmlText.matchAll(/data-tip="([^"]*)"/g)) lines.push({f: basename(PAGE), t: m[1]});
+  for (const x of raw) {
+    for (const m of x.src.matchAll(/data-tip="((?:[^"$]|\$\{[^}]*\})*)"/g)) if (!/^\$\{[^}]*\}$/.test(m[1])) lines.push({f: x.f, t: m[1]});
+    for (const m of x.src.matchAll(/"data-tip":\s*("(?:[^"\\]|\\.)*"|`[^`]*`)/g)) lit(x.f, m[1]);
+    for (const m of x.src.matchAll(/dataset\.tip\s*=\s*([^;\n]+)/g)) lit(x.f, m[1]);
+    for (const name of ["ION_TIPS", "FIND_TIPS", "GAS_TIP", "VEL_TIP"]) { const o = x.src.match(new RegExp(`const ${name} = \\{([\\s\\S]*?)\\};`)); if (o) lit(x.f, o[1]); }
+    for (const fn of ["rTip", "fieldTip"]) { const o = x.src.match(new RegExp(`(?:function ${fn}\\b|const ${fn} = )[\\s\\S]*?\\n\\s*(?:\\}|[^\\n]*\\};)\\n`)); if (o) lit(x.f, o[0]); } }
+  const long = lines.filter(l => tipWords(l.t) > 12), sepd = lines.filter(l => sepHits(l.t.replace(/\$\{[^}]*\}/g, "X")).length);
+  check(lines.length >= 100 && !long.length, `tips: ${lines.length} tip lines, each <= 12 words${long.length ? "; too long: " + long.slice(0, 5).map(l => `${l.f} "${l.t}" (${tipWords(l.t)})`).join("; ") : ""}`);
+  check(!sepd.length, `tips: no dot separators in tip lines${sepd.length ? ": " + sepd.slice(0, 5).map(l => `${l.f} "${l.t}"`).join("; ") : ""}`);
+  console.log(`note: ${lines.length} tip lines scanned, longest ${Math.max(...lines.map(l => tipWords(l.t)))} words`); }
+
 /* ---------------------------------------------------------------- pure state (js/state.js; from the page agent's checks) */
 if (!existsSync(join(DIR, "js", "state.js"))) console.log("note: no js/state.js in " + DIR + "; state unit checks skipped");
 else {
@@ -186,7 +257,20 @@ try {
         if (!document.querySelector('#ion-chips > button[data-ion="' + k + '"]')) miss.push("chip " + k); }
       return miss;`);
     check(!r.length, `generated ids present: R-<band>-0 for bands ${want.join(", ")}, 12 ion-<key> checkboxes, panel-<key>-0 and a chip per ion${r.length ? "; missing " + r.join(", ") : ""}`); }
-  { const r = await P.fn(`const t = document.getElementById("title"); return {px: parseFloat(getComputedStyle(t).fontSize), text: t.innerText.trim()};`);
+  /* tips in the live page: module up, no title next to a data-tip, every line <= 12 words, generated controls tipped,
+   the tip shows on screen with the control's line and the control is described by it */
+{ const r = await P.fn(`const all = [...document.querySelectorAll("[data-tip]")], w = s => s.split(/\\s+/).filter(x => /[\\p{L}\\p{N}]/u.test(x)).length;
+    const gen = [...document.querySelectorAll('#rsliders input[type=range], #ion-list input[data-ion], #ion-chips > button')];
+    const sn = document.getElementById("sn-0"); window.tngTips && window.tngTips.show(sn); const t = document.getElementById("tip"), tr = t && t.getBoundingClientRect();
+    const d = (sn.getAttribute("aria-describedby") || "").split(/\\s+/).map(i => document.getElementById(i)).filter(Boolean).map(e => e.textContent);
+    const out = {api: !!window.tngTips, n: all.length, both: [...document.querySelectorAll("[data-tip][title]")].map(e => e.id || e.tagName),
+      long: all.filter(e => w(e.dataset.tip) > 12).map(e => e.dataset.tip), gen: gen.length, untipped: gen.filter(e => !e.dataset.tip).map(e => e.id || e.dataset.ion),
+      shown: !!t && !t.hidden && t.textContent === sn.dataset.tip, on: !!tr && tr.left >= 0 && tr.right <= innerWidth && tr.top >= 0 && tr.bottom <= innerHeight, desc: d.includes(sn.dataset.tip)};
+    window.tngTips && window.tngTips.hide(); return out;`);
+  check(r.api && r.n >= 40 && !r.both.length && !r.long.length, `tips live: tngTips up, ${r.n} tipped elements, none with a title${r.both.length ? " (" + r.both.join(" ") + ")" : ""}, none over 12 words${r.long.length ? " (" + r.long.slice(0, 3).join("; ") + ")" : ""}`);
+  check(r.gen >= 12 && !r.untipped.length, `tips live: ${r.gen} generated R sliders, Lines rows and chips all tipped${r.untipped.length ? "; untipped " + r.untipped.join(" ") : ""}`);
+  check(r.shown && r.on && r.desc, `tips live: #sn-0 tip shown on screen with its line (${r.shown}, ${r.on}), aria-describedby carries it (${r.desc})`); }
+{ const r = await P.fn(`const t = document.getElementById("title"); return {px: parseFloat(getComputedStyle(t).fontSize), text: t.innerText.trim()};`);
     check(r.px <= 14, `C11 #title font-size ${r.px} px (<= 14), text ${JSON.stringify(r.text)}`); }
   check(!(await P.eval(`/interactive\\s+companion/i.test(document.documentElement.innerText + " " + document.documentElement.textContent)`)), 'C11 no "Interactive companion" in the live document');
   { const r = await P.fn(`const st = tngApp.getState(), ps = tngApp.panels(), L = document.querySelector('input[name=layout][value="1"]');
@@ -207,6 +291,10 @@ try {
     const three = P.requests.filter(r => /three@0\.169\.0\/build\/three\.module/.test(r)).length, mounted = await P.eval("!!window.tngViewer3d");
     if (miss.length && !mounted) C.note(`3D viewer did not mount within 60 s (three.module requested ${three} times; CDN or WebGL2 unavailable here): viewer ids not checked`);
     else check(!miss.length, `3D viewer ids #${VIEWER_IDS.join(" #")} present after the 3D tab opens${miss.length ? "; missing #" + miss.join(" #") : ` (${(t3 / 1000).toFixed(1)} s)`}`);
+    if (!miss.length && mounted) { const r = await P.fn(`const c = [...document.querySelectorAll('#v3-ctl input, #v3-ctl select, #v3-ctl button, #v3-ctl canvas')];
+        return {n: c.length, untipped: c.filter(e => !e.dataset.tip).map(e => e.id || (e.name + ":" + e.value)).slice(0, 12),
+          both: [...document.querySelectorAll("[data-tip][title]")].map(e => e.id || e.tagName)};`);
+      check(!r.untipped.length && !r.both.length, `tips live: all ${r.n} 3D controls tipped${r.untipped.length ? "; untipped " + r.untipped.join(" ") : ""}${r.both.length ? "; title and data-tip: " + r.both.join(" ") : ""}`); }
     await P.eval(`tngApp.showTab("spectra")`); }
   check(!P.exceptions.length, `no page exceptions${P.exceptions.length ? ": " + P.exceptions.slice(0, 3).join(" | ") : ""}`);
 } catch (x) { check(false, "browser part aborted: " + x.message); }

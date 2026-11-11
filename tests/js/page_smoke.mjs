@@ -99,7 +99,7 @@ try {
     { const res = [];
       const lab = await P.fn(`return ["1", "2R", "2SN", "4"].map(v => { const i = document.querySelector('input[name=layout][value="' + v + '"]'); if (!i) return null;
           const L = i.closest("label") || (i.id && document.querySelector('label[for="' + i.id + '"]'));
-          return {v, tid: i.dataset.testid, text: L ? L.innerText.replace(/\\s+/g, "") : "", tip: (i.title || (L && L.title) || i.getAttribute("aria-label") || "").trim()}; });`);
+          return {v, tid: i.dataset.testid, text: L ? L.innerText.replace(/\\s+/g, "") : "", tip: (i.dataset.tip || (L && L.dataset.tip) || i.title || (L && L.title) || i.getAttribute("aria-label") || "").trim()}; });`);
       const want = {"1": "1", "2R": "2R", "2SN": "2S/N", "4": "2×2"};
       check(lab.every(l => l && l.tid === "layout-" + l.v && l.text.replace("x", "×") === want[l.v] && l.tip),
         `C8 layout switch reads 1, 2 R, 2 S/N, 2×2 with tooltips (pick.md): ${lab.map(l => (l ? `${l.v}="${l.text}"${l.tip ? "" : " no tooltip"}` : "missing")).join(", ")}`);
@@ -151,14 +151,14 @@ try {
       const out = [];
       for (const [b, B] of Object.entries(REG.bands)) for (const i of [0, 1]) {
         const id = `R-${b}-${i}`, meta = await P.fn(`const e = document.getElementById("${id}"); return e ? {type: e.type, min: e.min, max: e.max, tid: e.dataset.testid, out: !!document.getElementById("${id}-out"),
-            title: (e.title || e.closest("[title]")?.title || "").trim()} : null;`);
+            title: (e.dataset.tip || e.closest("[data-tip]")?.dataset.tip || e.title || e.closest("[title]")?.title || "").trim()} : null;`);
         if (!meta) { out.push(`${id} missing`); continue; }
         await setRange(id, meta.min); const lo = (await st()).R[b][i], loTxt = await P.eval(`document.getElementById("${id}-out").textContent`);
         await setRange(id, meta.max); const hi = (await st()).R[b][i], hiTxt = await P.eval(`document.getElementById("${id}-out").textContent`);
         await setRange(id, Math.round((+meta.min + +meta.max) / 2)); const mid = (await st()).R[b][i];
         const geo = Math.sqrt(B.R.min * B.R.max), ok = meta.type === "range" && meta.tid === id && meta.out && lo === B.R.min && hi === B.R.max
           && loTxt.replace(/\D/g, "") === String(lo) && hiTxt.replace(/\D/g, "") === String(hi) && Math.abs(Math.log10(mid / geo)) < 0.05 && (b !== "euv" || !!meta.title);
-        check(ok, `C1 ${id}: range ${meta.min}..${meta.max} maps to R ${lo} ("${loTxt}") .. ${hi} ("${hiTxt}"), middle ${mid} (log map, geometric middle ${Math.round(geo)})${b === "euv" ? `, title "${meta.title.slice(0, 40)}"` : ""}`);
+        check(ok, `C1 ${id}: range ${meta.min}..${meta.max} maps to R ${lo} ("${loTxt}") .. ${hi} ("${hiTxt}"), middle ${mid} (log map, geometric middle ${Math.round(geo)})${b === "euv" ? `, tip "${meta.title.slice(0, 40)}"` : ""}`);
       }
       if (out.length) check(false, "C1 R sliders: " + out.join(", "));
       await P.eval(`tngApp.setInstrument({ions: ["HI", "CIV"], layout: "1"})`); await sleep(250);

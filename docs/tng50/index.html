@@ -13,25 +13,25 @@
 <body data-tab="spectra">
 <header id="top" class="glass" data-testid="topbar">
   <h1 id="title" data-testid="title">TNG50 sightlines</h1>
-  <div role="tablist" id="tabs" aria-label="Views"><button role="tab" id="tab-spectra" aria-controls="panel-spectra" aria-selected="true" tabindex="0" type="button">Spectra</button><button role="tab" id="tab-3d" aria-controls="panel-3d" aria-selected="false" tabindex="-1" type="button">3D</button></div>
+  <div role="tablist" id="tabs" aria-label="Views"><button role="tab" id="tab-spectra" data-tip="Mock absorption spectra of the selected sightline" aria-controls="panel-spectra" aria-selected="true" tabindex="0" type="button">Spectra</button><button role="tab" id="tab-3d" data-tip="The galaxy in 3D: gas, ions, velocities, stars and sightlines" aria-controls="panel-3d" aria-selected="false" tabindex="-1" type="button">3D</button></div>
   <span class="sep hide-m"></span>
   <div class="grp" id="grp-sight" role="group" aria-label="Sightline"><span class="gl">Sightline</span>
-    <button class="pbtn sq" id="prev" type="button" aria-label="Previous sightline" title="Previous sightline (k)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 5 8l5 5"/></svg></button>
-    <button class="pbtn" id="gal-open" type="button" data-testid="gallery-open" aria-haspopup="dialog" aria-controls="gal-pop" aria-expanded="false" title="Search sightlines"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span class="gid">loading</span></button>
-    <button class="pbtn sq" id="next" type="button" aria-label="Next sightline" title="Next sightline (j)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 3 5 5-5 5"/></svg></button>
-    <button class="pbtn" id="geo-open" type="button" data-testid="geo-open" aria-haspopup="dialog" aria-controls="geo-pop" aria-expanded="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>New ray</button>
+    <button class="pbtn sq" id="prev" type="button" aria-label="Previous sightline" data-tip="Previous sightline in the list (k)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 5 8l5 5"/></svg></button>
+    <button class="pbtn" id="gal-open" type="button" data-testid="gallery-open" aria-haspopup="dialog" aria-controls="gal-pop" aria-expanded="false" data-tip="Pick a sightline: search by id or filter by orientation"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span class="gid">loading</span></button>
+    <button class="pbtn sq" id="next" type="button" aria-label="Next sightline" data-tip="Next sightline in the list (j)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 3 5 5-5 5"/></svg></button>
+    <button class="pbtn" id="geo-open" type="button" data-testid="geo-open" aria-haspopup="dialog" aria-controls="geo-pop" aria-expanded="false" data-tip="Cast a new sightline from orientation, impact parameter and azimuth"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg>New ray</button>
   </div>
   <span class="sp"></span>
   <span id="pill" class="hide-m" data-state="offline" role="status" aria-live="polite">probing</span>
-  <button class="pbtn hide-m" id="find-toggle" type="button" aria-haspopup="dialog" aria-controls="find-pop" aria-expanded="false" title="Find sightlines by their fitted components"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h7M2 8h5M2 12h4"/><circle cx="11.5" cy="9.5" r="2.6"/><path d="m13.4 11.4 1.8 1.8"/></svg><span class="lbl">Find</span></button>
-  <button class="pbtn primary" id="chat-open" type="button" aria-haspopup="dialog" title="Ask in plain language: find sightlines, set the instrument, open the 3D view" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5H8l-3.2 2.7v-2.7H2.5z"/></svg><span class="lbl">Ask</span></button>
+  <button class="pbtn hide-m" id="find-toggle" type="button" aria-haspopup="dialog" aria-controls="find-pop" aria-expanded="false" data-tip="Find sightlines by their fitted Voigt components"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h7M2 8h5M2 12h4"/><circle cx="11.5" cy="9.5" r="2.6"/><path d="m13.4 11.4 1.8 1.8"/></svg><span class="lbl">Find</span></button>
+  <button class="pbtn primary" id="chat-open" type="button" aria-haspopup="dialog" data-tip="Ask in plain language; the chat drives the page's controls" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5H8l-3.2 2.7v-2.7H2.5z"/></svg><span class="lbl">Ask</span></button>
   <div class="icons">
-    <button class="ib info" id="info-read" type="button" data-testid="info-read" data-info="read" aria-controls="pop-read" aria-expanded="false" aria-label="How to read"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button>
-    <button class="ib info" id="info-methods" type="button" data-testid="info-methods" data-info="methods" aria-controls="pop-methods" aria-expanded="false" aria-label="Data and methods"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg></button>
-    <button class="ib info" id="info-licence" type="button" data-testid="info-licence" data-info="licence" aria-controls="pop-licence" aria-expanded="false" aria-label="Licence and credits"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M10.2 6.3a2.6 2.6 0 1 0 0 3.4" stroke-linecap="round"/></svg></button>
-    <button class="ib" id="theme" type="button" aria-label="Theme: auto" title="Theme: auto" data-mode="auto"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 1.7v12.6A6.3 6.3 0 0 0 8 1.7z" fill="currentColor"/></svg></button>
-    <button class="ib hide-m" id="side-toggle" type="button" aria-controls="side" aria-expanded="true" aria-label="Hide the side column" title="Hide the side column"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="2.5" width="12.4" height="11" rx="2"/><path d="M10 2.5v11"/></svg></button>
-    <button class="ib" id="controls-open" type="button" aria-controls="side" aria-expanded="false" aria-label="Controls"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--bg)"/><circle cx="11" cy="8" r="1.5" fill="var(--bg)"/><circle cx="7" cy="12" r="1.5" fill="var(--bg)"/></svg></button>
+    <button class="ib info" id="info-read" type="button" data-testid="info-read" data-info="read" aria-controls="pop-read" aria-expanded="false" aria-label="How to read" data-tip="How to read the panels, ticks, arrows and overlays"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button>
+    <button class="ib info" id="info-methods" type="button" data-testid="info-methods" data-info="methods" aria-controls="pop-methods" aria-expanded="false" aria-label="Data and methods" data-tip="Simulation, ionisation, atomic data and fitting methods"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg></button>
+    <button class="ib info" id="info-licence" type="button" data-testid="info-licence" data-info="licence" aria-controls="pop-licence" aria-expanded="false" aria-label="Licence and credits" data-tip="Licences, credits and source code"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M10.2 6.3a2.6 2.6 0 1 0 0 3.4" stroke-linecap="round"/></svg></button>
+    <button class="ib" id="theme" type="button" aria-label="Theme: auto" data-tip="Theme auto: follows your system; click for light" data-mode="auto"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 1.7v12.6A6.3 6.3 0 0 0 8 1.7z" fill="currentColor"/></svg></button>
+    <button class="ib hide-m" id="side-toggle" type="button" aria-controls="side" aria-expanded="true" aria-label="Hide the side column" data-tip="Hide the side column"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="2.5" width="12.4" height="11" rx="2"/><path d="M10 2.5v11"/></svg></button>
+    <button class="ib" id="controls-open" type="button" aria-controls="side" aria-expanded="false" aria-label="Controls" data-tip="Instrument, velocity and overlay controls"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/><circle cx="5" cy="4" r="1.5" fill="var(--bg)"/><circle cx="11" cy="8" r="1.5" fill="var(--bg)"/><circle cx="7" cy="12" r="1.5" fill="var(--bg)"/></svg></button>
   </div>
 </header>
 <div class="banner" id="apibanner" role="alert" hidden><span id="apibanner_t"></span><button id="apireset" class="pbtn" type="button">Reset to default server</button></div>
@@ -40,38 +40,38 @@
     <div id="plotbar">
       <div class="grp" id="grp-layout" role="group" aria-label="Layout"><span class="gl">Layout</span>
         <div class="seg" id="layout" role="radiogroup" aria-label="Layout">
-          <label title="One case: one R and one S/N"><input type="radio" name="layout" value="1" data-testid="layout-1"><span>1</span></label>
-          <label title="Two R at one S/N"><input type="radio" name="layout" value="2R" data-testid="layout-2R"><span>2 R</span></label>
-          <label title="Two S/N at one R"><input type="radio" name="layout" value="2SN" data-testid="layout-2SN"><span>2 S/N</span></label>
-          <label title="Two R by two S/N"><input type="radio" name="layout" value="4" data-testid="layout-4"><span>2×2</span></label>
+          <label><input type="radio" name="layout" value="1" data-testid="layout-1" data-tip="One panel per line at one R and one S/N"><span>1</span></label>
+          <label><input type="radio" name="layout" value="2R" data-testid="layout-2R" data-tip="Two resolving powers side by side at one S/N"><span>2 R</span></label>
+          <label><input type="radio" name="layout" value="2SN" data-testid="layout-2SN" data-tip="Two S/N levels side by side at one R"><span>2 S/N</span></label>
+          <label><input type="radio" name="layout" value="4" data-testid="layout-4" data-tip="Two R by two S/N: four panels per line"><span>2×2</span></label>
         </div>
       </div>
       <div class="grp" id="grp-lines" role="group" aria-label="Lines"><span class="gl">Lines</span>
-        <button class="pbtn" id="ion-open" type="button" data-testid="ion-select" aria-haspopup="dialog" aria-controls="ion-pop" aria-expanded="false" title="Choose lines"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M2 8h8M2 12h10"/></svg><span class="n">0</span></button>
+        <button class="pbtn" id="ion-open" type="button" data-testid="ion-select" aria-haspopup="dialog" aria-controls="ion-pop" aria-expanded="false" data-tip="Choose the lines to show; rows run cool to hot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M2 8h8M2 12h10"/></svg><span class="n">0</span></button>
         <div id="ion-chips"></div>
       </div>
     </div>
     <div id="spectra" data-testid="spectra" tabindex="0" aria-label="Spectra: drag or use the arrow keys to pan, plus and minus to zoom, Home to reset"><canvas id="cv" role="img" aria-label="Spectra"></canvas><div id="hitboxes"></div></div>
-    <div id="vaxis" hidden><canvas id="vaxis-cv" aria-hidden="true"></canvas><button type="button" id="more-below" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3v9m-3.5-3.5L8 12l3.5-3.5"/></svg><span></span></button></div>
+    <div id="vaxis" hidden><canvas id="vaxis-cv" aria-hidden="true"></canvas><button type="button" id="more-below" data-tip="Scroll down to the panels below" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3v9m-3.5-3.5L8 12l3.5-3.5"/></svg><span></span></button></div>
     <div id="bar"><span id="statusline" data-id="" aria-live="polite"></span><span id="readouts" hidden></span><span id="note" role="status" aria-live="polite"></span><span id="fitstatus" data-testid="fit-status" data-state="idle"></span></div>
   </section>
   <aside id="side" aria-label="Controls">
     <div id="side-head"><span class="grab" aria-hidden="true"></span><span class="gl">Controls</span><button class="pbtn" id="side-done" type="button">Done</button></div>
     <div id="mobslot"></div>
-    <div id="v3d-mini" role="button" tabindex="0" aria-label="Open the 3D view" title="Open the 3D view"><span class="mini-art"></span><div id="v3d-mini-host"></div></div>
+    <div id="v3d-mini" role="button" tabindex="0" aria-label="Open the 3D view" data-tip="Open the full 3D view of this galaxy"><span class="mini-art"></span><div id="v3d-mini-host"></div></div>
     <section class="glass card" aria-labelledby="h-inst"><h2 id="h-inst">Instrument</h2>
       <div id="rsliders"></div>
-      <label class="ctl"><span class="k">S/N<sub class="sn1lab" hidden>1</sub></span><input type="range" id="sn-0" data-testid="sn-0" aria-label="S/N"><output id="sn-0-out" for="sn-0"></output></label>
-      <label class="ctl" id="sn1wrap"><span class="k">S/N<sub>2</sub></span><input type="range" id="sn-1" data-testid="sn-1" aria-label="S/N 2"><output id="sn-1-out" for="sn-1"></output></label>
+      <label class="ctl"><span class="k">S/N<sub class="sn1lab" hidden>1</sub></span><input type="range" id="sn-0" data-testid="sn-0" aria-label="S/N" data-tip="Signal-to-noise per resolution element (one FWHM = c/R)"><output id="sn-0-out" for="sn-0"></output></label>
+      <label class="ctl" id="sn1wrap"><span class="k">S/N<sub>2</sub></span><input type="range" id="sn-1" data-testid="sn-1" aria-label="S/N 2" data-tip="Second signal-to-noise level, per resolution element"><output id="sn-1-out" for="sn-1"></output></label>
     </section>
-    <section class="glass card" aria-labelledby="h-vel"><div class="hd"><h2 id="h-vel">Velocity</h2><button class="lk" id="vreset" type="button" data-testid="view-reset" title="Centre on 0 and reset the window (Home)">Reset view</button></div>
-      <label class="ctl"><span class="k">window</span><input type="range" id="vhw" data-testid="vhw" aria-label="Velocity half-window"><output id="vhw-out" for="vhw"></output></label>
+    <section class="glass card" aria-labelledby="h-vel"><div class="hd"><h2 id="h-vel">Velocity</h2><button class="lk" id="vreset" type="button" data-testid="view-reset" data-tip="Centre on v = 0, default window (Home on the plot)">Reset view</button></div>
+      <label class="ctl"><span class="k">window</span><input type="range" id="vhw" data-testid="vhw" aria-label="Velocity half-window" data-tip="Half-width of the plotted velocity range, km/s"><output id="vhw-out" for="vhw"></output></label>
     </section>
     <section class="glass card" aria-labelledby="h-ovl"><h2 id="h-ovl">Overlay</h2>
-      <label class="tg">Fitted components<input type="checkbox" id="fit" data-testid="fit-toggle" role="switch"></label>
-      <label class="tg">Intrinsic<input type="checkbox" id="intr" role="switch"></label>
-      <div class="row"><button class="pbtn" id="reroll" type="button" title="Draw new noise">New noise</button>
-        <button class="pbtn" id="dl-open" type="button" aria-haspopup="menu" aria-controls="dl-menu" aria-expanded="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8m-3.5-3L8 10.5 11.5 7M3 13.5h10"/></svg>Save</button></div>
+      <label class="tg">Fitted components<input type="checkbox" id="fit" data-testid="fit-toggle" role="switch" data-tip="Voigt fits run in your browser; ticks mark component centres"></label>
+      <label class="tg">Intrinsic<input type="checkbox" id="intr" role="switch" data-tip="Noiseless spectrum before the line-spread function, dashed"></label>
+      <div class="row"><button class="pbtn" id="reroll" type="button" data-tip="Draw a new noise realisation at the same R and S/N">New noise</button>
+        <button class="pbtn" id="dl-open" type="button" aria-haspopup="menu" aria-controls="dl-menu" aria-expanded="false" data-tip="Download the figure as PNG or PDF"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8m-3.5-3L8 10.5 11.5 7M3 13.5h10"/></svg>Save</button></div>
     </section>
   </aside>
   <section id="panel-3d" role="tabpanel" aria-labelledby="tab-3d" tabindex="-1" hidden>
@@ -100,28 +100,28 @@
   <p>Source: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>. Companion page: <a href="../">Detect and resolve</a>.</p></div>
 <div class="pop" id="gal-pop" role="dialog" aria-label="Sightlines" hidden>
   <div class="fl"><input type="search" id="gal-search" data-testid="gallery-search" placeholder="search id" autocomplete="off" aria-controls="gal-list" aria-label="Search sightlines">
-    <select id="filter" aria-label="Filter"><option value="all">all</option><option value="face-on">face-on</option><option value="edge-on">edge-on</option><option value="random">random</option><option value="new">new</option></select></div>
+    <select id="filter" aria-label="Filter" data-tip="Show face-on, edge-on, random or newly cast sightlines"><option value="all">all</option><option value="face-on">face-on</option><option value="edge-on">edge-on</option><option value="random">random</option><option value="new">new</option></select></div>
   <ul id="gal-list" role="listbox" aria-label="Sightlines"></ul>
-  <div class="galf"><label title="Multi-component, unsaturated absorbers"><input type="checkbox" id="showcase"> showcase</label><span id="galcount"></span></div></div>
+  <div class="galf"><label><input type="checkbox" id="showcase" data-tip="Only sightlines with multi-component, unsaturated absorbers"> showcase</label><span id="galcount"></span></div></div>
 <div class="pop" id="ion-pop" role="dialog" aria-label="Lines" hidden><div id="ion-list"></div>
-  <div class="pbtns"><button id="ion-all" type="button">All</button><button id="ion-none" type="button" title="Keep only the first line">One</button><button id="ion-default" type="button">Default</button></div></div>
-<div class="pop" id="dl-menu" role="menu" hidden><button id="dlpng" type="button" role="menuitem">PNG</button><button id="dlpdf" type="button" role="menuitem">Publication PDF</button></div>
+  <div class="pbtns"><button id="ion-all" type="button">All</button><button id="ion-none" type="button" data-tip="Keep only the top line">One</button><button id="ion-default" type="button" data-tip="Back to the default set of lines">Default</button></div></div>
+<div class="pop" id="dl-menu" role="menu" hidden><button id="dlpng" type="button" role="menuitem" data-tip="Figure from the server when online, else the screen as shown">PNG</button><button id="dlpdf" type="button" role="menuitem" data-tip="Vector figure from the sightline server; its noise differs from the screen">Publication PDF</button></div>
 <div class="pop" id="geo-pop" role="dialog" aria-label="New sightline" hidden><h3>New sightline</h3>
   <form id="geo" novalidate>
     <fieldset><legend>Orientation</legend><div class="radios">
-      <label><input type="radio" name="orient" value="face-on"> face-on</label><label><input type="radio" name="orient" value="edge-on" checked> edge-on</label><label><input type="radio" name="orient" value="random"> random</label></div></fieldset>
-    <div class="field"><label for="gb">b [kpc]</label><input id="gb" type="number" min="0" max="300" step="1" value="100" inputmode="numeric"></div>
-    <div class="field"><label for="gaz">Φ [deg]</label><input id="gaz" type="number" min="0" max="359" step="1" value="90" inputmode="numeric"></div>
-    <div class="field"><label for="gseed">seed</label><input id="gseed" type="number" min="0" max="4294967295" step="1" value="1" inputmode="numeric" disabled></div>
-    <button id="submit" class="go" type="submit">Load or generate</button>
+      <label><input type="radio" name="orient" value="face-on" data-tip="Ray along the disk normal: the galaxy seen face-on"> face-on</label><label><input type="radio" name="orient" value="edge-on" checked data-tip="Ray in the disk plane: the galaxy seen edge-on"> edge-on</label><label><input type="radio" name="orient" value="random" data-tip="Ray in a random direction, set by the seed"> random</label></div></fieldset>
+    <div class="field"><label for="gb">b [kpc]</label><input id="gb" data-tip="Impact parameter: projected distance from the galaxy centre, kpc" type="number" min="0" max="300" step="1" value="100" inputmode="numeric"></div>
+    <div class="field"><label for="gaz">Φ [deg]</label><input id="gaz" data-tip="Azimuth from the projected major axis, degrees" type="number" min="0" max="359" step="1" value="90" inputmode="numeric"></div>
+    <div class="field"><label for="gseed">seed</label><input id="gseed" data-tip="Seed for the random direction; same seed gives the same direction" type="number" min="0" max="4294967295" step="1" value="1" inputmode="numeric" disabled></div>
+    <button id="submit" class="go" type="submit" data-tip="Load from the library, or cast on the sightline server">Load or generate</button>
   </form>
   <div class="prog" id="prog" hidden>
     <div class="stagebar" id="stagebar" role="progressbar" aria-label="Generation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span><span><i></i></span></div>
     <div class="stagenames" id="stagenames"><span>queued</span><span>load</span><span>ray</span><span>spectra</span><span>fit</span><span>save</span></div>
   </div>
   <p class="msg" id="geomsg" data-code="idle" aria-live="polite">Library sightlines load at once; new ones are cast on the sightline server.</p>
-  <details id="bkd"><summary>Sightline server</summary>
-    <div class="field"><label for="apiurl">URL</label><input id="apiurl" type="url" placeholder="https://" aria-describedby="apihint"></div>
+  <details id="bkd"><summary data-tip="Optional server that casts new rays and renders figures">Sightline server</summary>
+    <div class="field"><label for="apiurl">URL</label><input id="apiurl" data-tip="Address of a sightline server that casts new rays" type="url" placeholder="https://" aria-describedby="apihint"></div>
     <div class="row"><button id="apisave" class="pbtn" type="button">Use</button><button id="apiclear" class="pbtn" type="button">Clear</button></div>
     <p class="msg" id="apihint">Also settable with ?api=URL. Library sightlines always come from this site.</p>
     <div class="backends" id="backends"></div>
