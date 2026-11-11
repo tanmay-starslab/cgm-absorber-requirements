@@ -130,7 +130,7 @@ else {
   await shot("07_default_composite.png");
   /* ---- Phase 3: square stage, grouped control column, species menu, no dot separators ---- */
   { const L = JSON.parse(await ev(`(() => { const s = document.querySelector(".v3d-stage").getBoundingClientRect(), c = document.querySelector("#v3-ctl").getBoundingClientRect();
-      const groups = [...document.querySelectorAll("#v3-ctl > section > h2")].map(h => h.textContent);
+      const groups = [...document.querySelectorAll("#v3-ctl > section:not([hidden]) > h2")].map(h => h.textContent);   // tf3d: the Transfer function card shows in volume mode only
       return JSON.stringify({s: [s.width, s.height, s.left, s.right], c: [c.left, c.width], groups, vw: innerWidth, picker: !!document.querySelector("#v3-ctl #picker-root .pk, #v3-ctl #picker-root form")}); })()`));
     check(Math.abs(L.s[0] - L.s[1]) <= 1 && L.s[0] <= 0.6 * L.vw + 1 && L.s[0] >= 300 && L.c[0] >= L.s[3] - 1 && L.c[1] >= 280,
       `square stage ${L.s[0].toFixed(1)}×${L.s[1].toFixed(1)} (${(100 * L.s[0] / L.vw).toFixed(1)} % of ${L.vw}), control column beside it (left ${L.c[0].toFixed(0)} ≥ stage right ${L.s[3].toFixed(0)}, ${L.c[1].toFixed(0)} px wide)`);
@@ -182,6 +182,33 @@ else {
     const r = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d; const ok = await v.setSpecies("vlos"); return JSON.stringify({ok, le: v.loadError}); })()`));
     check(r.ok === false && /not built/.test(r.le?.message || ""), `old manifest: setSpecies("vlos") false, "${r.le?.message}"`);
   }
+  /* ---- tf3d: the Transfer function card (THOR-style volume rendering; tfeditor.js, tf.js) ---- */
+  { const T = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d, c = () => document.getElementById("v3-tf"), U = v.volScene.children[0].material.uniforms, out = {};
+      const wait = async f => { for (let i = 0; i < 400 && !f(); i++) await new Promise(r => setTimeout(r, 250)); return f(); };
+      out.hidInteg = c().hidden; v.setMode("volume"); await new Promise(r => setTimeout(r, 300));
+      out.shown = !c().hidden; out.after = c().previousElementSibling?.dataset.group; out.rampOff = U.uTFOn.value === 0 && !v.tfOn();
+      out.urlRamp = /[?&]tf=nH~Pramp/.test(location.search);
+      v.setTf("iso"); out.iso = v.tfOn() && U.uTFOn.value === 1 && v.tfState().bands.length === 3 && document.getElementById("v3-tf-preset").value === "iso";
+      const cv = document.getElementById("v3-tf-cv"); cv.focus(); const c0 = v.tfState().bands[0].c;
+      for (const key of ["ArrowRight", "+"]) cv.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}));
+      out.keys = v.tfState().bands[0].c > c0 && v.tfState().preset === "custom";
+      cv.dispatchEvent(new KeyboardEvent("keydown", {key: "Delete", bubbles: true})); out.del = v.tfState().bands.length === 2;
+      document.getElementById("v3-tf-add").click(); out.add = v.tfState().bands.length === 3;
+      out.urlCustom = /[?&]tf=nH~B/.test(location.search); out.aria = /transfer function/.test(v.canvas.getAttribute("aria-label"));
+      const g = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 3; i < g.length; i += 4) if (g[i]) n++; out.drawn = n;
+      v.setTf({twoD: true, shade: 0.5}); out.twoD = U.uTF2D.value === 1 && Math.abs(U.uShade.value - 0.5) < 1e-6 && !document.getElementById("v3-tf-g-row").hidden;
+      v.setTf("thor"); out.thor = await wait(() => v.species === "T" && v.tfState()?.preset === "thor");
+      out.emis = await wait(() => U.uTFW.value === 1) && U.uGamma.value === 1 && v.texKeys().some(k => k.startsWith("gas|nH|"));
+      out.st = v.tfState(); out.url = location.search;
+      document.getElementById("v3-tf-reset").click(); out.reset = !v.tfOn() && U.uTFOn.value === 0;
+      v.setMode("integral"); await v.setSpecies("nH"); out.hidAgain = c().hidden && !/[?&]tf=/.test(location.search);
+      return JSON.stringify(out); })()`));
+    check(T.hidInteg && T.shown && T.after === "mode" && T.rampOff && T.urlRamp, `TF card hidden in integral mode, shown after Mode in volume mode, Default ramp leaves TF mode off (uTFOn 0), URL tf=nH~Pramp`);
+    check(T.iso && T.drawn > 1000, `Iso bands preset: TF on, 3 bands; editor canvas drawn (${T.drawn} px)`);
+    check(T.keys && T.del && T.add && T.urlCustom && T.aria, `keyboard edits (arrow, +, Delete), + band, custom state in the URL, aria names the TF (${JSON.stringify({k: T.keys, d: T.del, a: T.add, u: T.urlCustom, l: T.aria})})`);
+    check(T.twoD, "2D gradient TF and shading reach the shader (uTF2D 1, uShade 0.5), gradient row shown");
+    check(T.thor && T.emis && T.st.emis === "nH" && T.st.bands.length === 3 && /[?&]tf=T~P?thor/.test(T.url), `"Gas phases (THOR)": field T, 3 bands, emissivity n_H bound (uTFW 1, gamma 1), URL ${T.url.slice(0, 60)}`);
+    check(T.reset && T.hidAgain, "Reset returns to the default ramp; integral mode hides the card and drops tf= from the URL"); }
   const B = await ev(`window.tngViewer3d.bench(${NB})`);
   console.log(`     bench: exact ${B.exact_ms_median.toFixed(1)} ms, moving exact ${B.moving_exact_ms_median.toFixed(1)} ms, moving fast ${B.moving_fast_ms_median.toFixed(1)} ms → moving path ${B.moving_path}; canvas ${B.size.join("×")} px`);
   check(B.exact_ms_median <= 300, `exact refine frame ${B.exact_ms_median.toFixed(1)} ms ≤ 300 ms`);

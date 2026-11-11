@@ -9,6 +9,10 @@
 // vel3d (uVq > 0): the gas layer is a velocity view derived per sample and per frame from the packed vector cube (uVel*)
 // and the camera ray; integral = the weight-weighted mean along the ray (σ_los: the weighted dispersion of dot(v, d)), volume =
 // opacity from the weight (uW*) with the colour of the view.
+// TF mode (uTFOn = 1, volume mode, scalar fields): THOR-style volume rendering (Byrohl & Nelson 2025, §3.5.3) with the
+// 256×64 transfer-function texture uTF (tf.js) over the window uTFWin, optional 2D lookup by the gradient magnitude
+// (uTF2D, normalised by uGradMax dex/voxel), headlight shading (uShade) and an emissivity weight from uW* (uTFW, uGamma,
+// uWRef). With uTFOn = 0 the shader computes exactly what it did before.
 /* tune2: uSub shifts the whole raster by a sub-pixel offset (clip units) so the progressive refine frames average
    several sample positions per pixel (anti-aliasing of sub-pixel structure) */
 export const VERT = `out vec3 vPos; uniform vec2 uSub;
@@ -27,6 +31,7 @@ uniform float uFadeDex, uStarKnee, uStarOcc;
 uniform float uPxAng, uAccW, uStarSat; uniform vec2 uLodC, uNear;
 uniform float uVolK, uVolGain, uStarFloor, uGasW; uniform vec2 uOccRange; uniform int uCompMode;
 uniform sampler3D uVel0, uVel1, uVel2; uniform vec3 uVelHave; uniform float uVelV; uniform int uVq; uniform vec2 uWWin;
+uniform sampler2D uTF; uniform int uTFOn, uTF2D, uTFW; uniform vec2 uTFWin; uniform float uShade, uGradMax, uGamma, uWRef;
 in vec3 vPos; out vec4 fragColor;
 const float LOG2_10 = 3.321928094887362, LOG10_CM_PER_KPC = 21.489350545189;
 
@@ -119,6 +124,28 @@ float velQ(vec3 v, vec3 p, vec3 d) {
   if (uVq == 3) { vec2 t = vec2(-p.y, p.x); float r = length(t); return r > 1e-4 ? dot(v.xy, t) / r : 0.0; }
   return length(v); }
 
+/* TF mode (THOR §3.5.3): gradient of the colour field's log value by central differences on level l, in dex per L1 voxel
+   (0.78 kpc; disk-frame axes): the difference over one voxel of level l is scaled by hl(1)/hl(l), so the 2D TF rows and
+   the shading classify the same gas alike on every level (no jump at the ±25/±100 kpc faces or on a LOD switch) and match
+   the editor's 2D histogram, which is built on L1. It reads the hardware-interpolated q (6 fetches, LOD/fade/mask not applied): q is linear in log v,
+   so the q difference is the log difference. Empty texels (q 0) blend in as low values, so the edge of the deposited
+   gas reads as a steep gradient (a real boundary). */
+float qAt(vec3 t, int l) { return (l == 0 ? texture(uGas0, t).r : l == 1 ? texture(uGas1, t).r : texture(uGas2, t).r) * 255.0; }
+vec3 gradAt(vec3 p, int l) {
+  vec3 t = p / (2.0 * hl(l)) + 0.5; float e = 1.0 / uN, s = 0.5 * (uGasRange.y - uGasRange.x) / 254.0;
+  s *= hl(1) / hl(l);
+  return s * vec3(qAt(t + vec3(e, 0.0, 0.0), l) - qAt(t - vec3(e, 0.0, 0.0), l), qAt(t + vec3(0.0, e, 0.0), l) - qAt(t - vec3(0.0, e, 0.0), l),
+                  qAt(t + vec3(0.0, 0.0, e), l) - qAt(t - vec3(0.0, 0.0, e), l)); }
+/* TF lookup at normalised value x and gradient magnitude gn (row 0 when the TF is 1D: all rows are equal) */
+vec4 tfAt(float x, float gn) { return texture(uTF, vec2((clamp(x, 0.0, 1.0) * 255.0 + 0.5) / 256.0, (clamp(gn, 0.0, 1.0) * 63.0 + 0.5) / 64.0)); }
+/* headlight shading: two-sided Lambert + a soft Blinn-Phong lobe (light = view = −d, so H = −d), normal = the gradient;
+   ambient 0.35 keeps the far sides readable. Fades in with the gradient (no normal in flat regions). */
+vec3 shadeTF(vec3 c, vec3 g, float gn, vec3 d) {
+  float gl = length(g); if (gl <= 1e-6 || uShade <= 0.0) return c;
+  float nd = abs(dot(g / gl, d));
+  vec3 lit = c * (0.35 + 0.65 * nd) + vec3(0.25 * pow(nd, 24.0));
+  return mix(c, lit, uShade * smoothstep(0.02, 0.1, gn)); }
+
 vec2 slab(vec3 o, vec3 d, float h) { vec3 inv = 1.0 / d, a = (vec3(-h) - o) * inv, b = (vec3(h) - o) * inv;
   vec3 lo = min(a, b), hi = max(a, b); return vec2(max(max(lo.x, lo.y), lo.z), min(min(hi.x, hi.y), hi.z)); }
 float hash(vec2 p, float f) { p = fract(p * vec2(0.1031, 0.1030) + f * 0.61803399); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.x); }
@@ -149,6 +176,10 @@ void main() {
   bool gasOn = uGasMix > 0.0 && (gHave.x + gHave.y + gHave.z) > 0.0, starOn = uStarMix > 0.0 && (uStarHave.x + uStarHave.y + uStarHave.z) > 0.0;
   bool weighted = !velMode && uKind == 1 && uMode == 0;
   float num2 = 0.0, wspan = max(uWWin.y - uWWin.x, 1e-6);
+  /* TF mode: volume mode of a scalar gas field with the transfer function uTF instead of the fixed ramp; tfW: the
+     emissivity weight (uW*, e.g. n_H) scales the emitted colour by (w / 10^uWRef)^uGamma */
+  bool tfMode = uTFOn == 1 && uMode == 1 && !velMode, tfW = tfMode && uTFW == 1 && uGamma > 0.0;
+  float tspan = max(uTFWin.y - uTFWin.x, 1e-6), gdiv = 1.0 / max(uGradMax, 1e-6);
   /* segment breakpoints: entry/exit of the ±100 and ±25 boxes (nested, so already ordered) */
   vec2 s1 = slab(o, d, uHalf.y), s2 = slab(o, d, uHalf.z);
   if (s1.x >= s1.y) s1 = vec2(t1); if (s2.x >= s2.y) s2 = vec2(clamp(s1.x, t0, t1));
@@ -162,7 +193,7 @@ void main() {
   for (int s = 0; s < 5; s++) {
     float ta = bp[s], tl = bp[s + 1] - ta; if (tl <= 1e-5) continue;
     vec3 pm = o + d * (ta + 0.5 * tl);
-    int lg = gasOn ? pick(gHave, pm, 3) : -1, lw = weighted ? pick(uWHave, pm, 3) : -1, ls = starOn ? pick(uStarHave, pm, 3) : -1;
+    int lg = gasOn ? pick(gHave, pm, 3) : -1, lw = (weighted || tfW) ? pick(uWHave, pm, 3) : -1, ls = starOn ? pick(uStarHave, pm, 3) : -1;
     float fp = uPxAng * max(length(pm - o), 1.0), mg = 1.0, mw = 1.0, ms = 1.0; int cg = -1, cw = -1, cs = -1;
     lg = lodLevel(gHave, pm, lg, fp, uLodC.x, cg, mg); lw = lodLevel(uWHave, pm, lw, fp, uLodC.x, cw, mw);
     ls = lodLevel(uStarHave, pm, ls, fp, uLodC.y, cs, ms);
@@ -190,6 +221,22 @@ void main() {
         if (uMode == 0) {
           if (weighted) { float w = lw >= 0 ? wVal(p, lw) : 0.0; if (lw >= 0 && cw >= 0) w = mix(wVal(p, cw), w, mw); num += w * v * hw; den += w * hw; }
           else sumG += v * hw;
+        } else if (tfMode) {
+          /* THOR: C = ∫ c μ exp(−∫ μ) ds, front to back. Per step μ = kappa alpha_TF (kappa = uVolK opacity² per kpc,
+             as the ramp's kappa x²), opacity a = 1 − exp(−μ h) (= μ h for thin steps), emission (1 − A) a c W with W the
+             emissivity weight; values below the TF window are transparent, above it take the TF's top texel */
+          float x = v > 0.0 ? (log2(v) / LOG2_10 - uTFWin.x) / tspan : -1.0;
+          if (x >= 0.0) {
+            vec3 g = vec3(0.0); float gn = 0.0;
+            if (uTF2D == 1) { g = gradAt(p, lg); if (cg >= 0 && mg < 1.0) g = mix(gradAt(p, cg), g, mg); gn = length(g) * gdiv; }
+            vec4 tf = tfAt(x, gn);
+            if (tf.a > 0.0) {
+              if (uShade > 0.0 && uTF2D != 1) { g = gradAt(p, lg); if (cg >= 0 && mg < 1.0) g = mix(gradAt(p, cg), g, mg); gn = length(g) * gdiv; }
+              float a = 1.0 - exp(-kappa * tf.a * hw), W = 1.0;
+              if (tfW && lw >= 0) { float w = wVal(p, lw); if (cw >= 0) w = mix(wVal(p, cw), w, mw);
+                W = w > 0.0 ? exp2(uGamma * (log2(w) - LOG2_10 * uWRef)) : 0.0; }
+              C += (1.0 - A) * a * W * shadeTF(tf.rgb, g, gn, d); A += (1.0 - A) * a; }
+          }
         } else if (v > 0.0) {
           float x = clamp((log2(v) / LOG2_10 - uWin.x) / span, 0.0, 1.0);
           if (x > 0.0) { float a = 1.0 - exp(-kappa * x * x * hw); C += (1.0 - A) * a * lutc(x); A += (1.0 - A) * a; }
@@ -200,7 +247,12 @@ void main() {
   }
   vec3 gas = vec3(0.0);
   if (gasOn) {
-    if (uMode == 1) gas = min(C * uVolGain, vec3(1.0)) + (1.0 - A) * uBg;
+    if (uMode == 1) {
+      /* emissive TF (density-weighted): soft knee instead of clipping, hue kept: linear up to 0.6 in the brightest
+         channel, then 0.6 + 0.4 (1 − exp(−(m − 0.6) / 0.4)), so dense clouds and the disk stay coloured, not white */
+      vec3 e = C * uVolGain; float m = max(e.r, max(e.g, e.b));
+      if (tfW && m > 0.6) e *= (0.6 + 0.4 * (1.0 - exp(-(m - 0.6) / 0.4))) / m;
+      gas = min(e, vec3(1.0)) + (1.0 - A) * uBg; }
     else if (velMode) {
       /* vel3d integral: the weight-weighted mean of the view along the ray (moment 1), or for σ_los the weighted dispersion
          of dot(v, d), sqrt(moment 2 − moment 1²); it fades into the background below the weight column floor uWWin.x */
@@ -251,6 +303,9 @@ export function makeMaterial(T, opts = {}) {
   const e4 = new T.Data3DTexture(new Uint8Array(4), 1, 1, 1); e4.format = T.RGBAFormat; e4.needsUpdate = true;
   const lutTex = new T.DataTexture(new Uint8Array(256 * 4), 256, 1, T.RGBAFormat, T.UnsignedByteType);
   lutTex.minFilter = lutTex.magFilter = T.LinearFilter; lutTex.needsUpdate = true;
+  /* TF texture: 256 (value) × 64 (gradient) RGBA8, tf.js buildTF bytes; write tfTex.image.data and set needsUpdate */
+  const tfTex = new T.DataTexture(new Uint8Array(256 * 64 * 4), 256, 64, T.RGBAFormat, T.UnsignedByteType);
+  tfTex.minFilter = tfTex.magFilter = T.LinearFilter; tfTex.needsUpdate = true;
   const u = v => ({value: v}), V2 = (a, b) => new T.Vector2(a, b), V3 = (a, b, c) => new T.Vector3(a, b, c);
   const uniforms = {
     uGas0: u(e1), uGas1: u(e1), uGas2: u(e1), uW0: u(e1), uW1: u(e1), uW2: u(e1), uStar0: u(e4), uStar1: u(e4), uStar2: u(e4),
@@ -266,11 +321,13 @@ export function makeMaterial(T, opts = {}) {
     uVolK: u(0.25), uVolGain: u(1.0), uStarFloor: u(0.0), uGasW: u(1.0), uOccRange: u(V2(0.04, 0.45)), uCompMode: u(0),
     /* vel3d: packed velocity cubes (13 of the 16 texture units with the 9 cubes and the LUT), ±V of the linear encoding,
        the view (0 = none), and the weight's log window (column floor in integral mode, volume window in volume mode) */
-    uVel0: u(e4), uVel1: u(e4), uVel2: u(e4), uVelHave: u(V3(0, 0, 0)), uVelV: u(1), uVq: u(0), uWWin: u(V2(0, 1))};
+    uVel0: u(e4), uVel1: u(e4), uVel2: u(e4), uVelHave: u(V3(0, 0, 0)), uVelV: u(1), uVq: u(0), uWWin: u(V2(0, 1)),
+    /* TF volume mode (tf.js; the 14th texture unit): off by default, so every other mode is unchanged */
+    uTF: u(tfTex), uTFOn: u(0), uTFWin: u(V2(0, 1)), uTF2D: u(0), uShade: u(0), uGradMax: u(0.5), uTFW: u(0), uGamma: u(0), uWRef: u(0)};
   const mat = new T.ShaderMaterial({glslVersion: T.GLSL3, vertexShader: VERT, fragmentShader: FRAG, uniforms,
     side: T.BackSide, transparent: true, depthWrite: false, depthTest: false,
     /* tune2: the refine frames blend into the accumulation target with weight uAccW (running mean) */
     blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.SrcAlphaFactor, blendDst: T.OneMinusSrcAlphaFactor,
     blendSrcAlpha: T.OneFactor, blendDstAlpha: T.ZeroFactor});
-  return {material: mat, uniforms, empty1: e1, empty4: e4, lutTex};
+  return {material: mat, uniforms, empty1: e1, empty4: e4, lutTex, tfTex};
 }

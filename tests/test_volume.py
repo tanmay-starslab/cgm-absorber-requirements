@@ -361,6 +361,26 @@ def test_cube_matches_smoothed_reference_not_thin_ray(seed):
     assert worst_t > 3 * V.SMOOTH_TOL, worst_t
 
 
+def test_hi_cube_is_a_neutral_fraction_of_nh():
+    """tf H I check: n(H I) = x·n_H per cell with x ∈ [0, 1] (TNG NeutralHydrogenAbundance) deposits through the same
+    kernel as n_H, so every voxel's n(H I)/n_H is an N-weighted mean of the cell fractions (inside [0, 1] and inside
+    [min x, max x]), H I and n_H fill the same voxels, and the H I atoms are conserved like the H atoms."""
+    cells = _clumps(11)
+    rng = np.random.default_rng(11)
+    x = np.concatenate([10.0 ** rng.uniform(-7, 0, 4000), 10.0 ** rng.uniform(-7, -5, 2000)])   # dense clumps reach x≈1
+    cells["HI"] = x * cells["nH"]
+    for L in ("L1", "L2"):
+        cubes, dep = V.build_level(cells, L, n=32, keys=("nH", "HI"))
+        nH, HI = cubes["nH"], cubes["HI"]
+        assert np.array_equal(nH > 0, HI > 0)
+        r = HI[nH > 0] / nH[nH > 0]
+        assert r.min() >= x.min() * (1 - 1e-9) and r.max() <= x.max() * (1 + 1e-9) and r.max() <= 1.0
+        vv = (2 * V.GAS_LEVELS[L] / 32 * CM) ** 3
+        assert HI.sum() * vv == pytest.approx(dep.q_in["N_HI"], rel=1e-9)
+        assert nH.sum() * vv == pytest.approx(dep.q_in["N_nH"], rel=1e-9)
+        assert 0.0 < dep.q_in["N_HI"] / dep.q_in["N_nH"] < 1.0
+
+
 FAKE_N = {"L0": 128, "L1": 32, "L2": 8}                    # the same Δ = 6.25 kpc on every level
 
 
