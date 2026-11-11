@@ -431,3 +431,10 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
   :root:not(#_){--mat-thin:var(--mat-thin-o);--mat-regular:var(--mat-regular-o);--mat-thick:var(--mat-thick-o);--mat-blur-thin:none;--mat-blur-regular:none;--mat-blur-thick:none}}
 @media (prefers-contrast:more){
   :root:not(#_){--mat-thin:var(--mat-thin-o);--mat-regular:var(--mat-regular-o);--mat-thick:var(--mat-thick-o);--mat-edge-c:var(--mat-edge-hc);--bline:var(--bline-hc)}}
+/* tf3d: Transfer function card (3D volume mode; tfeditor.js): the plot is a well in the glass card, the colour swatch
+   a small raised control */
+#v3d-controls .v3tf-plot canvas{background:var(--mat-well);box-shadow:inset 0 0 0 1px var(--mat-edge-c),inset 0 1px 2px rgba(0,0,0,.18);border-radius:var(--r-s)}
+#v3d-controls .v3tf-bands input[type=color]{background:var(--mat-fill),var(--mat-thin);border:1px solid var(--mat-edge-c);box-shadow:var(--mat-highlight);border-radius:var(--r-s)}
+#v3d-controls .v3tf-bands input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
+#v3d-controls .v3tf-bands input[type=color]::-webkit-color-swatch{border:0;border-radius:6px}
+#v3d-controls .v3tf-bands input[type=color]::-moz-color-swatch{border:0;border-radius:6px}

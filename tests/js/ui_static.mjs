@@ -84,6 +84,22 @@ check(!/<select\b[^>]*\bid=["']gallery["']/.test(htmlText) && /\bid="gal-pop"/.t
 { const pops = ["read", "methods", "licence"].map(k => { const b = htmlText.match(new RegExp(`<button\\b[^>]*\\bid="info-${k}"[^>]*>`));
     return !!b && /class="[^"]*\binfo\b/.test(b[0]) && b[0].includes(`data-info="${k}"`) && b[0].includes(`aria-controls="pop-${k}"`) && /aria-expanded="false"/.test(b[0]); });
   check(pops.every(Boolean), `C10 info buttons button.info#info-{read,methods,licence} with data-info, aria-controls pop-*, aria-expanded false (${pops.map(x => (x ? "ok" : "bad")).join(" ")})`); }
+/* tf3d: the 3D Transfer function card (js/tfeditor.js): its controls are declared with test ids, every input and select is
+   labelled (a <label for>, aria-label or aria-labelledby), the editor canvas is focusable with a description, the four presets of
+   js/tf.js are offered, and the card is styled in page.css with the glass tokens */
+{ const ed = srcs.find(x => basename(x.f) === "tfeditor.js"), tfm = srcs.find(x => basename(x.f) === "tf.js");
+  if (!ed) console.log("note: no js/tfeditor.js; Transfer function card checks skipped");
+  else { const tpl = ed.strs.map(x => x.s).join("\n");
+    const ids = ["v3-tf", "v3-tf-preset", "v3-tf-cv", "v3-tf-w", "v3-tf-a", "v3-tf-col", "v3-tf-add", "v3-tf-del", "v3-tf-reset", "v3-tf-2d", "v3-tf-shade", "v3-tf-emis", "v3-tf-gamma"];
+    const miss = ids.filter(i => !declaredId(i));
+    check(!miss.length, `3D TF card ids declared (${ids.length - miss.length} of ${ids.length})${miss.length ? "; missing #" + miss.join(" #") : ""}`);
+    const ctl = [...tpl.matchAll(/<(input|select)\b[^>]*>/g)].map(m => m[0]), unl = ctl.filter(t => { const id = (t.match(/\bid="([^"]+)"/) || [])[1];
+      return !/aria-label(ledby)?=/.test(t) && !(id && new RegExp(`<label\\b[^>]*for="${esc(id)}"`).test(tpl)) && !/type="checkbox"/.test(t); });
+    check(ctl.length >= 10 && !unl.length, `3D TF card: ${ctl.length} inputs and selects, each labelled${unl.length ? "; unlabelled: " + unl.map(t => t.slice(0, 50)).join(" | ") : ""}`);
+    check(/<canvas\b(?=[^>]*tabindex="0")(?=[^>]*aria-describedby=)(?=[^>]*aria-labelledby=)[^>]*>/.test(tpl) && /role="status"/.test(tpl), "3D TF editor canvas focusable, labelled and described; a status live region");
+    const pre = tfm && (tfm.src.match(/PRESET_LABELS\s*=\s*\{([^}]*)\}/) || [])[1] || "";
+    check(["Default ramp", "Gas phases (THOR)", "Iso bands", "Clouds (2D)"].every(l => pre.includes(l)), `3D TF presets in js/tf.js: ${pre.replace(/\s+/g, " ").slice(0, 120)}`);
+    check(/\.v3tf[^{]*\{[^}]*var\(--mat-/.test(cssText), "3D TF card styled with the glass tokens (--mat-*)"); } }
 if (basename(PAGE) === "_template.html") {   // the exporter contract (scripts/export_tng50_web.py replaces the marker)
   check(html.split("/*__DATA__*/null").length === 2 && /const DATA = \/\*__DATA__\*\/null;\n/.test(html), "exactly one config marker, in the form the exporter test parses");
   check(/<script type="module" src="js\/app\.js"><\/script>/.test(html) && /href="css\/page\.css"/.test(html), "the template loads js/app.js and css/page.css");
