@@ -219,7 +219,7 @@ def page_config(cat: dict, backends: list, default_id: str | None, n: int, viz: 
     d = I.DEFAULTS
     defaults = {"id": default_id, "ions": list(d["ions"]), "layout": PAGE_LAYOUT,
                 "R": {b: list(v["R"]["pair"]) for b, v in I.BANDS.items()}, "sn": list(I.SNR["pair"]),
-                "vc": 0, "vhw": d["vhw_kms"], "seed": 0, "intrinsic": False, "fit": False}
+                "vc": 0, "vhw": d["vhw_kms"], "seed": 0, "intrinsic": True, "fit": True}
     return {"version": 3, "catalog_url": "data/catalog.json", "bin_dir": "data/s/", "n_static": n, "backends": backends,
             "galaxy": gal, "ions": I.page_ions(), "bands": json.loads(json.dumps(I.BANDS)),
             "snr": dict(I.SNR), "defaults": defaults, "grid": {"dv_web": I.GRID["dv_web_kms"]},

@@ -78,7 +78,7 @@ try {
       check(ev.some(e => e.type === "tng:catalog" && e.detail && e.detail.n >= 3), "tng:catalog dispatched with n >= 3"); }
     const s0 = await st();
     { const D = REG.defaults;
-      check(s0.layout === "1" && JSON.stringify(s0.ions) === JSON.stringify(D.ions) && s0.vc === 0 && s0.vhw === D.vhw_kms && s0.fit === false && s0.tab === "spectra"
+      check(s0.layout === "1" && JSON.stringify(s0.ions) === JSON.stringify(D.ions) && s0.vc === 0 && s0.vhw === D.vhw_kms && s0.fit === true && s0.tab === "spectra"
         && JSON.stringify(s0.sn) === JSON.stringify(REG.snr.pair) && Object.entries(REG.bands).every(([b, B]) => JSON.stringify(s0.R[b]) === JSON.stringify(B.R.pair)),
         `default state (design 6.3, layout per pick.md): layout ${s0.layout}, ions ${s0.ions}, vc ${s0.vc}, vhw ${s0.vhw}, S/N ${s0.sn} (want ${REG.snr.pair}), R ${JSON.stringify(s0.R)}, fit ${s0.fit}, tab ${s0.tab}`); }
     { const r = await P.eval(`document.getElementById("statusline")?.dataset.id ?? null`); check(r === s0.id, `#statusline[data-id] ${r} equals getState().id ${s0.id}`); }
@@ -298,7 +298,7 @@ try {
       await P.fn(`const f = document.getElementById("fit"); if (!f.checked) f.click();`);
       const tDone = await P.waitFor(`["done", "budget"].includes(document.getElementById("fitstatus")?.dataset.state)`, 120000, 100);
       const wall = Date.now() - w0; await sleep(300);
-      const s = await st(), ps = await P.eval("tngApp.panels()"), ev = await P.events("tng:fit", t0), after = await P.eval(hash);
+      const s = await st(), ps = await P.eval("tngApp.panels()"), ev = await P.events("tng:fit", 0), after = await P.eval(hash);
       const state = await P.eval(`document.getElementById("fitstatus").dataset.state`);
       check(s.fit === true && /\p{L}/u.test(label), `C5 #fit is a labelled toggle ("${label}") and sets getState().fit ${s.fit}`);
       check(tDone >= 0, `C5 #fitstatus reaches ${state} for ${ps.length} panels in ${(wall / 1000).toFixed(2)} s (load average ${load})`);

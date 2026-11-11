@@ -96,8 +96,10 @@ export function initTips(doc = document) {
     const host = doc.fullscreenElement || body; if (tip.parentNode !== host) host.appendChild(tip);   // a fullscreen element hides the rest
     tip.textContent = hit.el.dataset.tip; tip.hidden = false; tip.classList.remove("on");
     tip.style.left = tip.style.top = "0px";   // measure unconstrained: a fixed box near the right edge would shrink-wrap
-    const a = hit.anchor.getBoundingClientRect(), p = placeTip(a, {w: tip.offsetWidth, h: tip.offsetHeight}, win.innerWidth, win.innerHeight);
-    tip.style.left = p.left + "px"; tip.style.top = p.top + "px"; tip.dataset.side = p.side;
+    /* the page may be scaled with CSS zoom on <html> (125 % on large screens): rects are in screen px, left/top in page px */
+    const z = parseFloat(win.getComputedStyle(doc.documentElement).zoom) || 1, tr = tip.getBoundingClientRect();
+    const a = hit.anchor.getBoundingClientRect(), p = placeTip(a, {w: tr.width || tip.offsetWidth * z, h: tr.height || tip.offsetHeight * z}, win.innerWidth, win.innerHeight);
+    tip.style.left = p.left / z + "px"; tip.style.top = p.top / z + "px"; tip.dataset.side = p.side;
     win.requestAnimationFrame(() => tip.classList.add("on"));
     if (mode === "touch") hideT = setTimeout(hide, TOUCH_MS);
   }

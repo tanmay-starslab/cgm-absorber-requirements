@@ -515,3 +515,15 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
 .v3d-pv:focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
 @keyframes v3d-pv-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.v3d-pv{animation:none}}
+/* ---- default scale (2026-11): on large screens the page renders at 125 %, what the owner preferred with browser zoom.
+   Phones and narrow windows keep 100 %. Browser zoom still works on top of it. ---- */
+@media (min-width:1400px){html{zoom:1.25}}
+/* at 125 % a 1400 to 1900 px screen lays out like 1120 to 1520 px: keep the top bar on one line by showing the status as a
+   dot only and Find and New ray as icons (their tips still name them) */
+@media (min-width:1400px) and (max-width:1900px){
+  #pill{font-size:0;gap:0}
+  #find-toggle .lbl{display:none}
+  #geo-open{font-size:0;gap:0;width:32px;padding:0;justify-content:center}
+  #geo-open svg{width:14px;height:14px}
+  #title{font-size:12px}
+}
