@@ -34,7 +34,7 @@ const REG = loadRegistry();
 
 export const STATIC_IDS = ["top", "title", "theme", "pill", "tabs", "tab-spectra", "tab-3d",
   "info-read", "info-methods", "info-licence", "pop-read", "pop-methods", "pop-licence",
-  "gal-open", "gal-pop", "gal-search", "gal-list", "showcase", "filter", "galcount", "prev", "next",
+  "gal-open", "gal-pop", "gal-id", "gal-copy", "gal-search", "gal-list", "showcase", "filter", "galcount", "prev", "next",
   "ion-open", "ion-pop", "ion-all", "ion-none", "ion-default", "ion-chips", "layout",
   "sn-0", "sn-1", "sn-0-out", "sn-1-out", "vhw", "vhw-out", "vreset", "intr", "fit", "reroll", "dl-menu", "dlpdf", "dlpng",
   "panel-spectra", "spectra", "cv", "readouts", "statusline", "fitstatus",
@@ -84,6 +84,15 @@ const declaredId = id => new RegExp(`\\bid=["']${esc(id)}["']`).test(htmlText) ?
 check(/#v3d-stage\b[^{]*\{[^}]*aspect-ratio\s*:\s*1\s*(\/\s*1\s*)?[;}]/.test(cssText), "C13 #v3d-stage CSS sets aspect-ratio 1 / 1");
 check(!/<select\b[^>]*\bid=["']gallery["']/.test(htmlText) && /\bid="gal-pop"/.test(htmlText) && /<input\b(?=[^>]*\bid="gal-search")(?=[^>]*\btype="search")[^>]*>/.test(htmlText),
   'C6 gallery is a popover (#gal-pop with input#gal-search type search), no <select id="gallery">');
+/* ux4 B: the sightline button carries no id text (clean parameters come from gallery.js sightLabel), and the picker's
+   filters say what they keep: no bare "new" or "showcase" labels */
+{ const btn = (htmlText.match(/<button\b[^>]*\bid="gal-open"[^>]*>[\s\S]*?<\/button>/) || [""])[0], fil = (htmlText.match(/<select\b[^>]*\bid="filter"[^>]*>[\s\S]*?<\/select>/) || [""])[0];
+  const labels = [...fil.matchAll(/<option\b[^>]*>([^<]*)<\/option>/g)].map(m => m[1].trim()), sc = (htmlText.match(/id="showcase"[^>]*>([^<]*)</) || [])[1] || "";
+  const gal = srcs.find(x => basename(x.f) === "gallery.js");
+  check(/class="slab"/.test(btn) && !/class="gid"/.test(btn) && !!gal && /export function sightLabel/.test(gal.src) && /export function sightTip/.test(gal.src),
+    "ux4 B: #gal-open holds span.slab (clean parameters from gallery.js sightLabel, id in sightTip), not the id");
+  check(labels.length === 5 && !labels.includes("new") && labels.includes("your rays") && /value="new"/.test(fil) && sc.trim() && !/showcase/i.test(sc),
+    `ux4 B: picker filters named for what they keep: ${labels.join(", ")}; checkbox "${sc.trim()}"`); }
 { const pops = ["read", "methods", "licence"].map(k => { const b = htmlText.match(new RegExp(`<button\\b[^>]*\\bid="info-${k}"[^>]*>`));
     return !!b && /class="[^"]*\binfo\b/.test(b[0]) && b[0].includes(`data-info="${k}"`) && b[0].includes(`aria-controls="pop-${k}"`) && /aria-expanded="false"/.test(b[0]); });
   check(pops.every(Boolean), `C10 info buttons button.info#info-{read,methods,licence} with data-info, aria-controls pop-*, aria-expanded false (${pops.map(x => (x ? "ok" : "bad")).join(" ")})`); }
@@ -111,7 +120,7 @@ if (basename(PAGE) === "_template.html") {   // the exporter contract (scripts/e
 /* ---------------------------------------------------------------- tips: one-line help on every control (tips spec) */
 export const TIP_IDS = ["tab-spectra", "tab-3d", "prev", "gal-open", "next", "geo-open", "find-toggle", "chat-open", "info-read", "info-methods",
   "info-licence", "theme", "side-toggle", "controls-open", "ion-open", "ion-none", "ion-default", "sn-0", "sn-1", "vhw", "vreset", "fit", "intr",
-  "reroll", "dl-open", "dlpng", "dlpdf", "filter", "showcase", "gb", "gaz", "gseed", "submit", "apiurl", "v3d-mini",
+  "reroll", "dl-open", "dlpng", "dlpdf", "filter", "showcase", "gal-copy", "gb", "gaz", "gseed", "submit", "apiurl", "v3d-mini",
   "v3-ctl-toggle", "v3-fs-exit", "v3-lo", "v3-hi", "v3-vw", "v3-weight", "v3-cmap", "v3-fs", "v3-gasmix", "v3-stars", "v3-starmix", "v3-mu0",
   "v3-lines", "v3-guides", "v3-scale", "v3-op", "v3-tf-preset", "v3-tf-cv", "v3-tf-w", "v3-tf-a", "v3-tf-col", "v3-tf-add", "v3-tf-del",
   "v3-tf-reset", "v3-tf-2d", "v3-tf-g0", "v3-tf-g1", "v3-tf-shade", "v3-tf-emis", "v3-tf-gamma", "pk-mode", "pk-use", "pk-clear", "pk-submit"];

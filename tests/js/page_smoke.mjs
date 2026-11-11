@@ -249,9 +249,10 @@ try {
       const r = await P.fn(`const pop = document.getElementById("gal-pop"), lis = [...pop.querySelectorAll("#gal-list li[data-id]")], s = document.getElementById("gal-search");
         return {open: __ui.vis(pop), role: pop.getAttribute("role"), exp: document.getElementById("gal-open").getAttribute("aria-expanded"), n: lis.length,
           kinds: [...new Set(lis.map(l => l.dataset.kind))], roles: lis.every(l => l.getAttribute("role") === "option"), lb: document.getElementById("gal-list").getAttribute("role"), search: s && s.type,
-          cur: document.getElementById("gal-open").innerText.includes(tngApp.getState().id)};`);
+          cur: (b => { const id = tngApp.getState().id, l = b.querySelector(".slab");   /* ux4 B: clean parameters on the button and in the #gal-id header (id in data-id), the id in the tips */
+            return !!l && l.dataset.id === id && !b.innerText.includes(id) && /kpc/.test(b.innerText) && b.dataset.tip.includes(id) && (g => g.dataset.id === id && !g.textContent.includes(id) && /kpc/.test(g.textContent))(document.getElementById("gal-id")) && document.getElementById("gal-copy").dataset.tip.includes(id); })(document.getElementById("gal-open"))};`);
       check(r.open && r.role === "dialog" && r.exp === "true" && r.lb === "listbox" && r.roles && r.search === "search" && r.cur,
-        `C6 #gal-open opens the #gal-pop dialog with input#gal-search (type ${r.search}) and a listbox; the button shows the current id ${r.cur}`);
+        `C6 #gal-open opens the #gal-pop dialog with input#gal-search (type ${r.search}) and a listbox; the button and #gal-id show clean parameters, the id in data-id and the tips ${r.cur}`);
       check(r.n >= 3 && r.kinds.every(k => ["library", "generated", "custom"].includes(k)), `C6 #gal-list has ${r.n} li[data-id] options, data-kind ${r.kinds.join(", ")}`);
       const s = await st(), ids = await P.eval("tngApp.entries().map(e => e.id)"), target = ids.find(i => i !== s.id && /^(face|edge)_/.test(i)) || ids.find(i => i !== s.id);
       const q = target;   // the full id: the only match, so ArrowDown + Enter must pick it

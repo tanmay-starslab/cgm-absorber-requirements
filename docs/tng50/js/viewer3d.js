@@ -45,6 +45,59 @@ import {createTfEditor, histCodes, histWindow} from "./tfeditor.js";
 import {initTips} from "./tips.js";
 
 export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList};
+
+/* ---- ux4 pivot: the orbit centre (OrbitControls target), scene kpc. Default the galaxy centre; the user moves it by
+   double-clicking the stage (densest sample of the current field along the ray), to the selected sightline (closest
+   approach to the galaxy) or to typed kpc; the stage chip / key C brings it back. Kept in the URL as ?pv=x,y,z (the
+   page's hash writes keep the search part). Pure helpers below run in node (tests/js/pivot_unit.mjs). ---- */
+export const PIVOT = {eps: 0.5, max: 400};               // off-centre beyond eps kpc; typed / URL values clamped to ±max
+const r1 = x => { const v = Math.round(x * 10) / 10; return Object.is(v, -0) ? 0 : v; };
+export const offCentre = p => !!p && Math.hypot(p[0], p[1], p[2]) > PIVOT.eps;
+/* "x,y,z" (kpc) -> [x, y, z] clamped to ±PIVOT.max, or null (absent, malformed, or at the centre) */
+export function parsePivot(s) {
+  const t = String(s ?? "").split(",").map(x => x.trim());
+  if (t.length !== 3 || t.some(x => x === "")) return null;
+  const p = t.map(Number); if (!p.every(Number.isFinite)) return null;
+  const q = p.map(x => r1(Math.max(-PIVOT.max, Math.min(PIVOT.max, x)))); return offCentre(q) ? q : null;
+}
+/* [x, y, z] -> "x,y,z" to 0.1 kpc; "" at the centre */
+export const formatPivot = p => (offCentre(p) ? p.map(r1).join(",") : "");
+/* a sightline's pivot: its closest approach to the galaxy centre, clamped to the segment p0-p1 (the midpoint if it is
+   degenerate) */
+export function rayPivot(p0, p1) {
+  const d = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]], L2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+  const s = L2 > 1e-12 ? Math.max(0, Math.min(1, -(p0[0] * d[0] + p0[1] * d[1] + p0[2] * d[2]) / L2)) : 0.5;
+  return [p0[0] + s * d[0], p0[1] + s * d[1], p0[2] + s * d[2]];
+}
+/* point where the ray o + s d (s > 0) meets the plane through t with normal n; null when parallel or behind */
+export function planePoint(o, d, t, n) {
+  const dn = d[0] * n[0] + d[1] * n[1] + d[2] * n[2]; if (Math.abs(dn) < 1e-9) return null;
+  const s = ((t[0] - o[0]) * n[0] + (t[1] - o[1]) * n[1] + (t[2] - o[2]) * n[2]) / dn;
+  return s > 0 ? [o[0] + s * d[0], o[1] + s * d[1], o[2] + s * d[2]] : null;
+}
+/* densest sample along the ray o + s d (s >= 0, disk-frame kpc, d unit) through nested byte cubes
+   cubes: [{data: Uint8Array m³ (x fastest), m, half}] finest first (each sample reads the finest cube containing it,
+   nearest voxel, steps of half a voxel of that cube). Codes are monotonic in the field's log value, 0 = no gas.
+   -> {p: [x, y, z], q} at the first maximum (nearest the camera), or null when no code reaches qmin */
+export function pickAlongRay(o, d, cubes, qmin = 1) {
+  const cs = (cubes || []).filter(c => c && c.data && c.m > 0 && c.half > 0); if (!cs.length) return null;
+  const H = Math.max(...cs.map(c => c.half));
+  let t0 = 0, t1 = Infinity;
+  for (let a = 0; a < 3; a++) {
+    if (Math.abs(d[a]) < 1e-12) { if (Math.abs(o[a]) > H) return null; continue; }
+    let u = (-H - o[a]) / d[a], v = (H - o[a]) / d[a]; if (u > v) [u, v] = [v, u];
+    t0 = Math.max(t0, u); t1 = Math.min(t1, v); }
+  if (!(t1 > t0)) return null;
+  let best = null, bq = qmin - 1;
+  for (let t = t0, guard = 0; t <= t1 && guard < 20000; guard++) {
+    const x = o[0] + t * d[0], y = o[1] + t * d[1], z = o[2] + t * d[2];
+    const c = cs.find(k => Math.abs(x) <= k.half && Math.abs(y) <= k.half && Math.abs(z) <= k.half) || cs[cs.length - 1];
+    const f = c.m / (2 * c.half), ix = v => Math.max(0, Math.min(c.m - 1, Math.floor((v + c.half) * f)));
+    const q = c.data[ix(x) + c.m * (ix(y) + c.m * ix(z))];
+    if (q > bq) { bq = q; best = {p: [x, y, z], q}; }
+    t += 0.5 / f; }
+  return best;
+}
 /* fix-ui V8: no literal underscores; COL_HTML is the colour-bar title with real subscripts (plain text elsewhere) */
 const COL_HTML = {nH: "N<sub>H</sub>", T: "⟨T⟩ (n<sub>H</sub>-weighted)", Z: "⟨Z⟩ (n<sub>H</sub>-weighted)"};
 const COL_TXT = {nH: "NH", T: "⟨T⟩ (nH-weighted)", Z: "⟨Z⟩ (nH-weighted)"};
@@ -253,6 +306,11 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3tf .v3c-row>label .gam{font:italic 13px/1 Georgia,"Times New Roman",serif}
 .v3tf #v3-tf-g-o{white-space:nowrap;font-size:10px}
 .v3tf-g{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:0}.v3tf-g input{width:100%;min-width:0;margin:0}
+/* ux4 pivot: View card "centre" row (galaxy | ray) and the kpc expander (x y z go) */
+.v3c-pvrow{margin-top:8px}.v3c-pvrow>.v3c-pvb{grid-column:2/4;grid-template-columns:1fr 1fr}
+.v3c-pvxyz{grid-template-columns:repeat(3,minmax(0,1fr)) 44px;margin-top:4px}
+.v3c-pvxyz input{height:28px;border:1px solid var(--cg-edge);border-radius:8px;background:var(--cg-well);color:inherit;font:12px var(--mono,ui-monospace,monospace);padding:0 6px}
+.v3c-pvxyz input:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:1px}
 .v3c #picker-root .pk{margin:0}
 .v3c #picker-root button{height:28px;border:1px solid var(--bline,var(--cg-edge));background:var(--cg-sheen),var(--cg-thin);box-shadow:var(--cg-hi),var(--mat-shadow-s,0 1px 2px rgba(0,0,0,.12));border-radius:8px;padding:0 9px;cursor:pointer;color:var(--ink,#eef0f7);font:inherit;font-size:12px}
 .v3c #picker-root button:hover:not(:disabled){background:var(--cg-sheen-h),var(--cg-thin)}
@@ -359,6 +417,7 @@ async function create(app, opts = {}) {
   const el = document.createElement("div"); el.className = "v3d";
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
+    <button type="button" class="v3d-pv" id="v3-pivot" hidden aria-label="Re-centre on the galaxy" data-tip="Orbit centre moved; return to the galaxy (C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg><span>re-centre</span></button>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
     <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="ends" hidden><span></span><span></span></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off (Layers)</div><div class="gd" hidden></div></div>
@@ -395,12 +454,14 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
-      <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button></section>
+      <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
+      <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
+      <details id="v3-pv-more"><summary data-tip="Type an orbit centre in kpc, galaxy box axes">kpc</summary><form class="v3tf-g v3c-pvxyz" id="v3-pv-form"><input id="v3-pv-x" type="number" step="1" min="-400" max="400" aria-label="centre x, kpc" placeholder="x" data-tip="x in kpc from the galaxy centre"><input id="v3-pv-y" type="number" step="1" min="-400" max="400" aria-label="centre y, kpc" placeholder="y" data-tip="y in kpc from the galaxy centre"><input id="v3-pv-z" type="number" step="1" min="-400" max="400" aria-label="centre z, kpc" placeholder="z" data-tip="z in kpc from the galaxy centre"><button type="submit" class="v3c-btn" data-tip="Move the orbit centre there">go</button></form></details></section>
     <section class="v3c-card" data-group="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
       <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
-      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase">showcase and new</option><option value="all">all</option><option value="none">none</option></select></div>
+      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Draw sightlines: selected, rich absorbers plus yours, all, none"><option value="selected">selected only</option><option value="showcase">rich absorbers + yours</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section>
     <section class="v3c-card" data-group="mode"><h2>Mode</h2>
       <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
@@ -1084,7 +1145,8 @@ async function create(app, opts = {}) {
     const al = `3D view, ${mode} mode${what}` +
       `; stars ${layer.stars ? "on" : "off"}; finest level ${fin || "none"}${layer.stars ? `, stars ${sfin || "none"}` : ""}` +
       `; ${LINE_IDS.length} sightlines drawn${nNoEnds ? ` (${nNoEnds} more have no stored endpoints)` : ""}${selId ? `; selected ${selId}${hasEnds(app.entry(selId)) ? "" : " (not drawn: no stored endpoints)"}` : ""}.` +
-      ` Arrow keys rotate, + and − zoom, F face-on, E edge-on, A along the selected sightline, R reset, P pick a ray, M mode, S stars, G guides, Shift+F fullscreen.`;
+      ` Arrow keys rotate, + and − zoom, F face-on, E edge-on, A along the selected sightline, R reset, C re-centre on the galaxy, double-click to orbit there, P pick a ray, M mode, S stars, G guides, Shift+F fullscreen.` +
+      (offCentre(pivotArr()) ? ` Orbit centre ${pivotArr().map(fmtKpc).join(", ")} kpc.` : "");
     if (canvas.getAttribute("aria-label") !== al) canvas.setAttribute("aria-label", al); }
 
   /* ---- render on demand: moving frames (spv 0.5, half resolution) then one exact refine frame ---- */
@@ -1198,13 +1260,14 @@ async function create(app, opts = {}) {
     const step = now => { if (id !== anim) return; const f = dur ? Math.min(1, (now - start) / dur) : 1, e = f < 0.5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2;
       camera.position.lerpVectors(p0, pos, e); controls.target.lerpVectors(t0, target, e); camera.up.lerpVectors(u0, up, e).normalize();
       camera.lookAt(controls.target); controls.update(); if (f < 1) requestAnimationFrame(step);
-      else { if (selId) select(selId, true); if (manifest && species) ensure().catch(() => {}); } };
+      else { if (selId) select(selId, true); if (manifest && species) ensure().catch(() => {}); syncPivot(true); } };
     requestAnimationFrame(step);
   }
   function setPreset(p) {
-    const o = new T.Vector3(), D = Math.min(4700, Math.max(110, camera.position.distanceTo(controls.target))); clearTransient(); viewer.presetError = null;
-    if (p === "face-on") goTo(Lv.clone().multiplyScalar(D), o, Yv.clone());
-    else if (p === "edge-on") goTo(Xv.clone().multiplyScalar(D), o, Lv.clone());
+    /* ux4 pivot: face-on and edge-on turn about the current orbit centre; Reset also brings it back to the galaxy */
+    const o = new T.Vector3(), c0 = controls.target.clone(), D = Math.min(4700, Math.max(110, camera.position.distanceTo(controls.target))); clearTransient(); viewer.presetError = null;
+    if (p === "face-on") goTo(c0.clone().addScaledVector(Lv, D), c0, Yv.clone());
+    else if (p === "edge-on") goTo(c0.clone().addScaledVector(Xv, D), c0, Lv.clone());
     else if (p === "sightline") { const e = selId && app.entry(selId);
       if (!hasEnds(e)) { viewer.presetError = e ? NO_ENDPOINTS(e.id) : "select a sightline first"; say(viewer.presetError, true, true); return false; }
       const a = V3(e.p0), b = V3(e.p1), n = b.clone().sub(a).normalize(), c = a.clone().addScaledVector(n, -a.dot(n));
@@ -1216,6 +1279,60 @@ async function create(app, opts = {}) {
     return true;
   }
   camera.position.copy(DEF_DIR.clone().multiplyScalar(DEF_D)); camera.up.copy(upFor(DEF_DIR)); camera.lookAt(0, 0, 0); controls.update(); lastH = hVis();
+
+  /* ---- ux4 pivot (see PIVOT above): the orbit centre is controls.target. pivotTo slides camera and target together
+     (same direction and distance), animated like the presets (instant under reduced motion). Right-drag panning and
+     "Along ray" move it too; the chip and the View card follow whatever the target is. ---- */
+  const toDisk = v => [v.dot(Xv), v.dot(Yv), v.dot(Lv)];
+  const fromDisk = a => Xv.clone().multiplyScalar(a[0]).addScaledVector(Yv, a[1]).addScaledVector(Lv, a[2]);
+  function pivotArr() { return [controls.target.x, controls.target.y, controls.target.z]; }   // declarations: aria() reads them
+  function fmtKpc(x) { return (x < 0 && Math.round(x) !== 0 ? "−" : "") + Math.abs(Math.round(x)); }
+  function pivotTo(p, why = "") {
+    const t = Array.isArray(p) ? V3(p) : p.clone ? p.clone() : new T.Vector3();
+    if (t.length() > PIVOT.max * Math.sqrt(3)) t.setLength(PIVOT.max * Math.sqrt(3));
+    const off = camera.position.clone().sub(controls.target); clearTransient();
+    goTo(t.clone().add(off), t, camera.up.clone()); pivotWhy = why; return true;
+  }
+  const recentre = () => pivotTo([0, 0, 0], "galaxy");
+  let pivotWhy = "", pivotShown = null, pivotUrlLast = null;
+  /* chip, View-card state, kpc fields; url: also write ?pv= (on settle, not on every pan frame) */
+  function syncPivot(url = false) {
+    const p = pivotArr(), off = offCentre(p), chip = q("#v3-pivot");
+    if (off !== pivotShown) { pivotShown = off; chip.hidden = !off || docked !== "full"; q("#v3-pv-gal").setAttribute("aria-pressed", String(!off)); aria(); }
+    else if (chip.hidden !== (!off || docked !== "full")) chip.hidden = !off || docked !== "full";
+    const e = selId && app.entry(selId), onRay = off && hasEnds(e) && V3(rayPivot(e.p0, e.p1)).distanceTo(controls.target) < 1;
+    q("#v3-pv-ray").setAttribute("aria-pressed", String(!!onRay)); q("#v3-pv-ray").disabled = !hasEnds(e);
+    if (!url) return;
+    for (const [i, a] of ["x", "y", "z"].entries()) { const inp = q("#v3-pv-" + a); if (document.activeElement !== inp) inp.value = off ? String(Math.round(p[i])) : ""; }
+    const val = formatPivot(p);
+    if (val !== pivotUrlLast) { pivotUrlLast = val;
+      if (pivotWhy) announce(off ? `Orbit centre ${p.map(x => fmtKpc(x)).join(", ")} kpc${pivotWhy === "ray" ? ", on the sightline" : ""}` : "Orbit centre back on the galaxy");
+      try { const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !x.startsWith("pv="));
+        if (val) parts.push("pv=" + val);
+        const search = parts.length ? "?" + parts.join("&") : "";
+        if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash); } catch { /* sandboxed */ } }
+    pivotWhy = "";
+  }
+  /* double-click: the densest sample of the shown field along the clicked ray (half-resolution L1 / L0 copies kept for
+     the TF histograms; a velocity view reads its weight field), else the point on the plane through the current centre
+     facing the camera */
+  function pickPivot(cx, cy) {
+    const r = canvas.getBoundingClientRect(), ndc = new T.Vector3((cx / r.width) * 2 - 1, 1 - (cy / r.height) * 2, 0.5);
+    const o = camera.position.clone(), d = ndc.unproject(camera).sub(o).normalize();
+    const fk = species && (isVel(species) ? wKey(species) || "nH" : species);
+    const cubes = fk ? ["L1", "L0"].map(L => { const it = TEX.get(keyOf("gas", fk, L)), m = (manifest?.levels?.[L]?.n || 256) >> 1;
+      return it?.sub && it.sub.length === m * m * m ? {data: it.sub, m, half: half(L)} : null; }).filter(Boolean) : [];
+    const hit = U.uGasMix.value > 0 ? pickAlongRay(toDisk(o), toDisk(d), cubes, 2) : null;
+    if (hit) return fromDisk(hit.p);
+    const n = camera.getWorldDirection(new T.Vector3()), pp = planePoint(o.toArray(), d.toArray(), pivotArr(), n.toArray());
+    return pp ? V3(pp) : null;
+  }
+  function pivotToRay() { const e = selId && app.entry(selId);
+    if (!hasEnds(e)) { say(e ? NO_ENDPOINTS(e.id) : "select a sightline first", true, true); return false; }
+    return pivotTo(rayPivot(e.p0, e.p1), "ray"); }
+  { const boot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("pv="));
+      return raw ? parsePivot(decodeURIComponent(raw.slice(3))) : null; } catch { return null; } })();
+    if (boot) { const t = V3(boot); camera.position.copy(t).addScaledVector(DEF_DIR, DEF_D); controls.target.copy(t); camera.lookAt(t); controls.update(); pivotUrlLast = formatPivot(boot); } }
 
   /* ---- picking a line: nearest within 8 px in screen space ---- */
   const viewer = {webgl2: true, THREE: T, camera, scene, renderer, controls, frame, canvas, el: stage, hooks: {}, picking: false, stats,
@@ -1310,6 +1427,7 @@ async function create(app, opts = {}) {
     else if (k === "s" || k === "S") setStars({on: !layer.stars});
     else if (k === "g" || k === "G") setGuides({ring: !guides.visible});
     else if (k === "p" || k === "P") viewer.hooks.togglePick?.();
+    else if ((k === "c" || k === "C") && !ev.shiftKey) recentre();
     else if (k === "Escape") { if (fsEl() || performance.now() - fsExitAt < 400) return; viewer.hooks.exitPick?.(); }   // Esc that leaves fullscreen does not also leave pick mode
     else return;
     ev.preventDefault(); ev.stopPropagation(); render(); });
@@ -1336,14 +1454,30 @@ async function create(app, opts = {}) {
   q("#v3-scale").addEventListener("change", ev => setGuides({scale: ev.target.checked}));
   q("#v3-lines").addEventListener("change", ev => setLines(ev.target.value));
   ctlBox.querySelectorAll(".presets [data-p]").forEach(b => b.addEventListener("click", () => setPreset(b.dataset.p)));
+  /* ux4 pivot controls: stage chip, View card galaxy | ray, kpc form, double-click on the stage */
+  q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
+  q("#v3-pv-gal").addEventListener("click", recentre);
+  q("#v3-pv-ray").addEventListener("click", pivotToRay);
+  q("#v3-pv-form").addEventListener("submit", ev => { ev.preventDefault();
+    const v = ["x", "y", "z"].map(a => { const x = parseFloat(q("#v3-pv-" + a).value); return Number.isFinite(x) ? x : 0; });
+    const p = parsePivot(v.join(",")); pivotTo(p || [0, 0, 0], p ? "typed" : "galaxy"); });
+  canvas.addEventListener("dblclick", ev => { if (viewer.picking || docked !== "full") return; ev.preventDefault();
+    const r = canvas.getBoundingClientRect(), p = pickPivot(ev.clientX - r.left, ev.clientY - r.top); if (p) pivotTo(p, "pick"); });
+  controls.addEventListener("change", () => syncPivot());
+  controls.addEventListener("end", () => syncPivot(true));
   function setLines(m) { if (!["selected", "showcase", "all", "none"].includes(m)) return; linesMode = m; q("#v3-lines").value = m; refreshLines(); }
 
-  const onSel = ev => select(ev.detail?.id), onCat = () => refreshLines();
+  const onSel = ev => { select(ev.detail?.id); syncPivot(); }, onCat = () => refreshLines();
   addEventListener("tng:select", onSel); addEventListener("tng:catalog", onCat);
   /* tf3d API: setTf("ramp" | "thor" | "iso" | "clouds" | state) for the current field; tfState() a copy; tfOn() */
   function setTf(x) { if (typeof x === "string") return tfApplyPreset(x); if (!x || !tfOk(species)) return false;
     onTfEdit({...tfState(species), ...x, preset: x.preset || "custom"}, {commit: true, reason: "api"}); syncTfCard(); return true; }
   Object.assign(viewer, {setTf, tfState: () => (species && tfs[species] ? JSON.parse(JSON.stringify(tfs[species])) : null), tfOn: () => tfOn(), tfEditor: tfEd});
+  /* ux4 pivot API: viewer.pivot -> [x, y, z] kpc; setPivot([x, y, z] | "galaxy" | "ray") -> bool; pickPivot(x, y) -> Vector3 | null
+     (CSS px in the canvas, no move) */
+  Object.defineProperty(viewer, "pivot", {get: () => pivotArr().map(r1), enumerable: true});
+  Object.assign(viewer, {setPivot: p => (p === "galaxy" ? recentre() : p === "ray" ? pivotToRay() : Array.isArray(p) && p.length === 3 && p.every(Number.isFinite) ? pivotTo(p, "api") : false),
+    recentre, pickPivot: (x, y) => pickPivot(x, y)});
   Object.assign(viewer, {drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setWeight, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
     setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes, texKeys: () => [...TEX.keys()],
     dispose() { loadTok++; anim++; progMsg = null; ENGINE = null; io?.disconnect(); if (spinRaf) cancelAnimationFrame(spinRaf); spinRaf = 0;
@@ -1380,7 +1514,7 @@ async function create(app, opts = {}) {
     controls.enabled = where === "full";
     if (where === "full") { canvas.tabIndex = 0; canvas.removeAttribute("aria-hidden"); if (savedPose && was === "thumb") setPoseTo(savedPose); savedPose = null; }
     else { canvas.removeAttribute("tabindex"); canvas.setAttribute("aria-hidden", "true"); }
-    resize(); lodStatus(); thumbLabel();
+    resize(); lodStatus(); thumbLabel(); syncPivot(true);
     if (manifest && (species || wanted)) ensure().catch(x => { if (x instanceof HostError) hostMessage(x); });
     if (where === "full" && species) setTimeout(calibrate, 0);
     spinKick(); render(); viewer.hooks.docked?.(where);
