@@ -40,6 +40,8 @@ import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, 
   VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity} from "./vizdata.js";
 import {makeMaterial} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
+import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, TF_W, TF_H} from "./tf.js";
+import {createTfEditor, histCodes, histWindow} from "./tfeditor.js";
 
 export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList};
 /* fix-ui V8: no literal underscores; COL_HTML is the colour-bar title with real subscripts (plain text elsewhere) */
@@ -86,8 +88,10 @@ const SEL_PX = 1.25, SEL_ALPHA = 0.6, SEL_GAL = {r0: 25, r1: 90, front: 0.15, ba
 /* tune3: the ions use L2 only from 4 px per voxel (was 1.5): their L1 cubes are smoothed more strongly than L2, and at
    intermediate zoom the ±25 kpc box otherwise shows as a square of finer, speckled texture inside the smoother L1 field */
 /* tune4: with the lighter ion prefilter the levels carry the same texture, so the ions go back to L2 from 2 px per voxel */
-const LOD_C = {gas: 1.0, stars: 1.5, field: {OVI: 2.0, HI: 2.0, CIII: 2.0}};
-const lodField = k => (k && (LOD_C.field[k] ?? (isIon(k) ? 2.0 : null))) || LOD_C.gas;   // Phase 3: every ion like H I
+/* tf3d: no gas field is prefiltered any more (SMOOTH), so the ions switch levels at the same footprint as n_H; at 2 px
+   per voxel H I was drawn from the next coarser level than n_H at the same zoom, which made it look blobbier */
+const LOD_C = {gas: 1.0, stars: 1.5, field: {}};
+const lodField = k => (k && LOD_C.field[k]) || LOD_C.gas;
 /* tune2 near fade (raymarch.js uNear), as fractions of the camera–target distance */
 const NEAR = [0.35, 0.6];
 /* tune2: a narrower field of view (was 40°) puts the default camera outside the r = 400 kpc data sphere at the same
@@ -112,8 +116,12 @@ const STAR_CLOSE = {occ: [0.06, 0.4], gasW: 0.55};
    ions 1 pass per level (O VI 2/4/2: its cell-to-cell ion-fraction scatter reads as pebbles otherwise), no pass on n_H / T / Z (the half-voxel steps and the 8-frame accumulation already
    remove the L2 creases), stars 2/2/1 (S2: σ 0.7 voxel removes the single-particle grain and keeps the thin disk; S0/S1 carry only the diffuse
    envelope and halo along the line of sight, where 2 passes remove the blocky mottling of their 0.8–3 kpc voxels) */
-const SMOOTH = {OVI: [2, 4, 2], HI: [1, 1, 1], CIII: [1, 1, 1], nH: [0, 0, 0], T: [0, 0, 0], Z: [0, 0, 0], stars: [2, 2, 1]};   // passes per level 0, 1, 2 (stars: S0-S2, RGB)
-const smoothPasses = k => SMOOTH[k] || (isIon(k) ? [1, 1, 1] : null);   // Phase 3: the new ions get one pass per level
+/* tf (H I check): every gas field is drawn raw, at the deposited resolution, like n_H. The ion passes widened each sub-voxel
+   cloud from the 2 Δ deposit kernel (σ 0.55 voxel) to σ 0.89 voxel, merged the H I islands of the L0 face-on map from 143
+   to 81 and moved the columns by a median 0.16 dex; the 2 Δ deposit floor already keeps the footprints round, so raw shows
+   no tiles. Only the star cubes keep their passes (single-particle grain) */
+const SMOOTH = {stars: [2, 2, 1]};   // passes per level 0, 1, 2 (stars: S0-S2, RGB); gas fields: none
+const smoothPasses = k => SMOOTH[k] || null;
 let smoothW = null, smoothN = 0; const smoothP = new Map();
 function smoothAsync(q, n, vmin, vmax, passes, ch = 1) {
   try { if (!smoothW) { smoothW = new Worker(new URL("./smooth_worker.js", import.meta.url), {type: "module"});
@@ -233,6 +241,17 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c details{margin-top:2px}.v3c summary{cursor:pointer;font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);padding:3px 0}
 .v3c-lod{font:10.5px/1.45 var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:pre-line;overflow-wrap:anywhere;padding:0 4px}
 .v3c-lod:empty{display:none}
+.v3tf[hidden]{display:none}.v3tf-plot{margin:2px 0 8px;min-width:0}
+.v3tf-plot canvas{display:block;width:100%;height:104px;border-radius:8px;background:var(--cg-well);box-shadow:inset 0 0 0 1px var(--cg-edge);cursor:crosshair;touch-action:none}
+.v3tf-plot canvas:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:1px}
+.v3tf-ax{display:flex;justify-content:space-between;gap:6px;margin-top:2px;font:10.5px var(--mono,ui-monospace,monospace);color:var(--faint,#7a83a0)}
+.v3tf-ax .u{color:var(--muted,#98a0b8);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.v3tf-bands{display:grid;grid-template-columns:30px repeat(3,minmax(0,1fr));gap:5px;margin:6px 0 4px}
+.v3tf-bands input[type=color]{width:30px;height:30px;padding:2px;border:1px solid var(--cg-edge);border-radius:8px;background:var(--cg-well);cursor:pointer}
+.v3tf-bands input[type=color]:disabled,.v3tf .v3c-btn:disabled,.v3tf input[type=range]:disabled,.v3c-row input[type=range]:disabled,.v3c-row select:disabled{opacity:.42;cursor:not-allowed}
+.v3tf .v3c-row>label .gam{font:italic 13px/1 Georgia,"Times New Roman",serif}
+.v3tf #v3-tf-g-o{white-space:nowrap;font-size:10px}
+.v3tf-g{display:grid;grid-template-columns:1fr 1fr;gap:6px;min-width:0}.v3tf-g input{width:100%;min-width:0;margin:0}
 .v3c #picker-root .pk{margin:0}
 .v3c #picker-root button{height:28px;border:1px solid var(--bline,var(--cg-edge));background:var(--cg-sheen),var(--cg-thin);box-shadow:var(--cg-hi),var(--mat-shadow-s,0 1px 2px rgba(0,0,0,.12));border-radius:8px;padding:0 9px;cursor:pointer;color:var(--ink,#eef0f7);font:inherit;font-size:12px}
 .v3c #picker-root button:hover:not(:disabled){background:var(--cg-sheen-h),var(--cg-thin)}
@@ -381,6 +400,9 @@ async function create(app, opts = {}) {
   ctlBox.addEventListener("input", ev => { if (ev.target.type === "range") fillRanges(); });
   const markSpecies = k => { for (const i of ctlBox.querySelectorAll('input[name="v3-species"]')) i.checked = i.value === k; };
   const markMode = m => { for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.checked = i.value === m; };
+  /* tf3d: the Transfer function card (tfeditor.js) follows the Mode card; shown in volume mode for the scalar fields */
+  const tfEd = createTfEditor({onChange: (st, info) => onTfEdit(st, info)});
+  ctlBox.querySelector('[data-group="mode"]').after(tfEd.el);
   let docked = null, spinRaf = 0, fullHost = null, thumbHost = null;   // Phase 3 docking state (see "docking" below)
   /* stage message; `transient` ones (a hint about the current selection or preset) are cleared by the next selection or preset */
   /* fix-ui FE-11: the stage message is not a live region (download progress rewrites it 5× a second); state changes are
@@ -525,6 +547,9 @@ async function create(app, opts = {}) {
   const layer = {stars: !mobile && !!manifest?.stars, gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
     balance: manifest?.stars?.display?.balance ?? [1, 1, 1]};
   const tf = {integral: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
+  /* tf3d: transfer-function (TF) volume mode, THOR (Byrohl & Nelson 2025) sec. 3.5.3: per field a tf.js state; a field
+     with no state, or one equal to the "ramp" preset, draws the fixed ramp exactly as before (uTFOn = 0) */
+  const tfs = {};
   const stats = {};
   const fld = k => manifest?.gas?.fields?.[k], lab = k => specOf(k)?.spoken || specOf(k)?.label || k;   // vel3d: velocity views by their spoken names
   const weighted = k => fld(k)?.kind === "mass_weighted" || fld(k)?.proj?.kind === "weighted_mean";
@@ -540,7 +565,7 @@ async function create(app, opts = {}) {
      draw new-weight cubes under the old weight's window */
   let boundW = velW;
   /* the gas-field key whose cubes a view draws with: the view's own (nH, T, ..., ions) or, for a velocity view, its weight */
-  const wKey = k => (isVel(k) ? boundW : weighted(k) ? "nH" : null);
+  const wKey = k => (isVel(k) ? boundW : emisKey(k) || (weighted(k) ? "nH" : null));   // tf3d: the TF emissivity weight when set
   function velTf(k, m = mode) { const v = velView(k), V = VELI?.V || 1000, W = Math.min(VEL_W, V);
     return tf[m][k] ||= {W, lo: v.signed ? -W : 0, hi: W, opacity: m === "volume" ? VOL.opacity : 0.5, cmap: v.signed ? VEL_NAMES.signed[0] : VEL_NAMES.unsigned[0]}; }
   /* σ_los is a property of the whole ray (its moment 2), so it has no volume rendering: integral only */
@@ -552,6 +577,13 @@ async function create(app, opts = {}) {
     return tf[m][k] ||= {lo: w[0], hi: w[1], opacity: m === "volume" ? VOL.opacity : 0.5, cmap: CMAPS.includes(cm) ? cm : "tng_dusk"}; }
   function winRange(k, m = mode) { const f = fld(k); if (m === "volume") return [f.vmin, f.vmax];
     return [Math.floor(Math.min(f.proj.vmin, f.vmin + (weighted(k) ? 0 : 19)) - 2), Math.ceil(f.proj.vmax + 1.5)]; }
+  /* tf3d: the preset context of a field (its encoding range and current volume window), its state (default: the ramp
+     preset over that window), whether TF mode is on for it, and the emissivity weight field (a density with cubes) */
+  const tfCtx = k => { const f = fld(k), s = fieldTf(k, "volume"); return {field: k, vmin: f.vmin, vmax: f.vmax, volWin: [s.lo, s.hi]}; };
+  const tfState = k => (tfs[k] ||= tfPreset("ramp", tfCtx(k)));
+  const tfOk = k => !!k && !isVel(k) && !!fld(k) && fld(k).kind !== "velocity";
+  const tfOn = (k = species) => mode === "volume" && tfOk(k) && !!tfs[k] && encodeTF(tfs[k], tfCtx(k)) !== "Pramp";
+  const emisKey = (k = species) => { const e = tfOn(k) && tfs[k].emis; return e && WEIGHTS.includes(e) && tfs[k].gamma > 0 ? e : null; };
 
   /* ---- textures, LOD, GPU budget ---- */
   const loader = manifest ? makeLoader({manifest, base: viz.base, fallbackBase: viz.fallback_base, cache: viz.cache !== false}) : null;
@@ -577,7 +609,8 @@ async function create(app, opts = {}) {
       if (kind === "gas") { if (!k) continue;
         /* vel3d: a velocity view needs the packed velocity cube of the level ("vel||L") and its weight field */
         if (isVel(k)) { keys.push(keyOf("vel", "", L), keyOf("gas", velW, L)); continue; }
-        keys.push(keyOf("gas", k, L)); if (weighted(k) && mode === "integral") keys.push(keyOf("gas", "nH", L)); }
+        keys.push(keyOf("gas", k, L)); if (weighted(k) && mode === "integral") keys.push(keyOf("gas", "nH", L));
+        const ek = emisKey(k); if (ek && ek !== k) keys.push(keyOf("gas", ek, L)); }
       else if (manifest.stars?.cubes?.[L]) keys.push(keyOf("stars", "", L)); }
     let ks = keys.filter(x => { const [kind, kk, L] = x.split("|"); return kind === "stars" || (kind === "vel" ? VEL_COMP_KEYS.every(c => fld(c)?.cubes?.[L]) : fld(kk)?.cubes?.[L]); });
     /* Phase 3 thumbnail: only L0 / L1 of the field (and nH weights) are fetched for it; stars and finer levels are used only
@@ -586,7 +619,7 @@ async function create(app, opts = {}) {
     /* fix-ui FE-06: the needed set itself must fit the GPU budget (with the render targets): drop S0, then S2, then the L2
        field (with its weights), then S1, until it does; evict() can only free what is not needed */
     const over = () => ks.reduce((a, x) => a + keyBytes(x), 0) + rtBytes() > BUDGET, dropped = [];
-    const l2 = isVel(k) ? [keyOf("vel", "", "L2"), keyOf("gas", velW, "L2")] : [keyOf("gas", k, "L2"), keyOf("gas", "nH", "L2")];
+    const l2 = isVel(k) ? [keyOf("vel", "", "L2"), keyOf("gas", velW, "L2")] : [keyOf("gas", k, "L2"), keyOf("gas", "nH", "L2"), keyOf("gas", emisKey(k) || "nH", "L2")];
     for (const grp of [[keyOf("stars", "", "S0")], [keyOf("stars", "", "S2")], l2, [keyOf("stars", "", "S1")]]) {
       if (!over()) break;
       const hit = ks.filter(x => grp.includes(x)); if (hit.length) { ks = ks.filter(x => !grp.includes(x)); dropped.push(...hit.map(x => x.split("|")[2])); } }
@@ -601,6 +634,9 @@ async function create(app, opts = {}) {
   const dlBytes = key => { const [kind, kk, L] = key.split("|"), sum = c => c?.webp?.bytes?.reduce((a, b) => a + b, 0) ?? 0;
     return kind === "vel" ? VEL_COMP_KEYS.reduce((a, c) => a + sum(fld(c)?.cubes?.[L]), 0) : sum(kind === "stars" ? manifest.stars?.cubes?.[L] : fld(kk)?.cubes?.[L]); };
   function rtBytes() { const v = new T.Vector2(); renderer.getDrawingBufferSize(v); return v.x * v.y * ((accType === T.HalfFloatType ? 8 : 4) + (AA ? 4 : 1) * 8); }
+  function half2(a, n) { const m = n >> 1, o = new Uint8Array(m * m * m); let j = 0;
+    for (let z = 0; z < m; z++) for (let y = 0; y < m; y++) { const b = (2 * z * n + 2 * y) * n; for (let x = 0; x < m; x++) o[j++] = a[b + 2 * x]; }
+    return o; }
   function makeTex(r) {
     const n = r.n, tex = new T.Data3DTexture(r.data, n, n, n);
     tex.format = r.kind === "stars" || r.kind === "vel" ? T.RGBAFormat : T.RedFormat; tex.type = T.UnsignedByteType; tex.minFilter = tex.magFilter = T.LinearFilter;
@@ -619,6 +655,9 @@ async function create(app, opts = {}) {
       const tex = makeTex(r);
       renderer.initTexture?.(tex);                           // upload now, then drop the byte array
       const it = {tex, bytes: r.data.length, used: performance.now(), format: r.format, ms: r.ms, fetchMs: r.fetchMs, decodeMs: r.decodeMs, base: r.base};
+      /* tf3d: the TF editor's histograms come from the loaded cube (its bytes are dropped next): code counts of every level,
+         and a half-resolution copy of L0 / L1 for the value x gradient histogram of the 2D editor (2 MB each) */
+      if (kind === "gas") { try { it.codes = histCodes(r.data, 3); if (L !== "L2") it.sub = half2(r.data, r.n); } catch { /* histogram only */ } }
       if (!ctxLost) tex.image.data = null;                   // during a context loss keep it: three re-uploads it on restore
       TEX.set(key, it); stats.loads = (stats.loads || []).concat([{key, format: r.format, ms: Math.round(r.ms), decodeMs: Math.round(r.decodeMs || 0), webpError: r.webpError, smoothed: r.smoothed || 0}]);
       evict(); return it; })().finally(() => { if (PEND.get(key) === pend) PEND.delete(key); }); PEND.set(key, pend); }
@@ -681,7 +720,7 @@ async function create(app, opts = {}) {
     if (vel) U.uVelV.value = VELI.V;
     if (fld(wk || "nH")) U.uWRange.value.set(fld(wk || "nH").vmin, fld(wk || "nH").vmax);
     STAR_L.forEach((S, i) => { const c = manifest.stars?.cubes?.[S]; if (c) U["uStarRange" + i].value.set(c.vmin, c.vmax); });
-    lodStatus(); aria(); render();
+    applyTfMode(); syncTfCard(true); lodStatus(); aria(); render();
   }
   function stepFades(now) {
     let active = false;
@@ -745,7 +784,7 @@ async function create(app, opts = {}) {
   async function ensure() {
     if (!manifest) return false;
     const k = wanted || species, {keys} = needed(k), first = keys.find(x => x.startsWith(isVel(k) ? "vel||" : `gas|${k}|`));
-    const wk = isVel(k) ? velW : weighted(k) && mode === "integral" ? "nH" : null;
+    const wk = isVel(k) ? velW : weighted(k) && mode === "integral" ? "nH" : emisKey(k);
     const firstKeys = first ? [first, ...(wk ? [keyOf("gas", wk, first.split("|")[2])] : [])].filter(x => keys.includes(x)) : [];
     for (const [key, ws] of [...waiters]) if (!keys.includes(key)) { waiters.delete(key); for (const w of ws) w[1](Object.assign(new Error("superseded by a newer view"), {cancelled: true})); }
     plan = keys; planFirst = new Set(firstKeys); failed.clear(); lodStatus(); pump();
@@ -794,7 +833,7 @@ async function create(app, opts = {}) {
          the plan): wait again for the current plan rather than report a false failure */
       for (;;) { try { await ensure(); break; } catch (x) { if (!(x?.cancelled && tok === loadTok)) throw x; } }
       if (tok !== loadTok) return false;
-      species = k; if (vel) boundW = velW; bindAll(); if (!vel) freeVel(); syncTfInputs(); applyTf();
+      species = k; if (vel) boundW = velW; bindAll(); if (!vel) freeVel(); syncTfInputs(); applyTf(); tfUrl();
       const gl = renderer.getContext(), t1 = performance.now(); draw(true); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
       stats.firstFrameMs = performance.now() - t1; stats.firstBindMs = t1 - t0; stats.firstFrameAt ??= Math.round(performance.now());
       if (toInteg) { const m = `${lab(k)} shown${modeNote}.`; say(m, false, true); setTimeout(() => { if (msgEl.textContent === m) say(""); }, 5000); } else say(""); announce(`${lab(k)} shown${modeNote}`); hostErr = null; lodStatus(); thumbLabel(); spinKick();
@@ -816,7 +855,7 @@ async function create(app, opts = {}) {
   function setMode(m) { if (!["integral", "volume"].includes(m)) return false; if (m === mode) return true;
     if (!modeOk(wanted || species, m)) { markMode(mode); say("The line-of-sight dispersion is a property of the whole ray, so it has no volume view.", false, true); return false; }
     mode = m; markMode(m); speciesUnits();
-    if (species) { syncTfInputs(); applyTf(); ensure().catch(() => {}); bindAll(); } else { aria(); render(); } return true; }
+    if (species) { syncTfInputs(); applyTf(); ensure().catch(() => {}); bindAll(); } else { aria(); render(); } tfUrl(); return true; }
   function setStars(o = {}) {
     if (o.on !== undefined) layer.stars = !!o.on && !!manifest?.stars;
     if (Number.isFinite(+o.mix) && o.mix !== null && o.mix !== undefined) layer.starMix = Math.min(1, Math.max(0, +o.mix));
@@ -856,12 +895,12 @@ async function create(app, opts = {}) {
     ws.value = velW; }
   function syncTfInputs() { if (!manifest || !species) return; syncVelUi();
     if (isVel(species)) { const s = fieldTf(species); q("#v3-cmap").value = s.cmap; q("#v3-op").value = s.opacity; q("#v3-op-o").textContent = (+s.opacity).toFixed(2);
-      q("#v3-op").disabled = mode !== "volume"; fillRanges(); return; }
+      q("#v3-op").disabled = mode !== "volume"; fillRanges(); syncTfCard(); return; }
     const s = fieldTf(species), [a, b] = winRange(species);
     for (const id of ["#v3-lo", "#v3-hi"]) { const i = q(id); i.min = a; i.max = b; }
     q("#v3-lo").value = s.lo; q("#v3-hi").value = s.hi; q("#v3-op").value = s.opacity; q("#v3-cmap").value = s.cmap;
     q("#v3-lo-o").textContent = (+s.lo).toFixed(1); q("#v3-hi-o").textContent = (+s.hi).toFixed(1); q("#v3-op-o").textContent = (+s.opacity).toFixed(2);
-    q("#v3-op").disabled = mode !== "volume"; fillRanges(); }
+    q("#v3-op").disabled = mode !== "volume"; fillRanges(); syncTfCard(); }
   let lastCmap = null;
   function applyTf() { if (!manifest || !species) return; const s = fieldTf(species);
     U.uWin.value.set(s.lo, s.hi); U.uOpacity.value = +s.opacity; U.uMode.value = mode === "volume" ? 1 : 0; U.uKind.value = weighted(species) ? 1 : 0;
@@ -872,7 +911,90 @@ async function create(app, opts = {}) {
     if (v) { const f = fld(boundW); U.uKind.value = 0; U.uFadeDex.value = fadeDex(boundW); U.uVolGain.value = 1;   // gain 1: the velocity LUT is already light; 1.8 clipped its hues toward white
       if (mode === "volume") U.uWWin.value.set(...f.vol_window); else { const lo = WIN_DEFAULT[boundW]?.lo ?? f.proj.vmin; U.uWWin.value.set(lo, Math.max(lo + 1, WIN_DEFAULT[boundW]?.hi ?? f.proj.vmax)); } }
     if (s.cmap !== lastCmap) { RM.lutTex.image.data.set(lut(s.cmap)); RM.lutTex.needsUpdate = true; lastCmap = s.cmap; }
-    legend(); aria(); render(); }
+    applyTfMode(); legend(); aria(); render(); }
+  /* ---- tf3d: transfer-function volume mode ----
+     uTF = tf.js buildTF(state, colour map, state.win) (256 values x 64 gradient rows); the other uniforms from tfUniforms.
+     Emission (raymarch.js): colour c and opacity from uTF at the colour field's log value (and gradient magnitude in 2D),
+     times (w / w_ref)^gamma with w the emissivity field (bound as uW*) and log10 w_ref = a tenth of the way up its volume window
+     (tf.js defaultWRef); uTFW stays 0 until a level of that field is bound, so the view never draws unweighted bands */
+  const tfTex = RM.tfTex || (() => { const t = new T.DataTexture(new Uint8Array(TF_W * TF_H * 4), TF_W, TF_H, T.RGBAFormat, T.UnsignedByteType);
+    t.minFilter = t.magFilter = T.LinearFilter; t.wrapS = t.wrapT = T.ClampToEdgeWrapping; t.needsUpdate = true; if (U.uTF) U.uTF.value = t; return t; })();
+  let tfBaked = "", tfRow = null;
+  function applyTfMode() { const on = !!manifest && tfOn();
+    if (U.uTFOn) U.uTFOn.value = on ? 1 : 0; if (!on) return;
+    const st = tfs[species], f = fld(species), cm = fieldTf(species, "volume").cmap, key = encodeTF(st) + "|" + cm;
+    if (key !== tfBaked) { const b = buildTF(st, lut(cm), st.win); tfTex.image.data.set(b); tfTex.needsUpdate = true; tfBaked = key;
+      /* the legend row: row 0, or in 2D per value the gradient row of highest opacity (row 0 of a gradient-limited band is empty) */
+      tfRow = b.slice(0, TF_W * 4); if (st.twoD) for (let i = 0; i < TF_W; i++) for (let j = 1; j < TF_H; j++) { const o = 4 * (j * TF_W + i); if (b[o + 3] > tfRow[4 * i + 3]) tfRow.set(b.subarray(o, o + 4), 4 * i); } }
+    const ek = emisKey(), u = tfUniforms(st, {vmin: f.vmin, vmax: f.vmax, wRef: ek ? defaultWRef(fld(ek)) : 0});
+    if (!ek || !GAS_L.some(L => isBound(keyOf("gas", ek, L)))) { u.uTFW = 0; u.uGamma = 0; }
+    for (const [k, v] of Object.entries(u)) if (U[k]) { if (Array.isArray(v)) U[k].value.set(...v); else U[k].value = v; } }
+  /* the card: shown in volume mode for a scalar field; histogram of the finest of L1 / L0 loaded (L1 = the inner
+     +-100 kpc), recomputed only when the field, window or gradient scale changes (soft = from bindAll: skip if unchanged) */
+  let tfCardKey = "", tfH2 = {key: "", h: null};
+  const tfLevel = k => TEX.get(keyOf("gas", k, "L1"))?.codes ? TEX.get(keyOf("gas", k, "L1")) : TEX.get(keyOf("gas", k, "L0"));
+  function tfHist2(k, st) { const it = tfLevel(k), n = it?.sub ? Math.round(Math.cbrt(it.sub.length)) : 0; if (!n) return null;
+    const l0 = it === TEX.get(keyOf("gas", k, "L0")) && !TEX.get(keyOf("gas", k, "L1"))?.codes;
+    const f = fld(k), gm = st.gmax || GMAX_DEFAULT, key = `${k}|${n}|${l0}|${st.win}|${gm}`;
+    /* the shader's gradient is in dex per L1 voxel (raymarch.js gradAt). The copy has half the resolution: its central
+       differences span two voxels, so gmax doubles on L1; an L0 voxel is 4 L1 voxels wide, so on L0 it is 8 gmax */
+    if (tfH2.key !== key) tfH2 = {key, h: histogram2D(it.sub, n, f.vmin, f.vmax, st.win, (l0 ? 8 : 2) * gm, 128, 32, 1)};
+    return tfH2.h; }
+  /* fix UX3: while the TF is on and has no ramp (Iso, THOR, custom bands) the Field card's low / high edit the TF window
+     (st.win: the editor's x axis and uTFWin, a zoom); the colours select is off when every band has its own colour */
+  const tfWinMode = () => !!species && tfOn() && !tfs[species].ramp;
+  function tfWinUi() { if (!manifest || !species) return;
+    if (isVel(species)) { q("#v3-cmap").disabled = false; q("#v3-cmap").title = ""; return; }
+    const tw = tfWinMode(), ts = tfs[species], s = fieldTf(species), lo = tw ? ts.win[0] : s.lo, hi = tw ? ts.win[1] : s.hi;
+    q("#v3-lo").value = lo; q("#v3-hi").value = hi; q("#v3-lo-o").textContent = (+lo).toFixed(1); q("#v3-hi-o").textContent = (+hi).toFixed(1);
+    q('label[for="v3-lo"]').title = tw ? "transfer-function window low (log10)" : "window low (log10)";
+    q('label[for="v3-hi"]').title = tw ? "transfer-function window high (log10)" : "window high (log10)";
+    const fixed = tfOn() && !ts.ramp && ts.bands.length > 0 && ts.bands.every(b => b.rgb), c = q("#v3-cmap");
+    c.disabled = !manifest || fixed; c.title = fixed ? "set by the transfer function (its bands have their own colours)" : "";
+    fillRanges(); }
+  function setTfWin(lo, hi) { const ts = tfs[species], f = fld(species); let [a, b] = ts.win;
+    if (lo !== null) a = Math.max(f.vmin, Math.min(lo, b - 0.1)); if (hi !== null) b = Math.min(f.vmax, Math.max(hi, a + 0.1));
+    ts.win = [+a.toFixed(3), +b.toFixed(3)]; ts.preset = "custom"; tfCardKey = "";
+    syncTfCard(); applyTfMode(); legend(); aria(); render(); tfUrl(); }
+  function syncTfCard(soft = false) { tfWinUi();
+    const show = !!manifest && !!species && mode === "volume" && tfOk(species);
+    tfEd.el.hidden = !show; if (!show) { tfCardKey = ""; return; }
+    const st = tfState(species), f = fld(species), cm = fieldTf(species, "volume").cmap, it = tfLevel(species);
+    const key = `${species}|${encodeTF(st)}|${cm}|${it ? (it.sub ? "s" : "c") + it.bytes : ""}|${WEIGHTS.join()}`;
+    if (soft && key === tfCardKey) return; tfCardKey = key;
+    tfEd.set(st, {lut: lut(cm), field: lab(species), hist: it?.codes ? histWindow(it.codes, f.vmin, f.vmax, st.win[0], st.win[1], 128) : null,
+      hist2: st.twoD ? tfHist2(species, st) : null, emis: WEIGHTS.map(k => ({value: k, label: k === "nH" ? "nH" : lab(k)}))}); }
+  function onTfEdit(st, info) { if (!tfOk(species)) return;
+    if (info.reason === "preset" || info.reason === "reset") { tfApplyPreset(info.reason === "reset" ? "ramp" : info.preset); return; }
+    const was = emisKey(); tfs[species] = st; tfCardKey = "";
+    /* the ramp's ends are the Field card's low / high (setTransfer moves the ramp from them): keep the two in step */
+    if (st.ramp) { const s = fieldTf(species, "volume"), f = fld(species); s.lo = Math.max(f.vmin, Math.min(st.ramp.lo, f.vmax)); s.hi = Math.max(s.lo, Math.min(st.ramp.hi, f.vmax)); U.uWin.value.set(s.lo, s.hi); }
+    tfWinUi();
+    if (st.twoD) { const h2 = tfHist2(species, st); if (h2) tfEd.set(st, {hist2: h2}); }
+    applyTfMode(); legend(); aria(); render();
+    if (emisKey() !== was) { ensure().catch(() => {}); bindAll(); }
+    if (info.commit) { tfUrl(); announce(tfWords()); } }
+  const tfWords = () => { const st = tfs[species]; if (!tfOn()) return "transfer function: default ramp";
+    return `transfer function: ${st.preset && st.preset !== "custom" ? st.preset : "custom"}, ${st.bands.length} band${st.bands.length === 1 ? "" : "s"}${st.twoD ? ", 2D" : ""}${st.shade ? `, shading ${st.shade.toFixed(2)}` : ""}${emisKey() ? `, emission weighted by ${wName(emisKey())} to the power ${st.gamma}` : ""}`; };
+  /* a preset for the current field; THOR's "Gas phases" is a T preset with n_H emissivity: it switches the field to T */
+  function tfApplyPreset(name) {
+    if (name === "thor" && species !== THOR.field) { if (!tfOk(THOR.field)) return false;
+      tfs[THOR.field] = tfPreset("thor", tfCtx(THOR.field));
+      setSpecies(THOR.field).then(ok => { if (ok) { syncTfCard(); tfUrl(); announce(tfWords()); } }); return true; }
+    if (!tfOk(species)) return false;
+    const was = emisKey(); tfs[species] = tfPreset(name, tfCtx(species)); tfCardKey = "";
+    syncTfCard(); applyTfMode(); legend(); aria(); render(); if (emisKey() !== was) { ensure().catch(() => {}); bindAll(); }
+    tfUrl(); announce(tfWords()); return true; }
+  /* URL: ?tf=<field>~<tf.js encodeTF> while volume mode is on (the search part: the page's own hash writes keep it) */
+  function tfUrl() { try {
+    const on = !!species && mode === "volume" && (tfOk(species) || isVel(species)), val = on ? species + "~" + (tfOk(species) ? encodeTF(tfState(species), tfCtx(species)) : "") : "";
+    const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !x.startsWith("tf="));
+    if (val) parts.push("tf=" + val.replace(/~$/, ""));
+    const search = parts.length ? "?" + parts.join("&") : "";
+    if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash); } catch { /* sandboxed */ } }
+  const tfBoot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("tf="));
+    if (!raw) return null; const v = decodeURIComponent(raw.slice(3)), i = v.indexOf("~");
+    return {k: i > 0 ? v.slice(0, i) : v, enc: i > 0 ? v.slice(i + 1) : ""}; } catch { return null; } })();
   function setTransfer(o = {}) { if (!species) return;
     if (isVel(species)) {   // vel3d: {W} (km/s, the symmetric window ±W, or 0..W), opacity, cmap from the view's list
       const v = velView(species), s = fieldTf(species), names = v.signed ? VEL_NAMES.signed : VEL_NAMES.unsigned;
@@ -884,6 +1006,8 @@ async function create(app, opts = {}) {
     for (const k of ["lo", "hi", "opacity"]) if (o[k] !== undefined && o[k] !== null && Number.isFinite(+o[k])) s[k] = +o[k];
     s.lo = Math.min(Math.max(s.lo, a), b); s.hi = Math.min(Math.max(s.hi, a), b); s.opacity = Math.min(Math.max(s.opacity, 0), 1);
     if (o.cmap && CMAPS.includes(o.cmap)) s.cmap = o.cmap; if (s.lo > s.hi) [s.lo, s.hi] = [s.hi, s.lo];
+    /* tf3d: in volume mode the low / high window also moves the TF ramp (Default ramp, Clouds), so they keep working */
+    const ts = mode === "volume" && tfs[species]; if (ts?.ramp) { const was = tfOn(); ts.ramp.lo = s.lo; ts.ramp.hi = s.hi; if (!was && ts.preset !== "ramp") ts.preset = "custom"; }
     syncTfInputs(); applyTf(); }
   /* vel3d: the weight field in words (legend, aria, Weight options) */
   const wName = (k, html) => (k === "nH" ? (html ? "n<sub>H</sub>" : "nH") : lab(k));
@@ -921,9 +1045,16 @@ async function create(app, opts = {}) {
     const esc = t => String(t).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"})[c]);
     L.querySelector(".ttl").innerHTML = integ ? `log₁₀ ${COL_HTML[species] || esc(COL_TXT[species] || `N(${lab(species)})`)} [${esc(pretty(units))}]` : `log₁₀ ${VOL_HTML[species] || esc(isIon(species) ? `n(${lab(species)})` : lab(species))} [${esc(pretty(units))}], volume`;
     L.querySelector(".bar").style.background = cssGradient(s.cmap);
-    const tk = L.querySelector(".ticks"); tk.textContent = ""; const span = s.hi - s.lo || 1, st = span > 6 ? 2 : span > 2.5 ? 1 : span > 1.2 ? 0.5 : span > 0.5 ? 0.2 : 0.1;
-    for (let v = Math.ceil(s.lo / st) * st; v <= s.hi + 1e-9; v += st) { const sp = document.createElement("span");
-      sp.style.left = Math.min(96, Math.max(4, 100 * (v - s.lo) / span)) + "%"; sp.textContent = (v < -1e-9 ? "−" : "") + Math.abs(+v.toFixed(1)); tk.appendChild(sp); }
+    /* tf3d: in TF mode the bar is the transfer function itself (colour at its opacity over the stage) over the TF window */
+    let lo = s.lo, hi = s.hi;
+    if (tfOn() && tfRow) { const w = tfs[species].win; lo = w[0]; hi = w[1]; const e = emisKey();
+      L.querySelector(".ttl").innerHTML += `, transfer function${e ? `, emission ∝ ${wName(e, true)}${+tfs[species].gamma.toFixed(1) === 1 ? "" : `<sup>${+tfs[species].gamma.toFixed(1)}</sup>`}` : ""}`;
+      const stops = []; for (let i = 0; i <= 32; i++) { const o = 4 * Math.round(i / 32 * (TF_W - 1)), a = tfRow[o + 3] / 255, mix = (c, b) => Math.round(b + (c - b) * Math.min(1, 1.6 * a));
+        stops.push(`rgb(${mix(tfRow[o], 5)},${mix(tfRow[o + 1], 7)},${mix(tfRow[o + 2], 11)}) ${(100 * i / 32).toFixed(1)}%`); }
+      L.querySelector(".bar").style.background = `linear-gradient(90deg,${stops.join(",")})`; }
+    const tk = L.querySelector(".ticks"); tk.textContent = ""; const span = hi - lo || 1, st = span > 6 ? 2 : span > 2.5 ? 1 : span > 1.2 ? 0.5 : span > 0.5 ? 0.2 : 0.1;
+    for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) { const sp = document.createElement("span");
+      sp.style.left = Math.min(96, Math.max(4, 100 * (v - lo) / span)) + "%"; sp.textContent = (v < -1e-9 ? "−" : "") + Math.abs(+v.toFixed(1)); tk.appendChild(sp); }
     legendTail(L); }
   function legendTail(L) {
     const stl = L.querySelector(".st"); stl.hidden = !layer.stars; L.querySelector(".off").hidden = layer.stars || !manifest.stars; lastMuTxt = ""; starLegend();
@@ -934,7 +1065,7 @@ async function create(app, opts = {}) {
     const fin = GAS_L.filter(L => lv.gas[L] === "bound").pop(), sfin = STAR_L.filter(S => lv.stars[S] === "bound").pop();
     const v = manifest && species ? velView(species) : null;
     const what = v ? `: ${v.long}, ${wName(boundW)}-weighted, window ${Math.round(s.lo)} to ${Math.round(s.hi)} km/s${v.words ? ` (${v.words[0]} to ${v.words[1]})` : ""}`
-      : f ? `: ${lab(species)}, window ${s.lo.toFixed(1)} to ${s.hi.toFixed(1)} log ${pretty(mode === "integral" && !weighted(species) ? "cm^-2" : f.units)}` : "";
+      : f ? `: ${lab(species)}, window ${s.lo.toFixed(1)} to ${s.hi.toFixed(1)} log ${pretty(mode === "integral" && !weighted(species) ? "cm^-2" : f.units)}${tfOn() ? `; ${tfWords()}` : ""}` : "";
     const al = `3D view, ${mode} mode${what}` +
       `; stars ${layer.stars ? "on" : "off"}; finest level ${fin || "none"}${layer.stars ? `, stars ${sfin || "none"}` : ""}` +
       `; ${LINE_IDS.length} sightlines drawn${nNoEnds ? ` (${nNoEnds} more have no stored endpoints)` : ""}${selId ? `; selected ${selId}${hasEnds(app.entry(selId)) ? "" : " (not drawn: no stored endpoints)"}` : ""}.` +
@@ -1176,8 +1307,8 @@ async function create(app, opts = {}) {
   if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0"]) q(id).disabled = true;
   q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) setSpecies(ev.target.value); });
   q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) setMode(ev.target.value); });
-  q("#v3-lo").addEventListener("input", ev => setTransfer({lo: Math.min(+ev.target.value, fieldTf(species).hi - 0.1)}));
-  q("#v3-hi").addEventListener("input", ev => setTransfer({hi: Math.max(+ev.target.value, fieldTf(species).lo + 0.1)}));
+  q("#v3-lo").addEventListener("input", ev => tfWinMode() ? setTfWin(+ev.target.value, null) : setTransfer({lo: Math.min(+ev.target.value, fieldTf(species).hi - 0.1)}));
+  q("#v3-hi").addEventListener("input", ev => tfWinMode() ? setTfWin(null, +ev.target.value) : setTransfer({hi: Math.max(+ev.target.value, fieldTf(species).lo + 0.1)}));
   q("#v3-op").addEventListener("input", ev => setTransfer({opacity: +ev.target.value}));
   q("#v3-cmap").addEventListener("change", ev => setTransfer({cmap: ev.target.value}));
   q("#v3-vw").addEventListener("input", ev => setTransfer({W: +ev.target.value}));
@@ -1194,6 +1325,10 @@ async function create(app, opts = {}) {
 
   const onSel = ev => select(ev.detail?.id), onCat = () => refreshLines();
   addEventListener("tng:select", onSel); addEventListener("tng:catalog", onCat);
+  /* tf3d API: setTf("ramp" | "thor" | "iso" | "clouds" | state) for the current field; tfState() a copy; tfOn() */
+  function setTf(x) { if (typeof x === "string") return tfApplyPreset(x); if (!x || !tfOk(species)) return false;
+    onTfEdit({...tfState(species), ...x, preset: x.preset || "custom"}, {commit: true, reason: "api"}); syncTfCard(); return true; }
+  Object.assign(viewer, {setTf, tfState: () => (species && tfs[species] ? JSON.parse(JSON.stringify(tfs[species])) : null), tfOn: () => tfOn(), tfEditor: tfEd});
   Object.assign(viewer, {drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setWeight, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
     setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes, texKeys: () => [...TEX.keys()],
     dispose() { loadTok++; anim++; progMsg = null; ENGINE = null; io?.disconnect(); if (spinRaf) cancelAnimationFrame(spinRaf); spinRaf = 0;
@@ -1293,6 +1428,9 @@ async function create(app, opts = {}) {
     return started ||= (async () => {
       if (!manifest && hostDown) { hostMessage(new HostError(manErr || "no answer", hostDown)); return false; }
       if (!manifest) { say(viz ? `3D data not available${manErr ? ` (${manErr})` : ""}. Sightlines, ray picking and the spectra still work.` : "3D data not published for this build. Sightlines, ray picking and the spectra still work."); return false; }
+      /* tf3d: ?tf=<field>~<state> restores volume mode with that field's transfer function */
+      if (tfBoot && canShow(tfBoot.k) && modeOk(tfBoot.k, "volume")) { k = tfBoot.k; mode = "volume"; markMode("volume"); speciesUnits();
+        if (tfOk(k) && tfBoot.enc) { const st = decodeTF(tfBoot.enc, tfCtx(k)); if (st) tfs[k] = {...st, preset: st.preset || "custom"}; } }
       return setSpecies(k && canShow(k) ? k : fld("nH") ? "nH" : Object.keys(manifest.gas.fields)[0]);
     })();
   }
