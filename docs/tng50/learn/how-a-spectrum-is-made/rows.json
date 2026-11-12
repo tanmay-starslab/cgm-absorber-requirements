@@ -1,0 +1,11 @@
+{
+  "schema": "story-render-rows/1",
+  "note": "One render job runs every row in order (scripts/story_render.sbatch). A row is rendered once at its source size; 'derive' rows are ffmpeg rescales of an earlier row, not new renders. Vertical (M3) needs portrait layouts first.",
+  "rows": [
+    { "name": "film_1080p", "cut": "film", "composition": "render.html", "width": 1920, "height": 1080, "quality": "high", "posters": true, "burn": true },
+    { "name": "film_720p", "cut": "film", "derive": "film_1080p", "width": 1280, "height": 720 },
+    { "name": "full_1080p", "cut": "full", "composition": "build/render_full.html", "width": 1920, "height": 1080, "quality": "high", "enabled": false },
+    { "name": "full_720p", "cut": "full", "derive": "full_1080p", "width": 1280, "height": 720, "enabled": false },
+    { "name": "film_vertical", "cut": "film", "composition": "build/render_vertical.html", "width": 1080, "height": 1920, "quality": "high", "burn": true, "enabled": false }
+  ]
+}

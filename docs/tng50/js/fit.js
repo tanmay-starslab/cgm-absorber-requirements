@@ -18,7 +18,8 @@ export const FIT_PARAMS = {maxIt: 40, maxItPrune: 20, maxTries: 8, lambda0: 1e-2
   budgetMs: 300, capMs: 1500, cacheSize: 256, chi2nuPoor: 2.0};
 export const FLAGS = {SAT: 1, BOUND: 2, POORFIT: 8, NOERR: 32, DAMPED: 64, BUDGET: 128};   // values as tngsight.vpfit.FLAGS
 
-const C_KMS = 299792.458, FWHM_TO_SIGMA = 1 / 2.35482, PIX_PER_RESEL = 5, SIGMA0 = 0.02654008;
+export const PIX_PER_RESEL = 5;   // data pixels per resolution element (FWHM = c/R); shared with the story page
+const C_KMS = 299792.458, FWHM_TO_SIGMA = 1 / 2.35482, SIGMA0 = 0.02654008;
 const SQPI = Math.sqrt(Math.PI), ISQPI = 1 / SQPI, LN10 = Math.LN10, BOUND_TOL = 1e-3;
 // tngsight.vpfit PARAMS sat_flux, sat_tau0 and damped_logN; tngsight.degrade LSF_FLOOR and LSF_HALF; library.MAX_WEB_N
 const SAT_FLUX = 0.05, SAT_TAU0 = 5, DAMPED_LOGN = 19, LSF_FLOOR = 0.3, LSF_HALF = 4, MAX_WEB_N = 20001;
@@ -76,6 +77,27 @@ function wofz4(x, y, out, asymU) {
 export function faddeeva(x, y) {
   const o = wofz4(x, y, new Float64Array(4), FIT_PARAMS.asymU);
   return [o[0], o[1]];
+}
+
+// Per-transition optical-depth coefficients: tau = kTau 10^logN H(a, x) / b with a = a0 / b (b in km/s, N in cm^-2).
+// atom = {lam0_A, f, gamma_s} as in the ion registry; fitPanel and tauVoigt both use this.
+export function atomCoeffs(atom) {
+  const lamCm = atom.lam0_A * 1e-8;
+  return {kTau: SIGMA0 * atom.f * lamCm / (SQPI * 1e5), a0: (atom.gamma_s || 0) * lamCm / (4 * Math.PI * 1e5)};
+}
+
+// Voigt optical depth of components on a velocity grid, the same model fitPanel fits (no LSF, no pixels).
+// comps: [{v, logN, b}] or [[v, logN, b]]; vGrid: velocities (km/s, any spacing, same frame as v). Adds into `out`
+// when given (a running sum stays cheap), else returns a new zeroed Float64Array. Pure: no state, no clock.
+export function tauVoigt(atom, comps, vGrid, out) {
+  const n = vGrid.length, tau = out || new Float64Array(n), {kTau, a0} = atomCoeffs(atom), w4 = new Float64Array(4), u = FIT_PARAMS.asymU;
+  for (const c of comps || []) {
+    const vc = Array.isArray(c) ? c[0] : c.v, lN = Array.isArray(c) ? c[1] : c.logN, b = Array.isArray(c) ? c[2] : c.b;
+    if (!(b > 0) || !Number.isFinite(lN) || !Number.isFinite(vc)) continue;
+    const A = kTau * 10 ** lN, a = a0 / b, ib = 1 / b;
+    for (let i = 0; i < n; i++) tau[i] += A * wofz4((vGrid[i] - vc) * ib, a, w4, u)[0] * ib;
+  }
+  return tau;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -409,7 +431,7 @@ export function fitPanel(req) {
   try {
     const prm = {...FIT_PARAMS, ...(req.params || {})}, atom = req.atom, line = req.line, data = req.data;
     const nOut = data.v.length, model = new Float32Array(nOut).fill(1);
-    const lamCm = atom.lam0_A * 1e-8, kTau = SIGMA0 * atom.f * lamCm / (SQPI * 1e5), a0 = atom.gamma_s * lamCm / (4 * Math.PI * 1e5);
+    const {kTau, a0} = atomCoeffs(atom);
     const lineF = {...line, flux: line.flux};
     const h = noLSF(req.R) ? 0 : lsfWidth(req.R, line.du, 0).h, fw = noLSF(req.R) ? 0 : C_KMS / req.R;
     const ctx = {line: lineF, vSys: req.vSys, R: req.R, h, kTau, a0, asymU: prm.asymU, data};

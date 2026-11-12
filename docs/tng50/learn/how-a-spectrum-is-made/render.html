@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en" data-story-root="/learn/how-a-spectrum-is-made/">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=1080" />
+<meta name="robots" content="noindex" />
+<title>How a spectrum is made (render)</title>
+<!--
+  HyperFrames composition for the film (PLAN_final section 5). Generated outputs only: never hand-edit the MP4.
+  data-duration is stamped from steps.json by `node scripts/story_vtt.mjs --stamp` (film cut here; other cuts
+  are written to build/render_<cut>.html). This page ignores the URL fragment and localStorage; the story
+  engine is created in mode "render" with captions off (soft VTT captions ride on the MP4 instead).
+  Galaxy and sightline come from the query (?g=&ray=) or HyperFrames variables (default 488530 / rand_b062_a062);
+  any galaxy of the 198 that has data/story_<g>_<ray>.json renders the same film.
+-->
+<script>
+  // HyperFrames serves the composition from the project root (docs/tng50), not from its own folder, so every
+  // relative URL (steps.json, css, js, data) is anchored here. Served from its real path (preview, http.server)
+  // the page keeps its own folder.
+  (function () {
+    var p = location.pathname, k = p.indexOf("/how-a-spectrum-is-made/");
+    var href = k >= 0 ? p.slice(0, k) + "/how-a-spectrum-is-made/" : (document.documentElement.getAttribute("data-story-root") || "/learn/how-a-spectrum-is-made/");
+    var b = document.createElement("base"); b.href = location.origin + href; document.head.prepend(b);
+    // the stylesheet is added here, after <base>: a static <link> gets its href rewritten by the render server
+    // (doubled learn/... path, 404 in M1's log)
+    var l = document.createElement("link"); l.rel = "stylesheet"; l.href = "css/story.css";
+    window.__storyCss = new Promise(function (ok, no) { l.onload = ok; l.onerror = function () { no(new Error(l.href + " did not load")); }; });
+    document.head.appendChild(l);
+  })();
+</script>
+<style>
+  /* the vendored faces, declared here too so the renderer's static font check sees them (story.css is added by script) */
+  @font-face{font-family:"Space Grotesk";font-style:normal;font-weight:300 700;font-display:swap;src:url(vendor/space-grotesk-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  @font-face{font-family:"Space Grotesk";font-style:normal;font-weight:300 700;font-display:swap;src:url(vendor/space-grotesk-latin-ext.woff2) format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+  @font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(vendor/jetbrains-mono-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+  @font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(vendor/jetbrains-mono-latin-ext.woff2) format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+  @font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(vendor/jetbrains-mono-greek.woff2) format("woff2");
+  unicode-range:U+0370-0377,U+037A-037F,U+0384-038A,U+038C,U+038E-03A1,U+03A3-03FF}
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #05070c; }
+  #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+  #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
+  /* caption layer hidden unless burn is on (rows.json: the 16:9 film burns its display lines; soft VTT rides along) */
+  #root [data-layer="caption"], #root .story-caption, #root .caption { display: none !important; }
+  #root.burn [data-layer="caption"], #root.burn .story-caption { display: block !important; }
+  /* nothing runs on the browser clock in a render: story.css transitions are switched off here */
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  #burn { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); width: 1400px; text-align: center;
+          font: 300 44px/1.25 "Space Grotesk", system-ui, sans-serif; color: #f4f1ea; text-shadow: 0 2px 12px rgba(0,0,0,.8); }
+  #fail { position: absolute; inset: 0; display: none; color: #ff6b6b; font: 32px/1.4 monospace; padding: 80px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="spectrum-story" data-start="0" data-duration="131"
+     data-width="1920" data-height="1080" data-fps="30" data-no-timeline data-cut="film"
+     data-composition-variables='[{"id":"g","type":"string","label":"Galaxy","default":"tng50-1-99-488530"},{"id":"ray","type":"string","label":"Sightline","default":"rand_b062_a062"},{"id":"burn","type":"boolean","label":"Burn captions","default":false}]'>
+  <div id="stage" class="clip story-stage" data-start="0" data-duration="131" data-track-index="0"
+       data-layout-allow-overflow aria-hidden="true"></div>
+  <div id="burn" class="story-caption" aria-hidden="true"></div>
+  <pre id="fail"></pre>
+</div>
+<script type="module">
+const root = document.getElementById("root");
+const stage = document.getElementById("stage");
+const FPS = Number(root.dataset.fps);
+const CUT = root.dataset.cut;
+const hf = window.__hyperframes;
+
+function vars() {
+  const d = Object.fromEntries(JSON.parse(root.dataset.compositionVariables || "[]").map((x) => [x.id, x.default]));
+  let v = {};
+  try { v = (hf && hf.getVariables && hf.getVariables()) || {}; } catch { v = {}; }
+  const q = new URLSearchParams(location.search);
+  return { g: q.get("g") || v.g || d.g, ray: q.get("ray") || v.ray || d.ray, burn: q.has("burn") || v.burn === true || d.burn === true };
+}
+
+function fail(msg) {
+  const el = document.getElementById("fail");
+  el.textContent = "render.html: " + msg; el.style.display = "block";
+  throw new Error(msg);
+}
+
+// Engine (U1, js/engine.js): createEngine(opts) -> {ready(), seek(t), duration}. seek is pure in t and never fits.
+const FONTS = ['300 32px "Space Grotesk"', '400 32px "Space Grotesk"', '500 32px "Space Grotesk"', '700 32px "Space Grotesk"',
+               '400 32px "JetBrains Mono"', '500 32px "JetBrains Mono"'];
+// The render server may inline or move stylesheets, which breaks url(../vendor/...) in story.css. Re-register every
+// @font-face of story.css through the FontFace API with URLs resolved against the stylesheet itself, and load them all.
+async function loadFaces() {
+  const cssUrl = new URL("css/story.css", document.baseURI);
+  const r = await fetch(cssUrl); if (!r.ok) fail(`${cssUrl}: HTTP ${r.status}`);
+  const css = await r.text(), faces = [];
+  for (const m of css.matchAll(/@font-face\s*\{([^}]*)\}/g)) {
+    const d = (k) => { const x = new RegExp(k + "\\s*:\\s*([^;]+)").exec(m[1]); return x ? x[1].trim() : undefined; };
+    const fam = (d("font-family") || "").replace(/["']/g, ""), src = /url\(([^)]+)\)/.exec(d("src") || "");
+    if (!fam || !src) continue;
+    const url = new URL(src[1].replace(/["']/g, ""), cssUrl).href;
+    const desc = { weight: d("font-weight") || "400", style: d("font-style") || "normal", display: "block" };
+    if (d("unicode-range")) desc.unicodeRange = d("unicode-range");
+    const ff = new FontFace(fam, `url(${url}) format("woff2")`, desc);
+    document.fonts.add(ff); faces.push(ff.load());
+  }
+  if (!faces.length) fail("css/story.css declares no @font-face");
+  await Promise.all(faces);
+}
+
+async function boot() {
+  const v = vars();
+  if (v.burn) root.classList.add("burn");
+  const get = async (u) => { const r = await fetch(u, { cache: "no-store" }); if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`); return r.json(); };
+  const [doc, schema] = await Promise.all([get("steps.json"), get("steps.schema.json").catch(() => null)]);
+  const mod = await import("./js/engine.js");
+  if (typeof mod.createEngine !== "function") fail("js/engine.js does not export createEngine()");
+  const eng = await mod.createEngine({ doc, schema, stage, width: 1920, height: 1080, dpr: 1, mode: "render", cut: CUT,
+    query: { g: v.g, ray: v.ray }, reduced: false, layout: "land", physics: false, fonts: FONTS });
+  // burned display lines sit in a band at the bottom: keep the plots' axis titles above it
+  if (v.burn && eng.setEnv) eng.setEnv({ safe: { b: 250 } });
+  await loadFaces();
+  await window.__storyCss.catch((e) => fail(e.message));
+  await eng.ready();
+  await Promise.all(FONTS.map((f) => document.fonts.load(f)));
+  await document.fonts.ready;
+  // fonts.check() is true for undeclared families too, so require a loaded FontFace of each vendored family
+  const loaded = new Set([...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replace(/["']/g, "")));
+  for (const f of ["Space Grotesk", "JetBrains Mono"]) if (!loaded.has(f)) fail(`font ${f} not loaded (css/story.css or vendor/ woff2 not reachable from ${document.baseURI})`);
+  const missing = eng.missingKeys ? eng.missingKeys() : [];
+  if (missing.length) fail("unresolved {{key}} in steps.json:\n" + missing.join("\n"));
+  const want = Number(root.dataset.duration);
+  if (Math.abs(eng.duration - want) > 0.5 / FPS) fail(`engine says the ${CUT} cut is ${eng.duration} s, render.html says ${want} s; run node scripts/story_vtt.mjs --stamp`);
+  await eng.seek(0);
+  window.__story = eng;
+  return eng;
+}
+
+const ready = boot();
+ready.catch((e) => { const el = document.getElementById("fail"); el.textContent = "render.html: " + (e && e.stack || e); el.style.display = "block"; });
+// burned captions (vertical cut, or an owner choice): the step's caption at time t, from the same resolver as the VTT
+const burnEl = document.getElementById("burn");
+function burn(eng, t) {
+  if (!root.classList.contains("burn")) return;
+  const L = eng.locate(t), s = L && eng.steps[L.item.index];
+  const txt = s ? eng.text(s.caption ?? s.text) : "";
+  if (burnEl.textContent !== txt) burnEl.textContent = txt;
+}
+hf.registerFrameSource({ element: stage, ready, render: async (t) => { const eng = await ready; await eng.seek(t); burn(eng, t); } });
+</script>
+</body>
+</html>

@@ -129,6 +129,7 @@ td.col-on{background:color-mix(in srgb,var(--accent) 10%,transparent)}
 .eq{font-family:var(--display);font-size:17px;background:var(--mat-thin) var(--mat-sheen);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-m);box-shadow:var(--mat-highlight);-webkit-backdrop-filter:var(--mat-blur-thin);backdrop-filter:var(--mat-blur-thin);padding:10px 14px;overflow-x:auto;white-space:nowrap}
 .foot{color:var(--muted);font-size:13px}
 .foot a{color:var(--accent)}
+section>p a{color:var(--accent);text-underline-offset:3px}
 /* fallbacks: no backdrop blur, or the user asks for less transparency -> near-opaque fills */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
   :root:not(#_){--mat-thin:color-mix(in srgb,var(--panel) 92%,transparent);--mat-regular:color-mix(in srgb,var(--panel) 96%,transparent);--mat-bar:color-mix(in srgb,var(--panel) 96%,transparent);--mat-thick:var(--panel)} }
@@ -164,7 +165,7 @@ td.col-on{background:color-mix(in srgb,var(--accent) 10%,transparent)}
 
 <section>
   <h2>1 · From gas to spectrum</h2>
-  <p>A cloud imprints an optical depth τ(v) on the background light. The spectrograph blurs the absorbed flux with its line-spread function (LSF) of width c/R, then samples it with noise. Play the sequence, or step through it.</p>
+  <p>A cloud imprints an optical depth τ(v) on the background light. The spectrograph blurs the absorbed flux with its line-spread function (LSF) of width c/R, then samples it with noise. Play the sequence, or step through it. The same chain on a simulated galaxy, from its gas cells to a fitted spectrum, is told step by step in <a href="tng50/learn/how-a-spectrum-is-made/">How a spectrum is made</a>, including <a href="tng50/learn/how-a-spectrum-is-made/#s=lsf-1">the blur</a> and <a href="tng50/learn/how-a-spectrum-is-made/#s=noise-1">the noise</a>.</p>
   <div class="fig">
     <div class="figbar"><div class="stages" id="stages">
       <button class="btn" data-s="0">① Optical depth</button><button class="btn" data-s="1">② Absorbed flux</button>
@@ -212,7 +213,7 @@ td.col-on{background:color-mix(in srgb,var(--accent) 10%,transparent)}
   <div class="tablebox"><table id="tbl"></table></div>
 </section>
 
-<p class="foot">Model: Doppler cores (damping wings neglected), Gaussian LSF, constant continuum noise, 3 pixels per resolution element for the noise illustration. Fiducial b combines the thermal width at a representative temperature with 5 km/s of turbulence. Significances are expected (median) values. Source and paper-quality figures: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>. Companion page: <a href="tng50/">mock quasar sightlines through a TNG50 galaxy</a> (O VI, H I Ly&beta;, C III), degraded live to any resolution and S/N.</p>
+<p class="foot">Model: Doppler cores (damping wings neglected), Gaussian LSF, constant continuum noise, 3 pixels per resolution element for the noise illustration. Fiducial b combines the thermal width at a representative temperature with 5 km/s of turbulence; the TNG50 pages instead use Voigt profiles with thermal b only. Significances are expected (median) values. Source and paper-quality figures: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>. Companion page: <a href="tng50/">mock quasar sightlines through a TNG50 galaxy</a> (O VI, H I Ly&beta;, C III), degraded live to any resolution and S/N.</p>
 </div>
 
 <script>

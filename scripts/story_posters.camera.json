@@ -1,0 +1,89 @@
+{
+  "schema": "story-posters-camera/1",
+  "note": "Cameras of the space-scene posters (PLAN_final S1, S2; unit U3). Galaxy-agnostic: every length is in kpc or in units of the galaxy's R200c, every direction is built from the story sightline (n = beam direction p0 -> p1, u = unit vector from the galaxy centre to the beam's closest point, w = u x n). Forward f = cos(tilt) n + sin(tilt) w; image right e1 = sin(tilt) n - cos(tilt) w; image up e2 = u; then image axes are rolled: e1' = e1 cos(roll) + e2 sin(roll), e2' = -e1 sin(roll) + e2 cos(roll). A beam point at s kpc from the closest point (s > 0 toward p1, the quasar end) lands at (x, y) = (s sin(tilt), b) before the roll and at (x cos(roll) + y sin(roll), -x sin(roll) + y cos(roll)) after it, so the scenes can place the beam without the poster. Orthographic. Origin = galaxy centre at the image centre. Square stills so one image serves landscape and portrait stages (the scenes fade the edges radially).",
+  "size": [
+    1800,
+    1800
+  ],
+  "shots": {
+    "light_core": {
+      "scene": "light",
+      "tilt_deg": 35,
+      "roll_deg": -14,
+      "half_w": {
+        "kpc": 40,
+        "min_kpc": 28,
+        "max_kpc": 70,
+        "R200c": 0.16
+      },
+      "layers": {
+        "stars": {
+          "mu0": 22.0,
+          "Q": 8,
+          "sat": 1.3,
+          "knee": 0.85
+        }
+      }
+    },
+    "light_wide": {
+      "scene": "light",
+      "tilt_deg": 35,
+      "roll_deg": -14,
+      "half_w": {
+        "R200c": 1.25
+      },
+      "layers": {
+        "stars": {
+          "mu0": 21.2,
+          "Q": 8,
+          "sat": 1.3,
+          "knee": 0.85
+        },
+        "gas": {
+          "field": "nH",
+          "vmin": 18.8,
+          "vmax": 21.9,
+          "gamma": 1.35,
+          "lut": "tng_dusk"
+        }
+      }
+    },
+    "pencil": {
+      "scene": "pencil",
+      "tilt_deg": 90,
+      "roll_deg": 0,
+      "half_w": {
+        "R200c": 1.25
+      },
+      "layers": {
+        "stars": {
+          "mu0": 21.2,
+          "Q": 8,
+          "sat": 1.3,
+          "knee": 0.85
+        },
+        "gas": {
+          "field": "nH",
+          "vmin": 18.8,
+          "vmax": 21.9,
+          "gamma": 1.35,
+          "lut": "tng_dusk"
+        }
+      },
+      "others": {
+        "max": 160
+      }
+    }
+  },
+  "encode": {
+    "stars": {
+      "format": "webp",
+      "quality": 82
+    },
+    "gas": {
+      "format": "webp",
+      "quality": 80,
+      "scale": 0.7
+    }
+  }
+}

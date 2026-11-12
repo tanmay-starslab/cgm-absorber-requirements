@@ -26,3 +26,6 @@ generated/
 # Only docs/tng50/data/viz/manifest_v2.json is tracked; the Phase-2 volumes are gone (design-2b §6.4).
 docs/tng50/data/vol/
 docs/tng50/data/viz/*/
+
+# HyperFrames render state (machine-local paths, lock dirs); never commit
+.hyperframes/

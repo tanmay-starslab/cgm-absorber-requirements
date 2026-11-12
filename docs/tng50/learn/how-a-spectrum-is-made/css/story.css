@@ -1,0 +1,281 @@
+/* "How a spectrum is made": story skin (PLAN_final §2.3, §2.4, §7). The stage is the sky, so it is dark in both
+   themes; cards and chrome follow the site theme (same tokens and storage key as the explorer, docs/tng50/css/page.css).
+   No backdrop-filter on anything that scrolls; one moving thing per beat; grain and pan off under reduced motion. */
+
+@font-face{font-family:"Space Grotesk";font-style:normal;font-weight:300 700;font-display:swap;src:url(../vendor/space-grotesk-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Space Grotesk";font-style:normal;font-weight:300 700;font-display:swap;src:url(../vendor/space-grotesk-latin-ext.woff2) format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(../vendor/jetbrains-mono-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(../vendor/jetbrains-mono-latin-ext.woff2) format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(../vendor/jetbrains-mono-greek.woff2) format("woff2");
+  unicode-range:U+0370-0377,U+037A-037F,U+0384-038A,U+038C,U+038E-03A1,U+03A3-03FF}
+
+/* ---- tokens: site theme for chrome and cards (mirrors page.css), fixed night palette for the stage ---- */
+:root{--bg:#07090f;--bg2:#0d1220;--ink:#eef0f7;--muted:#a0a8c0;--faint:#8b93ad;--gline:rgba(160,175,220,.15);
+  --card:rgba(13,17,30,.86);--card-solid:#0d111e;--accent:#8fa8ff;--hl:rgba(143,168,255,.16);--shadow:0 24px 60px rgba(0,0,0,.5);
+  --sans:"Space Grotesk",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  /* stage: always night */
+  --sky:#04050a;--sky2:#0a0d18;--sky-ink:#f4f1ea;--sky-muted:#b9b6c8;--beam:#fff4df;--beam-glow:rgba(255,226,180,.55);
+  --ovi:#FB7A3C;--hi:#9293F8;--lsf:#9aa0b4;
+  --fpx:calc(100vw / 1440);           /* fluid pixel: 1 px at a 1440 px wide window */
+  --display:max(1.75rem,calc(44 * var(--fpx)));
+  --stage-h:100svh;--rail-w:56px;--ease:cubic-bezier(.65,0,.35,1);
+  color-scheme:dark}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#eef0f6;--bg2:#e3e7f2;--ink:#121628;--muted:#525a78;--faint:#5f6783;
+  --gline:rgba(40,50,90,.13);--card:rgba(255,255,255,.93);--card-solid:#fbfbfd;--accent:#3a55d8;--hl:rgba(58,85,216,.10);
+  --shadow:0 24px 60px rgba(30,40,90,.18);color-scheme:light}}
+:root[data-theme="light"]{--bg:#eef0f6;--bg2:#e3e7f2;--ink:#121628;--muted:#525a78;--faint:#5f6783;--gline:rgba(40,50,90,.13);
+  --card:rgba(255,255,255,.93);--card-solid:#fbfbfd;--accent:#3a55d8;--hl:rgba(58,85,216,.10);--shadow:0 24px 60px rgba(30,40,90,.18);color-scheme:light}
+
+*{box-sizing:border-box}
+html{scroll-behavior:auto;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--sky);color:var(--ink);font:400 17px/1.55 var(--sans);-webkit-font-smoothing:antialiased;
+  overflow-x:hidden}
+a{color:var(--accent)}
+button{font:inherit;color:inherit}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+.vh{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- top chrome: skip link, wordmark, theme ---- */
+.skip{position:fixed;z-index:60;top:14px;left:16px;font:500 12px/1 var(--mono);letter-spacing:.06em;color:var(--sky-muted);
+  text-decoration:none;padding:9px 11px;border-radius:8px;background:rgba(4,5,10,.94);border:1px solid rgba(236,240,255,.14)}
+.skip:hover,.skip:focus-visible{color:var(--sky-ink);background:rgba(4,5,10,.85)}
+.skip-main{transform:translateY(-200%);left:50%;translate:-50% 0}
+.skip-main:focus{transform:none}
+.mark{position:fixed;z-index:55;top:14px;right:16px;display:flex;gap:6px;align-items:center}
+.ibtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;height:44px;padding:0 12px;
+  border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(4,5,10,.55);color:var(--sky-ink);cursor:pointer;
+  font:500 13px/1 var(--sans)}
+.ibtn:hover{border-color:rgba(255,255,255,.34);background:rgba(4,5,10,.8)}
+.ibtn svg{width:18px;height:18px;flex:none}
+.ibtn[aria-pressed="true"]{border-color:var(--beam);color:var(--beam)}
+
+/* ---- the stage (sky) ---- */
+.story{position:relative}
+.stage{position:sticky;top:0;height:var(--stage-h);width:100%;overflow:hidden;z-index:1;background:var(--sky);
+  color:var(--sky-ink);contain:strict}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:pan-y}
+.sky{position:absolute;inset:0;background:
+  radial-gradient(1.2px 1.2px at 12% 22%,rgba(255,255,255,.7),transparent 60%),
+  radial-gradient(1px 1px at 31% 71%,rgba(255,255,255,.45),transparent 60%),
+  radial-gradient(1.4px 1.4px at 57% 14%,rgba(255,255,255,.6),transparent 60%),
+  radial-gradient(1px 1px at 76% 39%,rgba(255,255,255,.4),transparent 60%),
+  radial-gradient(1.2px 1.2px at 88% 81%,rgba(255,255,255,.55),transparent 60%),
+  radial-gradient(1px 1px at 44% 48%,rgba(255,255,255,.35),transparent 60%),
+  radial-gradient(1px 1px at 6% 88%,rgba(255,255,255,.4),transparent 60%),
+  radial-gradient(900px 520px at 70% 30%,rgba(120,90,200,.12),transparent 70%),
+  radial-gradient(700px 500px at 20% 90%,rgba(230,120,60,.07),transparent 70%),
+  linear-gradient(180deg,var(--sky),var(--sky2))}
+/* fallback beam and strip, drawn before (or without) the engine; the engine sets data-engine="on" and draws its own */
+.beam{position:absolute;left:-5%;right:-5%;top:44%;height:2px;background:linear-gradient(90deg,transparent,var(--beam) 18%,var(--beam) 82%,transparent);
+  box-shadow:0 0 18px 2px var(--beam-glow),0 0 60px 6px rgba(255,210,150,.18);opacity:.95}
+.beam::before{content:"";position:absolute;right:13%;top:50%;width:14px;height:14px;margin:-7px;border-radius:50%;background:var(--beam);
+  box-shadow:0 0 24px 8px var(--beam-glow),0 0 90px 30px rgba(255,214,160,.25)}
+.strip{position:absolute;left:clamp(16px,6vw,96px);right:calc(clamp(16px,6vw,96px) + var(--rail-w));bottom:clamp(76px,10svh,104px);height:46px;
+  color:var(--sky-muted);font:400 11px/1 var(--mono);letter-spacing:.08em}
+.strip svg{position:absolute;inset:0 0 14px 0;width:100%;height:32px;overflow:visible}
+.strip .lab{position:absolute;left:0;bottom:0;text-transform:uppercase}
+.strip .val{position:absolute;right:0;bottom:0}
+.stage[data-engine="on"] .beam,.stage[data-engine="on"] .strip{display:none}
+.grain{position:absolute;inset:-50%;pointer-events:none;opacity:.03;mix-blend-mode:screen;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation:grain 1.2s steps(6) infinite}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-3%)}60%{transform:translate(-2%,-1%)}80%{transform:translate(3%,3%)}100%{transform:translate(0,0)}}
+.vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 45%,transparent 55%,rgba(0,0,0,.55) 100%)}
+.stage-note{position:absolute;left:50%;top:14px;translate:-50% 0;font:500 12px/1.3 var(--mono);color:var(--sky-muted);
+  background:rgba(4,5,10,.7);padding:7px 10px;border-radius:8px;max-width:min(92vw,560px);text-align:center}
+.exploring{position:absolute;left:50%;top:64px;translate:-50% 0;font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  color:#0b0c12;background:var(--beam);padding:7px 11px;border-radius:999px}
+/* Play captions: the single text layer during Play (cards fade) */
+.caption{position:absolute;left:50%;bottom:clamp(84px,14svh,140px);translate:-50% 0;width:min(90vw,980px);text-align:center;
+  font:300 var(--display)/1.12 var(--sans);letter-spacing:-.01em;color:var(--sky-ink);text-shadow:0 2px 24px rgba(0,0,0,.8);
+  pointer-events:none;text-wrap:balance}
+
+/* ---- steps column: cards over the stage ---- */
+.steps{position:relative;z-index:2;margin-top:calc(-1 * var(--stage-h));padding:0 calc(var(--rail-w) + 24px) 0 clamp(16px,5vw,88px);
+  pointer-events:none}
+.hero{min-height:100svh;display:flex;flex-direction:column;justify-content:flex-end;padding:0 0 clamp(96px,18svh,180px);max-width:760px;pointer-events:auto}
+.kicker{font:500 12px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--sky-muted);margin:0 0 18px}
+.hero h1{font:300 clamp(2.6rem,calc(84 * var(--fpx)),6rem)/1 var(--sans);letter-spacing:-.025em;margin:0;color:var(--sky-ink);text-wrap:balance}
+.hero p{font-size:clamp(1.05rem,calc(20 * var(--fpx)),1.3rem);color:var(--sky-muted);max-width:34em;margin:22px 0 0}
+.hero .resume{margin-top:22px;font:500 14px var(--sans)}
+.hero .resume a{color:var(--sky-ink)}
+.chapter{position:relative}
+.chapter>h2{font:500 12px/1.3 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--sky-muted);margin:0;
+  padding:38svh 0 0;max-width:520px;pointer-events:auto}
+.chapter>h2 .num{display:block;font:300 clamp(2.4rem,calc(64 * var(--fpx)),4.2rem)/1 var(--sans);letter-spacing:-.02em;color:var(--sky-ink);
+  margin-bottom:10px;opacity:.9}
+.chapter>h2 .q{display:block;font:400 clamp(1.15rem,calc(24 * var(--fpx)),1.6rem)/1.25 var(--sans);letter-spacing:0;text-transform:none;color:var(--sky-ink)}
+.step{min-height:96svh;display:flex;align-items:center;pointer-events:none}
+.chapter:last-of-type .step:last-child{min-height:100svh}
+/* a chapter's first step hugs its card, so a centred deep link keeps the question title (h2) in view above it (F4) */
+.chapter>h2+.step,.chapter:last-of-type>h2+.step:last-child{min-height:0;padding:28px 0 24svh}
+.card{pointer-events:auto;width:min(440px,100%);background:var(--card);color:var(--ink);border:1px solid var(--gline);border-radius:18px;
+  padding:22px 24px 18px;box-shadow:var(--shadow);transition:opacity .5s var(--ease),transform .5s var(--ease)}
+.step[data-layout="full"] .card{margin-inline:auto}
+.step[data-layout="card-right"] .card{margin-left:auto}
+.card h3{font:300 var(--display)/1.1 var(--sans);letter-spacing:-.015em;margin:0;text-wrap:balance}
+.card .sub{margin:14px 0 0;color:var(--muted);font-size:1rem}
+.card .phys{margin:14px 0 0;padding:12px 0 0;border-top:1px solid var(--gline);font-size:.94rem;color:var(--ink)}
+.card .phys .eq{display:block;overflow-x:auto;color:var(--ink);margin:0 0 8px;min-height:1em}
+.card .phys .eq svg{max-width:100%;height:auto}
+.card .phys p{margin:0;color:var(--muted);font-variant-numeric:tabular-nums}
+.card .ctrls{margin-top:14px;display:grid;gap:12px}
+.card .ctrls label{display:grid;gap:6px;font:500 13px var(--sans);color:var(--muted)}
+.card .ctrls output{font:500 13px var(--mono);color:var(--ink)}
+.card input[type=range]{width:100%;min-height:44px;accent-color:var(--accent)}
+.seg{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.seg legend{font:500 13px var(--sans);color:var(--muted);padding:0;margin-bottom:6px;width:100%}
+.seg label{display:inline-flex!important;align-items:center;gap:0!important;min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--gline);
+  cursor:pointer;color:var(--ink)!important}
+.seg input{position:absolute;opacity:0;width:1px;height:1px}
+.seg label:has(input:checked){background:var(--hl);border-color:var(--accent)}
+.seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.card .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:12px;
+  border:1px solid var(--gline);background:transparent;color:var(--ink);cursor:pointer;text-decoration:none;font:500 14px/1 var(--sans)}
+.btn:hover{background:var(--hl);border-color:var(--accent)}
+.btn.primary{background:var(--ink);color:var(--card-solid);border-color:var(--ink)}
+.btn.primary:hover{opacity:.9}
+.btn.quiet{border-color:transparent;color:var(--muted);padding:0 10px}
+.btn.quiet:hover{color:var(--ink)}
+.acts .sp{flex:1}
+.card .aria{margin:0}
+.step.is-active .card{opacity:1}
+.js .step:not(.is-active) .card{opacity:.38}
+.js .step.is-exploring .card{opacity:1}
+html:not(.physics) .phys{display:none}
+
+/* Play (watch): one text layer; cards fade out, captions on the stage */
+body[data-mode="watch"] .card{opacity:0!important;transform:translateY(8px);pointer-events:none}
+body:not([data-mode="watch"]) .caption{display:none}
+
+/* ---- chapter rail (desktop) and progress (phones) ---- */
+.rail{position:fixed;z-index:50;right:10px;top:50%;translate:0 -50%;width:var(--rail-w);display:flex;flex-direction:column;align-items:center}
+.rail ol{list-style:none;margin:0;padding:8px 0;display:flex;flex-direction:column;gap:2px}
+.rail a{position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:36px;color:var(--sky-muted);text-decoration:none;
+  border-radius:10px}
+.rail a .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.55;transition:transform .3s var(--ease),opacity .3s}
+.rail a[aria-current="step"] .dot,.rail a[aria-current="true"] .dot{opacity:1;transform:scale(1.8);background:var(--beam)}
+.rail a[data-off] {opacity:.35}
+.rail a .tip{position:absolute;right:48px;top:50%;translate:0 -50%;white-space:nowrap;font:500 12px/1 var(--sans);color:var(--sky-ink);
+  background:rgba(4,5,10,.88);padding:8px 10px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s}
+.rail a:hover .tip,.rail a:focus-visible .tip{opacity:1}
+.progress{display:none}
+
+/* ---- bottom dock: Play centre, Physics and fullscreen right ---- */
+.dock{position:fixed;z-index:55;left:0;right:0;bottom:clamp(14px,2.5svh,26px);display:flex;justify-content:center;pointer-events:none}
+.dock>*{pointer-events:auto}
+.play{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 20px 0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.18);
+  background:rgba(4,5,10,.72);color:var(--sky-ink);cursor:pointer;font:500 14px/1 var(--sans);letter-spacing:.01em}
+.play:hover{border-color:var(--beam)}
+.play svg{width:16px;height:16px}
+.speed{margin-left:8px;display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:rgba(4,5,10,.72);border:1px solid rgba(255,255,255,.12)}
+.speed button{min-width:44px;height:40px;border:0;border-radius:999px;background:none;color:var(--sky-muted);cursor:pointer;font:500 12px var(--mono)}
+.speed button[aria-pressed="true"]{background:rgba(255,255,255,.14);color:var(--sky-ink)}
+.dock-r{position:fixed;z-index:55;right:16px;bottom:clamp(14px,2.5svh,26px);display:flex;gap:6px}
+
+/* ---- footer ---- */
+.foot{position:relative;z-index:3;background:var(--bg);color:var(--muted);padding:40px clamp(16px,5vw,88px) 110px;font-size:.95rem;border-top:1px solid var(--gline)}
+.foot a{color:var(--ink)}
+.foot p{margin:.4em 0;max-width:70ch}
+
+/* ---- the (i) keys panel ---- */
+.keys{position:fixed;z-index:70;right:16px;top:66px;width:min(340px,calc(100vw - 32px));background:var(--card-solid);color:var(--ink);
+  border:1px solid var(--gline);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow);font-size:.92rem}
+.keys .kh{font:600 13px var(--sans);margin:0 0 8px}
+.keys dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0}
+.keys dt{font:500 12px var(--mono);color:var(--ink)}
+.keys dd{margin:0;color:var(--muted)}
+
+/* ---- phones (390 px): sticky stage on top 58svh, cards scroll beneath it over the bottom 42 % ---- */
+@media (max-width:760px){
+  :root{--stage-h:58svh;--rail-w:0px;--display:max(1.8rem,7.4vw)}
+  body{font-size:16px}
+  .stage{z-index:3;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+  .steps{margin-top:0;padding:0 14px}
+  .hero{min-height:auto;padding:28px 2px 30px}
+  .hero h1{font-size:2.4rem}
+  .kicker{color:var(--muted)}
+  .hero h1,.hero p,.hero .resume a{color:var(--ink)}
+  .hero p{color:var(--muted)}
+  .story{background:var(--bg)}
+  .chapter>h2{padding:28px 2px 6px;color:var(--muted)}
+  .chapter>h2 .num{display:none}
+  .chapter>h2 .q{color:var(--ink)}
+  .step{min-height:calc(42svh + 8px);align-items:flex-start;padding:10px 0 18px}
+  .chapter:last-of-type .step:last-child{min-height:calc(42svh + 120px)}
+  .card{width:100%;padding:18px 18px 14px;box-shadow:none;border-radius:16px}
+  .js .step:not(.is-active) .card{opacity:.55}
+  .rail{display:none}
+  .progress{display:block;position:absolute;left:12px;right:12px;bottom:8px;height:2px;background:rgba(255,255,255,.14);border-radius:2px}
+  .progress i{display:block;height:100%;width:0;background:var(--beam);border-radius:2px;transition:width .3s var(--ease)}
+  .progress span{position:absolute;left:0;bottom:6px;font:500 11px var(--mono);color:var(--sky-muted)}
+  /* the dock sits on the stage's bottom edge (thumb reach, never over the card text) */
+  .strip{left:14px;right:14px;bottom:72px}
+  .strip .val{display:none}
+  .step{scroll-margin-top:calc(58svh + 8px)}
+  .chapter>h2+.step{min-height:calc(42svh + 8px);padding:10px 0 18px;scroll-margin-top:calc(58svh + 64px)}
+  .dock,.dock-r{bottom:auto;top:calc(58svh - 60px)}
+  .skip{top:10px;left:10px}
+  .mark{top:8px;right:8px}
+  .mark .lbl{display:none}
+  .dock{justify-content:center}
+  .speed{display:none}
+  .dock-r{right:10px}
+  .caption{bottom:auto;top:calc(58svh - 120px);font-size:1.4rem}
+  body[data-mode="watch"] .card{opacity:1!important;transform:none}  /* phones: the card below the stage is the caption */
+  body[data-mode="watch"] .caption{display:none}
+  .keys{top:58px}
+}
+@media (max-width:760px) and (orientation:landscape){:root{--stage-h:100svh}.stage{z-index:1}.steps{margin-top:-100svh}}
+
+/* ---- pointer type: bigger targets on touch ---- */
+@media (pointer:coarse){.rail a{height:44px}}
+
+/* ---- reduced motion: no grain, no pan, crossfades only ---- */
+@media (prefers-reduced-motion:reduce){
+  .grain{display:none}
+  .card,.rail a .dot,.progress i{transition:opacity .2s linear!important;transform:none!important}
+  *{animation:none!important;scroll-behavior:auto!important}
+}
+
+/* ---- fullscreen: the stage alone ---- */
+.story:fullscreen .steps,.story:fullscreen~*{display:none}
+.story:fullscreen .stage{height:100vh}
+.fs-fallback .stage{position:fixed;inset:0;height:100vh;z-index:80}
+
+/* ---- embed: no chrome but the stage and Play ---- */
+.embed .skip,.embed .mark,.embed .rail,.embed .foot{display:none}
+
+/* ---- ?still: the static page (no engine, no sticky stage); also the print view ---- */
+.still .stage,.still .dock,.still .dock-r,.still .rail,.still .caption{display:none}
+.still body{background:var(--bg)}
+.still .steps{margin-top:0;padding:0 clamp(16px,5vw,88px);pointer-events:auto}
+.still .hero{min-height:auto;padding:96px 0 24px}
+.still .hero h1,.still .hero p{color:var(--ink)}
+.still .hero p,.still .kicker{color:var(--muted)}
+.still .chapter{max-width:780px}
+.still .chapter>h2{padding:56px 0 10px;color:var(--muted)}
+.still .chapter>h2 .num{color:var(--ink)}
+.still .chapter>h2 .q{color:var(--ink)}
+.still .step{min-height:0;display:block;padding:10px 0}
+.still .card{width:auto;opacity:1!important;box-shadow:none;background:transparent;border:0;border-top:1px solid var(--gline);border-radius:0;padding:18px 0}
+.still .phys{display:block!important}
+.still .card .aria{position:static!important;width:auto;height:auto;margin:12px 0 0;clip:auto;overflow:visible;white-space:normal;
+  color:var(--muted);font-size:.92rem;font-style:italic}
+.still .poster{display:block;width:100%;height:auto;border-radius:12px;margin:8px 0 6px;background:var(--sky)}
+.still .ctrls,.still .acts .nav,.still .acts .try{display:none}
+.poster{display:none}
+@media print{
+  .stage,.dock,.dock-r,.rail,.skip,.mark,.caption{display:none!important}
+  body{background:#fff;color:#000}
+  .steps{margin:0;padding:0}
+  .step{min-height:0;display:block;break-inside:avoid}
+  .card{opacity:1!important;box-shadow:none;border:0;background:none;color:#000}
+  .phys{display:block!important}
+}

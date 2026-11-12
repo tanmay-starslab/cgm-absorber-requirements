@@ -1,0 +1,2037 @@
+{
+ "schema": "story-steps/1",
+ "meta": {
+  "title": "How a spectrum is made",
+  "galaxy": "tng50-1-99-488530",
+  "subhalo": 488530,
+  "ray": "rand_b062_a062",
+  "n_galaxies": 198,
+  "data": "data/story_488530_rand_b062_a062.json",
+  "note": "Display text: beam for the path, dip for the feature; numbers are {{key}} templates (see keys)."
+ },
+ "keys": {
+  "galaxy": {
+   "path": "keys.galaxy",
+   "fmt": "id",
+   "fallback": 488530
+  },
+  "ngal": {
+   "path": "keys.ngal",
+   "fmt": "int",
+   "fallback": 198
+  },
+  "ray": {
+   "path": "keys.ray",
+   "fallback": "rand_b062_a062"
+  },
+  "b_kpc": {
+   "path": "keys.b_kpc",
+   "fmt": "f1",
+   "fallback": 61.9
+  },
+  "R200c": {
+   "path": "keys.R200c",
+   "fmt": "int",
+   "fallback": 246
+  },
+  "vsys": {
+   "path": "keys.vsys",
+   "fmt": "f2",
+   "fallback": -69.31
+  },
+  "c263_logN": {
+   "path": "keys.c263_logN",
+   "fmt": "f2",
+   "fallback": 14.16
+  },
+  "c263_b": {
+   "path": "keys.c263_b",
+   "fmt": "f1",
+   "fallback": 17.3
+  },
+  "c263_tau0": {
+   "path": "keys.c263_tau0",
+   "fmt": "f2",
+   "fallback": 1.73
+  },
+  "c263_Fc": {
+   "path": "keys.c263_Fc",
+   "fmt": "int",
+   "fallback": 18
+  },
+  "c263_T": {
+   "path": "keys.c263_T",
+   "fmt": "sci2",
+   "fallback": 287000.0
+  },
+  "c263_bH": {
+   "path": "keys.c263_bH",
+   "fmt": "int",
+   "fallback": 69
+  },
+  "ovi_f": {
+   "path": "keys.ovi_f",
+   "fmt": "f3",
+   "fallback": 0.133
+  },
+  "ovi_lam": {
+   "path": "keys.ovi_lam",
+   "fmt": "f3",
+   "fallback": 1031.912
+  },
+  "ncross": {
+   "path": "keys.ncross",
+   "fmt": "int",
+   "fallback": 672
+  },
+  "nvis": {
+   "path": "keys.nvis",
+   "fmt": "int",
+   "fallback": 49
+  },
+  "ovi_peaktau": {
+   "path": "keys.ovi_peaktau",
+   "fmt": "f2",
+   "fallback": 3.06
+  },
+  "ovi_ew": {
+   "path": "keys.ovi_EW",
+   "fmt": "int",
+   "fallback": 435
+  },
+  "ovi_logN": {
+   "path": "keys.ovi_logN",
+   "fmt": "f2",
+   "fallback": 14.77
+  },
+  "ovi_bmin": {
+   "path": "keys.ovi_bmin",
+   "fmt": "f1",
+   "fallback": 5.5
+  },
+  "ovi_bmax": {
+   "path": "keys.ovi_bmax",
+   "fmt": "f1",
+   "fallback": 27.6
+  },
+  "trough_lo": {
+   "path": "keys.trough_lo",
+   "fmt": "int",
+   "fallback": -199
+  },
+  "trough_hi": {
+   "path": "keys.trough_hi",
+   "fmt": "int",
+   "fallback": 190
+  },
+  "pair_a_l": {
+   "path": "keys.pair_a_l",
+   "fmt": "f1",
+   "fallback": -18.2
+  },
+  "pair_b_l": {
+   "path": "keys.pair_b_l",
+   "fmt": "f1",
+   "fallback": 65.7
+  },
+  "pair_sep": {
+   "path": "keys.pair_sep",
+   "fmt": "int",
+   "fallback": 84
+  },
+  "hi_logN": {
+   "path": "keys.hi_logN",
+   "fmt": "f2",
+   "fallback": 18.04
+  },
+  "hi_peaktau": {
+   "path": "keys.hi_peaktau",
+   "fmt": "int",
+   "fallback": 22723
+  },
+  "fit_logN": {
+   "path": "page_fits.keys.s11_total_logN",
+   "fmt": "f2",
+   "fallback": 14.72
+  },
+  "fit_seed": {
+   "path": "page_fits.keys.s11_noise_seed",
+   "fmt": "id",
+   "fallback": 986299851
+  },
+  "broad_b": {
+   "path": "page_fits.keys.broad_b",
+   "fmt": "int",
+   "fallback": 141
+  },
+  "inv_b": {
+   "path": "page_fits.keys.invented_b",
+   "fmt": "f1",
+   "fallback": 3.1
+  },
+  "inv_T": {
+   "path": "page_fits.keys.invented_T",
+   "fmt": "int",
+   "fallback": 9400
+  },
+  "inv_logN": {
+   "path": "page_fits.select.s11c_invented.total_logN",
+   "fmt": "f2",
+   "fallback": 14.95
+  },
+  "sigma10": {
+   "path": "keys.sigma10",
+   "fmt": "f2",
+   "fallback": 0.22
+  },
+  "b_ly": {
+   "path": "keys.b_ly",
+   "fallback": "202 000"
+  },
+  "azimuth_deg": {
+   "path": "keys.azimuth_deg",
+   "fallback": "62.1"
+  },
+  "length_kpc": {
+   "path": "keys.length_kpc",
+   "fallback": "493"
+  },
+  "n_cells": {
+   "path": "keys.n_cells",
+   "fallback": "672"
+  },
+  "dl_median_kpc": {
+   "path": "keys.dl_median_kpc",
+   "fallback": "0.16"
+  },
+  "dl_max_kpc": {
+   "path": "keys.dl_max_kpc",
+   "fallback": "6.5"
+  },
+  "XH_min": {
+   "path": "keys.XH_min",
+   "fallback": "0.724"
+  },
+  "XH_max": {
+   "path": "keys.XH_max",
+   "fallback": "0.760"
+  },
+  "ovi_n_half": {
+   "path": "keys.ovi_n_half",
+   "fallback": "4"
+  },
+  "hi_n_half": {
+   "path": "keys.hi_n_half",
+   "fallback": "3"
+  },
+  "s4a_T": {
+   "path": "keys.s4a_T",
+   "fallback": "13 160"
+  },
+  "s4a_xHI": {
+   "path": "keys.s4a_xHI",
+   "fallback": "0.29"
+  },
+  "s4b_T": {
+   "path": "keys.s4b_T",
+   "fallback": "2.87×10⁵"
+  },
+  "s4b_fOVI": {
+   "path": "keys.s4b_fOVI",
+   "fallback": "0.23"
+  },
+  "s5_cell": {
+   "path": "keys.s5_cell",
+   "fallback": "263"
+  },
+  "s6_cell_a": {
+   "path": "keys.s6_cell_a",
+   "fallback": "296"
+  },
+  "s6_cell_b": {
+   "path": "keys.s6_cell_b",
+   "fallback": "438"
+  },
+  "hubble_kms": {
+   "path": "keys.hubble_kms",
+   "fallback": "17"
+  },
+  "mw_compare": {
+   "path": "keys.mw_compare",
+   "fallback": "somewhat bigger than the Milky Way"
+  },
+  "hi_lls": {
+   "path": "keys.hi_lls",
+   "fallback": "above 17.2: a Lyman-limit system"
+  },
+  "ovi_sat": {
+   "path": "keys.ovi_sat",
+   "fallback": "is mostly unsaturated, and its deepest core is just starting to saturate"
+  },
+  "hi_fit_dlo": {
+   "path": "keys.hi_fit_dlo",
+   "fallback": "+0.10"
+  },
+  "hi_fit_dhi": {
+   "path": "keys.hi_fit_dhi",
+   "fallback": "+0.34"
+  },
+  "broad_R": {
+   "path": "page_fits.keys.broad_R",
+   "fallback": "15000"
+  },
+  "broad_sn": {
+   "path": "page_fits.keys.broad_sn",
+   "fallback": "5"
+  },
+  "invented_R": {
+   "path": "page_fits.keys.invented_R",
+   "fallback": "15000"
+  },
+  "invented_sn": {
+   "path": "page_fits.keys.invented_sn",
+   "fallback": "20"
+  }
+ },
+ "chapters": [
+  {
+   "id": "light",
+   "title": "Why can't we just look at the gas?"
+  },
+  {
+   "id": "pencil",
+   "title": "What does one beam see?"
+  },
+  {
+   "id": "cells",
+   "title": "What is the model galaxy made of?"
+  },
+  {
+   "id": "ions",
+   "title": "Which atoms take the light?"
+  },
+  {
+   "id": "dip",
+   "title": "How does one cloud make a dip?"
+  },
+  {
+   "id": "speed",
+   "title": "Why is the spectrum a speed map?"
+  },
+  {
+   "id": "sum",
+   "title": "How do many cells make a few dips?"
+  },
+  {
+   "id": "saturation",
+   "title": "What happens when a dip turns black?"
+  },
+  {
+   "id": "lsf",
+   "title": "What does the telescope do to it?"
+  },
+  {
+   "id": "noise",
+   "title": "Why is it noisy?"
+  },
+  {
+   "id": "fit",
+   "title": "What can we read back?"
+  },
+  {
+   "id": "yourturn",
+   "title": "Now it is yours"
+  }
+ ],
+ "steps": [
+  {
+   "id": "light-1",
+   "scene": "light",
+   "chapter": "light",
+   "title": "Why can't we just look at the gas?",
+   "params": {
+    "halo": 1
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Galaxies sit inside gas too faint to see",
+   "sub": "A quasar far behind shines through it. We follow one beam through one of {{ngal}} simulated galaxies.",
+   "physics": {
+    "eq": null,
+    "line": "Galaxy {{galaxy}} from TNG50-1 at z = 0, {{mw_compare}}; its halo reaches R200c = {{R200c}} kpc."
+   },
+   "caption": "Galaxies sit inside gas too faint to see",
+   "voice": "Galaxies sit inside gas too faint to see",
+   "aria": "The starlight of one simulated galaxy, seen close up. The view pulls back until the whole halo of faint gas around it fills the frame, out to a dashed circle {{R200c}} kiloparsecs across from the centre. A quasar appears far behind.",
+   "dur_s": 8,
+   "scrub": true,
+   "controls": [
+    {
+     "param": "halo",
+     "label": "Halo gas",
+     "min": 0,
+     "max": 1,
+     "step": 0.05,
+     "scale": "lin",
+     "unit": ""
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "light-2",
+   "scene": "light",
+   "chapter": "light",
+   "params": {
+    "halo": 1
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "A light behind reveals it",
+   "sub": "Gas between us and the quasar takes a little of its light away. Nothing is taken yet: all the light gets through.",
+   "physics": {
+    "eq": null,
+    "line": "The gas also glows (Lyα nebulae, O VI), but too faintly to map routinely; against a bright quasar it shows up in absorption."
+   },
+   "caption": "A light behind reveals it",
+   "voice": "A light behind reveals it",
+   "aria": "A warm white beam leaves the quasar and crosses the halo toward us. A thin strip appears along the bottom: the beam's spectrum, a flat line at 100 percent, because all the light gets through.",
+   "dur_s": 7,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "pencil-1",
+   "scene": "pencil",
+   "chapter": "pencil",
+   "title": "What does one beam see?",
+   "params": {},
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "One beam, {{b_ly}} light-years from the centre",
+   "sub": "Seen from the side, the sightline passes {{b_kpc}} kpc from the galaxy's centre and crosses the whole halo.",
+   "physics": {
+    "eq": null,
+    "line": "b = {{b_kpc}} kpc, azimuth {{azimuth_deg}}°, path from −R200c to +R200c = {{length_kpc}} kpc. Only gas within R200c is counted; real sightlines also cross gas beyond it, and our own Galaxy."
+   },
+   "caption": "One beam, {{b_ly}} light-years from the centre",
+   "voice": "One beam, {{b_ly}} light-years from the centre",
+   "aria": "The halo seen from the side. The beam runs straight across it from the quasar on the right toward our telescope on the left. A dashed marker from the centre to the beam reads {{b_ly}} light-years.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "pencil-2",
+   "scene": "pencil",
+   "chapter": "pencil",
+   "params": {},
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Every beam crosses different gas",
+   "sub": "Other catalogued sightlines of this galaxy flash by. Each meets different gas, so their spectra differ a lot. We follow one.",
+   "physics": {
+    "eq": null,
+    "line": "The catalogue samples many impact distances and orientations; the explorer's gallery shows every one."
+   },
+   "caption": "Every beam crosses different gas",
+   "voice": "Every beam crosses different gas",
+   "aria": "Faint lines flash one after another across the halo: other sightlines through the same galaxy. Our beam stays lit.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "cells-1",
+   "scene": "cells",
+   "chapter": "cells",
+   "title": "What is the model galaxy made of?",
+   "params": {},
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "The beam crosses {{n_cells}} gas cells",
+   "sub": "The simulation stores gas in cells. Along its path the beam passes through {{n_cells}} of them, lit as the light arrives.",
+   "physics": {
+    "eq": null,
+    "line": "Cells are soft, overlapping kernels, larger than real clouds; the path inside a cell has median {{dl_median_kpc}} kpc and maximum {{dl_max_kpc}} kpc."
+   },
+   "caption": "The beam crosses {{n_cells}} gas cells",
+   "voice": "The beam crosses {{n_cells}} gas cells",
+   "aria": "A horizontal beam with a ruler of {{length_kpc}} kiloparsecs below it. Soft beads appear along it from right to left, one per gas cell, sized by the path inside the cell and coloured by temperature; a counter reaches {{n_cells}}.",
+   "dur_s": 5,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "cells-2",
+   "scene": "cells",
+   "chapter": "cells",
+   "params": {},
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Each has its own density, heat, speed",
+   "sub": "Scroll to move the probe along the beam. Every cell carries a density, a temperature, a metal content and a velocity.",
+   "physics": {
+    "eq": null,
+    "line": "n_H = X_H ρ / m_H, with the hydrogen mass fraction X_H of each cell between {{XH_min}} and {{XH_max}}."
+   },
+   "caption": "Each has its own density, heat, speed",
+   "voice": "Each has its own density, heat, speed",
+   "aria": "A probe ring glides along the beam and a small card reads the cell under it: density, heat in kelvin, metals compared with the Sun, and speed in kilometres per second.",
+   "dur_s": 5,
+   "scrub": true,
+   "controls": [
+    {
+     "param": "colorBy",
+     "label": "Colour cells by",
+     "scale": "enum",
+     "values": [
+      "T",
+      "nH",
+      "Z",
+      "V"
+     ],
+     "valuetext": [
+      "heat",
+      "density",
+      "metals",
+      "speed"
+     ]
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "cells-3",
+   "scene": "cells",
+   "chapter": "cells",
+   "params": {},
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "A few cells make most of the absorption",
+   "sub": "Half of the O VI absorption comes from {{ovi_n_half}} cells, half of the neutral hydrogen from {{hi_n_half}}.",
+   "physics": {
+    "eq": null,
+    "line": "Cells ranked by their own N = n dl: the fewest cells whose N adds up to half of the ion's total."
+   },
+   "caption": "A few cells make most of the absorption",
+   "voice": "A few cells make most of the absorption",
+   "aria": "Most beads dim. A few light up with orange rings for O VI and indigo rings for neutral hydrogen: {{ovi_n_half}} and {{hi_n_half}} cells hold half of each.",
+   "dur_s": 8,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "ions-1",
+   "scene": "ions",
+   "chapter": "ions",
+   "title": "Which atoms take the light?",
+   "params": {},
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Cool clumps keep neutral hydrogen",
+   "sub": "This cell is {{s4a_T}} K. A share of {{s4a_xHI}} of its hydrogen is still neutral, and only neutral hydrogen takes this light.",
+   "physics": {
+    "eq": null,
+    "line": "n(H I) = x_HI n_H, with x_HI from the simulation's own recipe."
+   },
+   "caption": "Cool clumps keep neutral hydrogen",
+   "voice": "Cool clumps keep neutral hydrogen",
+   "aria": "One cell from the beam opens into a disc of hydrogen atoms. About {{s4a_xHI}} of them light up indigo: atoms that still hold their electron.",
+   "dur_s": 9,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "ions-2",
+   "scene": "ions",
+   "chapter": "ions",
+   "params": {},
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Warm-hot gas: oxygen stripped of five electrons",
+   "sub": "These colours are ultraviolet light only space telescopes see. At {{s4b_T}} K, {{s4b_fOVI}} of this cell's oxygen is O VI.",
+   "physics": {
+    "eq": null,
+    "line": "n(O VI) = (O/H)☉ (Z/Z☉) n_H f_OVI(n_H, T), (O/H)☉ = 4.90×10⁻⁴, Z☉ = 0.01295, HM2012 table. Hydrogen's neutral share comes from the simulation, oxygen's from a table with a slightly different UV glow."
+   },
+   "caption": "Warm-hot gas: oxygen stripped of five electrons",
+   "voice": "Warm-hot gas: oxygen stripped of five electrons",
+   "aria": "The warm-hot cell holding the most O VI opens up and some of its oxygen atoms light orange. Beside it, a chart of the share of oxygen in O VI against temperature for five densities, with this cell marked; above about 500 000 kelvin the share falls.",
+   "dur_s": 9,
+   "scrub": false,
+   "controls": [
+    {
+     "param": "logT",
+     "label": "Heat (log T)",
+     "min": 4,
+     "max": 7,
+     "step": 0.01,
+     "scale": "lin",
+     "unit": "K (log)"
+    },
+    {
+     "param": "lognH",
+     "label": "Density (log n_H)",
+     "min": -5,
+     "max": -3,
+     "step": 0.01,
+     "scale": "lin",
+     "unit": "cm⁻³ (log)"
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "ions-3",
+   "scene": "ions",
+   "chapter": "ions",
+   "params": {},
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Each ion takes only photons fitting its step",
+   "sub": "An electron can only jump between fixed levels, so each ion takes one exact colour: H I at 1216 Å, O VI at 1032 Å.",
+   "physics": {
+    "eq": null,
+    "line": "λ = hc/ΔE; f is how strong the jump is, Γ how long the upper level lives."
+   },
+   "caption": "Each ion takes only photons fitting its step",
+   "voice": "Each ion takes only photons fitting its step",
+   "aria": "Two energy ladders, H I and O VI. Three light waves arrive at each; the one whose wavelength fits the step is taken and the electron jumps up, the others pass by.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "dip-1",
+   "scene": "dip",
+   "chapter": "dip",
+   "title": "How does one cloud make a dip?",
+   "params": {
+    "ion": "OVI",
+    "beat": "barcode",
+    "axis": "lambda"
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Each gas cell leaves a shadow",
+   "sub": "The beam spreads into ultraviolet colours our eyes cannot see. Where oxygen ions sit, one colour goes dark.",
+   "physics": {
+    "eq": "profile",
+    "line": "Each cell removes light as e^(−τ); the dip's shape is a Gaussian in speed for O VI."
+   },
+   "caption": "Each gas cell leaves a shadow",
+   "voice": "Each gas cell leaves a shadow",
+   "aria": "The beam fans out into a false-colour band labelled ultraviolet, colours our eyes cannot see. A dark stripe appears in the band. The band then folds down into a plot of light getting through, and the stripe becomes a dip.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "dip-2",
+   "scene": "dip",
+   "chapter": "dip",
+   "params": {
+    "ion": "OVI",
+    "beat": "doppler",
+    "axis": "speed"
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Moving gas shifts its shadow, like a siren",
+   "sub": "Gas moving away makes the dip slide to longer wavelengths. So the axis can read as speed toward or away.",
+   "physics": {
+    "eq": "doppler",
+    "line": "V in km/s in the galaxy's frame; v_sys = {{vsys}} km/s puts the galaxy at V = 0."
+   },
+   "caption": "Moving gas shifts its shadow, like a siren",
+   "voice": "Moving gas shifts its shadow, like a siren",
+   "aria": "The bottom axis starts in wavelength, 1031 to 1033 angstrom. As one cell's dip slides sideways, the axis relabels itself as speed toward or away, in kilometres per second.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "dip-3",
+   "scene": "dip",
+   "chapter": "dip",
+   "params": {
+    "ion": "OVI",
+    "beat": "amount",
+    "axis": "speed",
+    "accent": "N"
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Amount sets how much light is taken",
+   "sub": "More oxygen ions along the beam take a bigger bite: the shaded area of the dip grows.",
+   "physics": {
+    "eq": "tau0",
+    "line": "Cell {{s5_cell}}: log N = {{c263_logN}}, b = {{c263_b}} km/s, f = {{ovi_f}}, λ = {{ovi_lam}} Å, so τ₀ = {{c263_tau0}} and {{c263_Fc}} % of the light gets through at the centre."
+   },
+   "caption": "Amount sets how much light is taken",
+   "voice": "Amount sets how much light is taken",
+   "aria": "One dip from cell {{s5_cell}} with its area shaded. A vertical arrow labelled amount grows, and the shaded area grows with it. At the centre about {{c263_Fc}} percent of the light gets through.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [
+    {
+     "param": "logN",
+     "label": "Amount (log N)",
+     "min": 12,
+     "max": 16,
+     "step": 0.05,
+     "scale": "lin",
+     "unit": "cm⁻²"
+    },
+    {
+     "param": "V",
+     "label": "Speed",
+     "min": -300,
+     "max": 300,
+     "step": 1,
+     "scale": "lin",
+     "unit": "km/s"
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "dip-4",
+   "scene": "dip",
+   "chapter": "dip",
+   "params": {
+    "ion": "OVI",
+    "beat": "heat",
+    "axis": "speed",
+    "accent": "b",
+    "ghostHI": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Heat spreads it out",
+   "sub": "Hotter ions jiggle faster, so the shadow spreads over more speeds. Hydrogen at the same heat is four times wider.",
+   "physics": {
+    "eq": "bwidth",
+    "line": "This model uses heat only (b_turb = 0), so each cell's dip is as narrow as it can be. Cell {{s5_cell}}: T = {{c263_T}} K, b = {{c263_b}} km/s; hydrogen at that T has b = {{c263_bH}} km/s."
+   },
+   "caption": "Heat spreads it out",
+   "voice": "Heat spreads it out",
+   "aria": "The same dip with a horizontal span labelled width. The width grows while the shaded area stays the same, so the dip gets shallower. A faint second dip shows hydrogen at the same heat, about four times wider.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [
+    {
+     "param": "b",
+     "label": "Width (b)",
+     "min": 3,
+     "max": 80,
+     "step": 0.1,
+     "scale": "lin",
+     "unit": "km/s"
+    },
+    {
+     "param": "ion",
+     "label": "Element",
+     "min": 0,
+     "max": 1,
+     "step": 1,
+     "scale": "enum",
+     "unit": "",
+     "valuetext": [
+      "oxygen (O VI)",
+      "hydrogen (H I)"
+     ],
+     "values": [
+      "OVI",
+      "HI"
+     ]
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "speed-1",
+   "scene": "speed",
+   "chapter": "speed",
+   "title": "Why is the spectrum a speed map?",
+   "params": {
+    "ion": "OVI",
+    "threads": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Where a dip sits tells its speed",
+   "sub": "Threads join each cell on the beam to its dip. Position in the spectrum is speed, not distance.",
+   "physics": {
+    "eq": "doppler",
+    "line": "Speeds are the gas's own motions; the slow expansion of space across the halo (up to {{hubble_kms}} km/s here) is not added."
+   },
+   "caption": "Where a dip sits tells its speed",
+   "voice": "Where a dip sits tells its speed",
+   "aria": "Top: the beam drawn as a ruler in kiloparsecs with its gas cells. Bottom: the spectrum against speed. Thin threads join each cell to the dip it makes.",
+   "dur_s": 8,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "split",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "speed-2",
+   "scene": "speed",
+   "chapter": "speed",
+   "params": {
+    "ion": "OVI",
+    "threads": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Far apart, same speed, same dip",
+   "sub": "Two cells {{pair_sep}} kpc apart on the beam move at about the same speed, so their shadows land together.",
+   "physics": {
+    "eq": "doppler",
+    "line": "Cells {{s6_cell_a}} (l = {{pair_a_l}} kpc) and {{s6_cell_b}} (l = {{pair_b_l}} kpc) differ in speed by less than either dip's width."
+   },
+   "caption": "Far apart, same speed, same dip",
+   "voice": "Far apart, same speed, same dip",
+   "aria": "Two threads, from cells {{pair_sep}} kiloparsecs apart on the ruler, cross and meet in the same dip of the spectrum.",
+   "dur_s": 7,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "split",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "sum-1",
+   "scene": "sum",
+   "chapter": "sum",
+   "title": "How do many cells make a few dips?",
+   "params": {
+    "ion": "OVI",
+    "ncells": "all",
+    "show": "flux"
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Dozens of shadows merge into a few dips",
+   "sub": "The beam crosses {{ncross}} cells; {{nvis}} leave a visible shadow. Their shadows add, cell after cell, along the path.",
+   "physics": {
+    "eq": "tausum",
+    "line": "Peak τ = {{ovi_peaktau}}: O VI here {{ovi_sat}}."
+   },
+   "caption": "Dozens of shadows merge into a few dips",
+   "voice": "Dozens of shadows merge into a few dips",
+   "aria": "Faint shadows from single cells appear one by one in path order and stack into a total. The light getting through then forms a few broad dips.",
+   "dur_s": 8,
+   "scrub": true,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "sum-2",
+   "scene": "sum",
+   "chapter": "sum",
+   "params": {
+    "ion": "OVI",
+    "ncells": "all",
+    "show": "flux",
+    "compare": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Motion, not heat, makes this width",
+   "sub": "Single dips have b = {{ovi_bmin}} to {{ovi_bmax}} km/s, yet the trough spans {{trough_lo}} to +{{trough_hi}} km/s. Cells moving differently spread it.",
+   "physics": {
+    "eq": "lognsum",
+    "line": "Total log N = log₁₀ Σ N = {{ovi_logN}}; rest equivalent width {{ovi_ew}} mÅ."
+   },
+   "caption": "Motion, not heat, makes this width",
+   "voice": "Motion, not heat, makes this width",
+   "aria": "The whole O VI trough, far wider than any single cell's dip, with a few narrow single-cell dips drawn faintly inside it for comparison.",
+   "dur_s": 7,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "saturation-1",
+   "scene": "saturation",
+   "chapter": "saturation",
+   "title": "What happens when a dip turns black?",
+   "params": {
+    "ion": "HI",
+    "synthetic": true,
+    "logN": 13.5,
+    "b": 20,
+    "meters": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "More gas, deeper dip",
+   "sub": "Add more absorbing atoms to one dip and it deepens, while its width hardly changes.",
+   "physics": {
+    "eq": "tau0",
+    "line": "τ₀ grows in proportion to N; the centre lets through e^(−τ₀)."
+   },
+   "caption": "More gas, deeper dip",
+   "voice": "More gas, deeper dip",
+   "aria": "One test dip with two meters beside it, depth and width. The amount rises from ten to the 12 toward ten to the 13.5 per square centimetre; the depth meter climbs to about 70 percent while the width barely changes.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false
+  },
+  {
+   "id": "saturation-2",
+   "scene": "saturation",
+   "chapter": "saturation",
+   "params": {
+    "ion": "HI",
+    "synthetic": false,
+    "logN": 20,
+    "b": 20,
+    "meters": true,
+    "trough": "HI"
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Once black, only wider",
+   "sub": "On this beam, hydrogen's dip is black: adding more only widens it, so the amount is hard to read.",
+   "physics": {
+    "eq": "satwidth",
+    "line": "H I total log N = {{hi_logN}} ({{hi_lls}}), peak τ = {{hi_peaktau}}. On this sightline every fit lands {{hi_fit_dlo}} to {{hi_fit_dhi}} dex off; in general a black dip gives only a rough amount, often just a lower limit."
+   },
+   "caption": "Once black, only wider",
+   "voice": "Once black, only wider",
+   "aria": "The test dip is black at its centre. As the amount rises from ten to the 13.5 to ten to the 20, the depth meter reaches 100 percent and stays pinned while the width meter grows; faint wings appear near the end. Then the real hydrogen trough on this beam replaces it, black across its core.",
+   "dur_s": 14,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": true,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "lsf-1",
+   "scene": "lsf",
+   "chapter": "lsf",
+   "title": "What does the telescope do to it?",
+   "params": {
+    "ion": "OVI",
+    "R": 5000,
+    "ticks": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "A blurry telescope merges dips",
+   "sub": "Every telescope smears the spectrum a little. Less sharp means neighbouring dips blend into one.",
+   "physics": {
+    "eq": "lsf",
+    "line": "FWHM = 2.0, 10.0, 20.0, 60.0 km/s at R = 150 000, 30 000, 15 000, 5 000. A real instrument's blur (e.g. HST/COS) has broad wings a Gaussian misses."
+   },
+   "caption": "A blurry telescope merges dips",
+   "voice": "A blurry telescope merges dips",
+   "aria": "The O VI spectrum with small ticks marking the cells that matter. A grey bell, the telescope's blur, widens as the sharpness R falls from 150 000 to 5 000, and separate dips merge.",
+   "dur_s": 8,
+   "scrub": false,
+   "controls": [
+    {
+     "param": "R",
+     "label": "Sharpness (R)",
+     "min": 5000,
+     "max": 150000,
+     "step": 1,
+     "scale": "log",
+     "unit": ""
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      15000,
+      15000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "lsf-2",
+   "scene": "lsf",
+   "chapter": "lsf",
+   "params": {
+    "R": 5000,
+    "ticks": false
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Blur turns black dips grey",
+   "sub": "Blurred, the darkest dip looks grey, as if light were still getting through. The blur hides how dark it is.",
+   "physics": {
+    "eq": "lsf",
+    "line": "absreq compares this with Doppler profiles of b_fid = √(b_th² + (5 km/s)²); the explorer uses Voigt profiles with thermal b only."
+   },
+   "caption": "Blur turns black dips grey",
+   "voice": "Blur turns black dips grey",
+   "aria": "The darkest dip on this beam, almost black at high sharpness, turns grey at its floor as the blur widens; a label reads how much light it now seems to let through.",
+   "dur_s": 7,
+   "scrub": false,
+   "controls": [
+    {
+     "param": "R",
+     "label": "Sharpness (R)",
+     "min": 5000,
+     "max": 150000,
+     "step": 1,
+     "scale": "log",
+     "unit": ""
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      5000,
+      5000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "noise-1",
+   "scene": "noise",
+   "chapter": "noise",
+   "title": "Why is it noisy?",
+   "params": {
+    "ion": "OVI",
+    "R": 30000,
+    "sn": 100,
+    "seed": 0,
+    "truth": false
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Longer exposures beat the noise",
+   "sub": "Twice as clean needs four times as long. The noise pattern here stays the same; only its size shrinks.",
+   "physics": {
+    "eq": "noise",
+    "line": "S/N per resolution element; σ_pix = {{sigma10}} at S/N 10, pixel 2.0 km/s at R 30 000. Noise is the same everywhere and flux is not allowed below zero; real detectors differ."
+   },
+   "caption": "Longer exposures beat the noise",
+   "voice": "Longer exposures beat the noise",
+   "aria": "The spectrum broken into pixels, five per resolution element. One fixed noise pattern shrinks as the signal to noise ratio climbs from 2 to 100.",
+   "dur_s": 10,
+   "scrub": false,
+   "controls": [
+    {
+     "param": "sn",
+     "label": "Signal to noise (S/N)",
+     "min": 2,
+     "max": 100,
+     "step": 1,
+     "scale": "log",
+     "unit": ""
+    },
+    {
+     "param": "newNoise",
+     "label": "New noise",
+     "min": 0,
+     "max": 0,
+     "step": 0,
+     "scale": "button",
+     "unit": ""
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true,
+   "seedRule": "noise = rng(seedFor(seed, ion, step)); seed 0 is the explorer default; no picking"
+  },
+  {
+   "id": "noise-2",
+   "scene": "noise",
+   "chapter": "noise",
+   "params": {
+    "ion": "OVI",
+    "R": 30000,
+    "sn": 4,
+    "seed": 0,
+    "truth": true,
+    "highlight": "weak"
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Noise can hide dips, and invent them",
+   "sub": "At low signal a weak dip vanishes, and a chance wiggle can look like one. Toggle the truth to compare.",
+   "physics": {
+    "eq": "noise",
+    "line": "The highlighted weak dip exists in the noiseless spectrum (τ > 0.05); this noise draw is fixed by the recorded seed rule."
+   },
+   "caption": "Noise can hide dips, and invent them",
+   "voice": "Noise can hide dips, and invent them",
+   "aria": "A weak dip is highlighted. At low signal to noise it sinks into the noise, while a random wiggle elsewhere looks like a dip. A thin line shows the true, noiseless spectrum for comparison.",
+   "dur_s": 5,
+   "scrub": false,
+   "controls": [
+    {
+     "param": "sn",
+     "label": "Signal to noise (S/N)",
+     "min": 2,
+     "max": 100,
+     "step": 1,
+     "scale": "log",
+     "unit": ""
+    },
+    {
+     "param": "truth",
+     "label": "Show truth",
+     "min": 0,
+     "max": 1,
+     "step": 1,
+     "scale": "toggle",
+     "unit": ""
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     5,
+     5
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": false,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": false,
+   "seedRule": "noise = rng(seedFor(seed, ion, step)); seed 0; feature from F_intrinsic with tau > 0.05"
+  },
+  {
+   "id": "fit-1",
+   "scene": "fit",
+   "chapter": "fit",
+   "title": "What can we read back?",
+   "params": {
+    "ion": "OVI",
+    "R": 30000,
+    "sn": 10,
+    "fit": "stored",
+    "seedIndex": 0
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "We fit a few clouds",
+   "sub": "A fit explains the noisy spectrum with a few smooth clouds, each with an amount, a width and a speed. This noise draw:",
+   "physics": {
+    "eq": "profile",
+    "line": "Voigt fit at R 30 000, S/N 10; three precomputed noise draws cycle (first: seed {{fit_seed}}). Live fits run only in Try it."
+   },
+   "caption": "We fit a few clouds",
+   "voice": "We fit a few clouds",
+   "aria": "The noisy O VI spectrum at R 30 000 and signal to noise 10, with a smooth fitted curve built from three clouds, each marked by a tick at its speed.",
+   "dur_s": 7,
+   "scrub": false,
+   "controls": [
+    {
+     "param": "R",
+     "label": "Sharpness (R)",
+     "min": 5000,
+     "max": 150000,
+     "step": 1,
+     "scale": "log",
+     "unit": ""
+    },
+    {
+     "param": "sn",
+     "label": "Signal to noise (S/N)",
+     "min": 2,
+     "max": 100,
+     "step": 1,
+     "scale": "log",
+     "unit": ""
+    }
+   ],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": true,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true,
+   "seedRule": "three precomputed fits from page_fits.json; fits never run in seek()"
+  },
+  {
+   "id": "fit-2",
+   "scene": "fit",
+   "chapter": "fit",
+   "params": {
+    "ion": "OVI",
+    "R": 30000,
+    "sn": 10,
+    "fit": "stored",
+    "seedIndex": 0,
+    "totals": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "The total O VI survives",
+   "sub": "Add the fitted clouds: total log N = {{fit_logN}}, against {{ovi_logN}} from all {{ncross}} cells. How much is robust.",
+   "physics": {
+    "eq": "aod",
+    "line": "Turning O VI into total gas needs the oxygen share and the ion fraction, both uncertain."
+   },
+   "caption": "The total O VI survives",
+   "voice": "The total O VI survives",
+   "aria": "Two bars side by side: the total O VI amount from the fit, {{fit_logN}}, and the true total from all cells, {{ovi_logN}}, nearly equal.",
+   "dur_s": 6,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": true,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "fit-3",
+   "scene": "fit",
+   "chapter": "fit",
+   "params": {
+    "ion": "OVI",
+    "R": 15000,
+    "sn": 20,
+    "fit": "stored",
+    "case": "invent",
+    "threads": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "The clouds are not the cells",
+   "sub": "One fitted cloud gathers cells tens of kpc apart. A fit tells how much and how fast, not where, and not how hot.",
+   "physics": {
+    "eq": "bwidth",
+    "line": "A fitted width is not a thermometer: at R {{broad_R}}, S/N {{broad_sn}} one cloud has b = {{broad_b}} km/s. At R {{invented_R}}, S/N {{invented_sn}} the fit invents b = {{inv_b}} km/s, far narrower than the blur, so noise made it (total {{inv_logN}}); no O VI cell on this beam is that cool."
+   },
+   "caption": "The clouds are not the cells",
+   "voice": "The clouds are not the cells",
+   "aria": "The threads from the speed map return: one fitted cloud connects to cells scattered tens of kiloparsecs apart along the beam. Then a very broad fitted cloud, and a very narrow invented one.",
+   "dur_s": 7,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      15000,
+      15000
+     ]
+    },
+    "sn": [
+     20,
+     20
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": true,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "card-left",
+    "port": "stack"
+   },
+   "film": true
+  },
+  {
+   "id": "yourturn-1",
+   "scene": "yourturn",
+   "chapter": "yourturn",
+   "title": "Now it is yours",
+   "params": {
+    "endcard": true
+   },
+   "tween": {
+    "ease": "inOutCubic",
+    "ms": 600
+   },
+   "text": "Now it is yours. Same galaxy, same beam",
+   "sub": "Open this beam in the explorer, or pick another of the {{ngal}} galaxies and their sightlines.",
+   "physics": {
+    "eq": null,
+    "line": "Blur is R, noise is S/N, clouds are the fit: each scene maps to one control in Spectra."
+   },
+   "caption": "Now it is yours. Same galaxy, same beam",
+   "voice": "Now it is yours. Same galaxy, same beam",
+   "aria": "An end card showing the real O VI and hydrogen spectrum in the explorer's style, with buttons to open it in Spectra, see it in 3D, or replay the story.",
+   "dur_s": 10,
+   "scrub": false,
+   "controls": [],
+   "handoff": {
+    "id": "rand_b062_a062",
+    "ions": [
+     "HI",
+     "OVI"
+    ],
+    "layout": "1",
+    "R": {
+     "uv": [
+      30000,
+      30000
+     ]
+    },
+    "sn": [
+     10,
+     10
+    ],
+    "vc": 0,
+    "vhw": 400,
+    "seed": 0,
+    "fit": true,
+    "intr": false,
+    "tab": "spectra"
+   },
+   "layout": {
+    "land": "full",
+    "port": "full"
+   },
+   "film": true
+  }
+ ]
+}

@@ -17,6 +17,8 @@ deploy/data/build_library.py and the server; writes
                                public HF dataset (CFG.viz.base), falling back to data/viz/ (design-2b §5.10, §6.4)
   <out>/data/luts/luts.json    copy of docs/tng50/data/luts/luts.json (only when --out is not docs/tng50)
   <out>/js/*.js, <out>/css/*.css  the page's modules and stylesheet (copied from docs/tng50 when --out is elsewhere)
+  <out>/learn/**                  the Learn pages, copied recursively from docs/tng50/learn when --out is elsewhere,
+                                  without build/ folders, media/*.mp4 (hosted elsewhere), dot files and *.tmp
 --viz-local also copies every cube into <out>/data/viz/ and points CFG.viz.base there (refused for docs/tng50:
 big cubes never go into git). --prune also deletes <out>/data/vol/ (the Phase-2 volumes).
 Every exported entry carries p0/p1 (ray start/end, physical kpc from the galaxy centre, box axes, 0.01 kpc), read
@@ -86,6 +88,20 @@ def npz_endpoints(path: Path) -> tuple[list, list]:
         a, b = np.asarray(geom["start_ckpch"], float) / h, np.asarray(geom["end_ckpch"], float) / h
     r = lambda v: [round(float(x), 2) + 0.0 for x in v]                       # noqa: E731
     return r(a - c), r(b - c)
+
+
+def learn_files(src: Path) -> list[Path]:
+    """Files of the Learn pages under src, copied recursively: everything except build products (any build/ folder),
+    the film MP4s in media/ (hosted elsewhere, decision D5), dot files and folders (.hyperframes/, .gitignore) and *.tmp."""
+    out = []
+    for p in sorted(src.rglob("*")):
+        rel = p.relative_to(src).parts
+        if not p.is_file() or any(s.startswith(".") or s == "build" for s in rel) or p.suffix == ".tmp":
+            continue
+        if p.suffix.lower() == ".mp4" and len(rel) >= 2 and rel[-2] == "media":
+            continue
+        out.append(p)
+    return out
 
 
 def copy_if_changed(src: Path, dst: Path) -> bool:
@@ -349,6 +365,11 @@ def main(argv=None) -> int:
             files = sorted(src_d.glob(pat))
             n_w = sum(copy_if_changed(p, dst_d / p.name) for p in files)
             msgs.append(f"{sub}: {len(files)} files ({n_w} written) -> {dst_d}")
+    learn_src, learn_dst = DOCS_OUT / "learn", a.out / "learn"          # Learn pages (How a spectrum is made)
+    if learn_src.is_dir() and learn_src.resolve() != learn_dst.resolve():
+        files = learn_files(learn_src)
+        n_w = sum(copy_if_changed(p, learn_dst / p.relative_to(learn_src)) for p in files)
+        msgs.append(f"learn: {len(files)} files ({n_w} written) -> {learn_dst}")
     default_id = a.default_id if a.default_id in ids else (min(keep, key=lambda e: e.get("rank") or 1e9)["id"] if keep else None)
     tpl = a.template.read_text(encoding="utf-8")
     if tpl.count(MARK) != 1:
