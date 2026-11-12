@@ -506,7 +506,10 @@ async function create(app, opts = {}) {
   const AA = (devicePixelRatio || 1) < 1.5;
   const renderer = new T.WebGLRenderer({canvas, antialias: AA, alpha: false, powerPreference: "high-performance"});
   renderer.outputColorSpace = T.LinearSRGBColorSpace; renderer.setClearColor(new T.Color(BG), 1);
-  const calcPR = () => Math.min(devicePixelRatio || 1, mobile ? 1.0 : 1.5);
+  /* the page's CSS zoom on <html> (112 % on large screens) stretches the canvas: render that many more pixels so the 3D view
+     stays sharp; the per-device cap (1.0 phones, 1.5 desktop) still bounds the cost */
+  const cssZoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+  const calcPR = () => Math.min(devicePixelRatio || 1, mobile ? 1.0 : 1.5) * cssZoom();
   let PR = calcPR(), exactPR = PR, accMax = 8;
   const EXACT_MS = 100;
   renderer.setPixelRatio(PR);
