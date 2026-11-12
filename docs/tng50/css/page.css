@@ -59,7 +59,7 @@ sub{font-size:.75em}
 .banner{margin:8px 12px 0;padding:7px 12px;border:1px solid var(--warn);border-radius:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;background:var(--glass2)}
 .banner b{font:500 11.5px var(--mono)}
 /* ---- shell ---- */
-#shell{display:grid;grid-template-columns:minmax(0,1fr) clamp(236px,20vw,300px);gap:12px;padding:12px;height:calc(100% - 58px);min-height:0}
+#shell{display:grid;grid-template-columns:minmax(0,1fr) clamp(236px,calc(20 * var(--vw, 1vw)),300px);gap:12px;padding:12px;height:calc(100% - 58px);min-height:0}
 body.has-banner #shell{height:calc(100% - 58px - 46px)}
 body.side-off #shell{grid-template-columns:minmax(0,1fr)}
 body.side-off #side{display:none}
@@ -143,13 +143,13 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .row .pbtn{flex:1;justify-content:center;height:30px;color:var(--muted)}
 .row .pbtn.sq{flex:none}
 /* ---- popovers ---- */
-.pop{position:fixed;z-index:50;background:var(--glass2);border:1px solid var(--gline);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border-radius:14px;box-shadow:var(--shadow);padding:14px;max-width:min(400px,calc(100vw - 24px));max-height:calc(100vh - 80px);overflow:auto}
+.pop{position:fixed;z-index:50;background:var(--glass2);border:1px solid var(--gline);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border-radius:14px;box-shadow:var(--shadow);padding:14px;max-width:min(400px,calc(calc(100 * var(--vw, 1vw)) - 24px));max-height:calc(calc(100 * var(--vh, 1vh)) - 80px);overflow:auto}
 .pop h3{margin:0 0 8px;font:600 12.5px var(--sans)}
 .pop p,.pop li{margin:0 0 6px;color:var(--muted);font-size:12.5px;line-height:1.55}
 .pop ul{margin:0;padding-left:16px}
 .pop ul.plain{list-style:none;padding:0}.pop ul.plain li{margin-bottom:9px}.pop ul.plain li:last-child{margin-bottom:0}
 .pop strong{color:var(--ink);font-weight:500}
-.pop.sheet{left:10px!important;right:10px;top:auto!important;bottom:10px;width:auto!important;max-width:none;max-height:74vh}
+.pop.sheet{left:10px!important;right:10px;top:auto!important;bottom:10px;width:auto!important;max-width:none;max-height:calc(74 * var(--vh, 1vh))}
 #gal-pop{width:440px;padding:10px}
 .galcur{display:flex;align-items:center;gap:6px;margin:0 0 8px;padding:0 2px 8px;border-bottom:1px solid var(--mat-edge-c,var(--gline))}
 #gal-id{flex:1;min-width:0;display:flex;align-items:center;gap:8px;font:500 12px var(--sans);overflow:hidden;white-space:nowrap}
@@ -231,13 +231,13 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 #find-body .hint{font-size:11.5px;color:var(--muted)}
 /* ---- 3D tab ---- */
 #panel-3d{grid-column:1/-1;display:flex;justify-content:center;align-items:flex-start;gap:16px;min-height:0;overflow:auto}
-#v3d-stage{position:relative;aspect-ratio:1/1;width:min(60vw,calc(100vh - 58px - 32px),900px);flex:none;border-radius:16px;overflow:hidden;background:#05070b;border:1px solid var(--gline);box-shadow:var(--shadow)}
+#v3d-stage{position:relative;aspect-ratio:1/1;width:min(calc(60 * var(--vw, 1vw)),calc(calc(100 * var(--vh, 1vh)) - 58px - 32px),900px);flex:none;border-radius:16px;overflow:hidden;background:#05070b;border:1px solid var(--gline);box-shadow:var(--shadow)}
 #v3d-root{position:absolute;inset:0}
 #v3d-root>p{margin:0;padding:14px;color:#b3bdc9;font-size:12.5px}
 #v3d-controls{width:300px;flex:none;display:flex;flex-direction:column;gap:12px;padding-bottom:12px}
 /* tune1 F14: from 1300 px the control cards flow into two balanced columns beside the stage, so Pick ray ends near the
    stage bottom instead of 450 px below the fold (one column of 300 px was 1264 px tall next to an 810 px stage) */
-@media (min-width:1300px){#v3d-controls{width:560px}#v3d-stage{width:min(calc(100vw - 24px - 16px - 560px - 8px),calc(100vh - 58px - 32px),900px)}
+@media (min-width:1300px){#v3d-controls{width:560px}#v3d-stage{width:min(calc(calc(100 * var(--vw, 1vw)) - 24px - 16px - 560px - 8px),calc(calc(100 * var(--vh, 1vh)) - 58px - 32px),900px)}
   #v3d-controls .v3c{display:block;columns:2;column-gap:12px}#v3d-controls .v3c>*{break-inside:avoid;margin:0 0 12px}#v3d-controls .v3c>.v3c-lod{margin:0}
   #v3d-controls .v3c-btns{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .grp-k{font:500 9.5px var(--mono);color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
@@ -260,7 +260,7 @@ body[data-tab="3d"] #shell{grid-template-columns:minmax(0,1fr)}
 @media (min-width:1024px){#panel-3d{overflow:hidden}#v3d-controls{align-self:stretch;min-height:0;overflow-y:auto;scrollbar-width:thin;padding-right:4px}}
 /* B_fix F8: the 3D LOD and download line is a debug aid, shown with ?debug */
 #v3-lod{display:none}body.debug #v3-lod:not(:empty){display:block}
-@media (max-width:1023px){#panel-3d{flex-direction:column;align-items:center}#v3d-stage{width:min(100%,calc(100vh - 140px),900px)}#v3d-controls{width:min(100%,560px)}}
+@media (max-width:1023px){#panel-3d{flex-direction:column;align-items:center}#v3d-stage{width:min(100%,calc(calc(100 * var(--vh, 1vh)) - 140px),900px)}#v3d-controls{width:min(100%,560px)}}
 /* ---- phone and narrow tablet: one column, controls in a drawer (mockup A) ---- */
 @media (max-width:820px){
   body{overflow:auto}
@@ -462,7 +462,7 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
 #v3d-controls .v3tf-bands input[type=color]::-moz-color-swatch{border:0;border-radius:6px}
 /* tips: the one-line help of every control (js/tips.js; data-tip on the control): one glass tooltip, thick material,
    never takes the pointer; near-opaque under the reduced-transparency and no-backdrop fallbacks above */
-.tip{position:fixed;z-index:2000;left:0;top:0;max-width:min(280px,calc(100vw - 16px));padding:6px 10px;border-radius:var(--r-s,10px);
+.tip{position:fixed;z-index:2000;left:0;top:0;max-width:min(280px,calc(calc(100 * var(--vw, 1vw)) - 16px));padding:6px 10px;border-radius:var(--r-s,10px);
   background:var(--mat-thick);border:var(--mat-edge);backdrop-filter:var(--mat-blur-thick);-webkit-backdrop-filter:var(--mat-blur-thick);
   box-shadow:var(--mat-highlight),var(--mat-shadow-m);color:var(--ink);font:500 12px/1.35 var(--sans);letter-spacing:.01em;text-wrap:pretty;
   pointer-events:none;opacity:0;transform:translateY(2px);transition:opacity .12s ease-out,transform .12s ease-out}
@@ -515,9 +515,12 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
 .v3d-pv:focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
 @keyframes v3d-pv-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.v3d-pv{animation:none}}
-/* ---- default scale (2026-11): on large screens the page renders at 125 %, what the owner preferred with browser zoom.
+/* ---- default scale (2026-11): on large screens the page renders at 112 %, what the owner preferred with browser zoom.
    Phones and narrow windows keep 100 %. Browser zoom still works on top of it. ---- */
-@media (min-width:1400px){html{zoom:1.25}}
+:root{--uiz:1;--vh:1vh;--vw:1vw}
+/* viewport units do not follow CSS zoom, so every vh/vw size in the page reads var(--vh)/var(--vw), divided by the zoom:
+   the 3D stage and the drawers then still fit the window exactly */
+@media (min-width:1400px){:root{--uiz:1.12;--vh:calc(1vh / 1.12);--vw:calc(1vw / 1.12)}html{zoom:var(--uiz)}}
 /* at 125 % a 1400 to 1900 px screen lays out like 1120 to 1520 px: keep the top bar on one line by showing the status as a
    dot only and Find and New ray as icons (their tips still name them) */
 @media (min-width:1400px) and (max-width:1900px){
@@ -527,3 +530,14 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
   #geo-open svg{width:14px;height:14px}
   #title{font-size:12px}
 }
+
+/* 3D orbit button: bottom-centre of the full stage, same glass as the re-centre chip */
+.v3d-orb{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:3;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px 0 10px;
+  border:1px solid var(--s-edge,rgba(200,215,240,.16));border-radius:999px;cursor:pointer;color:var(--s-ink,#e9eef4);font:500 12px var(--sans,system-ui,sans-serif);
+  background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,0) 70%),var(--s-mat,rgba(12,16,22,.74));
+  box-shadow:var(--s-hi,inset 0 1px 0 rgba(255,255,255,.10)),0 4px 14px rgba(0,0,0,.30);backdrop-filter:var(--s-blur,blur(24px) saturate(1.5));-webkit-backdrop-filter:var(--s-blur,blur(24px) saturate(1.5))}
+.v3d-orb svg{width:14px;height:14px;flex:none}
+.v3d-orb[aria-pressed=true]{border-color:var(--s-accent,#7db2f0)}
+.v3d-orb[aria-pressed=true] svg{color:var(--s-accent,#7db2f0)}
+.v3d-orb:focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
+.v3d-thumb .v3d-orb{display:none}

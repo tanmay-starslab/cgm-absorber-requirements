@@ -465,7 +465,7 @@ export function claudeOptionLabel(api, defaults = []) { return isOverrideApi(api
 
 /* ------------------------------------------------------------------ UI */
 const STYLE = `
-.chat-drawer{position:fixed;top:10px;right:10px;bottom:10px;width:410px;max-width:calc(100vw - 20px);z-index:60;display:flex;flex-direction:column;
+.chat-drawer{position:fixed;top:10px;right:10px;bottom:10px;width:410px;max-width:calc(calc(100 * var(--vw, 1vw)) - 20px);z-index:60;display:flex;flex-direction:column;
   --cg-hi:var(--mat-highlight,inset 0 1px 0 rgba(255,255,255,.16));--cg-thin:var(--mat-thin,var(--btnbg));--cg-edge:var(--mat-edge-c,var(--bline));
   --cg-sheen:var(--mat-fill,linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,0) 70%));--cg-sheen-h:var(--mat-fill-hover,linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04)));
   --cg-press:var(--mat-press,linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.06)));--cg-gloss:var(--mat-gloss,linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 55%));
@@ -540,7 +540,7 @@ const STYLE = `
 .chat-form .cb[aria-busy=true] svg{animation:chatspin 1s linear infinite}
 @keyframes chatspin{to{transform:rotate(360deg)}}
 .chat-disc{margin:0;padding:7px 16px 10px;font-size:11px;color:var(--muted)}
-@media (max-width:720px){.chat-drawer{top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;height:min(88vh,720px);border-radius:var(--r-l,22px) var(--r-l,22px) 0 0;border-bottom:0}}
+@media (max-width:720px){.chat-drawer{top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;height:min(calc(88 * var(--vh, 1vh)),720px);border-radius:var(--r-l,22px) var(--r-l,22px) 0 0;border-bottom:0}}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.chat-drawer{background:var(--mat-thick-o,linear-gradient(var(--glass2),var(--glass2)),var(--bg))}}
 @media (prefers-reduced-transparency:reduce){.chat-drawer{background:var(--mat-thick-o,linear-gradient(var(--glass2),var(--glass2)),var(--bg));backdrop-filter:none;-webkit-backdrop-filter:none}}
 @media (prefers-contrast:more){.chat-drawer{--cg-edge:var(--mat-edge-hc,var(--muted));background:var(--mat-thick-o,linear-gradient(var(--glass2),var(--glass2)),var(--bg))}.chat-log{border-top-color:var(--cg-edge)}}

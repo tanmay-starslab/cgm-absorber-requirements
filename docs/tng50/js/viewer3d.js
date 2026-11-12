@@ -237,10 +237,10 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 /* the layout the viewer builds when the page gives no square #v3d-stage (§6.2 C13: square, a fraction of the width, centred,
    controls beside it at ≥ 1024 px and below it otherwise) */
 .v3d-layout{display:flex;justify-content:center;align-items:flex-start;gap:16px;padding:12px 0;min-width:0}
-.v3d-layout>.v3d-sq{position:relative;flex:none;aspect-ratio:1/1;width:min(60vw,calc(100vh - 120px),900px);width:min(60vw,calc(100svh - 120px),900px);border-radius:var(--r-m,16px);overflow:hidden;
+.v3d-layout>.v3d-sq{position:relative;flex:none;aspect-ratio:1/1;width:min(calc(60 * var(--vw, 1vw)),calc(calc(100 * var(--vh, 1vh)) - 120px),900px);width:min(calc(60 * var(--vw, 1vw)),calc(calc(100 * var(--vh, 1vh)) - 120px),900px);border-radius:var(--r-m,16px);overflow:hidden;
   border:var(--mat-edge,1px solid var(--gline,rgba(160,175,220,.14)));background:${BG};box-shadow:var(--mat-shadow,0 18px 50px rgba(0,0,0,.4))}
 .v3d-layout>.v3d-side{width:300px;flex:none;min-width:0}
-@media (max-width:1023px){.v3d-layout{flex-direction:column;align-items:center}.v3d-layout>.v3d-sq{width:min(100%,calc(100vh - 140px),900px);width:min(100%,calc(100svh - 140px),900px)}
+@media (max-width:1023px){.v3d-layout{flex-direction:column;align-items:center}.v3d-layout>.v3d-sq{width:min(100%,calc(calc(100 * var(--vh, 1vh)) - 140px),900px);width:min(100%,calc(calc(100 * var(--vh, 1vh)) - 140px),900px)}
   .v3d-layout>.v3d-side{width:min(100%,560px)}}
 /* the grouped control column (B look, A's explicit labels); page tokens with dark fallbacks */
 .v3c{display:flex;flex-direction:column;gap:12px;min-width:0;font:13px/1.4 var(--sans,system-ui,sans-serif);color:var(--ink,#eef0f7)}
@@ -325,10 +325,10 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c #picker-root fieldset{border:0;margin:0 0 6px;padding:0;min-width:0}.v3c #picker-root legend{font:500 10px var(--mono,ui-monospace,monospace);color:var(--faint,#7a83a0);padding:0;margin-bottom:3px}
 .v3c #picker-root .hint,.v3c #picker-root .msg{font-size:11.5px;color:var(--muted,#98a0b8);margin:4px 0}
 /* fullscreen: the control column moves onto the stage as a closable panel (dark, whatever the page theme) */
-.v3d:fullscreen{position:fixed;inset:0;z-index:1000;background:${BG};width:100vw;height:100vh}
+.v3d:fullscreen{position:fixed;inset:0;z-index:1000;background:${BG};width:calc(100 * var(--vw, 1vw));height:calc(100 * var(--vh, 1vh))}
 /* fix-ui FE-08: the CSS fallback (iPhone Safari has no element Fullscreen API) uses the dynamic viewport */
-.v3d.v3d-fs{position:fixed;inset:0;z-index:1000;background:${BG};width:auto;height:100vh;height:100dvh}
-.v3d .v3c{position:absolute;top:52px;right:10px;bottom:10px;width:min(340px,90vw);overflow:auto;z-index:2;padding:10px;border:1px solid var(--s-edge);border-radius:var(--r-l,22px);
+.v3d.v3d-fs{position:fixed;inset:0;z-index:1000;background:${BG};width:auto;height:calc(100 * var(--vh, 1vh));height:calc(100dvh / var(--uiz, 1))}
+.v3d .v3c{position:absolute;top:52px;right:10px;bottom:10px;width:min(340px,calc(90 * var(--vw, 1vw)));overflow:auto;z-index:2;padding:10px;border:1px solid var(--s-edge);border-radius:var(--r-l,22px);
   background:color-mix(in srgb,#0c1016 80%,transparent);backdrop-filter:blur(40px) saturate(1.6);-webkit-backdrop-filter:blur(40px) saturate(1.6);box-shadow:var(--s-hi),0 24px 60px rgba(0,0,0,.5);
   color-scheme:dark;--ink:#eef0f7;--muted:#98a0b8;--faint:#7a83a0;--gline:rgba(160,175,220,.16);
   --glass:rgba(22,27,42,.7);--glass2:rgba(40,46,70,.9);--hl:rgba(143,168,255,.16);--accent:#8fa8ff;--accent-ink:#0a0d18;color:var(--ink);
@@ -417,6 +417,7 @@ async function create(app, opts = {}) {
   const el = document.createElement("div"); el.className = "v3d";
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
+    <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the view about the disk axis (O)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
     <button type="button" class="v3d-pv" id="v3-pivot" hidden aria-label="Re-centre on the galaxy" data-tip="Orbit centre moved; return to the galaxy (C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg><span>re-centre</span></button>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
@@ -1428,6 +1429,7 @@ async function create(app, opts = {}) {
     else if (k === "g" || k === "G") setGuides({ring: !guides.visible});
     else if (k === "p" || k === "P") viewer.hooks.togglePick?.();
     else if ((k === "c" || k === "C") && !ev.shiftKey) recentre();
+    else if ((k === "o" || k === "O") && !ev.shiftKey) setOrbit(!fullOrbit);
     else if (k === "Escape") { if (fsEl() || performance.now() - fsExitAt < 400) return; viewer.hooks.exitPick?.(); }   // Esc that leaves fullscreen does not also leave pick mode
     else return;
     ev.preventDefault(); ev.stopPropagation(); render(); });
@@ -1456,6 +1458,8 @@ async function create(app, opts = {}) {
   ctlBox.querySelectorAll(".presets [data-p]").forEach(b => b.addEventListener("click", () => setPreset(b.dataset.p)));
   /* ux4 pivot controls: stage chip, View card galaxy | ray, kpc form, double-click on the stage */
   q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
+  q("#v3-orbit").addEventListener("click", () => setOrbit(!fullOrbit));
+  controls.addEventListener("start", () => { if (fullOrbit) setOrbit(false); });   // grabbing the view stops the orbit
   q("#v3-pv-gal").addEventListener("click", recentre);
   q("#v3-pv-ray").addEventListener("click", pivotToRay);
   q("#v3-pv-form").addEventListener("submit", ev => { ev.preventDefault();
@@ -1522,7 +1526,10 @@ async function create(app, opts = {}) {
   }
   function thumbLabel() { const t = q(".v3d-tt .f"); if (t) t.textContent = species ? lab(species) : ""; }
   /* the thumbnail's slow turn about the disk normal: only while it is docked, on screen, the page visible, motion allowed */
-  const spinning = () => docked === "thumb" && thumbSpin && !!species && !document.hidden && !reduced() && !ctxLost && (io ? vis.thumb : true);
+  let fullOrbit = false;   // the full stage's orbit button (O): the same slow turn as the thumbnail, started by the user
+  const spinning = () => !!species && !document.hidden && !ctxLost && (docked === "thumb" ? thumbSpin && !reduced() && (io ? vis.thumb : true) : fullOrbit);
+  function setOrbit(on) { fullOrbit = !!on; const b = q("#v3-orbit"); if (b) { b.setAttribute("aria-pressed", String(fullOrbit)); b.querySelector("span").textContent = fullOrbit ? "stop" : "orbit"; }
+    spinKick(); }
   function spinKick() {
     if (spinning()) { if (!spinRaf) { spinLast = 0; spinRaf = requestAnimationFrame(spinTick); } }
     else if (spinRaf) { cancelAnimationFrame(spinRaf); spinRaf = 0; render(); } }
