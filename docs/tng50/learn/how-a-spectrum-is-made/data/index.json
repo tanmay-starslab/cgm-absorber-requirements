@@ -1,0 +1,18 @@
+{
+ "schema": "story-index/1",
+ "default": {
+  "galaxy": 488530,
+  "ray": "rand_b062_a062"
+ },
+ "fion": "fion_OVI_slice.json",
+ "stories": [
+  {
+   "galaxy": 488530,
+   "ray": "rand_b062_a062",
+   "story": "story_488530_rand_b062_a062.json",
+   "page_fits": "page_fits_488530_rand_b062_a062.json",
+   "label": "Subhalo 488530",
+   "eligible": true
+  }
+ ]
+}

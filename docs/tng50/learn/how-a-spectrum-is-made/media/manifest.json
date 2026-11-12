@@ -1,0 +1,47 @@
+{
+ "schema": "story-media/1",
+ "generated": "2026-11-12T07:27:26+00:00",
+ "mode": "default",
+ "hyperframes": "0.9.36",
+ "chrome_headless_shell": "linux-152.0.7977.30",
+ "ffmpeg": "8.1.2",
+ "renderer": "SwiftShader (--no-browser-gpu)",
+ "git_head": "04afc7d09a2e91bcf8f7f9662c81814b1aed50db",
+ "steps_json_sha256": "a1415756d72531cc7c656cb10524e302beac355bea5f2b9c1d91439dcac16616",
+ "files": {
+  "story.chapters.vtt": {
+   "bytes": 630,
+   "sha256": "84d60b4abd59a05945ddd68d0c68fc7efecd83ffa09a0bb04a74c269546860c9"
+  },
+  "story.en.vtt": {
+   "bytes": 1221,
+   "sha256": "d1a87b203653a4405795dd309d172d669af61f6ce6cf4d2bd3a75229d818f2ea"
+  },
+  "story.ffmeta": {
+   "bytes": 800,
+   "sha256": "e3eb7fd33740be8eaeb3e162490b9362d4e7666fb456dce512064080fe5bf8f4"
+  },
+  "story.full.chapters.vtt": {
+   "bytes": 629,
+   "sha256": "9486c3ac5a345643d4f80eed939aedfdcc8673f15a7fdf3903a574613196c769"
+  },
+  "story.full.en.vtt": {
+   "bytes": 1361,
+   "sha256": "56bc6a7ec698136dd03b736869d69d60111039a3c4a38590abdeab334de6e102"
+  },
+  "story.full.ffmeta": {
+   "bytes": 797,
+   "sha256": "cf52de8cb1620edf04d7984bd0c548ccf8c5aca59086eaad7ee7a052f91b7a3e"
+  },
+  "story_1080p.mp4": {
+   "bytes": 11546577,
+   "sha256": "577e1494c299c061752f55091f4a86a1fdc3ab1063d692a6a06daaf05806667f",
+   "duration_s": 131.0
+  },
+  "story_720p.mp4": {
+   "bytes": 2747266,
+   "sha256": "45ea8f2291a607fcd7b065332eea154d99d878e7f8729845b6261a41144fb1c2",
+   "duration_s": 131.0
+  }
+ }
+}

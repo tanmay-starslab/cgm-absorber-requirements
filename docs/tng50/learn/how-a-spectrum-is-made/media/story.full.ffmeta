@@ -1,0 +1,56 @@
+;FFMETADATA1
+title=How a spectrum is made
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=0
+END=6000
+title=Why can't we just look at the gas?
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=6000
+END=30000
+title=How does one cloud make a dip?
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=30000
+END=45000
+title=Why is the spectrum a speed map?
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=45000
+END=60000
+title=How do many cells make a few dips?
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=60000
+END=80000
+title=What happens when a dip turns black?
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=80000
+END=95000
+title=What does the telescope do to it?
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=95000
+END=110000
+title=Why is it noisy?
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=110000
+END=130000
+title=What can we read back?
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=130000
+END=140000
+title=Now it is yours

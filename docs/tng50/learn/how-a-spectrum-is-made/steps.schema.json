@@ -1,0 +1,454 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "story-steps/1",
+  "title": "How a spectrum is made: steps.json",
+  "description": "Ordered story steps (PLAN_final section 1.1). Validated by js/engine.js validateSteps(), which reads this file (subset: type, enum, const, pattern, minLength, maxLength, minimum, maximum, exclusiveMinimum, minItems, maxItems, uniqueItems, items, properties, required, additionalProperties, $ref to #/$defs) and adds the cross-step rules listed in $comment.",
+  "$comment": "Cross-step rules (engine.js validateSteps): ids unique; scene names resolve; title on the first step of each chapter and nowhere else; chapters appear in CHAPTERS order and are contiguous; dur_s a multiple of 1/30 s; at most 3 steps with scrub true; every {{key}} template has the form {{name}} or {{a.b.c}}; seedRule present only on noise and fit steps; params never use the engine's frame keys (engine.js FRAME_KEYS); controls are names or {param, ...} objects.",
+  "type": "object",
+  "required": [
+    "schema",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "story-steps/1"
+    },
+    "meta": {
+      "type": "object",
+      "description": "Story-wide defaults. g and ray name the default galaxy (TNG50-1 z = 0 subhalo id) and sightline; any galaxy of the sample with a story data file works (store.js reads ?g= and ?ray=).",
+      "additionalProperties": true,
+      "properties": {
+        "g": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ray": {
+          "type": "string",
+          "pattern": "^((face|edge|rand)_b\\d{3}_a\\d{3}(_s\\d+)?|cust_[0-9a-f]{10})$"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "R": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 200000
+        },
+        "sn": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "data_url": {
+          "type": "string",
+          "description": "Template for the per-galaxy story data, {g} and {ray} replaced (never a fixed galaxy). Default data/story_{g}_{ray}.json"
+        },
+        "title": {
+          "type": "string"
+        },
+        "subhalo": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "alias of g"
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "keys": {
+      "type": "object",
+      "description": "Named {{key}} templates: {name: {path (dotted path into the story data), fmt (id, int, f1, f2, f3, sci2, pct), fallback}}. resolveTemplate reads path, formats with fmt; fallback only when the data lack the path (reported by engine.fallbackKeys()).",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$"
+          },
+          "fmt": {
+            "enum": [
+              "id",
+              "int",
+              "f1",
+              "f2",
+              "f3",
+              "sci2",
+              "pct"
+            ]
+          },
+          "fallback": {
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/chapter"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "chapter": {
+      "enum": [
+        "light",
+        "pencil",
+        "cells",
+        "ions",
+        "dip",
+        "speed",
+        "sum",
+        "saturation",
+        "lsf",
+        "noise",
+        "fit",
+        "yourturn"
+      ]
+    },
+    "words": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "tween": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ms": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 600,
+          "description": "Step-mode entry tween length; Play uses the step's own time"
+        },
+        "ease": {
+          "enum": [
+            "linear",
+            "inOut",
+            "out",
+            "in",
+            "inOutCubic",
+            "outCubic",
+            "inCubic"
+          ]
+        },
+        "frac": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of dur_s over which Play tweens from the previous authored state (default: all of it)"
+        }
+      }
+    },
+    "layoutOne": {
+      "description": "Layout hint for the page and scene (U4/U2 own the values): a name such as full, split, stack, card-left, or an object",
+      "type": [
+        "string",
+        "object"
+      ],
+      "maxLength": 40
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "id",
+        "scene",
+        "chapter",
+        "params",
+        "text",
+        "caption",
+        "aria",
+        "dur_s",
+        "layout",
+        "film"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*-[0-9]+[a-z]?$",
+          "description": "<chapter>-<n>, e.g. lsf-1; #lsf aliases to the chapter's first step"
+        },
+        "scene": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "module name in js/scenes/"
+        },
+        "chapter": {
+          "$ref": "#/$defs/chapter"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Chapter question; first step of the chapter only"
+        },
+        "params": {
+          "type": "object",
+          "description": "Authored end state (merged onto the previous step of the same scene)"
+        },
+        "tween": {
+          "$ref": "#/$defs/tween"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Display line, at most 8 words (tests/js/story_static.mjs)"
+        },
+        "sub": {
+          "type": "string",
+          "maxLength": 220,
+          "description": "At most 25 words"
+        },
+        "physics": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "line"
+          ],
+          "properties": {
+            "eq": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-z0-9_]+$"
+            },
+            "line": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 320
+            }
+          }
+        },
+        "caption": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "voice": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "aria": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "dur_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 120
+        },
+        "scrub": {
+          "type": "boolean"
+        },
+        "controls": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "type": [
+              "string",
+              "object"
+            ],
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
+            "required": [
+              "param"
+            ],
+            "properties": {
+              "param": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
+              "label": {
+                "type": "string"
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              },
+              "step": {
+                "type": "number",
+                "minimum": 0
+              },
+              "scale": {
+                "enum": [
+                  "lin",
+                  "log",
+                  "enum",
+                  "button",
+                  "toggle"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              },
+              "options": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "handoff": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "description": "Explorer state for formatHash (state.js); store.js handoffHash() fills the rest",
+          "properties": {
+            "ions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            },
+            "layout": {
+              "enum": [
+                "1",
+                "2R",
+                "2SN",
+                "4"
+              ]
+            },
+            "R": {
+              "type": [
+                "array",
+                "object"
+              ],
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 200000
+              },
+              "additionalProperties": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 200000
+                }
+              },
+              "description": "[R] or [R1, R2] (UV band), or the explorer's {band: [R1, R2]}"
+            },
+            "sn": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              }
+            },
+            "vc": {
+              "type": "number"
+            },
+            "vhw": {
+              "type": "integer",
+              "minimum": 10
+            },
+            "fit": {
+              "type": "boolean"
+            },
+            "intr": {
+              "type": "boolean"
+            },
+            "tab": {
+              "enum": [
+                "spectra",
+                "3d"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^((face|edge|rand)_b\\d{3}_a\\d{3}(_s\\d+)?|cust_[0-9a-f]{10})$",
+              "description": "ignored when the story state names a ray (the current galaxy's sightline wins)"
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "ignored: the story state's seed is handed off"
+            }
+          }
+        },
+        "layout": {
+          "type": "object",
+          "required": [
+            "land",
+            "port"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "land": {
+              "$ref": "#/$defs/layoutOne"
+            },
+            "port": {
+              "$ref": "#/$defs/layoutOne"
+            }
+          }
+        },
+        "film": {
+          "type": "boolean"
+        },
+        "film_dur_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 120,
+          "description": "Length in the film cut when shorter than dur_s (e.g. S8 14 s of 20 s); multiple of 1/30 s"
+        },
+        "seedRule": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 300
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>How a spectrum is made, TNG50 sightlines</title>
+<meta name="description" content="A step-by-step story of how a quasar absorption spectrum forms: from gas cells in a TNG50 galaxy to dips, blur, noise and a fit. Scroll it, play it, or try each step.">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#04050a">
+<link rel="preload" href="vendor/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/story.css">
+<script>/* theme before first paint: same key and values as the explorer (auto | light | dark); ?still and the physics
+  preference too, so the first frame is already right */
+(function(){var d=document.documentElement,q=new URLSearchParams(location.search);try{var t=localStorage.getItem("tngsight.theme");
+if(t==="light"||t==="dark")d.dataset.theme=t;if(!q.has("still")&&localStorage.getItem("story.physics")==="1")d.classList.add("physics")}catch(e){}
+if(q.has("still"))d.classList.add("still");if(q.get("embed")==="1")d.classList.add("embed");d.classList.add("js")})();</script>
+</head>
+<body data-mode="step">
+<a class="skip skip-main" href="#steps">Skip to the story text</a>
+<a class="skip" id="to-explorer" href="../../">Skip to the explorer</a>
+<div class="mark">
+  <button class="ibtn" id="keys-open" type="button" aria-expanded="false" aria-controls="keys" aria-label="Keys and help"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button>
+</div>
+<section class="keys" id="keys" role="dialog" aria-labelledby="keys-h" hidden>
+  <p class="kh" id="keys-h">Keys</p>
+  <dl>
+    <dt>→ ← or PgDn PgUp</dt><dd>Next or previous step</dd>
+    <dt>Home End</dt><dd>First or last step</dd>
+    <dt>Space or k</dt><dd>Play or pause, when Play or the picture has focus</dd>
+    <dt>Esc</dt><dd>Leave Try it, close this panel</dd>
+  </dl>
+  <p>Scroll at your own pace, press Play to watch, or press Try it on a step to change it yourself.</p>
+</section>
+
+<main class="story" id="story" aria-labelledby="story-title">
+  <div class="stage" id="stage" tabindex="0" aria-label="Animated figure; the text of each step describes it">
+    <div class="sky" aria-hidden="true"></div>
+    <canvas id="stage-canvas" aria-hidden="true"></canvas>
+    <div class="beam" aria-hidden="true"></div>
+    <div class="strip" aria-hidden="true">
+      <svg viewBox="0 0 1000 32" preserveAspectRatio="none"><path d="M0 4H1000" stroke="#fff4df" stroke-width="1.6" vector-effect="non-scaling-stroke" fill="none"/><path d="M0 30H1000" stroke="rgba(255,255,255,.18)" stroke-width="1" vector-effect="non-scaling-stroke" fill="none"/></svg>
+      <span class="lab">light getting through</span><span class="val">100 %</span>
+    </div>
+    <div class="grain" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
+    <p class="exploring" id="exploring" hidden>exploring</p>
+    <p class="stage-note" id="stage-note" hidden></p>
+    <p class="caption" id="caption" aria-hidden="true"></p>
+    <div class="progress" aria-hidden="true"><i id="progress-bar"></i><span id="progress-txt"></span></div>
+  </div>
+
+  <div class="steps" id="steps">
+    <header class="hero">
+      <p class="kicker">TNG50 sightlines, Learn</p>
+      <h1 id="story-title">How a spectrum is made</h1>
+      <p>Light from a distant quasar crosses the gas around a galaxy. Follow one beam, cell by cell, from the simulation to the spectrum a telescope would record.</p>
+      <p class="resume" id="resume" hidden><a href="#" id="resume-link">Resume where you left off</a></p>
+    </header>
+<!--STEPS-->
+    <section class="chapter" id="ch-light" data-chapter="light" aria-labelledby="h2-light">
+      <h2 id="h2-light"><span class="num" aria-hidden="true">01</span><span class="vh">Chapter 1: </span><span class="q">Why can&#x27;t we just look at the gas?</span></h2>
+      <article class="step" id="s-light-1" data-step="light-1" data-scene="light" data-layout="card-left" data-port="stack" data-film="1" data-dur="8" aria-labelledby="h-light-1">
+        <div class="card">
+          <h3 id="h-light-1" tabindex="-1">Galaxies sit inside gas too faint to see</h3>
+          <p class="sub" data-tpl="A quasar far behind shines through it. We follow one beam through one of {{ngal}} simulated galaxies.">A quasar far behind shines through it. We follow one beam through one of 198 simulated galaxies.</p>
+          <p class="aria vh" data-tpl="Figure: The starlight of one simulated galaxy, seen close up. The view pulls back until the whole halo of faint gas around it fills the frame, out to a dashed circle {{R200c}} kiloparsecs across from the centre. A quasar appears far behind.">Figure: The starlight of one simulated galaxy, seen close up. The view pulls back until the whole halo of faint gas around it fills the frame, out to a dashed circle 246 kiloparsecs across from the centre. A quasar appears far behind.</p>
+          <div class="phys"><p data-tpl="Galaxy {{galaxy}} from TNG50-1 at z = 0, {{mw_compare}}; its halo reaches R200c = {{R200c}} kpc.">Galaxy 488530 from TNG50-1 at z = 0, somewhat bigger than the Milky Way; its halo reaches R200c = 246 kpc.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Halo gas <output></output></span><input type="range" data-param="halo" data-scale="lin" data-unit="" min="0" max="1" step="0.05" value="1"></label>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-light-1">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-light-2" data-step="light-2" data-scene="light" data-layout="card-left" data-port="stack" data-film="1" data-dur="7" aria-labelledby="h-light-2">
+        <div class="card">
+          <h3 id="h-light-2" tabindex="-1">A light behind reveals it</h3>
+          <p class="sub">Gas between us and the quasar takes a little of its light away. Nothing is taken yet: all the light gets through.</p>
+          <p class="aria vh">Figure: A warm white beam leaves the quasar and crosses the halo toward us. A thin strip appears along the bottom: the beam's spectrum, a flat line at 100 percent, because all the light gets through.</p>
+          <div class="phys"><p>The gas also glows (Lyα nebulae, O VI), but too faintly to map routinely; against a bright quasar it shows up in absorption.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-pencil" data-chapter="pencil" aria-labelledby="h2-pencil">
+      <h2 id="h2-pencil"><span class="num" aria-hidden="true">02</span><span class="vh">Chapter 2: </span><span class="q">What does one beam see?</span></h2>
+      <article class="step" id="s-pencil-1" data-step="pencil-1" data-scene="pencil" data-layout="card-left" data-port="stack" data-film="0" data-dur="6" aria-labelledby="h-pencil-1">
+        <div class="card">
+          <h3 id="h-pencil-1" tabindex="-1" data-tpl="One beam, {{b_ly}} light-years from the centre">One beam, 202 000 light-years from the centre</h3>
+          <p class="sub" data-tpl="Seen from the side, the sightline passes {{b_kpc}} kpc from the galaxy&#x27;s centre and crosses the whole halo.">Seen from the side, the sightline passes 61.9 kpc from the galaxy's centre and crosses the whole halo.</p>
+          <p class="aria vh" data-tpl="Figure: The halo seen from the side. The beam runs straight across it from the quasar on the right toward our telescope on the left. A dashed marker from the centre to the beam reads {{b_ly}} light-years.">Figure: The halo seen from the side. The beam runs straight across it from the quasar on the right toward our telescope on the left. A dashed marker from the centre to the beam reads 202 000 light-years.</p>
+          <div class="phys"><p data-tpl="b = {{b_kpc}} kpc, azimuth {{azimuth_deg}}°, path from −R200c to +R200c = {{length_kpc}} kpc. Only gas within R200c is counted; real sightlines also cross gas beyond it, and our own Galaxy.">b = 61.9 kpc, azimuth 62.1°, path from −R200c to +R200c = 493 kpc. Only gas within R200c is counted; real sightlines also cross gas beyond it, and our own Galaxy.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-pencil-2" data-step="pencil-2" data-scene="pencil" data-layout="card-left" data-port="stack" data-film="0" data-dur="6" aria-labelledby="h-pencil-2">
+        <div class="card">
+          <h3 id="h-pencil-2" tabindex="-1">Every beam crosses different gas</h3>
+          <p class="sub">Other catalogued sightlines of this galaxy flash by. Each meets different gas, so their spectra differ a lot. We follow one.</p>
+          <p class="aria vh">Figure: Faint lines flash one after another across the halo: other sightlines through the same galaxy. Our beam stays lit.</p>
+          <div class="phys"><p>The catalogue samples many impact distances and orientations; the explorer's gallery shows every one.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-cells" data-chapter="cells" aria-labelledby="h2-cells">
+      <h2 id="h2-cells"><span class="num" aria-hidden="true">03</span><span class="vh">Chapter 3: </span><span class="q">What is the model galaxy made of?</span></h2>
+      <article class="step" id="s-cells-1" data-step="cells-1" data-scene="cells" data-layout="card-left" data-port="stack" data-film="0" data-dur="5" aria-labelledby="h-cells-1">
+        <div class="card">
+          <h3 id="h-cells-1" tabindex="-1" data-tpl="The beam crosses {{n_cells}} gas cells">The beam crosses 672 gas cells</h3>
+          <p class="sub" data-tpl="The simulation stores gas in cells. Along its path the beam passes through {{n_cells}} of them, lit as the light arrives.">The simulation stores gas in cells. Along its path the beam passes through 672 of them, lit as the light arrives.</p>
+          <p class="aria vh" data-tpl="Figure: A horizontal beam with a ruler of {{length_kpc}} kiloparsecs below it. Soft beads appear along it from right to left, one per gas cell, sized by the path inside the cell and coloured by temperature; a counter reaches {{n_cells}}.">Figure: A horizontal beam with a ruler of 493 kiloparsecs below it. Soft beads appear along it from right to left, one per gas cell, sized by the path inside the cell and coloured by temperature; a counter reaches 672.</p>
+          <div class="phys"><p data-tpl="Cells are soft, overlapping kernels, larger than real clouds; the path inside a cell has median {{dl_median_kpc}} kpc and maximum {{dl_max_kpc}} kpc.">Cells are soft, overlapping kernels, larger than real clouds; the path inside a cell has median 0.16 kpc and maximum 6.5 kpc.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-cells-2" data-step="cells-2" data-scene="cells" data-layout="card-left" data-port="stack" data-film="0" data-dur="5" aria-labelledby="h-cells-2">
+        <div class="card">
+          <h3 id="h-cells-2" tabindex="-1">Each has its own density, heat, speed</h3>
+          <p class="sub">Scroll to move the probe along the beam. Every cell carries a density, a temperature, a metal content and a velocity.</p>
+          <p class="aria vh">Figure: A probe ring glides along the beam and a small card reads the cell under it: density, heat in kelvin, metals compared with the Sun, and speed in kilometres per second.</p>
+          <div class="phys"><p data-tpl="n_H = X_H ρ / m_H, with the hydrogen mass fraction X_H of each cell between {{XH_min}} and {{XH_max}}.">n_H = X_H ρ / m_H, with the hydrogen mass fraction X_H of each cell between 0.724 and 0.760.</p></div>
+          <div class="ctrls" hidden>
+            <fieldset class="seg"><legend>Colour cells by</legend><label><input type="radio" name="colorBy-cells-2" data-param="colorBy" value="T" checked><span>heat</span></label><label><input type="radio" name="colorBy-cells-2" data-param="colorBy" value="nH"><span>density</span></label><label><input type="radio" name="colorBy-cells-2" data-param="colorBy" value="Z"><span>metals</span></label><label><input type="radio" name="colorBy-cells-2" data-param="colorBy" value="V"><span>speed</span></label></fieldset>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-cells-2">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-cells-3" data-step="cells-3" data-scene="cells" data-layout="card-left" data-port="stack" data-film="1" data-dur="8" aria-labelledby="h-cells-3">
+        <div class="card">
+          <h3 id="h-cells-3" tabindex="-1">A few cells make most of the absorption</h3>
+          <p class="sub" data-tpl="Half of the O VI absorption comes from {{ovi_n_half}} cells, half of the neutral hydrogen from {{hi_n_half}}.">Half of the O VI absorption comes from 4 cells, half of the neutral hydrogen from 3.</p>
+          <p class="aria vh" data-tpl="Figure: Most beads dim. A few light up with orange rings for O VI and indigo rings for neutral hydrogen: {{ovi_n_half}} and {{hi_n_half}} cells hold half of each.">Figure: Most beads dim. A few light up with orange rings for O VI and indigo rings for neutral hydrogen: 4 and 3 cells hold half of each.</p>
+          <div class="phys"><p>Cells ranked by their own N = n dl: the fewest cells whose N adds up to half of the ion's total.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-ions" data-chapter="ions" aria-labelledby="h2-ions">
+      <h2 id="h2-ions"><span class="num" aria-hidden="true">04</span><span class="vh">Chapter 4: </span><span class="q">Which atoms take the light?</span></h2>
+      <article class="step" id="s-ions-1" data-step="ions-1" data-scene="ions" data-layout="card-left" data-port="stack" data-film="0" data-dur="9" aria-labelledby="h-ions-1">
+        <div class="card">
+          <h3 id="h-ions-1" tabindex="-1">Cool clumps keep neutral hydrogen</h3>
+          <p class="sub" data-tpl="This cell is {{s4a_T}} K. A share of {{s4a_xHI}} of its hydrogen is still neutral, and only neutral hydrogen takes this light.">This cell is 13 160 K. A share of 0.29 of its hydrogen is still neutral, and only neutral hydrogen takes this light.</p>
+          <p class="aria vh" data-tpl="Figure: One cell from the beam opens into a disc of hydrogen atoms. About {{s4a_xHI}} of them light up indigo: atoms that still hold their electron.">Figure: One cell from the beam opens into a disc of hydrogen atoms. About 0.29 of them light up indigo: atoms that still hold their electron.</p>
+          <div class="phys"><p>n(H I) = x_HI n_H, with x_HI from the simulation's own recipe.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-ions-2" data-step="ions-2" data-scene="ions" data-layout="card-left" data-port="stack" data-film="0" data-dur="9" aria-labelledby="h-ions-2">
+        <div class="card">
+          <h3 id="h-ions-2" tabindex="-1">Warm-hot gas: oxygen stripped of five electrons</h3>
+          <p class="sub" data-tpl="These colours are ultraviolet light only space telescopes see. At {{s4b_T}} K, {{s4b_fOVI}} of this cell&#x27;s oxygen is O VI.">These colours are ultraviolet light only space telescopes see. At 2.87×10⁵ K, 0.23 of this cell's oxygen is O VI.</p>
+          <p class="aria vh">Figure: The warm-hot cell holding the most O VI opens up and some of its oxygen atoms light orange. Beside it, a chart of the share of oxygen in O VI against temperature for five densities, with this cell marked; above about 500 000 kelvin the share falls.</p>
+          <div class="phys"><p>n(O VI) = (O/H)☉ (Z/Z☉) n_H f_OVI(n_H, T), (O/H)☉ = 4.90×10⁻⁴, Z☉ = 0.01295, HM2012 table. Hydrogen's neutral share comes from the simulation, oxygen's from a table with a slightly different UV glow.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Heat (log T) <output></output></span><input type="range" data-param="logT" data-scale="lin" data-unit="K (log)" min="4" max="7" step="0.01" value="4"></label>
+            <label><span>Density (log n_H) <output></output></span><input type="range" data-param="lognH" data-scale="lin" data-unit="cm⁻³ (log)" min="-5" max="-3" step="0.01" value="-5"></label>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-ions-2">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-ions-3" data-step="ions-3" data-scene="ions" data-layout="card-left" data-port="stack" data-film="0" data-dur="6" aria-labelledby="h-ions-3">
+        <div class="card">
+          <h3 id="h-ions-3" tabindex="-1">Each ion takes only photons fitting its step</h3>
+          <p class="sub">An electron can only jump between fixed levels, so each ion takes one exact colour: H I at 1216 Å, O VI at 1032 Å.</p>
+          <p class="aria vh">Figure: Two energy ladders, H I and O VI. Three light waves arrive at each; the one whose wavelength fits the step is taken and the electron jumps up, the others pass by.</p>
+          <div class="phys"><p>λ = hc/ΔE; f is how strong the jump is, Γ how long the upper level lives.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-dip" data-chapter="dip" aria-labelledby="h2-dip">
+      <h2 id="h2-dip"><span class="num" aria-hidden="true">05</span><span class="vh">Chapter 5: </span><span class="q">How does one cloud make a dip?</span></h2>
+      <article class="step" id="s-dip-1" data-step="dip-1" data-scene="dip" data-layout="card-left" data-port="stack" data-film="1" data-dur="6" aria-labelledby="h-dip-1">
+        <div class="card">
+          <h3 id="h-dip-1" tabindex="-1">Each gas cell leaves a shadow</h3>
+          <p class="sub">The beam spreads into ultraviolet colours our eyes cannot see. Where oxygen ions sit, one colour goes dark.</p>
+          <p class="aria vh">Figure: The beam fans out into a false-colour band labelled ultraviolet, colours our eyes cannot see. A dark stripe appears in the band. The band then folds down into a plot of light getting through, and the stripe becomes a dip.</p>
+          <div class="phys"><span class="eq" data-eq="profile" role="img" aria-label="tau of V equals tau zero times e to the minus V minus V c squared over b squared; F equals e to the minus tau"></span><p>Each cell removes light as e^(−τ); the dip's shape is a Gaussian in speed for O VI.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-dip-2" data-step="dip-2" data-scene="dip" data-layout="card-left" data-port="stack" data-film="1" data-dur="6" aria-labelledby="h-dip-2">
+        <div class="card">
+          <h3 id="h-dip-2" tabindex="-1">Moving gas shifts its shadow, like a siren</h3>
+          <p class="sub">Gas moving away makes the dip slide to longer wavelengths. So the axis can read as speed toward or away.</p>
+          <p class="aria vh">Figure: The bottom axis starts in wavelength, 1031 to 1033 angstrom. As one cell's dip slides sideways, the axis relabels itself as speed toward or away, in kilometres per second.</p>
+          <div class="phys"><span class="eq" data-eq="doppler" role="img" aria-label="V equals c times lambda over lambda zero minus one, plus v sys"></span><p data-tpl="V in km/s in the galaxy&#x27;s frame; v_sys = {{vsys}} km/s puts the galaxy at V = 0.">V in km/s in the galaxy's frame; v_sys = −69.31 km/s puts the galaxy at V = 0.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-dip-3" data-step="dip-3" data-scene="dip" data-layout="card-left" data-port="stack" data-film="1" data-dur="6" aria-labelledby="h-dip-3">
+        <div class="card">
+          <h3 id="h-dip-3" tabindex="-1">Amount sets how much light is taken</h3>
+          <p class="sub">More oxygen ions along the beam take a bigger bite: the shaded area of the dip grows.</p>
+          <p class="aria vh" data-tpl="Figure: One dip from cell {{s5_cell}} with its area shaded. A vertical arrow labelled amount grows, and the shaded area grows with it. At the centre about {{c263_Fc}} percent of the light gets through.">Figure: One dip from cell 263 with its area shaded. A vertical arrow labelled amount grows, and the shaded area grows with it. At the centre about 18 percent of the light gets through.</p>
+          <div class="phys"><span class="eq" data-eq="tau0" role="img" aria-label="tau zero equals 1.4975 times ten to the minus 15, times N f lambda in angstrom, over b in kilometres per second"></span><p data-tpl="Cell {{s5_cell}}: log N = {{c263_logN}}, b = {{c263_b}} km/s, f = {{ovi_f}}, λ = {{ovi_lam}} Å, so τ₀ = {{c263_tau0}} and {{c263_Fc}} % of the light gets through at the centre.">Cell 263: log N = 14.16, b = 17.3 km/s, f = 0.133, λ = 1031.912 Å, so τ₀ = 1.73 and 18 % of the light gets through at the centre.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Amount (log N) <output></output></span><input type="range" data-param="logN" data-scale="lin" data-unit="cm⁻²" min="12" max="16" step="0.05" value="14.16"></label>
+            <label><span>Speed <output></output></span><input type="range" data-param="V" data-scale="lin" data-unit="km/s" min="-300" max="300" step="1" value="0"></label>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-dip-3">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-dip-4" data-step="dip-4" data-scene="dip" data-layout="card-left" data-port="stack" data-film="1" data-dur="6" aria-labelledby="h-dip-4">
+        <div class="card">
+          <h3 id="h-dip-4" tabindex="-1">Heat spreads it out</h3>
+          <p class="sub">Hotter ions jiggle faster, so the shadow spreads over more speeds. Hydrogen at the same heat is four times wider.</p>
+          <p class="aria vh">Figure: The same dip with a horizontal span labelled width. The width grows while the shaded area stays the same, so the dip gets shallower. A faint second dip shows hydrogen at the same heat, about four times wider.</p>
+          <div class="phys"><span class="eq" data-eq="bwidth" role="img" aria-label="b squared equals 2 k T over m, plus b turb squared"></span><p data-tpl="This model uses heat only (b_turb = 0), so each cell&#x27;s dip is as narrow as it can be. Cell {{s5_cell}}: T = {{c263_T}} K, b = {{c263_b}} km/s; hydrogen at that T has b = {{c263_bH}} km/s.">This model uses heat only (b_turb = 0), so each cell's dip is as narrow as it can be. Cell 263: T = 2.87×10⁵ K, b = 17.3 km/s; hydrogen at that T has b = 69 km/s.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Width (b) <output></output></span><input type="range" data-param="b" data-scale="lin" data-unit="km/s" min="3" max="80" step="0.1" value="17.3"></label>
+            <fieldset class="seg"><legend>Element</legend><label><input type="radio" name="ion-dip-4" data-param="ion" value="OVI" checked><span>oxygen (O VI)</span></label><label><input type="radio" name="ion-dip-4" data-param="ion" value="HI"><span>hydrogen (H I)</span></label></fieldset>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-dip-4">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-speed" data-chapter="speed" aria-labelledby="h2-speed">
+      <h2 id="h2-speed"><span class="num" aria-hidden="true">06</span><span class="vh">Chapter 6: </span><span class="q">Why is the spectrum a speed map?</span></h2>
+      <article class="step" id="s-speed-1" data-step="speed-1" data-scene="speed" data-layout="split" data-port="stack" data-film="0" data-dur="8" aria-labelledby="h-speed-1">
+        <div class="card">
+          <h3 id="h-speed-1" tabindex="-1">Where a dip sits tells its speed</h3>
+          <p class="sub">Threads join each cell on the beam to its dip. Position in the spectrum is speed, not distance.</p>
+          <p class="aria vh">Figure: Top: the beam drawn as a ruler in kiloparsecs with its gas cells. Bottom: the spectrum against speed. Thin threads join each cell to the dip it makes.</p>
+          <div class="phys"><span class="eq" data-eq="doppler" role="img" aria-label="V equals c times lambda over lambda zero minus one, plus v sys"></span><p data-tpl="Speeds are the gas&#x27;s own motions; the slow expansion of space across the halo (up to {{hubble_kms}} km/s here) is not added.">Speeds are the gas's own motions; the slow expansion of space across the halo (up to 17 km/s here) is not added.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-speed-2" data-step="speed-2" data-scene="speed" data-layout="split" data-port="stack" data-film="0" data-dur="7" aria-labelledby="h-speed-2">
+        <div class="card">
+          <h3 id="h-speed-2" tabindex="-1">Far apart, same speed, same dip</h3>
+          <p class="sub" data-tpl="Two cells {{pair_sep}} kpc apart on the beam move at about the same speed, so their shadows land together.">Two cells 84 kpc apart on the beam move at about the same speed, so their shadows land together.</p>
+          <p class="aria vh" data-tpl="Figure: Two threads, from cells {{pair_sep}} kiloparsecs apart on the ruler, cross and meet in the same dip of the spectrum.">Figure: Two threads, from cells 84 kiloparsecs apart on the ruler, cross and meet in the same dip of the spectrum.</p>
+          <div class="phys"><span class="eq" data-eq="doppler" role="img" aria-label="V equals c times lambda over lambda zero minus one, plus v sys"></span><p data-tpl="Cells {{s6_cell_a}} (l = {{pair_a_l}} kpc) and {{s6_cell_b}} (l = {{pair_b_l}} kpc) differ in speed by less than either dip&#x27;s width.">Cells 296 (l = −18.2 kpc) and 438 (l = 65.7 kpc) differ in speed by less than either dip's width.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-sum" data-chapter="sum" aria-labelledby="h2-sum">
+      <h2 id="h2-sum"><span class="num" aria-hidden="true">07</span><span class="vh">Chapter 7: </span><span class="q">How do many cells make a few dips?</span></h2>
+      <article class="step" id="s-sum-1" data-step="sum-1" data-scene="sum" data-layout="card-left" data-port="stack" data-film="1" data-dur="8" aria-labelledby="h-sum-1">
+        <div class="card">
+          <h3 id="h-sum-1" tabindex="-1">Dozens of shadows merge into a few dips</h3>
+          <p class="sub" data-tpl="The beam crosses {{ncross}} cells; {{nvis}} leave a visible shadow. Their shadows add, cell after cell, along the path.">The beam crosses 672 cells; 49 leave a visible shadow. Their shadows add, cell after cell, along the path.</p>
+          <p class="aria vh">Figure: Faint shadows from single cells appear one by one in path order and stack into a total. The light getting through then forms a few broad dips.</p>
+          <div class="phys"><span class="eq" data-eq="tausum" role="img" aria-label="tau total equals the sum over cells of tau i; F equals e to the minus tau total"></span><p data-tpl="Peak τ = {{ovi_peaktau}}: O VI here {{ovi_sat}}.">Peak τ = 3.06: O VI here is mostly unsaturated, and its deepest core is just starting to saturate.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-sum-2" data-step="sum-2" data-scene="sum" data-layout="card-left" data-port="stack" data-film="1" data-dur="7" aria-labelledby="h-sum-2">
+        <div class="card">
+          <h3 id="h-sum-2" tabindex="-1">Motion, not heat, makes this width</h3>
+          <p class="sub" data-tpl="Single dips have b = {{ovi_bmin}} to {{ovi_bmax}} km/s, yet the trough spans {{trough_lo}} to +{{trough_hi}} km/s. Cells moving differently spread it.">Single dips have b = 5.5 to 27.6 km/s, yet the trough spans −199 to +190 km/s. Cells moving differently spread it.</p>
+          <p class="aria vh">Figure: The whole O VI trough, far wider than any single cell's dip, with a few narrow single-cell dips drawn faintly inside it for comparison.</p>
+          <div class="phys"><span class="eq" data-eq="lognsum" role="img" aria-label="log N total equals log base ten of the sum of N i"></span><p data-tpl="Total log N = log₁₀ Σ N = {{ovi_logN}}; rest equivalent width {{ovi_ew}} mÅ.">Total log N = log₁₀ Σ N = 14.77; rest equivalent width 435 mÅ.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-saturation" data-chapter="saturation" aria-labelledby="h2-saturation">
+      <h2 id="h2-saturation"><span class="num" aria-hidden="true">08</span><span class="vh">Chapter 8: </span><span class="q">What happens when a dip turns black?</span></h2>
+      <article class="step" id="s-saturation-1" data-step="saturation-1" data-scene="saturation" data-layout="card-left" data-port="stack" data-film="0" data-dur="6" aria-labelledby="h-saturation-1">
+        <div class="card">
+          <h3 id="h-saturation-1" tabindex="-1">More gas, deeper dip</h3>
+          <p class="sub">Add more absorbing atoms to one dip and it deepens, while its width hardly changes.</p>
+          <p class="aria vh">Figure: One test dip with two meters beside it, depth and width. The amount rises from ten to the 12 toward ten to the 13.5 per square centimetre; the depth meter climbs to about 70 percent while the width barely changes.</p>
+          <div class="phys"><span class="eq" data-eq="tau0" role="img" aria-label="tau zero equals 1.4975 times ten to the minus 15, times N f lambda in angstrom, over b in kilometres per second"></span><p>τ₀ grows in proportion to N; the centre lets through e^(−τ₀).</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-saturation-2" data-step="saturation-2" data-scene="saturation" data-layout="card-left" data-port="stack" data-film="1" data-dur="14" aria-labelledby="h-saturation-2">
+        <div class="card">
+          <h3 id="h-saturation-2" tabindex="-1">Once black, only wider</h3>
+          <p class="sub">On this beam, hydrogen's dip is black: adding more only widens it, so the amount is hard to read.</p>
+          <p class="aria vh">Figure: The test dip is black at its centre. As the amount rises from ten to the 13.5 to ten to the 20, the depth meter reaches 100 percent and stays pinned while the width meter grows; faint wings appear near the end. Then the real hydrogen trough on this beam replaces it, black across its core.</p>
+          <div class="phys"><span class="eq" data-eq="satwidth" role="img" aria-label="for tau zero much greater than one, the width grows as b times the square root of ln tau zero; the damping parameter a equals Gamma lambda over 4 pi b"></span><p data-tpl="H I total log N = {{hi_logN}} ({{hi_lls}}), peak τ = {{hi_peaktau}}. On this sightline every fit lands {{hi_fit_dlo}} to {{hi_fit_dhi}} dex off; in general a black dip gives only a rough amount, often just a lower limit.">H I total log N = 18.04 (above 17.2: a Lyman-limit system), peak τ = 22 723. On this sightline every fit lands +0.10 to +0.34 dex off; in general a black dip gives only a rough amount, often just a lower limit.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-lsf" data-chapter="lsf" aria-labelledby="h2-lsf">
+      <h2 id="h2-lsf"><span class="num" aria-hidden="true">09</span><span class="vh">Chapter 9: </span><span class="q">What does the telescope do to it?</span></h2>
+      <article class="step" id="s-lsf-1" data-step="lsf-1" data-scene="lsf" data-layout="card-left" data-port="stack" data-film="1" data-dur="8" aria-labelledby="h-lsf-1">
+        <div class="card">
+          <h3 id="h-lsf-1" tabindex="-1">A blurry telescope merges dips</h3>
+          <p class="sub">Every telescope smears the spectrum a little. Less sharp means neighbouring dips blend into one.</p>
+          <p class="aria vh">Figure: The O VI spectrum with small ticks marking the cells that matter. A grey bell, the telescope's blur, widens as the sharpness R falls from 150 000 to 5 000, and separate dips merge.</p>
+          <div class="phys"><span class="eq" data-eq="lsf" role="img" aria-label="F observed equals F convolved with a Gaussian; FWHM equals c over R"></span><p>FWHM = 2.0, 10.0, 20.0, 60.0 km/s at R = 150 000, 30 000, 15 000, 5 000. A real instrument's blur (e.g. HST/COS) has broad wings a Gaussian misses.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Sharpness (R) <output></output></span><input type="range" data-param="R" data-scale="log" data-unit="" min="3.699" max="5.1761" step="0.001" value="3.699"></label>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-lsf-1">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-lsf-2" data-step="lsf-2" data-scene="lsf" data-layout="card-left" data-port="stack" data-film="1" data-dur="7" aria-labelledby="h-lsf-2">
+        <div class="card">
+          <h3 id="h-lsf-2" tabindex="-1">Blur turns black dips grey</h3>
+          <p class="sub">Blurred, the darkest dip looks grey, as if light were still getting through. The blur hides how dark it is.</p>
+          <p class="aria vh">Figure: The darkest dip on this beam, almost black at high sharpness, turns grey at its floor as the blur widens; a label reads how much light it now seems to let through.</p>
+          <div class="phys"><span class="eq" data-eq="lsf" role="img" aria-label="F observed equals F convolved with a Gaussian; FWHM equals c over R"></span><p>absreq compares this with Doppler profiles of b_fid = √(b_th² + (5 km/s)²); the explorer uses Voigt profiles with thermal b only.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Sharpness (R) <output></output></span><input type="range" data-param="R" data-scale="log" data-unit="" min="3.699" max="5.1761" step="0.001" value="3.699"></label>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-lsf-2">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-noise" data-chapter="noise" aria-labelledby="h2-noise">
+      <h2 id="h2-noise"><span class="num" aria-hidden="true">10</span><span class="vh">Chapter 10: </span><span class="q">Why is it noisy?</span></h2>
+      <article class="step" id="s-noise-1" data-step="noise-1" data-scene="noise" data-layout="card-left" data-port="stack" data-film="1" data-dur="10" aria-labelledby="h-noise-1">
+        <div class="card">
+          <h3 id="h-noise-1" tabindex="-1">Longer exposures beat the noise</h3>
+          <p class="sub">Twice as clean needs four times as long. The noise pattern here stays the same; only its size shrinks.</p>
+          <p class="aria vh">Figure: The spectrum broken into pixels, five per resolution element. One fixed noise pattern shrinks as the signal to noise ratio climbs from 2 to 100.</p>
+          <div class="phys"><span class="eq" data-eq="noise" role="img" aria-label="sigma per pixel equals root 5 over S over N, with 5 pixels per resolution element"></span><p data-tpl="S/N per resolution element; σ_pix = {{sigma10}} at S/N 10, pixel 2.0 km/s at R 30 000. Noise is the same everywhere and flux is not allowed below zero; real detectors differ.">S/N per resolution element; σ_pix = 0.22 at S/N 10, pixel 2.0 km/s at R 30 000. Noise is the same everywhere and flux is not allowed below zero; real detectors differ.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Signal to noise (S/N) <output></output></span><input type="range" data-param="sn" data-scale="log" data-unit="" min="0.301" max="2.0" step="0.001" value="2.0"></label>
+            <button class="btn" type="button" data-param="newNoise">New noise</button>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-noise-1">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-noise-2" data-step="noise-2" data-scene="noise" data-layout="card-left" data-port="stack" data-film="0" data-dur="5" aria-labelledby="h-noise-2">
+        <div class="card">
+          <h3 id="h-noise-2" tabindex="-1">Noise can hide dips, and invent them</h3>
+          <p class="sub">At low signal a weak dip vanishes, and a chance wiggle can look like one. Toggle the truth to compare.</p>
+          <p class="aria vh">Figure: A weak dip is highlighted. At low signal to noise it sinks into the noise, while a random wiggle elsewhere looks like a dip. A thin line shows the true, noiseless spectrum for comparison.</p>
+          <div class="phys"><span class="eq" data-eq="noise" role="img" aria-label="sigma per pixel equals root 5 over S over N, with 5 pixels per resolution element"></span><p>The highlighted weak dip exists in the noiseless spectrum (τ &gt; 0.05); this noise draw is fixed by the recorded seed rule.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Signal to noise (S/N) <output></output></span><input type="range" data-param="sn" data-scale="log" data-unit="" min="0.301" max="2.0" step="0.001" value="0.6021"></label>
+            <label><span>Show truth <output></output></span><input type="checkbox" data-param="truth" checked></label>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-noise-2">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-fit" data-chapter="fit" aria-labelledby="h2-fit">
+      <h2 id="h2-fit"><span class="num" aria-hidden="true">11</span><span class="vh">Chapter 11: </span><span class="q">What can we read back?</span></h2>
+      <article class="step" id="s-fit-1" data-step="fit-1" data-scene="fit" data-layout="card-left" data-port="stack" data-film="1" data-dur="7" aria-labelledby="h-fit-1">
+        <div class="card">
+          <h3 id="h-fit-1" tabindex="-1">We fit a few clouds</h3>
+          <p class="sub">A fit explains the noisy spectrum with a few smooth clouds, each with an amount, a width and a speed. This noise draw:</p>
+          <p class="aria vh">Figure: The noisy O VI spectrum at R 30 000 and signal to noise 10, with a smooth fitted curve built from three clouds, each marked by a tick at its speed.</p>
+          <div class="phys"><span class="eq" data-eq="profile" role="img" aria-label="tau of V equals tau zero times e to the minus V minus V c squared over b squared; F equals e to the minus tau"></span><p data-tpl="Voigt fit at R 30 000, S/N 10; three precomputed noise draws cycle (first: seed {{fit_seed}}). Live fits run only in Try it.">Voigt fit at R 30 000, S/N 10; three precomputed noise draws cycle (first: seed 986299851). Live fits run only in Try it.</p></div>
+          <div class="ctrls" hidden>
+            <label><span>Sharpness (R) <output></output></span><input type="range" data-param="R" data-scale="log" data-unit="" min="3.699" max="5.1761" step="0.001" value="4.4771"></label>
+            <label><span>Signal to noise (S/N) <output></output></span><input type="range" data-param="sn" data-scale="log" data-unit="" min="0.301" max="2.0" step="0.001" value="1.0"></label>
+          </div>
+          <div class="acts"><button class="btn try" type="button" data-try aria-expanded="false" aria-controls="s-fit-1">Try it</button><button class="btn quiet" type="button" data-back hidden>Back to story</button><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-fit-2" data-step="fit-2" data-scene="fit" data-layout="card-left" data-port="stack" data-film="1" data-dur="6" aria-labelledby="h-fit-2">
+        <div class="card">
+          <h3 id="h-fit-2" tabindex="-1">The total O VI survives</h3>
+          <p class="sub" data-tpl="Add the fitted clouds: total log N = {{fit_logN}}, against {{ovi_logN}} from all {{ncross}} cells. How much is robust.">Add the fitted clouds: total log N = 14.72, against 14.77 from all 672 cells. How much is robust.</p>
+          <p class="aria vh" data-tpl="Figure: Two bars side by side: the total O VI amount from the fit, {{fit_logN}}, and the true total from all cells, {{ovi_logN}}, nearly equal.">Figure: Two bars side by side: the total O VI amount from the fit, 14.72, and the true total from all cells, 14.77, nearly equal.</p>
+          <div class="phys"><span class="eq" data-eq="aod" role="img" aria-label="N equals m e c over pi e squared, times the integral of tau d V, over f lambda"></span><p>Turning O VI into total gas needs the oxygen share and the ion fraction, both uncertain.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+      <article class="step" id="s-fit-3" data-step="fit-3" data-scene="fit" data-layout="card-left" data-port="stack" data-film="1" data-dur="7" aria-labelledby="h-fit-3">
+        <div class="card">
+          <h3 id="h-fit-3" tabindex="-1">The clouds are not the cells</h3>
+          <p class="sub">One fitted cloud gathers cells tens of kpc apart. A fit tells how much and how fast, not where, and not how hot.</p>
+          <p class="aria vh">Figure: The threads from the speed map return: one fitted cloud connects to cells scattered tens of kiloparsecs apart along the beam. Then a very broad fitted cloud, and a very narrow invented one.</p>
+          <div class="phys"><span class="eq" data-eq="bwidth" role="img" aria-label="b squared equals 2 k T over m, plus b turb squared"></span><p data-tpl="A fitted width is not a thermometer: at R {{broad_R}}, S/N {{broad_sn}} one cloud has b = {{broad_b}} km/s. At R {{invented_R}}, S/N {{invented_sn}} the fit invents b = {{inv_b}} km/s, far narrower than the blur, so noise made it (total {{inv_logN}}); no O VI cell on this beam is that cool.">A fitted width is not a thermometer: at R 15000, S/N 5 one cloud has b = 141 km/s. At R 15000, S/N 20 the fit invents b = 3.1 km/s, far narrower than the blur, so noise made it (total 14.95); no O VI cell on this beam is that cool.</p></div>
+          <div class="acts"><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button><button class="btn nav" type="button" data-next>Next</button></div>
+        </div>
+      </article>
+    </section>
+    <section class="chapter" id="ch-yourturn" data-chapter="yourturn" aria-labelledby="h2-yourturn">
+      <h2 id="h2-yourturn"><span class="num" aria-hidden="true">12</span><span class="vh">Chapter 12: </span><span class="q">Now it is yours</span></h2>
+      <article class="step" id="s-yourturn-1" data-step="yourturn-1" data-scene="yourturn" data-layout="full" data-port="full" data-film="1" data-dur="10" aria-labelledby="h-yourturn-1">
+        <div class="card">
+          <h3 id="h-yourturn-1" tabindex="-1">Now it is yours. Same galaxy, same beam</h3>
+          <p class="sub" data-tpl="Open this beam in the explorer, or pick another of the {{ngal}} galaxies and their sightlines.">Open this beam in the explorer, or pick another of the 198 galaxies and their sightlines.</p>
+          <p class="aria vh">Figure: An end card showing the real O VI and hydrogen spectrum in the explorer's style, with buttons to open it in Spectra, see it in 3D, or replay the story.</p>
+          <div class="phys"><p>Blur is R, noise is S/N, clouds are the fit: each scene maps to one control in Spectra.</p></div>
+          <div class="acts"><a class="btn primary" data-handoff="yourturn-1" href="../../#id=rand_b062_a062">Open in Spectra</a><a class="btn" data-handoff="yourturn-1" data-tab="3d" href="../../#id=rand_b062_a062&amp;tab=3d">See it in 3D</a><a class="btn quiet" data-replay href="#s=light-1">Replay</a><span class="sp"></span><button class="btn quiet nav" type="button" data-prev>Previous</button></div>
+          <p class="sub"><a href="../../">Pick another galaxy</a>: all 198 are in the explorer.</p>
+        </div>
+      </article>
+    </section>
+<!--/STEPS-->
+  </div>
+</main>
+
+<nav class="rail" id="rail" aria-label="Chapters">
+<!--RAIL-->
+  <ol>
+    <li><a href="#s=light-1" data-chapter="light" data-first="light-1"><span class="dot" aria-hidden="true"></span><span class="tip">01 Why can&#x27;t we just look at the gas?</span></a></li>
+    <li><a href="#s=pencil-1" data-chapter="pencil" data-first="pencil-1"><span class="dot" aria-hidden="true"></span><span class="tip">02 What does one beam see?</span></a></li>
+    <li><a href="#s=cells-1" data-chapter="cells" data-first="cells-1"><span class="dot" aria-hidden="true"></span><span class="tip">03 What is the model galaxy made of?</span></a></li>
+    <li><a href="#s=ions-1" data-chapter="ions" data-first="ions-1"><span class="dot" aria-hidden="true"></span><span class="tip">04 Which atoms take the light?</span></a></li>
+    <li><a href="#s=dip-1" data-chapter="dip" data-first="dip-1"><span class="dot" aria-hidden="true"></span><span class="tip">05 How does one cloud make a dip?</span></a></li>
+    <li><a href="#s=speed-1" data-chapter="speed" data-first="speed-1"><span class="dot" aria-hidden="true"></span><span class="tip">06 Why is the spectrum a speed map?</span></a></li>
+    <li><a href="#s=sum-1" data-chapter="sum" data-first="sum-1"><span class="dot" aria-hidden="true"></span><span class="tip">07 How do many cells make a few dips?</span></a></li>
+    <li><a href="#s=saturation-1" data-chapter="saturation" data-first="saturation-1"><span class="dot" aria-hidden="true"></span><span class="tip">08 What happens when a dip turns black?</span></a></li>
+    <li><a href="#s=lsf-1" data-chapter="lsf" data-first="lsf-1"><span class="dot" aria-hidden="true"></span><span class="tip">09 What does the telescope do to it?</span></a></li>
+    <li><a href="#s=noise-1" data-chapter="noise" data-first="noise-1"><span class="dot" aria-hidden="true"></span><span class="tip">10 Why is it noisy?</span></a></li>
+    <li><a href="#s=fit-1" data-chapter="fit" data-first="fit-1"><span class="dot" aria-hidden="true"></span><span class="tip">11 What can we read back?</span></a></li>
+    <li><a href="#s=yourturn-1" data-chapter="yourturn" data-first="yourturn-1"><span class="dot" aria-hidden="true"></span><span class="tip">12 Now it is yours</span></a></li>
+  </ol>
+<!--/RAIL-->
+</nav>
+
+<div class="dock" id="dock">
+  <button class="play" id="play" type="button" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path id="play-ico" d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg><span id="play-lbl">Play</span></button>
+  <div class="speed" id="speed" role="group" aria-label="Playback speed" hidden>
+    <button type="button" data-speed="0.75" aria-pressed="false">0.75×</button><button type="button" data-speed="1" aria-pressed="true">1×</button><button type="button" data-speed="1.5" aria-pressed="false">1.5×</button>
+  </div>
+</div>
+<div class="dock-r">
+  <button class="ibtn" id="physics" type="button" aria-pressed="false" title="Show the physics: one equation and one line per step"><span aria-hidden="true">Σ</span><span class="vh">Physics</span></button>
+  <button class="ibtn" id="fullscreen" type="button" aria-pressed="false" aria-label="Full screen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
+</div>
+<p class="vh" id="live" aria-live="polite"></p>
+
+<footer class="foot">
+  <p><a href="?still" id="still-link">Read as a page</a>: every step as plain text with its figure description, for screen readers, print and slow connections.</p>
+  <p>Galaxy <span data-tpl="{{galaxy}}">488530</span> from TNG50-1 (z = 0), one of the <span data-tpl="{{ngal}}">198</span> Milky-Way and Andromeda-like galaxies in the explorer; sightline <span data-tpl="{{ray}}">rand_b062_a062</span>. Spectra are computed from the simulation's gas cells with the explorer's own physics; see Data and methods in the <a href="../../">explorer</a>.</p>
+  <p>Fonts: Space Grotesk and JetBrains Mono, SIL Open Font License (<a href="vendor/OFL.txt">licence</a>).</p>
+</footer>
+
+<script type="module">
+/* Page shell (U4): fills {{key}} numbers from the story data, inlines equations, runs chrome (rail, progress, keys,
+   Physics, Play button, Try it, fullscreen, resume, hand-off links) and boots the engine (js/engine.js) when present.
+   Without the engine the page is still a complete readable stepper; ?still never loads it. Contract for the engine:
+   boot({root, stage, canvas, steps, data, fill, cut, onStep}) -> {play(), pause(), setSpeed(x), goto(id),
+   explore(id, on), set(id, param, value)}; it may dispatch "story:step" {id} and "story:mode" {mode} on root. */
+const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const html = document.documentElement, Q = new URLSearchParams(location.search);
+const STILL = Q.has("still"), EMBED = Q.get("embed") === "1";
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+/* phones in portrait: the stage holds the top 58svh, so the reading line sits in the card area below it */
+const PHONE = () => matchMedia("(max-width: 760px) and (orientation: portrait)").matches;
+const store = {get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+               set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }};
+const root = $("#story"), stage = $("#stage"), live = $("#live");
+const stepsEl = $$(".step"), ids = stepsEl.map(s => s.dataset.step);
+let doc = null, data = null, engine = null, active = -1, playing = false, exploring = null, fbTimer = 0, speed = 1;
+
+/* ---- numbers: one formatter for the page, the static build and the captions ---- */
+/* mirrors engine.js fmtValue (numeric strings become numbers; other strings pass with U+2212 minus; groups of three
+   with a space), so the static text, this shell and the engine's captions agree */
+const group = s => s.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+function fmt(v, f) {
+  if (typeof v === "string" && f && v.trim() !== "" && Number.isFinite(+v)) v = +v;
+  if (typeof v !== "number") return String(v).replace(/^-(?=[\d.])/, "−");
+  if (!Number.isFinite(v)) return "–";
+  const neg = v < 0, a = Math.abs(v); let s;
+  if (f === "id") return String(v);
+  if (f === "sci2") { const e = Math.floor(Math.log10(a)), m = a / 10 ** e; const sup = String(e).replace(/[-0-9]/g, d => "⁻⁰¹²³⁴⁵⁶⁷⁸⁹"["-0123456789".indexOf(d)]); s = m.toFixed(2) + "×10" + sup; }
+  else if (/^f\d$/.test(f)) s = a.toFixed(+f[1]);
+  else if (f === "int" || f === "pct") s = group(String(Math.round(a)));
+  else s = String(a);
+  return (neg && !/^0(\.0*)?$/.test(s) ? "−" : "") + s;
+}
+const dig = (o, p) => p.split(".").reduce((x, k) => (x == null ? undefined : x[k]), o);
+/* same lookup order as the engine: the data's pre-formatted keys block, then the steps.json path, then the fallback */
+function value(k) {
+  const K = doc && doc.keys && doc.keys[k];
+  const pre = data && data.keys && data.keys[k];
+  if (typeof pre === "string" || typeof pre === "number") return fmt(pre, K ? K.fmt : null);
+  if (!K) return null;
+  const v = data ? dig(data, K.path) : undefined;
+  return fmt(v !== undefined && v !== null && typeof v !== "object" ? v : K.fallback, K.fmt);
+}
+const fill = s => String(s ?? "").replace(/\{\{(\w+)\}\}/g, (m, k) => value(k) ?? m);
+function fillAll() { for (const el of $$("[data-tpl]")) el.textContent = fill(el.dataset.tpl); }
+
+/* ---- equations: inline SVG (currentColor follows the theme), fetched on first need ---- */
+const eqCache = new Map();
+async function inlineEq(el) {
+  const id = el.dataset.eq; if (!id || el.dataset.done) return; el.dataset.done = "1";
+  try {
+    if (!eqCache.has(id)) eqCache.set(id, fetch(`eq/${id}.svg`).then(r => (r.ok ? r.text() : "")));
+    const svg = await eqCache.get(id); if (!svg) return;
+    el.innerHTML = svg; const s = el.querySelector("svg"); if (s) { s.setAttribute("aria-hidden", "true"); s.removeAttribute("role"); }
+  } catch { delete el.dataset.done; }
+}
+const inlineAll = () => $$(".eq[data-eq]").forEach(inlineEq);
+
+/* ---- story data: any galaxy of the sample works (the cell data exist for all of them); ?g=<id>&ray=<id> (or the
+   fragment's g/ray) pick the story file listed in data/index.json, else data/story_<g>_<ray>.json. A file that has
+   not been exported to the site yet falls back to the default story with a visible note. ---- */
+const getJson = u => fetch(u).then(r => (r.ok ? r.json() : null)).catch(() => null);
+async function loadData() {
+  doc = await getJson("steps.json");
+  if (!doc) return;
+  const H = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const gq = String(H.get("g") || Q.get("g") || "").match(/(\d+)$/), ray = H.get("ray") || Q.get("ray");
+  const index = await getJson("data/index.json");
+  const def = (index && index.default) || {galaxy: doc.meta.subhalo, ray: doc.meta.ray};
+  const g = gq ? +gq[1] : def.galaxy, r = ray || (gq && index ? (index.stories.find(s => +s.galaxy === g) || {}).ray : null) || def.ray;
+  const entry = index && index.stories.find(s => +s.galaxy === g && s.ray === r);
+  const known = index && index.stories.some(s => +s.galaxy === g);
+  data = await getJson(entry ? `data/${entry.story}` : `data/story_${g}_${r}.json`);
+  // the copy states facts that hold only on a strong-absorber sightline (U0 eligibility: data.story / entry.eligible);
+  // an ineligible or missing story falls back to the default galaxy with a note saying why
+  const weak = (entry && entry.eligible === false) || (data && data.story && data.story.eligible === false);
+  if ((!data || weak) && (g !== def.galaxy || r !== def.ray)) {
+    data = await getJson(doc.meta.data);
+    note(weak ? `On galaxy ${g}'s story beam the dips are too weak to show every step, so the story uses galaxy ${def.galaxy}. Galaxy ${g} is in the explorer.`
+      : known ? `This sightline of galaxy ${g} has no story yet, so the story shows galaxy ${def.galaxy}. Every sightline is in the explorer.`
+      : `The story for galaxy ${g} is not on the site yet, so it shows galaxy ${def.galaxy}. Every galaxy is in the explorer.`);
+  }
+  // precomputed fits (S11 numbers) sit beside the story data: data/page_fits_<g>_<ray>.json
+  if (data && data.meta) {
+    const pf = await fetch(`data/page_fits_${data.meta.galaxy}_${data.meta.ray}.json`).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (pf && !data.page_fits) data.page_fits = pf;
+  }
+}
+function note(t) { const n = $("#stage-note"); n.textContent = t; n.hidden = !t; }
+
+/* ---- hand-off: hashes only from state.js formatHash (eng P0-2) ---- */
+let formatHash = null;
+async function handoffs() {
+  try { ({formatHash} = await import("../../js/state.js")); } catch { return; }
+  const M = (data && data.meta) || {}, sub = M.galaxy || doc.meta.subhalo;
+  const href = (S, tab) => "../../index.html#" + formatHash(Object.assign({}, S, M.ray ? {id: M.ray} : {}, tab ? {tab} : {})).replace(/^#/, "") + `&g=${sub}&from=story`;
+  for (const a of $$("a[data-handoff]")) {
+    const st = doc && doc.steps.find(s => s.id === a.dataset.handoff); if (!st) continue;
+    a.href = href(st.handoff, a.dataset.tab || null);
+  }
+  updateSkip = () => { const st = doc && doc.steps[active]; if (st) $("#to-explorer").href = href(st.handoff); };
+  updateSkip();
+}
+let updateSkip = () => {};
+
+/* ---- active step: chrome follows the step the reader is on ---- */
+const chapterOf = i => stepsEl[i] && stepsEl[i].closest(".chapter").dataset.chapter;
+function setActive(i, from) {
+  if (i === active || i < 0 || i >= stepsEl.length) return;
+  if (exploring && from !== "explore") leaveExplore();
+  active = i;
+  stepsEl.forEach((s, k) => s.classList.toggle("is-active", k === i));
+  const ch = chapterOf(i), chs = $$(".chapter").map(c => c.dataset.chapter), ci = chs.indexOf(ch);
+  $$("#rail a").forEach(a => a.dataset.chapter === ch ? a.setAttribute("aria-current", "true") : a.removeAttribute("aria-current"));
+  $("#progress-bar").style.width = ((i + 1) / stepsEl.length * 100).toFixed(1) + "%";
+  $("#progress-txt").textContent = `${ci + 1} / ${chs.length}`;
+  if (playing) $("#caption").textContent = $("h3", stepsEl[i]).textContent;
+  if (!STILL && !EMBED) {
+    store.set("story.resume", ids[i]);
+    if (!engine || !engine.ownsHash) history.replaceState(null, "", `${location.pathname}${location.search}#s=${ids[i]}`);
+  }
+  updateSkip();
+}
+function watchSteps() {
+  const io = new IntersectionObserver(es => {
+    for (const e of es) if (e.isIntersecting) setActive(stepsEl.indexOf(e.target), "scroll");
+  }, {rootMargin: PHONE() ? "-72% 0px -26% 0px" : "-48% 0px -48% 0px"});
+  stepsEl.forEach(s => io.observe(s));
+}
+function go(i, focus) {
+  i = Math.max(0, Math.min(stepsEl.length - 1, i));
+  stepsEl[i].scrollIntoView({block: PHONE() ? "start" : "center", behavior: reduce.matches ? "auto" : "smooth"});
+  setActive(i, "nav");
+  if (engine && engine.goto) engine.goto(ids[i]);
+  if (focus) $("h3", stepsEl[i]).focus({preventScroll: true});
+}
+
+/* ---- Play: never autoplays; any scroll, key or tap pauses into Step at the same frame ---- */
+const playSet = () => (doc ? doc.steps.filter(s => Q.get("cut") === "film" ? s.film : true) : []);
+function playLabel() { const t = playSet().reduce((a, s) => a + s.dur_s, 0); return t ? `Play ${Math.max(1, Math.round(t / 60))} min` : "Play"; }
+function setPlaying(on) {
+  playing = on; document.body.dataset.mode = on ? "watch" : (exploring ? "explore" : "step");
+  $("#play").setAttribute("aria-pressed", String(on));
+  $("#play-lbl").textContent = on ? "Pause" : playLabel();
+  $("#play-ico").setAttribute("d", on ? "M4 2.5h3v11H4zM9 2.5h3v11H9z" : "M4 2.5v11l9-5.5z");
+  $("#speed").hidden = !on;
+  live.textContent = on ? "Playing" : "Paused";
+  if (on) $("#caption").textContent = active >= 0 ? $("h3", stepsEl[active]).textContent : "";
+}
+function play() {
+  if (exploring) leaveExplore();
+  if (active === stepsEl.length - 1) go(0);     // Play at the end starts over
+  setPlaying(true);
+  if (engine && engine.play) { engine.play({speed, cut: Q.get("cut") || "full"}); return; }
+  const set = playSet().map(s => s.id), tick = () => {      // fallback clock without the engine: step through the text
+    const i = Math.max(0, set.indexOf(ids[active]));
+    const st = doc.steps.find(s => s.id === set[i]);
+    fbTimer = setTimeout(() => { const n = set[i + 1]; if (!n) return pause(); go(ids.indexOf(n)); tick(); }, st.dur_s * 1000 / speed);
+  };
+  if (active < 0 || !set.includes(ids[active])) go(ids.indexOf(set[0]));
+  tick();
+}
+function pause() { clearTimeout(fbTimer); if (engine && engine.pause) engine.pause(); if (playing) setPlaying(false); }
+
+/* ---- Try it: ≤ 2 controls in place; "Back to story" restores the authored state ---- */
+function enterExplore(step) {
+  if (playing) pause();
+  exploring = step; step.classList.add("is-exploring");
+  $(".ctrls", step).hidden = false; $("[data-try]", step).setAttribute("aria-expanded", "true");
+  $("[data-try]", step).hidden = true; $("[data-back]", step).hidden = false;
+  $("#exploring").hidden = false; document.body.dataset.mode = "explore";
+  stage.querySelector("canvas").style.touchAction = "none";
+  if (engine && engine.explore) engine.explore(step.dataset.step, true);
+  const first = $(".ctrls input, .ctrls button", step); if (first) first.focus();
+}
+function leaveExplore() {
+  const step = exploring; if (!step) return; exploring = null;
+  step.classList.remove("is-exploring");
+  for (const inp of $$(".ctrls input", step)) {
+    if (inp.type === "checkbox" || inp.type === "radio") inp.checked = inp.defaultChecked; else inp.value = inp.defaultValue;
+    if (inp.type !== "radio") showVal(inp);
+  }
+  $(".ctrls", step).hidden = true; $("[data-try]", step).hidden = false; $("[data-try]", step).setAttribute("aria-expanded", "false");
+  $("[data-back]", step).hidden = true; $("#exploring").hidden = true; document.body.dataset.mode = "step";
+  stage.querySelector("canvas").style.touchAction = "";
+  if (engine && engine.explore) engine.explore(step.dataset.step, false);
+  $("[data-try]", step).focus({preventScroll: true});
+}
+/* slider value in words (valuetext), from the control's own unit and scale */
+function showVal(inp) {
+  const sc = inp.dataset.scale, u = inp.dataset.unit || "";
+  let v = +inp.value; if (sc === "log") v = Math.round(10 ** v / (v > 4 ? 100 : 1)) * (v > 4 ? 100 : 1);
+  const txt = inp.type === "checkbox" ? (inp.checked ? "on" : "off")
+    : inp.dataset.words ? JSON.parse(inp.dataset.words)[Math.round(v)] : fmt(v, inp.dataset.fmt || (Math.abs(v) < 100 && +inp.step < 1 ? "f" + Math.min(2, (inp.step.split(".")[1] || "").length) : "int")) + (u ? " " + u : "");
+  // spoken form in words: "amount 14.15 per square centimetre, log scale", "width 17.3 kilometres per second"
+  const UW = {"cm⁻²": "per square centimetre, log scale", "km/s": "kilometres per second"};
+  const name = (inp.closest("label")?.querySelector("span")?.firstChild?.textContent || inp.dataset.param).replace(/\(.*?\)/g, "").trim().toLowerCase();
+  const spoken = inp.type === "checkbox" ? `${name} ${txt}` : `${name} ${(u ? txt.replace(u, "") : txt).trim()}${UW[u] ? " " + UW[u] : ""}`;
+  inp.setAttribute("aria-valuetext", spoken);
+  const out = inp.closest("label")?.querySelector("output"); if (out) out.textContent = txt;
+  return v;
+}
+function wireControls() {
+  for (const r of $$(".ctrls input[type=radio]"))
+    r.addEventListener("change", () => {
+      if (!r.checked) return;
+      const step = r.closest(".step").dataset.step;
+      const res = engine && engine.set ? engine.set(step, r.dataset.param, r.value) : null;
+      live.textContent = (res && res.say) || r.closest("label").textContent;
+    });
+  for (const inp of $$(".ctrls input:not([type=radio])")) {
+    showVal(inp);
+    inp.addEventListener("input", () => {
+      const v = showVal(inp), step = inp.closest(".step").dataset.step;
+      if (engine && engine.set) {
+        const r = engine.set(step, inp.dataset.param, inp.type === "checkbox" ? inp.checked : v);
+        if (r && r.say) live.textContent = r.say;       // e.g. "depth 82 %, width 34 km/s"
+      }
+    });
+  }
+  for (const b of $$(".ctrls button[data-param]"))
+    b.addEventListener("click", () => { if (engine && engine.set) engine.set(b.closest(".step").dataset.step, b.dataset.param, true); live.textContent = "New noise draw"; });
+}
+
+/* ---- keyboard (§7): only in the story region, never in inputs; Space/k only on the stage or Play ---- */
+function onKey(e) {
+  const t = e.target, tag = t && t.tagName;
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key === "Escape") { if (!$("#keys").hidden) return toggleKeys(false); if (exploring) { leaveExplore(); e.preventDefault(); } return; }
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (t && t.isContentEditable)) return;
+  if (t !== document.body && !root.contains(t) && !t.closest?.(".dock,.dock-r,.rail")) return;
+  const onPlayable = t === stage || t === $("#play");
+  if ((e.key === " " || e.key === "k") && onPlayable) { e.preventDefault(); playing ? pause() : play(); return; }
+  const map = {ArrowRight: 1, PageDown: 1, ArrowLeft: -1, PageUp: -1};
+  if (e.key in map) { e.preventDefault(); if (playing) pause(); go((active < 0 ? -1 : active) + map[e.key]); }
+  else if (e.key === "Home") { e.preventDefault(); go(0); }
+  else if (e.key === "End") { e.preventDefault(); go(stepsEl.length - 1); }
+}
+function toggleKeys(on) { $("#keys").hidden = !on; $("#keys-open").setAttribute("aria-expanded", String(on)); if (on) $("#keys").setAttribute("tabindex", "-1"), $("#keys").focus(); else $("#keys-open").focus(); }
+
+/* ---- Physics toggle (D9: off by default, remembered per browser) ---- */
+function setPhysics(on) {
+  html.classList.toggle("physics", on); $("#physics").setAttribute("aria-pressed", String(on));
+  store.set("story.physics", on ? "1" : "0"); if (on) inlineAll();
+}
+
+/* ---- fullscreen: Fullscreen API with a CSS fallback ---- */
+function toggleFs() {
+  const on = !(document.fullscreenElement || html.classList.contains("fs-fallback"));
+  if (root.requestFullscreen && document.fullscreenEnabled) { on ? root.requestFullscreen().catch(() => {}) : document.exitFullscreen(); }
+  else html.classList.toggle("fs-fallback", on);
+  $("#fullscreen").setAttribute("aria-pressed", String(on));
+}
+
+/* ---- start position: #s=<id>, a bare #<chapter> alias, or nothing (offer Resume) ---- */
+function startAt() {
+  const h = location.hash.replace(/^#/, ""); let id = new URLSearchParams(h).get("s");
+  if (!id && /^[a-z]+$/.test(h) && ids.includes(h + "-1")) id = h + "-1";
+  if (id && ids.includes(id)) {
+    history.replaceState(null, "", `${location.pathname}${location.search}#s=${id}`);
+    const k = ids.indexOf(id), align = () => stepsEl[k].scrollIntoView({block: PHONE() ? "start" : "center"});
+    requestAnimationFrame(() => { align(); setActive(k, "nav"); });
+    // late layout (web fonts, inlined equations) can shift the card after the first scroll; re-align once settled,
+    // unless the reader has already moved
+    let moved = false; const mark = () => { moved = true; };
+    for (const ev of ["wheel", "touchstart", "keydown", "pointerdown"]) addEventListener(ev, mark, {once: true, passive: true});
+    Promise.all([document.fonts ? document.fonts.ready : null, new Promise(r => setTimeout(r, 900))])
+      .then(() => { if (!moved && active === k) align(); });
+    return;
+  }
+  const last = store.get("story.resume");
+  if (last && ids.includes(last) && last !== ids[0]) {
+    $("#resume").hidden = false;
+    $("#resume-link").href = `#s=${last}`;
+    $("#resume-link").addEventListener("click", e => { e.preventDefault(); go(ids.indexOf(last), true); });
+  }
+}
+
+/* ---- the static page (?still): every step as text + equation + figure description + chapter poster ---- */
+function still() {
+  inlineAll();
+  // chapter posters (U5 renders img/chapters/<chapter>.png); a missing poster simply leaves the text
+  for (const ch of $$(".chapter")) {
+    const img = new Image(); img.className = "poster"; img.alt = ""; img.width = 1600; img.height = 900; img.loading = "lazy";
+    img.addEventListener("error", () => img.remove(), {once: true});
+    img.src = `img/chapters/${ch.dataset.chapter}.png`;
+    $(".card h3", ch)?.after(img);
+  }
+  const a = $("#still-link"); a.textContent = "Back to the animated story"; a.href = location.pathname;
+}
+
+/* ---- engine adapter over U1's modules (js/engine.js createEngine + js/drivers/{step,play,explore}.js); the page
+   keeps the chrome, the drivers decide t, scenes draw. Returns the small api the chrome calls. ---- */
+async function bootEngine() {
+  const [E, SD, PD, XD] = await Promise.all([import("./js/engine.js"), import("./js/drivers/step.js"),
+    import("./js/drivers/play.js"), import("./js/drivers/explore.js")]);
+  const canvas = $("#stage-canvas"), coarse = matchMedia("(pointer: coarse)").matches;
+  const dpr = () => Math.min(devicePixelRatio || 1, coarse ? 1.5 : 2);
+  const layout = () => (innerWidth < innerHeight ? "port" : "land");
+  const eng = E.createEngine({doc, data, canvas, query: {g: data && data.meta ? data.meta.galaxy : Q.get("g"), ray: data && data.meta ? data.meta.ray : Q.get("ray")}, reduced: reduce.matches,
+    physics: html.classList.contains("physics"), dpr: dpr(), layout: layout(), cut: Q.get("cut") || "full", mode: "step"});
+  // phones: keep the plot clear of the stage chrome (Skip link and keys button on top, Play dock at the bottom edge)
+  const safe = () => {
+    const st = canvas.getBoundingClientRect(), fs = Math.max(12, Math.min(26, Math.min(st.width, st.height) * 0.028));
+    if (!PHONE()) {   // desktop: only the bottom inset, so the x-axis title clears the Play dock (left/top/right stay the plot's own)
+      const dk = $("#dock") ? $("#dock").getBoundingClientRect() : null, dockH = dk && dk.height && dk.top < st.bottom ? st.bottom - dk.top : 0;
+      return {b: Math.max(0.15 * st.height, dockH + 3.4 * fs)};
+    }
+    const tops = [$("#to-explorer"), $("#keys-open")].filter(Boolean).map(e => e.getBoundingClientRect())
+      .filter(r => r.height && r.top < st.top + st.height / 3).map(r => r.bottom - st.top);
+    const dk = $("#dock") ? $("#dock").getBoundingClientRect() : null, dockH = dk && dk.height && dk.top < st.bottom ? st.bottom - dk.top : 0;
+    return {t: Math.max(0.08 * st.height, (tops.length ? Math.max(...tops) : 0) + 1.6 * fs), b: Math.max(0.12 * st.height, dockH + 2.9 * fs)};
+  };
+  const size = () => { eng.resize(canvas.clientWidth, canvas.clientHeight, dpr()); eng.setEnv({layout: layout(), safe: safe()}); };
+  size();
+  await eng.ready();
+  const steps = SD.createStepDriver({engine: eng, cards: stepsEl, reduced: reduce.matches, line: PHONE() ? 0.73 : 0.5,
+    block: () => (PHONE() ? "start" : "center"),
+    onStep: i => setActive(i, "engine")});
+  const player = PD.createPlayDriver({engine: eng, interruptTarget: window,
+    onTick: info => { if (info && info.index !== active) setActive(info.index, "play"); },
+    onState: on => { if (!on && playing) { setPlaying(false); go(active); } },
+    onEnd: () => { if (playing) setPlaying(false); }});
+  // Try it: live fits only here, in the explorer's own fit worker (eng P1-8); a newer request supersedes older ones
+  let fitTimer = 0;
+  const explorer = XD.createExploreDriver({engine: eng, onFit: r => {
+    if (r.index !== explorer.index) return;
+    explorer.result(r.error ? {comps: [], error: r.error} : r.result);
+    const sc = eng.scene(eng.steps[r.index].scene);
+    if (sc && sc.announce) live.textContent = sc.announce(eng.data, merged(r.index));
+  }});
+  const merged = i => ({...eng.stateAt(i).state, ...explorer.override});
+  const requestFit = (i, delay = 250) => {
+    const st = eng.steps[i], sc = st && eng.scene(st.scene);
+    if (!sc || typeof sc.fitRequest !== "function") return;
+    clearTimeout(fitTimer);
+    fitTimer = setTimeout(() => {
+      if (!explorer.open || explorer.index !== i) return;
+      const m = merged(i), seed = Number.isInteger(m.seed) ? m.seed : 0;
+      try { explorer.fit(sc.fitRequest(eng.data, m.ion || "OVI", +m.R || 30000, +m.sn || 10, seed)); }
+      catch (err) { explorer.result({comps: [], error: String(err && err.message || err)}); }
+    }, delay);
+  };
+  new ResizeObserver(() => { size(); steps.refresh(); }).observe(canvas);
+  reduce.addEventListener("change", () => { eng.setEnv({reduced: reduce.matches}); steps.setReduced(reduce.matches); });
+  new MutationObserver(() => { eng.setEnv({physics: html.classList.contains("physics")}); steps.refresh(); })
+    .observe(html, {attributes: true, attributeFilter: ["class"]});
+  if (active >= 0) steps.go(active, {instant: true});
+  return {
+    engine: eng,
+    play: () => { eng.setEnv({mode: "watch"}); const sp = eng.span(Math.max(0, active)); player.play(sp ? sp.t0 : 0); },
+    pause: () => { if (player.playing) player.pause(); eng.setEnv({mode: "step"}); },
+    setSpeed: x => player.setSpeed(x),
+    goto: id => steps.go(eng.indexOf(id)),
+    explore: (id, on) => {
+      if (on) { steps.suspend(); eng.setEnv({mode: "explore"}); const i = eng.indexOf(id); if (explorer.open(i)) requestFit(i, 0); }
+      else { clearTimeout(fitTimer); explorer.close(); eng.setEnv({mode: "step"}); steps.resume(); }
+    },
+    set: (id, param, v) => {
+      const i = eng.indexOf(id);
+      if (!explorer.open || explorer.index !== i) return null;
+      if (param === "newNoise") v = (+explorer.override.newNoise || 0) + 1;   // each press is a new draw
+      explorer.set(param, v);
+      if (param === "R" || param === "sn" || param === "newNoise") requestFit(i);
+      const sc = eng.scene(eng.steps[i].scene);
+      let say = null; try { say = sc && sc.announce ? sc.announce(eng.data, merged(i)) : null; } catch { say = null; }
+      return {say};
+    },
+  };
+}
+
+/* ---- boot ---- */
+async function main() {
+  await loadData(); fillAll();
+  if (STILL) { still(); return; }
+  if (html.classList.contains("physics")) { $("#physics").setAttribute("aria-pressed", "true"); inlineAll(); }
+  $("#play-lbl").textContent = playLabel();
+  watchSteps(); startAt(); wireControls(); handoffs();
+  document.addEventListener("keydown", onKey);
+  $("#play").addEventListener("click", () => (playing ? pause() : play()));
+  for (const b of $$("#speed button")) b.addEventListener("click", () => {
+    speed = +b.dataset.speed; $$("#speed button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    if (engine && engine.setSpeed) engine.setSpeed(speed);
+  });
+  $("#physics").addEventListener("click", () => setPhysics(!html.classList.contains("physics")));
+  $("#fullscreen").addEventListener("click", toggleFs);
+  $("#keys-open").addEventListener("click", () => toggleKeys($("#keys").hidden));
+  document.addEventListener("fullscreenchange", () => $("#fullscreen").setAttribute("aria-pressed", String(!!document.fullscreenElement)));
+  for (const s of stepsEl) {
+    $("[data-try]", s)?.addEventListener("click", () => enterExplore(s));
+    $("[data-back]", s)?.addEventListener("click", leaveExplore);
+    $("[data-prev]", s)?.addEventListener("click", () => go(stepsEl.indexOf(s) - 1, true));
+    $("[data-next]", s)?.addEventListener("click", () => go(stepsEl.indexOf(s) + 1, true));
+    $("[data-replay]", s)?.addEventListener("click", e => { e.preventDefault(); go(0, true); });
+  }
+  for (const a of $$("#rail a")) a.addEventListener("click", e => { e.preventDefault(); if (playing) pause(); go(ids.indexOf(a.dataset.first), true); });
+  // any reader input pauses Play into Step at the same frame
+  const stop = e => { if (playing && !(e.target && e.target.closest && e.target.closest("#dock"))) pause(); };
+  addEventListener("wheel", stop, {passive: true}); addEventListener("touchstart", stop, {passive: true});
+  addEventListener("pagehide", () => pause());
+  // test and talk hook (U6 page contract): ready turns true once the canvas engine runs; read-only state plus a seek
+  // on the full cut (never a fit)
+  const app = window.storyApp = {ready: false,
+    getState: () => ({step: doc && doc.steps[active] ? doc.steps[active].id : null, mode: document.body.dataset.mode || "step",
+      playing: !!playing, galaxy: data && data.meta ? data.meta.galaxy : null, ray: data && data.meta ? data.meta.ray : null}),
+    seek: t => (engine ? engine.engine.seek(t) : undefined)};
+  // the engine (U1); the page stays a full stepper if it is missing or fails
+  try {
+    engine = await bootEngine();
+    if (engine) stage.dataset.engine = "on";
+    app.ready = !!engine;
+  } catch (err) { engine = null; console.info("story engine not loaded; text-only stepper:", err && err.message); }
+  root.addEventListener("story:step", e => setActive(ids.indexOf(e.detail && e.detail.id), "engine"));
+  root.addEventListener("story:mode", e => { if (e.detail && e.detail.mode !== "watch" && playing) setPlaying(false); });
+}
+main();
+</script>
+</body>
+</html>
