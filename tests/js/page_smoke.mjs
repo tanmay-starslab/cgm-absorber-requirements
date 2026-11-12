@@ -100,9 +100,9 @@ try {
       const lab = await P.fn(`return ["1", "2R", "2SN", "4"].map(v => { const i = document.querySelector('input[name=layout][value="' + v + '"]'); if (!i) return null;
           const L = i.closest("label") || (i.id && document.querySelector('label[for="' + i.id + '"]'));
           return {v, tid: i.dataset.testid, text: L ? L.innerText.replace(/\\s+/g, "") : "", tip: (i.dataset.tip || (L && L.dataset.tip) || i.title || (L && L.title) || i.getAttribute("aria-label") || "").trim()}; });`);
-      const want = {"1": "1", "2R": "2R", "2SN": "2S/N", "4": "2×2"};
+      const want = {"1": "Single", "2R": "CompareR", "2SN": "CompareS/N", "4": "Compareboth"};
       check(lab.every(l => l && l.tid === "layout-" + l.v && l.text.replace("x", "×") === want[l.v] && l.tip),
-        `C8 layout switch reads 1, 2 R, 2 S/N, 2×2 with tooltips (pick.md): ${lab.map(l => (l ? `${l.v}="${l.text}"${l.tip ? "" : " no tooltip"}` : "missing")).join(", ")}`);
+        `C8 layout switch reads Single, Compare R, Compare S/N, Compare both with tooltips (pick.md): ${lab.map(l => (l ? `${l.v}="${l.text}"${l.tip ? "" : " no tooltip"}` : "missing")).join(", ")}`);
       for (const L of ["2R", "2SN", "4", "1"]) {
         await P.click(`input[name=layout][value="${L}"]`) || await P.fn(`document.querySelector('input[name=layout][value="${L}"]').click()`);
         await P.fn(`const i = document.querySelector('input[name=layout][value="${L}"]'); if (!i.checked) { i.click(); }`); await sleep(250);
