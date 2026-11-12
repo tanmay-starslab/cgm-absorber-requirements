@@ -16,6 +16,7 @@
 // The ramp (Default ramp, Clouds) is an editable item like a band: two handles on the canvas (low end, high end at its
 // opacity), the alpha and gradient rows act on it while it is selected, and remove drops it.
 import {buildTF, PRESETS, PRESET_LABELS, MAX_BANDS, TF_W, TF_H, THOR_NOTE} from "./tf.js";
+import {pixelRatio} from "./state.js";
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const r3 = x => Math.round(x * 1000) / 1000;
@@ -125,7 +126,7 @@ export function createTfEditor({onChange = () => {}} = {}) {
   let tmp = null;
   function draw() {
     if (el.hidden || !cv.isConnected) return;
-    const g = geom(), dpr = Math.min(2, globalThis.devicePixelRatio || 1), W = Math.round(g.w * dpr), H = Math.round(g.h * dpr);
+    const g = geom(), dpr = pixelRatio(), W = Math.round(g.w * dpr), H = Math.round(g.h * dpr);
     if (!W || !H) return;
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
     const c = cv.getContext("2d"); if (!c) return; c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, g.w, g.h);

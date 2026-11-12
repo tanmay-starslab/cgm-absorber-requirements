@@ -3,7 +3,7 @@
 // the optional intrinsic overlay and the on-the-fly fit (model, component profiles, ticks), pan and zoom (drag,
 // arrow keys, ctrl/cmd+wheel, + and -, Home), the hover readout, and one absolutely positioned hit box per panel.
 // The page (app.js) owns the state; this module only reads it through `P` (the provider) and reports view changes.
-import {casesFor, minus, nf, fitLoose} from "./state.js";
+import {casesFor, minus, nf, fitLoose, pixelRatio} from "./state.js";
 
 const STRIP_H = 48;                                     // #vaxis height (css)
 const LBL_FONT = "600 11px", HDR = 20, PAD_L = 24, PAD_R = 6, AXIS_H = 30, GAP_X = 16, GAP_Y = 12, MIN_ROW = 66, MAX_ROW = 240;
@@ -46,7 +46,7 @@ export function createSpectra({box, cv, hitboxes, axis, axisCv, more}, P) {
 
   function draw() {
     const t0 = performance.now(), S = P.S;
-    G = geometry(); const dpr = Math.min(2, window.devicePixelRatio || 1);
+    G = geometry(); const dpr = pixelRatio();
     cv.style.width = G.W + "px"; cv.style.height = G.H + "px";
     const bw = Math.round(G.W * dpr), bh = Math.round(G.H * dpr); if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, G.W, G.H);
@@ -195,7 +195,7 @@ export function createSpectra({box, cv, hitboxes, axis, axisCv, more}, P) {
     axis.hidden = false; if (sig === axisSig) return; axisSig = sig;
     if (more) { more.hidden = !names.length; more.lastChild.textContent = names.length <= 3 ? `${names.join(", ")} below` : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more below`;
       more.setAttribute("aria-label", `Scroll to ${names.join(", ")}`); }
-    const dpr = Math.min(2, window.devicePixelRatio || 1), W = G.W, H = 18; axisCv.style.width = W + "px"; axisCv.style.height = H + "px";
+    const dpr = pixelRatio(), W = G.W, H = 18; axisCv.style.width = W + "px"; axisCv.style.height = H + "px";
     if (axisCv.width !== Math.round(W * dpr) || axisCv.height !== Math.round(H * dpr)) { axisCv.width = Math.round(W * dpr); axisCv.height = Math.round(H * dpr); }
     actx.setTransform(dpr, 0, 0, dpr, 0, 0); actx.clearRect(0, 0, W, H);
     const v0 = S.vc - S.vhw, span = 2 * S.vhw, cols = new Map(); for (const p of G.panels) if (!cols.has(p.col)) cols.set(p.col, p);
