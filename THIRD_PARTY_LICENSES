@@ -16,7 +16,8 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
 
 3. IllustrisTNG / TNG50-1 simulation data, https://www.tng-project.org/data/
    - The TNG50-derived products (docs/tng50/data/*.bin and catalog.json, the npz library, the
-     private Hugging Face dataset with the slim cutout, and the PUBLIC Hugging Face dataset
+     Learn page's story data, chapter images and film under docs/tng50/learn/*/data, img and
+     media (see 10), the private Hugging Face dataset with the slim cutout, and the PUBLIC Hugging Face dataset
      tanmay-starslab/tng50-sub488530-viz with the 3D gas and stellar cubes, its manifest_v2.json
      and the committed docs/tng50/data/viz/manifest_v2.json) are derived from IllustrisTNG data.
      They are redistributed under the IllustrisTNG data access terms and citation request
@@ -72,6 +73,28 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
    only to make a 2D reference stellar composite (temet.util.sphMap) against which the star
    cubes' fluxes and colours were validated. No temet code is in this repository or in the
    Hugging Face dataset.
+
+10. Learn page "How a spectrum is made" (docs/tng50/learn/how-a-spectrum-is-made/)
+   - Page, engine, scenes and build scripts are our own code (MIT). The page imports the
+     explorer's own modules (docs/tng50/js/fit.js, state.js); no third-party JavaScript is loaded.
+   - Fonts, SIL Open Font License 1.1 (text in vendor/OFL.txt), vendored unmodified as Google
+     Fonts woff2 subsets in vendor/:
+       Space Grotesk, Copyright 2020 The Space Grotesk Project Authors
+       (https://github.com/floriankarsten/space-grotesk);
+       JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors
+       (https://github.com/JetBrains/JetBrainsMono).
+   - Equations (eq/*.svg) are made at build time with LaTeX (amsmath, amssymb) and dvisvgm
+     (--no-fonts, so glyphs are outlines of the Computer Modern / AMSFonts Type 1 fonts, SIL OFL
+     1.1); neither tool is shipped.
+   - The film is rendered with HyperFrames 0.9.36 (Apache-2.0,
+     https://github.com/heygen-com/hyperframes) driving chrome-headless-shell, and muxed with
+     ffmpeg. These are build tools only: no HyperFrames, Chrome or ffmpeg code is in this
+     repository or on the page, and render.html only registers a frame source with the runtime
+     that the HyperFrames CLI injects. The film MP4s are not committed (media/.gitignore).
+     Versions are recorded in media/manifest.json.
+   - Not used: GSAP (its Standard "No Charge" licence is not an open-source licence), Remotion
+     (not free for universities), three.js inside the story, Lenis, Scrollama.
+   - The story data, chapter images and film show TNG50 data and fall under item 3.
 
 ------------------------------------------------------------------------------------------------
 Trident licence (verbatim from trident 1.4.2)

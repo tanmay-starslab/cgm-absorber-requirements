@@ -4,8 +4,10 @@ What S/N and spectral resolving power does it take to **detect** a circumgalacti
 **resolve** it into its velocity components? This repository answers both questions for twelve strong
 CGM transitions, with publication figures, a technical note and an interactive explainer.
 
-**Interactive explainer:** https://tanmay-starslab.github.io/cgm-absorber-requirements/ (source: `docs/index.html`)
-· **TNG50 sightline explorer:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/ (see [below](#tng50-sightline-explorer))
+- **Interactive explainer:** https://tanmay-starslab.github.io/cgm-absorber-requirements/ (source: `docs/index.html`)
+- **TNG50 sightline explorer:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/ (see [below](#tng50-sightline-explorer))
+- **How a spectrum is made:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/learn/how-a-spectrum-is-made/
+  (a step-by-step story from gas cells to a fitted spectrum; see [below](#learn-page-how-a-spectrum-is-made))
 
 ![Requirement matrix](figures/requirements_matrix.png)
 
@@ -144,6 +146,30 @@ The original app and its scripts are in `tng50/` (see
 velocity-frame and dλ fixes). Layout: `tngsight/` (registry, geometry, generator, npz and web formats, fitter, cubes),
 `server/` (FastAPI), `deploy/` (data builds, HF Space, VM and laptop scripts).
 
+### Learn page: How a spectrum is made
+
+`docs/tng50/learn/how-a-spectrum-is-made/` tells how one sightline's spectrum is built: the light behind the galaxy,
+the gas cells along the beam, which ions absorb, one cell's dip, Doppler shifts, the sum of many cells, saturation,
+the instrument's blur, noise and the Voigt fit. It reads as a page of steps (scroll or arrow keys), plays as a film
+(Play) and opens a few live controls per step (Try it); the last step hands the same sightline to the explorer. The
+story is galaxy-agnostic: `?g=<subhalo>` picks a galaxy, and the explorer's links ("How is this made?" under the
+spectra, and the chapter list in How to read) pass the galaxy on screen. Each galaxy needs its story file in
+`learn/how-a-spectrum-is-made/data/` (listed in `data/index.json`); a galaxy without one falls back to the default
+story with a note. The physics is the explorer's own (`docs/tng50/js/fit.js`).
+
+```bash
+GALAXIES="488530 411449" RAY=rand_b062_a062 sbatch --array=0-1 scripts/story_data.sbatch
+                                                  # story data per galaxy (export_story_data.py cells + build,
+                                                  # precomputed fits from story_fits.mjs); any of the 198 hosts
+python3 scripts/story_page.py                     # writes the page text from steps.json
+scripts/story_equations.sh                        # equation SVGs (latex + dvisvgm)
+node scripts/story_vtt.mjs; sbatch scripts/story_render.sbatch    # captions, then the film (HyperFrames)
+node tests/js/run_all.mjs story                   # story gates (TNG_BROWSER=1 for the browser ones)
+```
+
+`scripts/export_tng50_web.py --out DIR` copies `learn/` along with the page, without `build/` and the film MP4s,
+which are hosted outside the repository.
+
 Credits: IllustrisTNG / TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), Trident (Hummels et
 al. 2017), yt (Turk et al. 2011). The star composite follows Lupton et al. (2004). The 3D viewer's approach
 (deposited cubes and column-integral rendering) was inspired by Scott Lucchini's TNG viewer.
@@ -168,7 +194,10 @@ Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full t
 - **three.js** (MIT), **WebLLM** (Apache-2.0) and the **Qwen2.5-1.5B-Instruct** weights (Apache-2.0)
   are loaded from their CDNs by the browser and are not vendored. pygad (GPL-2+) was only run
   out-of-tree to validate the fitter. None of its code is in this repository.
-- **TNG50 data.** The TNG50-derived spectra, library and 3D cubes (`docs/tng50/data/`, the npz library, the
+- **Learn page:** Space Grotesk and JetBrains Mono (SIL OFL 1.1) are vendored in
+  `docs/tng50/learn/how-a-spectrum-is-made/vendor/` with their licence. The film is rendered with HyperFrames
+  (Apache-2.0) and ffmpeg, build tools only, not vendored. No GSAP or Remotion.
+- **TNG50 data.** The TNG50-derived spectra, library, story data and 3D cubes (`docs/tng50/data/`, `docs/tng50/learn/*/data/`, the npz library, the
   private HF dataset and the public viz dataset `tanmay-starslab/tng50-sub488530-viz`) are not MIT. They are redistributed under the
   [IllustrisTNG data policy](https://www.tng-project.org/data/), which asks you to cite
   Nelson et al. 2019 (ComAC 6, 2; MNRAS 490, 3234) and Pillepich et al. 2019 (MNRAS 490, 3196).
