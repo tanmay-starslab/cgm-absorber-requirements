@@ -531,8 +531,8 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
   #title{font-size:12px}
 }
 
-/* 3D orbit button: bottom-centre of the full stage, same glass as the re-centre chip */
-.v3d-orb{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:3;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px 0 10px;
+/* 3D orbit button: top-right of the full stage (the scale bar owns bottom-centre); the re-centre chip sits below it */
+.v3d-orb{position:absolute;top:10px;right:10px;z-index:3;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px 0 10px;
   border:1px solid var(--s-edge,rgba(200,215,240,.16));border-radius:999px;cursor:pointer;color:var(--s-ink,#e9eef4);font:500 12px var(--sans,system-ui,sans-serif);
   background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,0) 70%),var(--s-mat,rgba(12,16,22,.74));
   box-shadow:var(--s-hi,inset 0 1px 0 rgba(255,255,255,.10)),0 4px 14px rgba(0,0,0,.30);backdrop-filter:var(--s-blur,blur(24px) saturate(1.5));-webkit-backdrop-filter:var(--s-blur,blur(24px) saturate(1.5))}
@@ -541,3 +541,7 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
 .v3d-orb[aria-pressed=true] svg{color:var(--s-accent,#7db2f0)}
 .v3d-orb:focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
 .v3d-thumb .v3d-orb{display:none}
+
+.v3d-pv{top:46px}
+.v3d.v3d-fs .v3d-orb,.v3d:fullscreen .v3d-orb{top:48px}
+.v3d.v3d-fs .v3d-pv,.v3d:fullscreen .v3d-pv{top:84px}
