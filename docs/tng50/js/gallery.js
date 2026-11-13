@@ -91,7 +91,7 @@ export function createGallery(els, opts) {
   function row(e, i, cur) {
     const k = kindOf(e), L = sightLabel(e), n = nShow(e);
     /* a cast ray is Trident HM2012 over ±R200c; SBI_CGM galaxies' library rays are CLOUDY FG11 over ±2 R200c (review2 F2) */
-    const yt = e.spectra === "trident" && opts.libSource?.() === "sbi" ? "A ray you cast with Trident HM2012; library rays use SBI_CGM" : "A ray you cast; not in the library";
+    const yt = e.spectra === "trident" && opts.libSource?.() === "sbi" ? "A ray you cast with Trident HM2012; library rays use THOR" : "A ray you cast; not in the library";
     const badge = k !== "library" ? `<span class="tag" data-tip="${yt}">yours</span>`
       : n ? `<span class="gn" data-tip="${n} ${n === 1 ? "line has" : "lines have"} multi-component, unsaturated absorbers">${n}</span>` : "<span></span>";
     return `<li role="option" id="gal-opt-${i}" data-id="${esc(e.id)}" data-kind="${k}" aria-selected="${e.id === cur}" aria-label="${esc(L.text)}"${i === hl ? ' class="hl"' : ""}>` +

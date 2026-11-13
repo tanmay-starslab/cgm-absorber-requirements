@@ -79,7 +79,7 @@ export const fmtSfr = x => (!Number.isFinite(+x) || x === null ? "–" : +x >= 1
 export const kindWord = e => (e.central === true ? "central" : e.central === false ? "satellite" : "");
 /* the spectra source of an index entry or a catalogue's spectra_source block: "sbi" | "trident" | "" (unknown) */
 export const srcOf = x => { const v = String((x && (x.src ?? x.source)) || "").toLowerCase(); return v.startsWith("sbi") ? "sbi" : v === "trident" ? "trident" : ""; };
-export const SRC_WORD = {sbi: "SBI_CGM spectra", trident: "Trident spectra"};
+export const SRC_WORD = {sbi: "THOR spectra", trident: "Trident spectra"};
 /* the full description (aria-label of a row) and the short tip (12 words at most, the page's tip budget) */
 export function galaxyAria(e) {
   if (!e) return "";
