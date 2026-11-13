@@ -106,6 +106,6 @@ ok("spectra source and gas-poor flags in tags, tips, search and card", () => {
   assert.equal(srcOf(e), "sbi"); assert.equal(srcOf({source: "sbi_cgm"}), "sbi"); assert.equal(srcOf(t), "trident"); assert.equal(srcOf({}), "");
   assert.ok(matchGalaxy(e, "gas-poor") && !matchGalaxy(t, "gas-poor")); assert.ok(matchGalaxy(e, "sbi") && matchGalaxy(t, "trident"));
   assert.match(galaxyTip(e), /gas-poor/); assert.ok(galaxyTip(e).split(/\s+/).length <= 12);
-  assert.match(galaxyAria(e), /SBI_CGM spectra/); assert.match(galaxyCard(e), /SBI_CGM/); assert.match(galaxyCard(e), /gas-poor/);
+  assert.match(galaxyAria(e), /SBI_CGM spectra/); assert.doesNotMatch(galaxyCard(e), /SBI_CGM/); assert.match(galaxyCard(e), /gas-poor/);   // owner 2026-11-13: no spectra label in the galaxy card
 });
 console.log(`${n} galaxies_unit checks passed`);
