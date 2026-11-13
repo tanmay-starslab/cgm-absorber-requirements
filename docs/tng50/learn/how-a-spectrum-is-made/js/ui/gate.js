@@ -110,12 +110,20 @@ html.gate-open #hud,html.gate-open #rail,html.gate-open #kinetic,html.gate-open 
 .sg-b:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:3px}
 .sg-b svg{flex:none;width:26px;height:26px;overflow:visible}
 .sg-ring-bg{fill:none;stroke:rgba(255,244,223,.28);stroke-width:2}
-.sg-ring{fill:none;stroke:var(--beam,#fff4df);stroke-width:2.4;stroke-linecap:round;transform:rotate(-90deg);transform-origin:13px 13px;
-  stroke-dasharray:69.1;stroke-dashoffset:calc(69.1 * (1 - var(--hold,0)))}
+/* the progress arc: same circle and stroke as the track (no CSS transform: the -90° start is an SVG transform attribute
+   about the exact centre, so the arc, the track and the dot share one centre in every browser) */
+.sg-ring{fill:none;stroke:var(--beam,#fff4df);stroke-width:2;stroke-linecap:round;
+  stroke-dasharray:69.115;stroke-dashoffset:calc(69.115 * (1 - var(--hold,0)))}
 .sg-dot{fill:var(--beam,#fff4df)}
 .sg-b.holding{border-color:var(--beam,#fff4df);background:#1a1712f0}
-.sg-b.nudge .sg-l::after{content:attr(data-nudge);position:absolute;left:0;right:0;top:calc(100% + 8px);font-size:13px;color:var(--sky-muted,#b9b6c8);text-align:center}
 .sg-l{position:relative;white-space:nowrap}
+/* "Keep holding" after a too-short press: both texts share one grid cell, so the button is as wide as the longer one and
+   the hint replaces the label inside the button instead of hanging below it */
+.sg-b.hold .sg-l{display:inline-grid;text-align:left}
+.sg-b.hold .sg-l>*{grid-area:1/1;transition:opacity .18s}
+.sg-b.hold .sg-hint{opacity:0;color:var(--beam,#fff4df)}
+.sg-b.hold.nudge .sg-main{opacity:0}
+.sg-b.hold.nudge .sg-hint{opacity:1}
 .sg-tri{fill:var(--beam,#fff4df)}
 .sg-k{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:clamp(0px,.6vh,6px)}
 .sg-a{min-height:44px;padding:0 2px;border:0;background:none;color:var(--sky-ink,#f4f1ea);font:400 14px/1 var(--sans,system-ui,sans-serif);cursor:pointer;
@@ -185,8 +193,8 @@ export function createGate(host, opts = {}) {
       `<p class="sg-s" id="sg-s" data-g1="gate.sub">${esc(sub)}</p>` +
       `<div class="sg-c">` +
         `<button type="button" class="sg-b hold" data-g1="gate.hold" data-testid="gate-hold" aria-describedby="sg-hold-d">` +
-          `<svg viewBox="0 0 26 26" aria-hidden="true"><circle class="sg-ring-bg" cx="13" cy="13" r="11"/><circle class="sg-ring" cx="13" cy="13" r="11"/><circle class="sg-dot" cx="13" cy="13" r="3.2"/></svg>` +
-          `<span class="sg-l" data-nudge="Keep holding">${esc(holdL)}</span></button>` +
+          `<svg viewBox="0 0 26 26" aria-hidden="true"><circle class="sg-ring-bg" cx="13" cy="13" r="11"/><circle class="sg-ring" cx="13" cy="13" r="11" transform="rotate(-90 13 13)"/><circle class="sg-dot" cx="13" cy="13" r="3.5"/></svg>` +
+          `<span class="sg-l"><span class="sg-main">${esc(holdL)}</span><span class="sg-hint" aria-hidden="true">Keep holding</span></span></button>` +
         `<button type="button" class="sg-b watch" data-g1="gate.watch" data-testid="gate-watch">` +
           `<svg viewBox="0 0 26 26" aria-hidden="true"><circle class="sg-ring-bg" cx="13" cy="13" r="11"/><path class="sg-tri" d="M10.5 8.4v9.2l7.6-4.6z"/></svg>` +
           `<span class="sg-l">${esc(watchL())}</span></button>` +
