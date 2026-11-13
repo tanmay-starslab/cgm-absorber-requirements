@@ -4,7 +4,10 @@ them with a local Generator, upload the npz. No inbound port or tunnel needed.
     python -m server.remote_worker --coordinator https://<space>.hf.space --token $WORKER_TOKEN [--name laptop]
 
 The worker announces caps ["endpoints", "fit"] (custom rays + fitted components); a Phase-1
-coordinator that rejects the field gets a capability-less lease instead.
+coordinator that rejects the field gets a capability-less lease instead. With --galaxy-dir (default
+$TNG_GALAXY_ROOT; unset: off) it also announces "galaxies" and runs jobs of other galaxies
+of the sample from <dir>/<id>/cutout_slim_R400.hdf5 (the pipeline's data root layout), keeping at most
+--max-warm of those datasets loaded.
 
 Needs the same data as the server (TNG_CUTOUT, TNG_ION_TABLE_DIR, TNG_INDEX_FILE) and cwd with
 config.tri if the Generator imports trident there.
@@ -29,6 +32,9 @@ def main(argv=None):
     ap.add_argument("--poll", type=float, default=25.0, help="long-poll seconds per lease request")
     ap.add_argument("--max-jobs", type=int, default=None, help="exit after N jobs")
     ap.add_argument("--workdir", default=os.environ.get("TNG_WORKDIR"), help="temp dir for npz staging")
+    ap.add_argument("--galaxy-dir", default=os.environ.get("TNG_GALAXY_ROOT"),
+                    help="serve other galaxies from <dir>/<id>/cutout_slim_R400.hdf5 (announces the galaxies cap)")
+    ap.add_argument("--max-warm", type=int, default=1, help="non-default galaxy datasets kept loaded")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
@@ -41,7 +47,7 @@ def main(argv=None):
                             ("ion_table_dir", os.environ.get("TNG_ION_TABLE_DIR")),
                             ("index_filename", os.environ.get("TNG_INDEX_FILE"))) if v}
     w = RemoteWorker(a.coordinator, a.token, name=a.name, poll_s=a.poll, workdir=a.workdir,
-                     gen_spec=a.generator, gen_kwargs=kw)
+                     gen_spec=a.generator, gen_kwargs=kw, galaxy_dir=a.galaxy_dir, max_warm=a.max_warm)
     signal.signal(signal.SIGTERM, lambda *_: w.stop())
     try:
         n = w.run(max_jobs=a.max_jobs)

@@ -3,7 +3,7 @@
 // node tests (tests/js/ui_static.mjs) import it directly.
 
 export const LAYOUTS = ["1", "2R", "2SN", "4"];
-export const LAYOUT_LABEL = {"1": "1", "2R": "2 R", "2SN": "2 S/N", "4": "2×2"};
+export const LAYOUT_LABEL = {"1": "Single", "2R": "Compare R", "2SN": "Compare S/N", "4": "Compare both"};
 export const LAYOUT_TITLE = {"1": "One case: one R and one S/N", "2R": "Two R at one S/N", "2SN": "Two S/N at one R",
   "4": "Two R by two S/N"};
 export const ID_RE = /^((face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?|cust_[0-9a-f]{10})$/;
@@ -225,4 +225,11 @@ export function instrumentPatch(o, reg, S, vmaxFor) {
     P.vc = o.vc; }
   if (o.fit !== undefined) { if (typeof o.fit !== "boolean") throw new RangeError("fit: must be true or false"); P.fit = o.fit; }
   return P;
+}
+
+/* Device pixels per CSS px of a canvas: the screen's devicePixelRatio times the page's CSS zoom on <html> (112 % on large
+   screens). Canvas bitmaps sized with this stay sharp under the page scale and under browser zoom (capped at 4). */
+export function pixelRatio(cap = 4) {
+  const z = parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+  return Math.min(cap, (globalThis.devicePixelRatio || 1) * z);
 }

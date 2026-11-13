@@ -14,6 +14,11 @@ def _flag(v, default=False):
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _gb(v, default: int) -> int:
+    """GB (float, env string) -> bytes; empty -> default."""
+    return int(float(v) * 1024**3) if v not in (None, "") else int(default)
+
+
 def _work_root(env=None) -> Path:
     """The TNG_WORK work root (tngsight.config.work_root's rule, repeated so settings import without tngsight)."""
     return Path((os.environ if env is None else env).get("TNG_WORK") or "/Volumes/cgm_work")
@@ -70,6 +75,22 @@ class Settings:
     figure_cache: int = 64
     figure_dpi: int = 240
     hf_startup_download: bool = True
+    # galaxies (server/galaxies.py): every route takes ?g=<subhalo id>; the default galaxy keeps the
+    # library_dir layout above, any other one lives under galaxy_root/<id>/ (generated sightlines, its
+    # galaxy.json, and the lazily fetched slim cutout in an LRU disk cache capped at cutout_cache_bytes)
+    default_galaxy: str = "488530"          # TNG_DEFAULT_GALAXY
+    galaxy_root: Path | None = None         # TNG_GALAXY_ROOT, else TNG_GAL_ROOT; None -> library_dir/gal
+    galaxies_index: Path | None = None      # TNG_GALAXIES: optional JSON list of the ids this node serves
+    # GAL_HF_DATASET / GAL_HF_PATTERN: where the private per-galaxy files live (slim cutout + galaxy.json); the
+    # defaults match the layout deploy/data/upload_galaxies.py publishes (CUTOUT_REPO, `<id>/<name>`; review2 F4).
+    # Generated rays of non-default galaxies are mirrored under `<id>/generated/` of the same repo. HF_TOKEN needs
+    # read (and, for the mirror, write) access to it. GAL_HF_DATASET="" falls back to HF_DATASET.
+    gal_hf_dataset: str | None = "tanmay-starslab/tng50-mwm31-cutouts"
+    gal_hf_pattern: str = "{id}/{name}"
+    cutout_cache_bytes: int = 10 * 1024**3  # CUTOUT_CACHE_GB (A1 VM: 46.6 GB boot volume, see U_vm notes)
+    cutout_min_free_bytes: int = 4 * 1024**3   # CUTOUT_MIN_FREE_GB: never fill the disk past this
+    galaxy_max_warm: int = 1                # GALAXY_MAX_WARM: warm non-default datasets per worker (RAM)
+    prepare_timeout_s: float = 3600.0       # a job "preparing" (cutout fetch) longer than this errors
     # chat (POST /api/chat, server/chat.py): Claude proxy, off unless a key is configured
     anthropic_api_key: str | None = field(default=None, repr=False)
     chat_claude: bool = True
@@ -107,10 +128,23 @@ class Settings:
                 anthropic_api_key=g("ANTHROPIC_API_KEY") or None, chat_claude=_flag(g("CHAT_CLAUDE"), True),
                 chat_daily_budget=int(g("CHAT_DAILY_BUDGET") or cls.chat_daily_budget),
                 chat_client_daily_budget=int(g("CHAT_CLIENT_DAILY_BUDGET") or cls.chat_client_daily_budget),
-                chat_daily_tokens=int(g("CHAT_DAILY_TOKENS") or cls.chat_daily_tokens))
+                chat_daily_tokens=int(g("CHAT_DAILY_TOKENS") or cls.chat_daily_tokens),
+                default_galaxy=(g("TNG_DEFAULT_GALAXY") or cls.default_galaxy).strip(),
+                galaxy_root=opt("TNG_GALAXY_ROOT") or opt("TNG_GAL_ROOT"), galaxies_index=opt("TNG_GALAXIES"),
+                gal_hf_dataset=(cls.gal_hf_dataset if g("GAL_HF_DATASET") is None else (g("GAL_HF_DATASET") or None)),
+                gal_hf_pattern=g("GAL_HF_PATTERN") or cls.gal_hf_pattern,
+                cutout_cache_bytes=_gb(g("CUTOUT_CACHE_GB"), cls.cutout_cache_bytes),
+                cutout_min_free_bytes=_gb(g("CUTOUT_MIN_FREE_GB"), cls.cutout_min_free_bytes),
+                galaxy_max_warm=max(0, int(g("GALAXY_MAX_WARM") or cls.galaxy_max_warm)),
+                prepare_timeout_s=float(g("PREPARE_TIMEOUT_S") or cls.prepare_timeout_s))
         for k, v in over.items():
             setattr(s, k, v)
         return s
+
+    @property
+    def galaxy_dir(self) -> Path:
+        """Root of the non-default galaxies (galaxy_root, else library_dir/gal)."""
+        return Path(self.galaxy_root) if self.galaxy_root else Path(self.library_dir) / "gal"
 
     @property
     def generation_possible(self) -> bool:

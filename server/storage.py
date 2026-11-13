@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 import threading
 import time
 import zipfile
@@ -21,7 +22,9 @@ NPZ_FORMAT = "tngsight-npz/2"
 COMPONENTS_MEMBER = "components_json"          # optional extra npz member of a worker result
 COMPONENTS_SUFFIX = ".components.json"
 COMPONENTS_DOC_VERSION = 2
-DOWNLOAD_IGNORE = ("vol/*", "components/*")   # dataset backups of Phase-2 builds the server never reads
+# vol/, components/: dataset backups of Phase-2 builds the server never reads; gal/: the other galaxies
+# (cutouts, frames, their generated sightlines), fetched per galaxy on first use (server/galaxies.py)
+DOWNLOAD_IGNORE = ("vol/*", "components/*", "gal/*")
 # a generated row lacking one of these is rebuilt by reconcile() (Phase-1 rows; pre-v2 rows)
 _ROW_KEYS = ("p0", "p1", "has_components", "logN_aod", "data_version", "lines")
 MAX_UNZIPPED = 50 * 1024 * 1024
@@ -248,8 +251,9 @@ class LibraryStore:
     npz files may be v1 or v2 (tngsight.library.load_npz reads both); web binaries are always served as
     TNGS v2 (a cached v1 .bin is re-encoded from its npz on first read and replaced)."""
 
-    def __init__(self, root, hf=None):
+    def __init__(self, root, hf=None, galaxy=None):
         self.root = Path(root)
+        self.galaxy = galaxy                   # None: the default galaxy; else its validated record
         self.gen_dir, self.web_dir, self.lib_dir = (self.root / d for d in ("generated", "web", "sightlines"))
         for d in (self.root, self.gen_dir, self.web_dir):
             d.mkdir(parents=True, exist_ok=True)
@@ -268,6 +272,9 @@ class LibraryStore:
         generated/*.components.json files."""
         with self._lock:
             self.catalog = _lib().Catalog(self.root / "catalog.json")
+            if self.galaxy is not None:        # the skeleton header names the default galaxy
+                from .galaxies import public_record
+                self.catalog.data["galaxy"] = public_record(self.galaxy)
             self._doc = None
             self._comp_doc = None
             self._comp_cache.clear()
@@ -296,11 +303,34 @@ class LibraryStore:
                 self._doc = (body, '"' + hashlib.sha1(body).hexdigest()[:20] + '"')
             return self._doc
 
+    def _catalog_entry(self, payload, scores, source, components=None) -> dict:
+        """tngsight.library.catalog_entry, with p0/p1 relative to this store's galaxy centre (catalog_entry
+        uses the default galaxy's)."""
+        e = _lib().catalog_entry(payload, scores, source, components=components)
+        if source == "generated":
+            # rays cast here are Trident HM2012 over +-R200c, whatever the galaxy's library is (SBI_CGM CLOUDY FG11
+            # for 197 galaxies): the page labels a row whose source differs from the library's (review2 F2 / ux P4)
+            e["spectra"] = (payload.get("generation") or {}).get("source") or "trident"
+            if e["spectra"] not in ("trident", "sbi_cgm"):
+                e["spectra"] = "trident"
+        if self.galaxy is not None:
+            g = payload["geom"]
+            c = np.asarray(self.galaxy["center_kpc"], float)
+            if "start_kpc" in g and "end_kpc" in g:
+                a, b = np.asarray(g["start_kpc"], float), np.asarray(g["end_kpc"], float)
+            else:
+                h = float(self.galaxy["TNG_H"])
+                a, b = np.asarray(g["start_ckpch"], float) / h, np.asarray(g["end_ckpch"], float) / h
+            e["p0"] = [round(float(x), 2) + 0.0 for x in a - c]
+            e["p1"] = [round(float(x), 2) + 0.0 for x in b - c]
+        return e
+
     # ------------------------------------------------------------------ files
     def npz_path(self, sid) -> Path | None:
         check_id(sid)
+        sub = self.galaxy["id"] if self.galaxy is not None else "488530"
         for p in (self.gen_dir / f"{sid}.npz", self.lib_dir / f"{sid}.npz",
-                  self.lib_dir / f"cgm_sid488530_{sid}.npz"):
+                  self.lib_dir / f"cgm_sid{sub}_{sid}.npz"):
             if p.is_file():
                 return p
         return None
@@ -447,8 +477,8 @@ class LibraryStore:
         blob = lib.encode_web(payload)
         _atomic_write(self.gen_dir / f"{sid}.bin", blob)
         stored = self.components(sid) if components is not None else None
-        entry = lib.catalog_entry(payload, scores, "generated",
-                                  components=validate_components(stored["components"]) if stored else None)
+        entry = self._catalog_entry(payload, scores, "generated",
+                                    components=validate_components(stored["components"]) if stored else None)
         with self._lock:
             self.catalog.upsert(entry)
             self.catalog.save()
@@ -484,8 +514,8 @@ class LibraryStore:
                     log.warning("reconcile scoring %s failed: %s", sid, e)
                     scores = None
                 d = self.components(sid)
-                entry = _lib().catalog_entry(payload, scores, "generated",
-                                             components=validate_components(d["components"]) if d else None)
+                entry = self._catalog_entry(payload, scores, "generated",
+                                            components=validate_components(d["components"]) if d else None)
                 if old is not None:          # keep anything the old row had that the new schema lacks
                     entry = {**{k: v for k, v in old.items() if k not in ("logN", "ions", "n_fit")}, **entry}
                 with self._lock:
@@ -651,12 +681,11 @@ class LibraryStore:
             g = json.loads(str(a["geom"]))
         except Exception:
             raise ValueError("geom is not JSON")
-        from tngsight.geometry import make_endpoints, make_sightline
-        if geom.get("kind") == "endpoints":
-            want = make_endpoints(geom["p0_kpc"], geom["p1_kpc"])
+        if all(k in geom for k in ("n_los", "start_kpc", "end_kpc")):
+            want = geom                        # a non-default galaxy's job carries its resolved geometry
         else:
-            want = make_sightline(geom["orientation"], float(geom["b_kpc"]), float(geom["azimuth_deg"]),
-                                  seed=geom.get("seed"))
+            from .galaxies import make_geometry
+            want = make_geometry(None, geom)
         if not isinstance(g, dict):
             raise ValueError("geom is not a JSON object")
         for key in ("n_los", "start_kpc", "end_kpc"):
@@ -728,8 +757,11 @@ class HFSync:
     MANIFEST = ".hfsync_pending.json"
 
     def __init__(self, token, repo_id, local_dir, api=None, snapshot=None, max_tries=8, base_delay=2.0,
-                 max_delay=300.0, batch_s=1.0, batch_max=50):
+                 max_delay=300.0, batch_s=1.0, batch_max=50, prefix=""):
         self.token, self.repo_id, self.local_dir = token, repo_id, Path(local_dir)
+        # prefix (e.g. "gal/<id>/"): this mirror covers <prefix>generated/* of the dataset only, kept
+        # in local_dir/generated/ (a non-default galaxy's store); "" = the whole dataset (default galaxy)
+        self.prefix = (prefix.strip("/") + "/") if prefix else ""
         self.max_tries, self.base_delay, self.max_delay = max_tries, base_delay, max_delay
         self.batch_s, self.batch_max = batch_s, batch_max
         if api is None:
@@ -769,6 +801,8 @@ class HFSync:
         delay = self.base_delay
         for i in range(self.max_tries):
             try:
+                if self.prefix:
+                    return self._download_prefix(snap)
                 return snap(repo_id=self.repo_id, repo_type="dataset", local_dir=str(self.local_dir),
                             token=self.token, ignore_patterns=list(DOWNLOAD_IGNORE))
             except Exception as e:
@@ -782,8 +816,24 @@ class HFSync:
                 delay = min(delay * 2, self.max_delay)
         return None
 
+    def _download_prefix(self, snap):
+        """<prefix>generated/* into local_dir/generated/ (through a temp dir: snapshot_download keeps the
+        repo layout). Existing local files are kept (they are the newer copies)."""
+        self.local_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=self.local_dir, prefix=".hfdl_") as t:
+            snap(repo_id=self.repo_id, repo_type="dataset", local_dir=t, token=self.token,
+                 allow_patterns=[f"{self.prefix}generated/*"])
+            src = Path(t) / self.prefix / "generated"
+            dst = self.local_dir / "generated"
+            dst.mkdir(parents=True, exist_ok=True)
+            for f in sorted(src.glob("*")) if src.is_dir() else []:
+                if f.is_file() and not (dst / f.name).exists():
+                    os.replace(f, dst / f.name)
+        return str(self.local_dir)
+
     # ------------------------------------------------------------------ upload
     def upload(self, path, path_in_repo):
+        path_in_repo = self.prefix + str(path_in_repo)
         with self._lock:
             self._pending[str(path_in_repo)] = str(path)
             self._save_manifest()
@@ -804,7 +854,7 @@ class HFSync:
         if remote is not None:
             with self._lock:
                 for p in sorted(Path(gen_dir).glob("*")):
-                    dest = f"generated/{p.name}"
+                    dest = f"{self.prefix}generated/{p.name}"
                     sid = p.name[: -len(COMPONENTS_SUFFIX)] if p.name.endswith(COMPONENTS_SUFFIX) else (
                         p.stem if p.suffix in (".npz", ".bin") else None)
                     if sid and ID_RE.fullmatch(sid) and dest not in remote and dest not in self._pending:
@@ -882,5 +932,5 @@ class HFSync:
             self.last_error, delay = None, self.base_delay
 
     def status(self) -> dict:
-        return {"repo": self.repo_id, "pending": self.pending(), "uploaded": self.uploaded,
+        return {"repo": self.repo_id, "prefix": self.prefix, "pending": self.pending(), "uploaded": self.uploaded,
                 "last_error": self.last_error, "disabled": bool(self.disabled)}

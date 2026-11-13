@@ -209,6 +209,25 @@ def test_proj_window_column_and_weighted():
     assert vw == [V.VP.snap_down(-3.0), 0.5]
 
 
+def test_cube_stats_all_empty_cube_is_finite():
+    """An ion with no voxel above vmin (gas-poor 447914, Mg II at L2) must give finite stats the manifest accepts."""
+    v = np.zeros((8, 8, 8))
+    q = V.VP.quantize(v, None, -6.0, 0.0)
+    s = V.cube_stats(v, q)
+    assert s["frac_empty"] == 1.0
+    assert all(np.isfinite(s[k]) and s[k] == V.EMPTY_LOG for k in ("p01", "p50", "p99", "max"))
+
+
+def test_vol_window_empty_l1_falls_back():
+    """No positive voxel of an ion in the L1 box (gas-poor 613192, run3): use the next level, else the narrow window."""
+    n = 8
+    l2 = np.full((n, n, n), 1e-4)
+    cubes = {"L1": {"nH": np.zeros((n, n, n))}, "L2": {"nH": l2}}
+    assert V.vol_window(cubes, "nH", 0.5) == [V.VP.snap_down(-4.0), 0.5]
+    cubes["L2"]["nH"] = np.zeros((n, n, n))
+    assert V.vol_window(cubes, "nH", 0.5) == [0.4, 0.5]
+
+
 # ------------------------------------------------------------------------------- 6. cube files + fragment
 def test_encode_cube_job_fragment_and_validation(tmp_path):
     n = 16
@@ -421,6 +440,35 @@ def test_build_script_column_checks_gate(tmp_path, monkeypatch):
                             keys=["SiIV"])
     assert len(high["fails"]) == 3 and all(f.startswith("physics ") for f in high["fails"])
     assert high["summary"]["n_pass"] == 0
+
+
+def test_graded_column_checks_fail_a_corrupted_cube(tmp_path, monkeypatch):
+    """U_grading: build_volumes.column_checks + galpipe.grade_column_checks end to end with the sample's relative floor
+    and finer-level rules. The right cubes pass; a cube misplaced by six voxels (37.5 kpc) across the rays, or 10x too high, at every level fails
+    the gate (the dense sightline itself is off, so neither soft path applies)."""
+    from tngsight import galpipe as GP
+    bv = _build_script()
+    cells = _clumps(4)
+    rays = {"dense": (np.array([-300.0, 3.0, 1.0]), np.array([300.0, -4.0, 2.0])),
+            "mid": (np.array([-300.0, 20.0, -6.0]), np.array([300.0, 14.0, 9.0])),
+            "low": (np.array([-300.0, 45.0, 30.0]), np.array([300.0, 50.0, 35.0]))}
+    monkeypatch.setattr(bv, "CHECKS", {L: tuple(rays) for L in ("L0", "L1", "L2")})
+    monkeypatch.setattr(bv, "sightline", lambda lib, sid: (*rays[sid], {}))
+
+    def graded(cache):
+        return GP.grade_column_checks(bv.column_checks(cells, cache, None, tmp_path, tmp_path, keys=["SiIV"]))
+
+    cache = _fake_cache(tmp_path / "ok", cells)
+    g = graded(cache)
+    assert g["hard_pass"] and g["n_gross"] == 0 and g["n_rows"] >= 7, g
+    for name, f in (("rolled", lambda a: np.roll(a, 6, axis=1)), ("x10", lambda a: 10.0 * a)):
+        bad = _fake_cache(tmp_path / name, cells)
+        for L in V.GAS_LEVELS:
+            q = bad / f"{L}_SiIV.npy"
+            np.save(q, f(np.load(q)).astype(np.float32))
+        g = graded(bad)
+        assert not g["hard_pass"] and g["n_gross"] >= 2, (name, g)
+        assert any(" dense " in t for t in g["gross"]), (name, g["gross"])
 
 
 def test_build_script_check_only_writes_the_report(tmp_path, monkeypatch):

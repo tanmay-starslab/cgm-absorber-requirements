@@ -163,7 +163,7 @@ def test_health_and_warm(libdir):
         warm(c)
         h = c.get("/api/health").json()
         assert h["status"] == "ok" and h["node"] == "test" and h["workers"]["local"]["state"] == "warm"
-        assert h["library_size"] == 2 and h["generated_size"] == 0 and h["queue"] == {"queued": 0, "running": 0}
+        assert h["library_size"] == 2 and h["generated_size"] == 0 and h["queue"] == {"queued": 0, "running": 0, "preparing": 0}
         assert set(h) >= {"version", "warm", "workers", "queue", "registry_tag", "data_version", "ions"}
         assert h["registry_tag"] == I.registry_tag() and h["data_version"] == 2 and h["ions"] == list(I.KEYS)
 
@@ -269,7 +269,7 @@ def test_dedupe_positions_and_sse(libdir):
         q3 = c.post("/api/sightlines", json=dict(body, seed=13)).json()
         assert (q2["position"], q3["position"]) == (1, 2)
         assert c.get(f"/api/jobs/{q3['job_id']}").json()["position"] == 2
-        assert c.get("/api/health").json()["queue"] == {"queued": 2, "running": 1}
+        assert c.get("/api/health").json()["queue"] == {"queued": 2, "running": 1, "preparing": 0}
         jobq = c.app.state.jobs
         lines, err = [], []
 
@@ -923,7 +923,7 @@ def test_startup_hf_download(libdir):
     with TestClient(create_app(s, hf=hf)) as c:
         wait_for(lambda: seen)
         assert seen[0]["repo_type"] == "dataset" and seen[0]["local_dir"] == str(libdir)
-        assert seen[0]["ignore_patterns"] == ["vol/*", "components/*"]
+        assert seen[0]["ignore_patterns"] == ["vol/*", "components/*", "gal/*"]
         assert c.get("/api/health").json()["hf"]["repo"] == "user/ds"
     seen.clear()
     s = settings(libdir, local_worker=False, hf_token="tok", hf_dataset="user/ds", hf_startup_download=False)

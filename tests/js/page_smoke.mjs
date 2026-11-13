@@ -100,9 +100,9 @@ try {
       const lab = await P.fn(`return ["1", "2R", "2SN", "4"].map(v => { const i = document.querySelector('input[name=layout][value="' + v + '"]'); if (!i) return null;
           const L = i.closest("label") || (i.id && document.querySelector('label[for="' + i.id + '"]'));
           return {v, tid: i.dataset.testid, text: L ? L.innerText.replace(/\\s+/g, "") : "", tip: (i.dataset.tip || (L && L.dataset.tip) || i.title || (L && L.title) || i.getAttribute("aria-label") || "").trim()}; });`);
-      const want = {"1": "1", "2R": "2R", "2SN": "2S/N", "4": "2×2"};
+      const want = {"1": "Single", "2R": "CompareR", "2SN": "CompareS/N", "4": "Compareboth"};
       check(lab.every(l => l && l.tid === "layout-" + l.v && l.text.replace("x", "×") === want[l.v] && l.tip),
-        `C8 layout switch reads 1, 2 R, 2 S/N, 2×2 with tooltips (pick.md): ${lab.map(l => (l ? `${l.v}="${l.text}"${l.tip ? "" : " no tooltip"}` : "missing")).join(", ")}`);
+        `C8 layout switch reads Single, Compare R, Compare S/N, Compare both with tooltips (pick.md): ${lab.map(l => (l ? `${l.v}="${l.text}"${l.tip ? "" : " no tooltip"}` : "missing")).join(", ")}`);
       for (const L of ["2R", "2SN", "4", "1"]) {
         await P.click(`input[name=layout][value="${L}"]`) || await P.fn(`document.querySelector('input[name=layout][value="${L}"]').click()`);
         await P.fn(`const i = document.querySelector('input[name=layout][value="${L}"]'); if (!i.checked) { i.click(); }`); await sleep(250);
@@ -469,6 +469,26 @@ try {
         check(c3.status === "error" && (await code()) === "server_422", `out-of-range endpoint -> #geomsg[data-code] ${await code()}`);
       }
     }
+  });
+
+  /* ---- galaxy sample (galaxy-sample spec, web contract): picker, g=<id>, per-galaxy catalogue/config, back to the default ---- */
+  await section("galaxy picker", async () => {
+    const G = await P.fn(`return {list: tngApp.galaxies(), g: tngApp.galaxy(), hidden: document.getElementById("grp-gal")?.hidden, def: tngApp.config.galaxies?.default ?? null};`);
+    if (G.list.length < 2) { check(G.hidden !== false && !/[#&]g=/.test(await P.eval("location.hash")), "one galaxy: no galaxy picker and no g= in the URL"); return; }
+    check(G.hidden === false && G.g === G.def && !/[#&]g=/.test(await P.eval("location.hash")), `galaxy picker shown, default ${G.def} selected, no g= in the URL`);
+    const other = G.list.find(e => e.id !== G.def).id, id0 = (await st()).id;
+    await P.fn(`document.getElementById("gxy-open").click();`); await sleep(300);
+    const pk = await P.fn(`return {open: !document.getElementById("gxy-pop").hidden, rows: document.querySelectorAll("#gxy-list li[data-id]").length, sorted: document.querySelector("#gxy-head [aria-sort=descending]")?.dataset.sort};`);
+    check(pk.open && pk.rows === G.list.length && pk.sorted === "Mstar", `galaxy popover open, ${pk.rows} rows, sorted by ${pk.sorted}`);
+    await P.fn(`document.querySelector('#gxy-list li[data-id="${other}"]').click();`);
+    const t = await P.waitFor(`tngApp.galaxy() === ${other} && tngApp.getState().id && document.getElementById("gxy-open").dataset.state === undefined`, 60000, 250);
+    await P.waitFor(`/^#g=${other}&/.test(location.hash)`, 15000, 250);           // the hash follows the switch (debounced)
+    const s = await P.fn(`return {g: tngApp.galaxy(), id: tngApp.getState().id, gs: tngApp.getState().galaxy, cat: tngApp.config.catalog_url, n: tngApp.entries().length, hash: location.hash, lab: document.querySelector("#gxy-open .glab").textContent};`);
+    check(t >= 0 && s.g === other && s.gs === other && s.cat.endsWith(`${other}/catalog.json`) && s.n > 0 && s.lab === String(other), `switched to ${other}: config ${s.cat}, ${s.n} sightlines`);
+    check(new RegExp(`^#g=${other}&`).test(s.hash) && (s.id === id0 || !s.id.startsWith("cust_")), `URL carries g=${other}; sightline kept or default (${s.id}; hash ${s.hash.slice(0, 48)})`);
+    await P.fn(`location.hash = location.hash.replace(/^#g=\\d+&/, "#");`);
+    const t2 = await P.waitFor(`tngApp.galaxy() === ${G.def} && !!tngApp.getState().id`, 60000, 250);
+    check(t2 >= 0 && (await P.eval("tngApp.config.catalog_url")) === "data/catalog.json" && !/[#&]g=/.test(await P.eval("location.hash")), "a hash without g= returns to the default galaxy and its data/ paths");
   });
 
   if (opt.shots) { await load("", "final"); await P.shot(join(resolve(opt.shots), "smoke_1440_light.png")); note("screenshot " + join(resolve(opt.shots), "smoke_1440_light.png")); }

@@ -64,6 +64,14 @@ def import_trident(workdir, ion_table_dir):
         return yt, trident
 
 
+def yt_load_kwargs() -> dict:
+    """Extra yt.load arguments of the selected galaxy's slim cutout: a galaxy whose cutout straddles the periodic box
+    boundary has unwrapped coordinates and a `yt_bounding_box_ckpch` ([[x0,x1],[y0,y1],[z0,z1]], code_length) in its
+    record (tngsight.galpipe slim); every other galaxy, 488530 included, loads exactly as before."""
+    bb = config.GALAXY.get("yt_bounding_box_ckpch")
+    return {"bounding_box": bb} if bb else {}
+
+
 def cast_ray(trident, ds, geom, tmp):
     p0 = ds.arr(np.array(geom["start_ckpch"], float), "code_length")
     p1 = ds.arr(np.array(geom["end_ckpch"], float), "code_length")
@@ -209,7 +217,7 @@ class Generator:
             yt, trident = import_trident(self.workdir, self.ion_table_dir)
             progress("load", 0.3, "opening cutout")
             self.index_filename.parent.mkdir(parents=True, exist_ok=True)
-            ds = yt.load(str(self.cutout), index_filename=str(self.index_filename))
+            ds = yt.load(str(self.cutout), index_filename=str(self.index_filename), **yt_load_kwargs())
             if ("gas", "metallicity") not in ds.derived_field_list:
                 def _Z(field, data):
                     return data["PartType0", "GFM_Metallicity"]

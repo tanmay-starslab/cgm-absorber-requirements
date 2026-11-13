@@ -12,6 +12,8 @@ import {createInstrument} from "./instrument.js";
 import * as FITM from "./fit.js";
 import {initTips, ION_TIPS} from "./tips.js";
 import {initFeatures} from "./features.js";   /* ux4 features: share, keys, random, undo, solo, CSV, loading */
+import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
+  nearestSightline, defaultSightline, srcOf} from "./galaxies.js";
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
 /* ---------------- config ---------------- */
@@ -22,6 +24,40 @@ const CFG = Object.assign({
   chat: {enabled: false}, custom: {r_max_kpc: 395, l_min_kpc: 20, l_max_kpc: 800}, fitter: {worker: "js/fitworker.js", version: "fit/1"}
 }, window.TNG_DATA || {});
 const reg = makeRegistry(CFG), {ION} = reg;
+/* galaxy sample (js/galaxies.js): GIX is the picker index (null with one galaxy: no picker, nothing changes), GAL the
+   galaxy shown. The default galaxy reads the legacy data/ paths (LEGACY); any other galaxy its pack (packFor), and the
+   sightline server is asked with ?galaxy=<id> only when its /api/health says it serves several galaxies (health.galaxies) */
+const GIX = galaxyIndex(CFG);
+const LEGACY = {catalog_url: CFG.catalog_url, bin_dir: CFG.bin_dir, components_url: CFG.components_url, viz: CFG.viz, frame: CFG.frame,
+  galaxy: CFG.galaxy, n_static: CFG.n_static};
+let GAL = GIX ? resolveGalaxy(GIX, location.hash, location.search) : (CFG.galaxy && +CFG.galaxy.subhalo_id) || null;
+const isDefGal = () => !GIX || GAL === GIX.default;
+function applyPack(pack, gj) {
+  Object.assign(CFG, {catalog_url: pack.catalog_url, bin_dir: pack.bin_dir, components_url: pack.components_url, viz: pack.viz});
+  if (pack.legacy) Object.assign(CFG, {frame: LEGACY.frame, galaxy: LEGACY.galaxy, n_static: LEGACY.n_static});
+  else { const e = GIX.byId.get(pack.id) || {}, g = gj || {};
+    CFG.galaxy = {sim: g.sim || "TNG50-1", snapshot: g.snapshot ?? 99, redshift: g.redshift ?? 0, subhalo_id: pack.id, central: g.central ?? e.central,
+      R200c_kpc: g.R200c_kpc ?? e.R200c, M200c_Msun: g.M200c_Msun ?? e.M200c, Mstar_Msun: g.Mstar_Msun ?? e.Mstar, SFR_Msun_yr: g.SFR_Msun_yr ?? e.SFR};
+    CFG.frame = g.Lhat ? {Lhat: g.Lhat, xhat: g.xhat, yhat: g.yhat, R200c_kpc: g.R200c_kpc ?? e.R200c} : {R200c_kpc: e.R200c};   /* the manifest's frame wins in viewer3d */
+    CFG.n_static = e.n || 0; }
+  CFG_SNAP = null;
+}
+let CFG_SNAP = null;
+const cfgSnap = () => (CFG_SNAP ||= Object.freeze(JSON.parse(JSON.stringify({...CFG, galaxy_id: GAL}))));
+async function galaxyJson(pack) { if (!pack.galaxy_url) return null;
+  try { const r = await fetch(pack.galaxy_url); return r.ok ? await r.json() : null; } catch { return null; } }
+let GAL_READY = Promise.resolve();
+if (GIX && !isDefGal()) { const pk = packFor(GIX, GAL, LEGACY); applyPack(pk, null); GAL_READY = galaxyJson(pk).then(gj => { if (gj && GAL === pk.id) applyPack(pk, gj); }); }
+/* the shown galaxy's spectra provenance (galaxy-sample spec revision: "shown on the page, never hidden"): the pack
+   catalogue's spectra_source block, else the default galaxy's Trident library (review2 P2, ux P1-P3) */
+const TRIDENT_SRC = {source: "trident", label: "Trident (HM2012)", short: "Trident HM2012", path: "+-R200c",
+  text: "Spectra from Trident on yt (HM2012 metal-ion table; H I from the TNG neutral fraction), sightlines +-R200c long on a fixed 683-ray design grid (a designed, not random, sample). The 3D cubes use the same ion model."};
+let SRC = CFG.spectra_source || TRIDENT_SRC, GFLAGS = {};
+function setSource(cat) { SRC = (cat && cat.spectra_source) || CFG.spectra_source || TRIDENT_SRC; GFLAGS = (cat && cat.galaxy) || {}; sourceUI(); }
+const galSrv = () => isDefGal() || !!(HEALTH && HEALTH.galaxies);
+const SRV = () => (API && galSrv() ? API : null);
+const gq = u => (isDefGal() ? u : u + (u.includes("?") ? "&" : "?") + "g=" + GAL);
+const idbKey = id => (isDefGal() ? id : GAL + ":" + id);
 const STAGES = ["queued", "load", "ray", "spectra", "fit", "save"];
 const C_KMS = 299792.458;
 
@@ -29,6 +65,9 @@ const C_KMS = 299792.458;
 const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const emit = (name, detail) => dispatchEvent(new CustomEvent(name, {detail}));
+/* column densities at the ion tables' floor (Mg II 10^0.5 in gas-poor halos) mean "nothing": shown as an upper bound */
+const LOGN_FLOOR = 10;
+const fmtLogN = v => (v < LOGN_FLOOR ? `< ${LOGN_FLOOR}` : fmtNum(v, 1));
 const store = {get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* storage blocked */ } }};
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -79,7 +118,7 @@ function sorted() {
   return lib.concat(gen);
 }
 const gallery = createGallery({pop: $("#gal-pop"), cur: $("#gal-id"), search: $("#gal-search"), filter: $("#filter"), showcase: $("#showcase"), list: $("#gal-list"), count: $("#galcount")},
-  {entries: sorted, current: () => S.id, onPick: id => { closePops(); select(id, false, "gallery"); }});
+  {entries: sorted, current: () => S.id, onPick: id => { closePops(); select(id, false, "gallery"); }, libSource: () => srcOf(SRC)});
 function catalogChanged() { gallery.render(); if (CATV !== catEmitted) { catEmitted = CATV; emit("tng:catalog", {n: CAT.size}); } }
 function step(d) { const list = gallery.visible.length ? gallery.visible : sorted(); if (!list.length) return;
   let i = list.findIndex(e => e.id === S.id); i = i < 0 ? 0 : (i + d + list.length) % list.length; select(list[i].id, false, "gallery"); }
@@ -117,9 +156,11 @@ function ensureSight() { const id = S.id; if (!id || SIGHT.has(id) || SIGHT_LOAD
 async function loadSight(id) {
   const e = CAT.get(id); let buf = null, err = null;
   if (e && e._static) { try { buf = await fetchBin(CFG.bin_dir + id + ".bin"); } catch (x) { err = x; } }
-  if (!buf) { const c = await IDB.get(id); if (c && c.bin) buf = c.bin; }
-  if (!buf && API) { try { buf = await fetchBin(`${API}/api/sightline/${id}.bin`); if (e && !e._static) IDB.put(id, {entry: strip(e), bin: buf}); } catch (x) { err = x; backendFailed(); } }
+  const g0 = GAL;
+  if (!buf) { const c = await IDB.get(idbKey(id)); if (c && c.bin) buf = c.bin; }
+  if (!buf && SRV()) { try { buf = await fetchBin(gq(`${API}/api/sightline/${id}.bin`)); if (e && !e._static) IDB.put(idbKey(id), {entry: strip(e), bin: buf, galaxy: GAL}); } catch (x) { err = x; backendFailed(); } }
   if (!buf) throw err || new Error(`sightline ${id} is not in the static library and no server is online`);
+  if (g0 !== GAL) throw new Error("superseded by a galaxy switch");      /* never cache one galaxy's spectra under another's */
   const s = decodeTNGS(buf, reg.KEYS.length ? reg.KEYS : null); putSight(id, s); return s;
 }
 const vSysOf = id => { const s = SIGHT.get(id); return s && Number.isFinite(s.vSys) ? s.vSys : +(CAT.get(id)?.v_sys) || 0; };
@@ -181,7 +222,7 @@ function componentsIndex() {
       if (isStatic || !compMeta.params_tag) compMeta = {params_tag: j.params_tag || null, fitter: j.fitter || null, params: j.params || null, comp_keys: keys};
       for (const [id, c] of Object.entries(j.entries || {})) if (!COMPRAW.has(id) || isStatic) COMPRAW.set(id, normComps(c, keys, (j.aod || {})[id], j.params_tag)); };
     try { const r = await fetch(CFG.components_url); if (r.ok) { take(await r.json(), true); ok = true; } } catch { /* offline file */ }
-    if (API) try { const r = await fetch(API + "/api/components"); if (r.ok) { take(await r.json(), false); ok = true; } } catch { /* server optional */ }
+    if (SRV()) try { const r = await fetch(gq(API + "/api/components")); if (r.ok) { take(await r.json(), false); ok = true; } } catch { /* server optional */ }
     if (!ok) { CIX = null; throw new Error("no components catalogue is available"); }
     return {get params() { return compMeta.params; }, get fitter() { return compMeta.fitter; }, get params_tag() { return compMeta.params_tag; }, comp_keys: compMeta.comp_keys,
       get entries() { return Object.fromEntries([...COMPRAW].map(([id, raw]) => [id, dictsOf(raw)])); },
@@ -190,7 +231,7 @@ function componentsIndex() {
 }
 async function ensureComps(id) {
   if (COMPRAW.has(id)) return COMPRAW.get(id); const e = CAT.get(id); if (!e) return null;
-  if (!e._static && API) try { const r = await fetch(`${API}/api/components/${encodeURIComponent(id)}.json`); if (r.ok) { const j = await r.json();
+  if (!e._static && SRV()) try { const r = await fetch(gq(`${API}/api/components/${encodeURIComponent(id)}.json`)); if (r.ok) { const j = await r.json();
     const raw = normComps(j.components, j.comp_keys || DEF_KEYS, j.aod, j.params_tag); if (raw) { COMPRAW.set(id, raw); return raw; } } } catch { /* fall through */ }
   try { await componentsIndex(); } catch { return null; }
   return COMPRAW.get(id) || null;
@@ -201,7 +242,7 @@ async function components(id) { const d = dictsOf(await ensureComps(id)); return
 const NOCOMP = new Set();       // ids whose components could not be found (B_fix R7)
 const FIT = {res: new Map(), pend: new Map(), wait: new Map(), worker: null, mode: null, reqN: 0, t0: 0, last: "", queue: [], dog: 0};
 /* "none" while a sightline has no components, so a later catalogue never meets a cached "no seeds" result (B_fix R7) */
-const fitParamsTag = id => `${CFG.registry_tag || "reg"}:${COMPRAW.has(id) ? COMPRAW.get(id)?.tag || compMeta.params_tag || "cat" : "none"}`;
+const fitParamsTag = id => `${CFG.registry_tag || "reg"}${isDefGal() ? "" : "|g" + GAL}:${COMPRAW.has(id) ? COMPRAW.get(id)?.tag || compMeta.params_tag || "cat" : "none"}`;
 function fitIdent(ion, ci) { const [R, sn] = caseRS(ion, ci); return {id: S.id, ion, R, snr: sn, seed: panelSeed(ion, ci), paramsTag: fitParamsTag(S.id), ci}; }
 function putRes(key, r) { FIT.res.delete(key); FIT.res.set(key, r); while (FIT.res.size > (FIT_PARAMS.cacheSize || 256)) FIT.res.delete(FIT.res.keys().next().value); }
 function startWorker() {
@@ -243,8 +284,11 @@ function fitRequest(ion, ci) {
   if (!d || !A) return {key, I, result: {key, status: "no_seeds", message: "line not in this sightline", comps: [], windows: [], model: null, profiles: [], ms: 0}};
   const seeds = raw?.rows?.[ion] || [], regions = raw?.aod?.[ion]?.[1] || [];
   if (!raw || !seeds.length || !regions.length) return {key, I, result: {key, status: "no_seeds", comps: [], windows: [], model: null, profiles: [], ms: 0}};
+  /* the atomic data the catalogue's fits used (components.json params.atomic: SBI galaxies fit with the SBI f and
+     Gamma, review2_physics P1); a row from another catalogue (your rays) keeps the registry's */
+  const PA = raw.tag && raw.tag === compMeta.params_tag ? compMeta.params?.atomic?.[ion] : null;
   const req = {id: I.id, ion, R: I.R, snr: I.snr, seed: I.seed, paramsTag: I.paramsTag,
-    atom: {lam0_A: A.lam0_A, f: A.f, gamma_s: A.gamma_s, b_min: A.fit?.b_min, logN_max: A.fit?.logN_max},
+    atom: {lam0_A: PA?.lam0 ?? A.lam0_A, f: PA?.f ?? A.f, gamma_s: PA?.gamma ?? A.gamma_s, b_min: A.fit?.b_min, logN_max: A.fit?.logN_max},
     line: {u0: d.line.u0, du: d.line.du, n: d.line.n, flux: d.line.flux}, vSys: d.vSys,
     data: {v: d.v, flux: d.flux, sigma: d.sigma}, seeds, compKeys: raw.keys, regions};
   return {key, req, I};
@@ -305,10 +349,10 @@ const spectra = createSpectra({box: $("#spectra"), cv: $("#cv"), hitboxes: $("#h
   data: (ion, ci) => (S.id && SIGHT.has(S.id) ? dataFor(ion, ci) : null),
   fit: fitResult, quality: compQuality,
   /* tune1 F13: each row's catalogue log N sits beside its ion box (every selected line, never truncated) */
-  rowNote: ion => { const v = CAT.get(S.id)?.logN?.[ion]; return Number.isFinite(v) ? `log N ${fmtNum(v, 1)}` : ""; },
+  rowNote: ion => { const v = CAT.get(S.id)?.logN?.[ion]; return Number.isFinite(v) ? `log N ${fmtLogN(v)}` : ""; },
   missingText: ion => !S.id ? "" : SIGHT.has(S.id) ? `${ION[ion].label} is not in this sightline` : "loading",
   readout(p, v) { const d = S.id && SIGHT.has(S.id) ? dataFor(p.ion, p.ci) : null; const lN = CAT.get(S.id)?.logN?.[p.ion];
-    let t = `${ION[p.ion].label}${Number.isFinite(lN) ? `  log N ${fmtNum(lN, 1)}` : ""}  v ${minus(Math.round(v))} km/s`;
+    let t = `${ION[p.ion].label}${Number.isFinite(lN) ? `  log N ${fmtLogN(lN)}` : ""}  v ${minus(Math.round(v))} km/s`;
     if (d) { const m = clamp(Math.round((v - d.v[0]) / d.dvp), 0, d.v.length - 1); t += `  F ${fmtNum(d.flux[m], 2)}`; }
     if (S.fit) { const r = fitResult(p.ion, p.ci);
       if (r && r.comps && r.comps.length) { const c = r.comps.reduce((a, b) => Math.abs(b.v - v) < Math.abs(a.v - v) ? b : a);
@@ -378,7 +422,7 @@ function place(btn, pop) {
   pop.style.left = x + "px"; pop.style.top = y + "px"; }
 function openPop(btn, pop, focus = true) {
   closePops(pop); pop.hidden = false; btn.setAttribute("aria-expanded", "true"); lastOpener = btn; place(btn, pop);
-  if (pop.id === "gal-pop") gallery.onOpen(); if (pop.id === "find-pop") mountFind(); if (pop.id === "geo-pop") renderBackends();
+  if (pop.id === "gal-pop") gallery.onOpen(); if (pop.id === "gxy-pop") GPICK?.onOpen(); if (pop.id === "find-pop") mountFind(); if (pop.id === "geo-pop") renderBackends();
   if (focus) {
     /* B_fix F2: an info popover takes the focus itself (its links are next in the Tab order), and closes once the focus
        leaves it; the other popovers focus their first control */
@@ -436,14 +480,18 @@ function barLabel() {
 $("#gal-copy")?.addEventListener("click", async () => { const id = S.id, btn = $("#gal-copy"); if (!id) return;
   const ok = await copyText(id); btn.dataset.state = ok ? "done" : "fail"; note(ok ? `copied ${id}` : "could not copy the id", ok ? "" : "bad");
   setTimeout(() => { delete btn.dataset.state; }, 1400); });
+/* the spectra source of one row: its own tag, else (rays cast on the server: Trident) or the galaxy's library source */
+const rowSource = e => srcOf({src: e.spectra}) || (kindOf(e) !== "library" ? "trident" : srcOf(SRC) || "trident");
 function status() {
   barLabel();
   const e = CAT.get(S.id), st = $("#statusline"); st.dataset.id = S.id || "";
   if (!e) { st.textContent = S.id ? S.id : "no sightline selected"; return; }
   /* fix F1: the bar already shows orientation, b and Φ; the line adds only what it lacks (seed, rich-line count, your ray)
      and ends with the id, muted */
-  const n = nShow(e), extra = [e.orientation === "random" && e.seed != null ? `seed ${esc(e.seed)}` : "",
-    n ? `${n} rich ${n === 1 ? "line" : "lines"}` : "", kindOf(e) !== "library" ? "your ray" : ""].filter(Boolean);
+  const n = nShow(e), rs = rowSource(e), extra = [e.orientation === "random" && e.seed != null ? `seed ${esc(e.seed)}` : "",
+    n ? `${n} rich ${n === 1 ? "line" : "lines"}` : "", kindOf(e) !== "library" ? "your ray" : "",
+    rs !== srcOf(SRC) ? (rs === "trident" ? "Trident HM2012, ±R200c" : "SBI_CGM spectra") : "",
+    e.window_truncated ? "gas beyond ±1500 km/s" : ""].filter(Boolean);
   st.innerHTML = [...extra, `<span class="sid">${esc(e.id)}</span>`].join("  ");
   st.title = st.textContent;
 }
@@ -491,8 +539,8 @@ function pill() { const p = $("#pill");
     p.title = `${HEALTH.node || new URL(API).host}: queue ${HEALTH.queue?.queued ?? 0} queued, ${HEALTH.queue?.running ?? 0} running`; }
   $("#dlpdf").disabled = !API; }
 function renderBackends() { $("#backends").innerHTML = PROBES.length ? PROBES.map(p => `<span>${p.url === API ? "● " : "○ "}${esc(p.url)}  ${p.h ? (p.h.warm ? "warm" : "warming") + (p.h.node ? ", " + esc(p.h.node) : "") : esc(p.err)}</span>`).join("") : "<span>no candidate URLs</span>"; }
-async function mergeBackendCatalog() { if (!API) return;
-  try { const r = await fetch(API + "/api/catalog"); if (!r.ok) throw new Error(); const c = await r.json();
+async function mergeBackendCatalog() { if (!SRV()) return; const g0 = GAL;
+  try { const r = await fetch(gq(API + "/api/catalog")); if (g0 !== GAL) return; if (!r.ok) throw new Error(); const c = await r.json();
     for (const e of c.entries || []) upsert(e, false); catalogChanged(); status();
     if (pendingId && CAT.has(pendingId)) select(pendingId, true, "hash"); } catch { backendFailed(); } }
 const DEFAULTS = new Set((CFG.backends || []).map(normUrl));
@@ -547,9 +595,11 @@ async function submitJob(kind, body, fromBridge) {
   try {
     if (!API) { geomsg("Contacting the sightline server", "", "contacting"); await discover(15000, true); }
     if (!API) return {status: "error", offline: true, message: "no sightline server is online"};
+    if (!galSrv()) { geomsg(`The sightline server serves only the default galaxy; subhalo ${GAL} has library sightlines only.`, "bad", "galaxy_unsupported");
+      return {status: "error", offline: true, message: `the sightline server does not serve subhalo ${GAL}`}; }
     geomsg("Submitting", "", "submitting");
     let r, j;
-    try { r = await fetch(API + (kind === "custom" ? "/api/sightlines/custom" : "/api/sightlines"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    try { r = await fetch(gq(API + (kind === "custom" ? "/api/sightlines/custom" : "/api/sightlines")), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
       j = await r.json().catch(() => ({})); }
     catch { geomsg("Could not reach the sightline server; retrying discovery.", "bad", "unreachable"); backendFailed(); return {status: "error", message: "could not reach the sightline server"}; }
     const d = j.detail, det = typeof d === "string" ? d : Array.isArray(d) ? d.map(x => x.msg).join("; ") : "";
@@ -574,15 +624,16 @@ $("#geo").addEventListener("submit", async ev => {
 function track(j, kind = "geometry", fromBridge = false) {
   JOB = {job_id: j.job_id, id: j.id, kind, done: false}; setGeoEnabled(); progress("queued", 0, j.position); geomsg(`Queued ${j.id}${j.position ? " at position " + j.position : ""}.`, "", "queued");
   emit("tng:submitted", {job_id: j.job_id, id: j.id, kind}); emit("tng:job", {job_id: j.job_id, id: j.id, status: "queued", stage: "queued", frac: 0});
-  const job = JOB, base = `${API}/api/jobs/${encodeURIComponent(j.job_id)}`, api = API; let es = null, pollT = null, slowT = null;
+  const job = JOB, base = `${API}/api/jobs/${encodeURIComponent(j.job_id)}`, api = API, jg = GAL; let es = null, pollT = null, slowT = null;
   const finish = () => { job.done = true; es && es.close(); clearTimeout(pollT); clearInterval(slowT); JOB = null; setGeoEnabled(); };
   let lastStage = null;
   const onProg = d => { const stg = d.stage || "load"; progress(stg, d.frac, null); if (d.msg && stg !== lastStage) geomsg(d.msg, "", "progress"); lastStage = stg;
     emit("tng:job", {job_id: job.job_id, id: job.id, status: "running", stage: stg, frac: +d.frac || 0}); };
   const onDone = async d => { if (job.done) return; finish(); progress("save", 1); const id = d.id || job.id;
+    if (jg !== GAL) { geomsg(`Generated ${id} for subhalo ${jg}; switch back to it to see the ray.`, "", "job_done"); setTimeout(() => progress(null), 1500); return; }
     upsert(d.entry || {id}, false); if (d.components) { const raw = normComps(d.components, d.comp_keys || DEF_KEYS, d.components.aod || d.aod); if (raw) COMPRAW.set(id, raw); }
     catalogChanged();
-    try { const buf = await fetchBin(`${api}/api/sightline/${id}.bin`); IDB.put(id, {entry: strip(CAT.get(id)), bin: buf}); putSight(id, decodeTNGS(buf, reg.KEYS)); } catch { /* loaded on select */ }
+    try { const buf = await fetchBin(gq(`${api}/api/sightline/${id}.bin`)); IDB.put(idbKey(id), {entry: strip(CAT.get(id)), bin: buf, galaxy: GAL}); putSight(id, decodeTNGS(buf, reg.KEYS)); } catch { /* loaded on select */ }
     geomsg(`Generated ${id}.`, "good", "job_done"); note(`generated ${id}`, "good"); setTimeout(() => progress(null), 1500);
     emit("tng:done", {job_id: job.job_id, id, entry: strip(CAT.get(id) || {id})});
     await select(id, false, "job"); if (kind === "custom" || fromBridge) showTab("spectra"); };
@@ -597,6 +648,10 @@ function track(j, kind = "geometry", fromBridge = false) {
   try { es = new EventSource(base + "/events");
     es.addEventListener("queued", ev => { try { progress("queued", 0, JSON.parse(ev.data).position); } catch { /* ignore */ } });
     es.addEventListener("progress", ev => { try { onProg(JSON.parse(ev.data)); } catch { /* ignore */ } });
+    /* multi-galaxy server: a custom ray in a galaxy whose cutout is not cached waits while the cutout is fetched */
+    es.addEventListener("preparing", ev => { try { const d = JSON.parse(ev.data); progress("queued", 0, null);
+      geomsg(d.msg || `Preparing subhalo ${d.galaxy}: fetching its gas cutout`, "", "preparing");
+      emit("tng:job", {job_id: job.job_id, id: job.id, status: "preparing", stage: "queued", frac: 0}); } catch { /* ignore */ } });
     es.addEventListener("done", ev => { try { onDone(JSON.parse(ev.data)); } catch { fallback(); } });
     es.addEventListener("error", ev => { if (ev.data) { try { onErr(JSON.parse(ev.data).message); } catch { onErr(ev.data); } } else fallback(); });
   } catch { fallback(); }
@@ -620,8 +675,14 @@ function figureBody(fmtx) {
 }
 async function download(fmtx) {
   closePops(); if (!S.id) return; const name = `tng50_${S.id}_${S.ions.join("-")}_sn${S.sn.join("-")}`;
-  if (API) { note(`rendering the ${fmtx.toUpperCase()} figure`);
-    try { const r = await fetch(API + "/api/figure", {method: "POST", headers: {"Content-Type": "application/json"},
+  const e = CAT.get(S.id);
+  /* the server holds the npz of the default galaxy and of rays cast on it, not the library rays of the other galaxies
+     (review2 F3): those get the screen, with the reason, instead of a 404 */
+  if (SRV() && !isDefGal() && e && kindOf(e) === "library") {
+    note(`the server figure covers rays you cast; library sightlines of subhalo ${GAL}: screen PNG saved`, "bad");
+    $("#cv").toBlob(b => b && save(b, `${name}_screen.png`), "image/png"); return; }
+  if (SRV()) { note(`rendering the ${fmtx.toUpperCase()} figure`);
+    try { const r = await fetch(gq(API + "/api/figure"), {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify(figureBody(fmtx))});
       if (!r.ok) throw new Error(r.status === 429 ? "rate limit reached" : "HTTP " + r.status);
       save(await r.blob(), `${name}.${fmtx}`); note(`${fmtx.toUpperCase()} figure saved; its noise draw differs from the screen`, "good"); return;
@@ -645,7 +706,7 @@ for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", ()
 let V3P = null, V3 = null, THUMB = null;
 function vizCfg() {
   if (!CFG.viz) return null;
-  const q = new URLSearchParams(location.search).get("viz");
+  const q = isDefGal() ? new URLSearchParams(location.search).get("viz") : null;    /* a ?viz= override names the default galaxy's cubes */
   if (q) { try { const u = new URL(q.replace(/\/?$/, "/"), location.href);
     const ok = u.origin === location.origin || u.origin === "https://huggingface.co" || /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(u.origin);
     if (ok) return {...CFG.viz, base: u.href, fallback_base: null, manifest_override: u.href + "manifest_v2.json"}; } catch { /* bad override */ } }
@@ -655,7 +716,7 @@ function vizCfg() {
 const loadV3 = () => Promise.all([import(modUrl("viewer3d.js")), import(modUrl("picker.js"))]);
 function open3d() {
   if (V3P) return V3P;
-  V3P = (async () => { try { const [V, Pk] = await loadV3();
+  V3P = (async () => { try { await GAL_READY; const [V, Pk] = await loadV3();
       const v = await V.mount($("#v3d-root"), window.tngApp, {viz: vizCfg(), controls: $("#v3d-controls")}); V3 = v; window.tngViewer3d = v; $("#v3d-wait").hidden = true;
       $("#v3d-status").textContent = !v.webgl2 ? "The interactive 3D view is not available here; type a ray's endpoints under Pick ray to generate it."
         : matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches ? "drag to orbit, pinch to zoom, tap a line" : "drag to orbit, scroll to zoom, click a line, double-click to re-centre";
@@ -669,7 +730,7 @@ function openThumb() {
   if (THUMB) return THUMB;
   /* the canvas goes into #v3d-mini-host (a positioned square inside the #v3d-mini button); the click and the keys stay on
      #v3d-mini, so no onOpen is passed and the viewer's own nH and 3D tags stay */
-  THUMB = (async () => { try { const [V] = await loadV3(); const t = await V.mountThumb($("#v3d-mini-host"), window.tngApp, {viz: vizCfg()});
+  THUMB = (async () => { try { await GAL_READY; const [V] = await loadV3(); const t = await V.mountThumb($("#v3d-mini-host"), window.tngApp, {viz: vizCfg()});
       window.tngThumb = t; $("#v3d-mini").classList.add("live"); return t; } catch { THUMB = null; return null; } })();
   return THUMB; }
 $("#v3d-mini").addEventListener("click", () => showTab("3d"));
@@ -681,6 +742,97 @@ const thumbOk = () => CFG.viz && !mqMobile.matches && !document.body.classList.c
 function armThumb() { thumbArmed = true;
   const go = () => { if (thumbOk()) openThumb(); };
   setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(go, {timeout: 4000}) : go()), 1500); }
+
+/* ---------------- galaxy sample: picker and switching (js/galaxies.js) ---------------- */
+const GPICK = GIX ? createGalaxyPicker({pop: $("#gxy-pop"), cur: $("#gxy-cur"), search: $("#gxy-search"), filter: $("#gxy-filter"), head: $("#gxy-head"),
+  list: $("#gxy-list"), count: $("#gxy-count")}, {index: GIX, current: () => GAL, onPick: id => { closePops(); switchGalaxy(id, {source: "picker"}); }}) : null;
+function galaxyUI() {
+  const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
+  const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");
+  lab.textContent = String(GAL); lab.dataset.id = String(GAL); b.dataset.tip = `Subhalo ${GAL}, ${e && e.n ? e.n + " sightlines" : "this galaxy"}; click to pick another`;
+  b.setAttribute("aria-label", `Galaxy: subhalo ${GAL}. Pick another galaxy`);
+  document.body.dataset.galaxy = String(GAL);
+}
+/* the provenance chip in the plot footer (visible on phones too, review2_ux S3): the galaxy id and its spectra source;
+   a click opens Data and methods, whose spectra paragraphs follow the source */
+function sourceUI() {
+  const bar = $("#bar"); if (!bar) return;
+  let chip = $("#src-chip");
+  if (!chip) { chip = document.createElement("button"); chip.type = "button"; chip.id = "src-chip"; chip.className = "tag"; chip.dataset.testid = "spectra-source";
+    chip.setAttribute("aria-haspopup", "dialog"); chip.style.cssText = "flex:none;white-space:nowrap;cursor:pointer;background:none;font-family:inherit";
+    chip.addEventListener("click", ev => { ev.stopPropagation(); const pop = $("#pop-methods"); if (pop) { if (pop.hidden) openPop(chip, pop); else closePops(); } });
+    bar.insertBefore(chip, bar.firstChild); }
+  const sbi = srcOf(SRC) === "sbi", gid = GAL ?? CFG.galaxy?.subhalo_id;
+  chip.textContent = `${GIX && gid != null ? gid + "  " : ""}${sbi ? "SBI_CGM" : "Trident"}${GFLAGS.gas_poor ? "  gas-poor" : ""}`;
+  chip.dataset.tip = sbi ? `Subhalo ${gid}: SBI_CGM engineering-scope spectra, CLOUDY FG11; click for details`
+    : `Subhalo ${gid}: Trident HM2012 spectra, ±R200c; click for details`;
+  chip.setAttribute("aria-label", `Subhalo ${gid}, spectra source ${SRC.label || (sbi ? "SBI_CGM" : "Trident")}. Open data and methods`);
+  methodsText(sbi);
+}
+const MEL = {}, MTX = {};
+function methodsText(sbi) {
+  const ag = $("#about-gal"); if (!ag) return;
+  if (!("tau" in MEL)) { const n = ag.nextElementSibling; MEL.tau = n && !n.id && /Trident/.test(n.textContent) ? n : null;
+    MEL.ions = $("#methods-ions"); MEL.atomic = $("#methods-atomic");
+    MEL.lic = [...document.querySelectorAll("#pop-licence p")].find(p => /Spectra: Trident/.test(p.textContent)) || null;
+    const pv = document.createElement("p"); pv.id = "methods-source"; pv.hidden = true; ag.after(pv); MEL.src = pv; }
+  const SBI_TXT = {
+    tau: "Optical depths from the SBI_CGM GPU Voigt renderer (fp64) at 0.5 km/s over ±1500 km/s, resampled by velocity; sightlines ±2 R200c long. Velocities are relative to the galaxy's systemic velocity.",
+    ions: "Spectra: CLOUDY FG11 ion tables (THOR) with Rahmati self-shielding for H I. 3D ion cubes: Trident HM2012 (H I from the TNG neutral fraction) within r ≤ 400 kpc, so a sightline drawn through a cube can differ from its spectrum by a few tenths of a dex.",
+    atomic: "Atomic data: the SBI_CGM profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits.",
+    lic: "Simulation: IllustrisTNG, TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), used under the IllustrisTNG data policy. Spectra of this galaxy: the SBI_CGM fiducial ray library (CLOUDY FG11 via THOR; engineering scope). 3D cubes: Trident (Hummels, Smith and Silvia 2017) on yt (Turk et al. 2011), HM2012."};
+  for (const k of ["tau", "ions", "atomic", "lic"]) { const el = MEL[k]; if (!el) continue; if (!(k in MTX)) MTX[k] = el.innerHTML;
+    if (sbi) el.textContent = SBI_TXT[k]; else el.innerHTML = MTX[k]; }
+  MEL.src.hidden = !sbi; MEL.src.textContent = sbi ? (SRC.text || "") : "";
+}
+function aboutText() {
+  const g = CFG.galaxy || {}; if (!g.R200c_kpc) return;
+  $("#about-gal").textContent = `Sightlines through the circumgalactic medium of one ${g.sim || "TNG50-1"} galaxy (subhalo ${g.subhalo_id} at z = ${g.redshift ?? 0}, R200c ${nf.format(Math.round(+g.R200c_kpc))} kpc${g.M200c_Msun ? `, M200c ${(+g.M200c_Msun / 1e12).toFixed(2)}e12 solar masses` : ""}), labelled by orientation, impact parameter b and azimuth from the projected major axis.`;
+}
+/* the 3D engine is per galaxy (its cubes, frame and lines): dispose it and remount on demand (the tab, or the thumbnail
+   where it was live). viewer.dispose() also removes its control column with the #picker-root it adopted: put one back */
+async function reset3d() {
+  const hadThumb = !!THUMB; if (!V3P && !THUMB) return;
+  try { const V = await import(modUrl("viewer3d.js")), cur = V.current(); if (cur) { const v = await cur.catch(() => null); v?.dispose(); } } catch { /* no engine */ }
+  V3P = V3 = THUMB = null; window.tngViewer3d = window.tngThumb = window.tngPicker = null;
+  $("#v3d-mini").classList.remove("live"); $("#v3d-mini-host").replaceChildren(); $("#v3d-root").replaceChildren(); $("#v3d-status").textContent = "";
+  const w = $("#v3d-wait"); w.hidden = false; w.textContent = "Loading the 3D view"; w.classList.remove("bad");
+  if (!$("#picker-root")) { const p = document.createElement("div"); p.id = "picker-root"; $("#v3d-controls").insertBefore(p, $("#v3d-status")); }
+  if (S.tab === "3d") open3d().catch(() => {}); else if (hadThumb && thumbOk()) openThumb();
+}
+/* switch the page to galaxy id: fetch its catalogue (and galaxy.json) first, so a missing pack leaves the page as it was; then
+   drop every per-galaxy cache (catalogue, spectra, degraded panels, components, fits by tag), remount 3D, and open the
+   sightline that matches the current one (same id if the new galaxy has it, else the nearest in orientation, b/R200c and
+   azimuth: SBI_CGM galaxies have their own Sobol rays, so ids are not shared; review2_ux S1) */
+let GTOK = 0;
+async function switchGalaxy(id, {want = null, source = "picker"} = {}) {
+  if (!GIX || !GIX.byId.has(id)) return false; if (id === GAL) return true;
+  if (JOB) { note("a sightline is being generated; switch galaxies when it is done", "bad"); return false; }
+  const tok = ++GTOK, pack = packFor(GIX, id, LEGACY), b = $("#gxy-open");
+  b.dataset.state = "loading"; note(`loading subhalo ${id}`);
+  let cat, gj = null;
+  try { const [r, g] = await Promise.all([fetch(pack.catalog_url), galaxyJson(pack)]); if (!r.ok) throw new Error("HTTP " + r.status); cat = await r.json(); gj = g; }
+  catch (x) { if (tok === GTOK) { delete b.dataset.state; note(`could not load subhalo ${id}: ${x.message}`, "bad"); } return false; }
+  if (tok !== GTOK) return false;
+  const keep = want || S.id, prevE = CAT.get(S.id) || null, prevR = +(CFG.galaxy && CFG.galaxy.R200c_kpc) || +(GIX.byId.get(GAL)?.R200c) || 0;
+  GAL = id; applyPack(pack, gj); GAL_READY = Promise.resolve(); setSource(cat);
+  CAT.clear(); SIGHT.clear(); SIGHT_LOAD.clear(); SIGHT_FAIL.clear(); DG.clear(); dgBytes = 0; COMPRAW.clear(); CIX = null; NOCOMP.clear(); FIT.res.clear();
+  for (const e of cat.entries || []) upsert(e, true);
+  const cached = await IDB.all(); if (Array.isArray(cached)) for (const c of cached) if (c && c.entry && (c.galaxy ?? GIX.default) === GAL && !CAT.has(c.entry.id)) upsert(c.entry, false);
+  if (tok !== GTOK) return false;
+  delete b.dataset.state; galaxyUI(); aboutText(); catalogChanged(); GPICK.render();
+  S.id = null; pendingId = null;
+  const R = +CFG.galaxy?.R200c_kpc || +(GIX.byId.get(id)?.R200c) || 0, ents = [...CAT.values()];
+  const near = !CAT.has(keep) && prevE && prevR > 0 ? nearestSightline(ents, prevE, +prevE.b_kpc / prevR, R) : null;
+  const first = CAT.has(keep) ? keep : near ? near.id : isDefGal() && CAT.has(CFG.defaults.id) ? CFG.defaults.id
+    : defaultSightline(ents, R)?.id || sorted()[0]?.id;
+  reset3d();
+  if (first) await select(first, true, "galaxy"); else { status(); draw(); }
+  writeHash(); emit("tng:galaxy", {id, source, n: CAT.size});
+  note(`subhalo ${id}: ${CAT.size} sightlines`); mergeBackendCatalog();
+  if (source === "picker" && document.activeElement === document.body) $("#gxy-open")?.focus({preventScroll: true});   /* S4: keep keyboard focus */
+  return true;
+}
 
 /* ---------------- Find, Ask ---------------- */
 let FINDP = null;
@@ -714,7 +866,7 @@ function toggleDrawer(on, focus = false) { const was = document.body.classList.c
 $("#controls-open").addEventListener("click", ev => { ev.stopPropagation(); toggleDrawer(undefined, true); });
 $("#side-done").addEventListener("click", () => { toggleDrawer(false); $("#controls-open").focus({preventScroll: true}); });
 const mqMobile = matchMedia("(max-width:820px)");
-const HOME = ["#grp-sight", "#grp-lines", "#grp-layout"].map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
+const HOME = ["#grp-gal", "#grp-sight", "#grp-lines", "#grp-layout"].filter(s => $(s)).map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });   /* #grp-gal is absent from pages exported before the galaxy picker */
 const tools = document.createElement("div"); tools.className = "grp"; tools.id = "grp-tools"; tools.innerHTML = '<span class="gl">Tools</span><div class="row"></div>';
 const ASK = (el => ({el, parent: el.parentNode, next: el.nextSibling}))($("#chat-open"));
 const TOOL_HOME = ["#find-toggle"].map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
@@ -794,9 +946,13 @@ const storyEntry = (() => {
 window.tngStoryEntry = storyEntry;
 
 /* ---------------- hash ---------------- */
-function writeHash() { try { history.replaceState(null, "", "#" + formatHash(S, pendingId)); } catch { /* sandboxed */ } storyEntry.links(); }
+function writeHash() { try { history.replaceState(null, "", "#" + galaxyHashPart(GIX, GAL) + formatHash(S, pendingId)); } catch { /* sandboxed */ } storyEntry.links(); }
 const writeHashSoon = debounce(writeHash, 150);
 addEventListener("hashchange", () => {
+  if (GIX) { const g = parseGalaxy(location.hash) ?? GIX.default;      /* g=<id> in a pasted or edited URL switches the galaxy */
+    if (g !== GAL && !GIX.byId.has(g)) note(`subhalo ${g} is not in this sample; showing subhalo ${GAL}`, "bad");
+    if (g !== GAL && GIX.byId.has(g)) { const N = parseHash(location.hash, reg, S); Object.assign(S, N, {id: S.id, tab: S.tab}); syncAll();
+      switchGalaxy(g, {want: N.id, source: "hash"}).then(() => { if (N.tab !== S.tab) showTab(N.tab); }); return; } }
   const prev = S.id, tab = S.tab, N = parseHash(location.hash, reg, S), want = N.id;
   Object.assign(S, N, {id: prev, tab}); clampView(S, vmax()); syncAll();
   if (N.tab !== tab) showTab(N.tab);
@@ -807,13 +963,15 @@ function syncAll() { $("#fit").checked = S.fit; $("#intr").checked = S.intr; syn
 /* ---------------- window.tngApp v3 bridge (design §6.5) ---------------- */
 const fail = message => ({status: "error", message});
 function getState() { return {id: S.id, ions: S.ions.slice(), layout: S.layout, R: Object.fromEntries(Object.entries(S.R).map(([b, r]) => [b, r.slice()])), sn: S.sn.slice(),
-  vc: S.vc, vhw: S.vhw, seed: S.seed, intrinsic: S.intr, fit: S.fit, tab: S.tab, api: API, warm: !!(HEALTH && HEALTH.warm),
+  vc: S.vc, vhw: S.vhw, seed: S.seed, intrinsic: S.intr, fit: S.fit, tab: S.tab, galaxy: GAL, api: API, warm: !!(HEALTH && HEALTH.warm),
   job: JOB ? {job_id: JOB.job_id, id: JOB.id, kind: JOB.kind} : null}; }
 function applyPatch(P) {
   for (const k of ["R", "sn", "layout", "ions", "vhw", "vc"]) if (P[k] !== undefined) S[k] = P[k];
   clampView(S, vmax()); syncAll(); if (P.fit !== undefined) setFit(P.fit); draw(); writeHash(); emit("tng:instrument", {state: getState()}); return getState(); }
 window.tngApp = {
-  version: 3, config: Object.freeze(JSON.parse(JSON.stringify(CFG))),
+  version: 3, get config() { return cfgSnap(); },
+  galaxies: () => (GIX ? GIX.list.map(e => ({...e})) : []), galaxy: () => GAL,
+  async selectGalaxy(id, {source = "chat"} = {}) { return switchGalaxy(+id, {source}); },
   getState, entries: () => sorted().map(strip), entry: id => (CAT.has(id) ? strip(CAT.get(id)) : null),
   async select(id, {source = "chat"} = {}) { if (!CAT.has(id)) return false; if (id !== S.id) await select(id, false, source); return true; },
   setInstrument(o = {}) { return applyPatch(instrumentPatch(o, reg, S, vmaxFor)); },
@@ -873,15 +1031,25 @@ initTips();
      10 up to the widest line window, the centre kept with it); select() clamps again with the decoded line's own vmax
      once the sightline is in, so a deep-linked damped H I view (vw 6000 vc 2000) survives to the drawn page */
   clampView(S, clamp((+S.vhw || 0) + Math.abs(+S.vc || 0), 1500, 2 * FIG_V_CAP)); inst.syncV();
-  const g = CFG.galaxy || {}; if (g.R200c_kpc) $("#about-gal").textContent = `Sightlines through the circumgalactic medium of one ${g.sim || "TNG50-1"} galaxy (subhalo ${g.subhalo_id} at z = ${g.redshift ?? 0}, R200c ${nf.format(Math.round(+g.R200c_kpc))} kpc${g.M200c_Msun ? `, M200c ${(+g.M200c_Msun / 1e12).toFixed(2)}e12 solar masses` : ""}), labelled by orientation, impact parameter b and azimuth from the projected major axis.`;
+  aboutText(); galaxyUI(); GAL_READY.then(aboutText);
   if (H.tab === "3d") showTab("3d");
   const disc = discover();
-  try { const r = await fetch(CFG.catalog_url); if (!r.ok) throw new Error("HTTP " + r.status); const c = await r.json(); for (const e of c.entries || []) upsert(e, true); }
-  catch (x) { $("#galcount").textContent = `catalogue unavailable (${x.message})`; }
-  const cached = await IDB.all(); if (Array.isArray(cached)) for (const c of cached) if (c && c.entry && !CAT.has(c.entry.id)) upsert(c.entry, false);
+  const asked = unlistedGalaxy(GIX, location.hash, location.search);
+  if (asked != null) note(`subhalo ${asked} is not in this sample; showing subhalo ${GAL}`, "bad");   /* S2: never silently */
+  sourceUI();
+  const loadCat = async () => { const r = await fetch(CFG.catalog_url); if (!r.ok) throw new Error("HTTP " + r.status); const c = await r.json(); for (const e of c.entries || []) upsert(e, true); setSource(c); };
+  try { await loadCat(); }
+  catch (x) {
+    if (!isDefGal()) { const g = GAL; GAL = GIX.default; applyPack(packFor(GIX, GAL, LEGACY), null); GAL_READY = Promise.resolve(); galaxyUI(); aboutText();   /* a listed pack that is not there: back to the default galaxy */
+      note(`subhalo ${g} could not be loaded (${x.message}); showing subhalo ${GAL}`, "bad");
+      try { await loadCat(); } catch (y) { $("#galcount").textContent = `catalogue unavailable (${y.message})`; } }
+    else $("#galcount").textContent = `catalogue unavailable (${x.message})`; }
+  const cached = await IDB.all(); if (Array.isArray(cached)) for (const c of cached) if (c && c.entry && (!GIX || (c.galaxy ?? GIX.default) === GAL) && !CAT.has(c.entry.id)) upsert(c.entry, false);
   catalogChanged();
   if (hashId && !CAT.has(hashId)) pendingId = hashId;
-  const first = (hashId && CAT.has(hashId)) ? hashId : CAT.has(CFG.defaults.id) ? CFG.defaults.id : sorted()[0]?.id;
+  const R0 = +CFG.galaxy?.R200c_kpc || +(GIX?.byId.get(GAL)?.R200c) || 0;
+  const first = (hashId && CAT.has(hashId)) ? hashId : isDefGal() && CAT.has(CFG.defaults.id) ? CFG.defaults.id
+    : defaultSightline([...CAT.values()], R0)?.id || (CAT.has(CFG.defaults.id) ? CFG.defaults.id : sorted()[0]?.id);
   if (first) select(first, true, hashId === first ? "hash" : "init"); else draw();
   emit("tng:ready", {version: 3});
   await disc;
