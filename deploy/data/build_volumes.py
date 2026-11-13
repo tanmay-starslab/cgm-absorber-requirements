@@ -351,6 +351,42 @@ def sightline(lib: Path, sid):
             pay["logN"])
 
 
+ORIENT_WORDS = {"face": "face-on", "edge": "edge-on", "rand": "random"}
+
+
+def is_sbi_library(lib: Path) -> bool:
+    """An SBI_CGM-imported library (galpipe import_sbi): its npz columns come from CLOUDY FG11 ion tables, not the
+    Trident HM2012 fractions the cells carry, so the npz-reference check does not apply."""
+    return (lib / "spectra_source.json").is_file()
+
+
+def resolve_checks(lib: Path) -> dict:
+    """CHECKS with every sightline missing from <lib>/sightlines replaced by the library ray (from rays.json) of the
+    same orientation word whose impact parameter is closest to the named one (ties by id; one ray once per level).
+    A library holding the named rays (488530, any Trident library) keeps CHECKS unchanged."""
+    p = lib / "rays.json"
+    have = lambda s: (lib / "sightlines" / f"{s}.npz").is_file()                       # noqa: E731
+    if all(have(s) for v in CHECKS.values() for s in v) or not p.is_file():
+        return {L: tuple(v) for L, v in CHECKS.items()}
+    rj = json.loads(p.read_text())
+    cols = rj["columns"]
+    rays = [dict(zip(cols, r)) for r in rj["rays"]]
+    rays = [r for r in rays if have(r["id"])]
+    out = {}
+    for L, names in CHECKS.items():
+        used, sel = set(), []
+        for s in names:
+            if have(s):
+                sel.append(s); used.add(s); continue
+            word, b = ORIENT_WORDS[s.split("_")[0]], float(s.split("_")[1][1:])
+            cand = sorted((abs(float(r["b_kpc"]) - b), r["id"]) for r in rays
+                          if r["orientation"] == word and r["id"] not in used)
+            if cand:
+                sel.append(cand[0][1]); used.add(cand[0][1])
+        out[L] = tuple(sel)
+    return out
+
+
 def check_ions(cache: Path, keys=None):
     """The (VOL key, npz key) pairs to column-check: requested ions whose cubes are cached on every level."""
     want = [k for k, _ in IONS if keys is None or k in keys]
@@ -388,7 +424,12 @@ def column_checks(cells, cache: Path, frag, lib: Path, viz: Path, keys=None) -> 
     ext = {k: cells[k] * cells["V_cm3"] for k, _ in ions}
     pos, h = cells["pos_disk"], cells["h"]
     fields = frag["gas"]["fields"] if frag else {}
-    sl = {sid: sightline(lib, sid) for sid in {s for v in CHECKS.values() for s in v}}
+    checks = resolve_checks(lib)
+    if checks != {L: tuple(v) for L, v in CHECKS.items()}:
+        print(f"[check] named check sightlines not in {lib / 'sightlines'}; nearest-b substitutes: {checks}",
+              flush=True)
+    sbi = is_sbi_library(lib)
+    sl = {sid: sightline(lib, sid) for sid in {s for v in checks.values() for s in v}}
     rows, fails, meta = [], [], {}
 
     def thin_li(a, b, k):
@@ -402,7 +443,7 @@ def column_checks(cells, cache: Path, frag, lib: Path, viz: Path, keys=None) -> 
         dx = 2.0 * half / n
         meta[L] = {"n": n, "dx_kpc": dx, "h_min_vox": hmin}
         segs = {}
-        for sid in CHECKS[L]:
+        for sid in checks[L]:
             if sl.get(sid) is None:
                 print(f"[check] {sid}: npz missing", flush=True); continue
             p0, p1, logN = sl[sid]
@@ -441,7 +482,10 @@ def column_checks(cells, cache: Path, frag, lib: Path, viz: Path, keys=None) -> 
                       + (f"  u8-vs-float {r['d_u8']:+.4f}" if r.get("d_u8") is not None else ""), flush=True)
             del cub
     full = []
-    for sid in sorted(set(CHECKS["L0"]) | set(CHECKS["L1"])):
+    if sbi:
+        print("[check] reference rows skipped: SBI_CGM npz columns use CLOUDY FG11 ion tables, the cells Trident "
+              "HM2012 (the import's own sbi_columns gate grades those columns)", flush=True)
+    for sid in ([] if sbi else sorted(set(checks["L0"]) | set(checks["L1"]))):
         if sl.get(sid) is None:
             continue
         p0, p1, logN = sl[sid]
@@ -466,7 +510,8 @@ def column_checks(cells, cache: Path, frag, lib: Path, viz: Path, keys=None) -> 
           f"(reported only); {len(fails)} hard failure(s)", flush=True)
     return {"rows": rows, "reference": full, "fails": fails, "summary": summary, "method": "smoothed_bundle",
             "tol": V.SMOOTH_TOL, "u8_tol": U8_TOL, "ref_tol": REF_TOL, "levels": meta,
-            "bundle_offsets_vox": list(V.BUNDLE_OFFSETS)}
+            "bundle_offsets_vox": list(V.BUNDLE_OFFSETS), "sightlines": {L: list(v) for L, v in checks.items()},
+            "reference_skipped": "sbi library (CLOUDY FG11 npz columns vs Trident HM2012 cells)" if sbi else None}
 
 
 _U8_CACHE: dict = {}
