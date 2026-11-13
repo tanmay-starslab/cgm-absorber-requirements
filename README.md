@@ -178,10 +178,8 @@ galaxies: the SBI_CGM fiducial ray library, rays through the TNG50 Voronoi mesh 
 (Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding. Galaxy 488530's default and custom rays,
 and every 3D ion cube: Trident (Hummels, Smith & Silvia 2017) on yt (Turk et al. 2011) with the HM2012 background
 (Haardt & Madau 2012). The star composite follows Lupton et al. (2004). The 3D viewer's approach (deposited cubes and
-column-integral rendering) was inspired by Scott Lucchini's TNG viewer. Explainer music: Beethoven, Symphony No. 7,
-II. Allegretto, cello arrangement and recording by John Michel
-([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:JOHN_MICHEL_CELLO-BEETHOVEN_SYMPHONY_7_Allegretto.ogg),
-[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)).
+column-integral rendering) was inspired by Scott Lucchini's TNG viewer. Explainer music: Beethoven, Symphony No. 7
+in A major, Op. 92, II. Allegretto (orchestral recording; excerpted, faded and looped).
 
 ## Caveats
 
