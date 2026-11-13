@@ -29,7 +29,7 @@ rsync -az --delete --exclude .env -e "ssh -i '$KEY' -o StrictHostKeyChecking=acc
 if ! "${SSH[@]}" test -f tng50/.env; then
   { printf 'HF_TOKEN=%s\n' "$(cat "$HFDIR/token")"; printf 'WORKER_TOKEN=%s\n' "$(cat "$HFDIR/worker_token")"
     printf 'HF_DATASET=tanmay-starslab/tng50-sub488530-cgm\n'
-    printf 'CORS_ORIGINS=https://tanmay-starslab.github.io,http://127.0.0.1:8000,http://localhost:8000\n'; } \
+    printf 'CORS_ORIGINS=https://galaxies.tanmaysingh.uk,https://tanmay-starslab.github.io,http://127.0.0.1:8000,http://localhost:8000\n'; } \
     | "${SSH[@]}" 'umask 077; cat > tng50/.env'
 fi
 # HOST lives in .env so every later `docker compose ...` on the VM interpolates it (sed -i keeps mode 600)

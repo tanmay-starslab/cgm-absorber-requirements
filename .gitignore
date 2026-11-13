@@ -29,3 +29,7 @@ docs/tng50/data/viz/*/
 
 # HyperFrames render state (machine-local paths, lock dirs); never commit
 .hyperframes/
+
+# Cloudflare build output (scripts/build_site.mjs)
+dist/
+.wrangler/

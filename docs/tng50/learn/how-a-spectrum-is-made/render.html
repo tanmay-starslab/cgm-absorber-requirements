@@ -217,7 +217,7 @@ async function boot() {
   const esc = s => String(s).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
   const capHtml = id => { const s = captions[id] || ""; const i = s.indexOf(":"); return i > 0 ? `<b>${esc(s.slice(0, i))}</b>${esc(s.slice(i))}` : esc(s); };
   // end card: title, URL, the honest-simplification list (DESIGN_final §3.7 "film end card")
-  { const url = (copy.film && copy.film.url) || "tanmay-starslab.github.io/cgm-absorber-requirements/tng50/learn/how-a-spectrum-is-made/";
+  { const url = (copy.film && copy.film.url) || "galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/";
     card.querySelector(".t").textContent = (copy.film && copy.film.end_card_title) || "How a spectrum is made";
     card.querySelector(".u").textContent = url;
     card.querySelector(".hh").textContent = (copy.film && copy.film.honesty_heading) || "What we simplified";

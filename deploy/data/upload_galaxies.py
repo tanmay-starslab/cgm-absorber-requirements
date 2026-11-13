@@ -50,7 +50,7 @@ N_SHARDS = 4
 PACK_REPO = OWNER + "/tng50-mwm31-web-{k}"
 CUTOUT_REPO = OWNER + "/tng50-mwm31-cutouts"
 REFERENCE_ID = 488530              # served by docs/tng50/data + tng50-sub488530-viz; in a shard only with --include-reference
-ORIGIN = "https://tanmay-starslab.github.io"
+ORIGIN = "https://galaxies.tanmaysingh.uk"
 
 # Hugging Face repository recommendations (https://huggingface.co/docs/hub/storage-limits, "Repository limitations
 # and recommendations"): < 100k files per repo, < 10k entries per folder, < 200 GB per file (500 GB hard), commits of
@@ -366,7 +366,7 @@ def dataset_card(repo: str, gids: list[int], kind: str, total: int) -> bytes:
                 "Synthetic circumgalactic-medium absorption spectra (700 sightlines per galaxy, 12 transitions, TNGS v2 "
                 "binaries), their Voigt components, and 3D gas and star cubes (tng50-viz/2) for the Milky Way and M31 "
                 "analogues of TNG50-1 at z = 0 (snapshot 99; sample of Pillepich et al. 2024). They are read by the "
-                "explorer page at https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/.\n\n"
+                "explorer page at https://galaxies.tanmaysingh.uk/.\n\n"
                 f"Galaxies here: subhalo_id % {N_SHARDS} == {shard} ({len(gids)} galaxies, {total / 1e9:.1f} GB). One "
                 "folder per subhalo id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
                 "viz/manifest_v2.json and the cubes it lists.\n" + PACK_TERMS)
