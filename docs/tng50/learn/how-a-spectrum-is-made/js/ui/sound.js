@@ -1,9 +1,11 @@
 // Optional music for "How a spectrum is made": Beethoven, Symphony No. 7, II. Allegretto, cello arrangement and recording
 // by John Michel (Wikimedia Commons, CC BY-SA 3.0; media/music.json, scripts/story_music.py).
 //
-// Off by default; nothing is downloaded until the reader turns it on (media/music_loop.m4a, about 1.4 MB, a seamless
-// two-minute loop). The choice is remembered (localStorage); a remembered "on" starts at the reader's first gesture, since
-// browsers do not let a page start sound by itself. Web Audio (not <audio loop>) so the loop has no gap and the fades
+// On by default (owner, 2026-11-13). Browsers do not let a page start sound by itself, so "on" means: the music starts
+// with the reader's first click, tap or key (the Hold to fly / Watch press on the start screen is one), and the toggle
+// reads "Music on" from the first frame so it is clear what will happen and how to stop it. The loop (media/music_loop.m4a,
+// about 1.4 MB, seamless, two minutes) is fetched at that first gesture, not at page load. Turning it off is remembered
+// (localStorage) and wins on later visits. Web Audio (not <audio loop>) so the loop has no gap and the fades
 // work on every browser, including iOS where an <audio> element ignores its volume. The sound fades out when the tab is
 // hidden and back in when it returns.
 //
@@ -91,9 +93,16 @@ export function createSound({src = "media/music_loop.m4a", copy = null, win = wi
     paint();
   }
 
-  // a remembered "on": wait for the first gesture anywhere (the gesture that also starts the story)
-  if (store.get() === "on") {
-    pendingGesture = e => { if (e.type === "keydown" && (e.key === "m" || e.key === "M")) return; set(true, {remember: false}); };
+  // on unless the reader turned it off before: start at the first gesture anywhere (the one that also starts the story).
+  // A press on a music toggle or the M key is that toggle's own business (it turns the music off), so it is not a start.
+  if (store.get() !== "off") {
+    on = true;
+    pendingGesture = e => {
+      if (e.type === "keydown" && (e.key === "m" || e.key === "M" || e.repeat)) return;
+      if (e.target && e.target.closest && e.target.closest("#sound-btn, [data-testid='gate-music']")) return;
+      win.removeEventListener("pointerdown", pendingGesture, true); win.removeEventListener("keydown", pendingGesture, true); pendingGesture = null;
+      if (on) start();
+    };
     win.addEventListener("pointerdown", pendingGesture, true); win.addEventListener("keydown", pendingGesture, true);
   }
   win.document.addEventListener("visibilitychange", () => {
