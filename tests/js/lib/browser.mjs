@@ -170,7 +170,10 @@ const KEYS = {ArrowLeft: 37, ArrowRight: 39, ArrowUp: 38, ArrowDown: 40, Home: 3
  * Returns a page object (see the methods below); P.browser is the binary. Call close() at the end (kills only this browser).
  */
 export async function launch(opts = {}) {
-  const EDGE = opts.edge || findBrowser();
+  let EDGE = opts.edge || findBrowser();
+  // review SC-0: the cgm_work wrapper headless-rm hard-codes --force-prefers-reduced-motion, so launch({reducedMotion: false})
+  // could not undo it and "motion" reviews ran the reduced path. Asked for motion, use the plain sibling binary instead.
+  if (opts.reducedMotion === false && /headless-rm$/.test(EDGE) && existsSync(EDGE.replace(/-rm$/, ""))) EDGE = EDGE.replace(/-rm$/, "");
   const profile = resolve(opts.profile || process.env.TNG_EDGE_PROFILE || join(tmpdir(), `tng-edge-${process.pid}`)) + `/edge-${process.pid}-${Date.now()}`;
   mkdirSync(profile, {recursive: true});
   const W = opts.width || 1440, H = opts.height || 900;
@@ -196,6 +199,13 @@ export async function launch(opts = {}) {
   await P.send("Runtime.enable"); await P.send("Page.enable"); await P.send("Network.enable");
   if (opts.block?.length) await P.send("Network.setBlockedURLs", {urls: opts.block});
   await P.send("Page.addScriptToEvaluateOnNewDocument", {source: INIT_SCRIPT});
+  // review SC-0: assert the motion mode the run asked for (P.reducedMotion is what pages will see)
+  try { const r = await P.send("Runtime.evaluate", {expression: "matchMedia('(prefers-reduced-motion: reduce)').matches", returnByValue: true});
+    P.reducedMotion = !!(r.result && r.result.result && r.result.result.value); } catch { P.reducedMotion = null; }
+  if (typeof opts.reducedMotion === "boolean" && P.reducedMotion !== null && P.reducedMotion !== opts.reducedMotion) {
+    const msg = `browser: prefers-reduced-motion is ${P.reducedMotion} but the run asked for ${opts.reducedMotion} (${EDGE} forces it; use storyqa plainEdge())`;
+    if (process.env.TNG_STRICT_MOTION === "1") { proc.kill("SIGKILL"); throw new Error(msg); } else console.warn(msg);
+  }
   for (const src of opts.inject || []) await P.send("Page.addScriptToEvaluateOnNewDocument", {source: src});
   /** Evaluate an expression (awaited, returned by value). Throws with the page's message on an exception. */
   P.eval = async (expr, timeout = 60000) => {

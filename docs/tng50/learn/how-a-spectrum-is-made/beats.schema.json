@@ -1,0 +1,105 @@
+{
+  "$id": "story-beats/2",
+  "title": "Story beats v2 (one timeline for scroll, Watch, reduced-motion stops, narrative and film)",
+  "description": "Read by js/core/timeline.js with engine.schemaErrors (JSON Schema subset: type, required, properties, additionalProperties, enum, const, items, minItems, minimum, maximum, pattern, $ref). Cross-beat rules (contiguity, ordering, shot ids, text gaps) are checked in timeline.validateBeats.",
+  "type": "object",
+  "required": ["schema", "meta", "beats"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "story-beats/2"},
+    "meta": {
+      "type": "object",
+      "required": ["refHalf", "watchTotal_s", "fadeP", "groupGapP", "leadDefault"],
+      "properties": {
+        "about": {"type": "string"},
+        "refGalaxy": {"type": "integer"},
+        "refRay": {"type": "string"},
+        "refHalf": {"type": "number", "exclusiveMinimum": 0},
+        "watchTotal_s": {"type": "number", "exclusiveMinimum": 0},
+        "fadeP": {"type": "number", "minimum": 0, "maximum": 0.05},
+        "groupGapP": {"type": "number", "minimum": 0, "maximum": 0.05},
+        "leadDefault": {"type": "number", "minimum": 0, "maximum": 0.2},
+        "refRayGeom": {"type": "object", "required": ["p0", "p1"], "properties": {
+          "about": {"type": "string"}, "p0": {"$ref": "#/$defs/vec3"}, "p1": {"$ref": "#/$defs/vec3"}, "zdisk": {"$ref": "#/$defs/vec3"}}}
+      }
+    },
+    "beats": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/beat"}}
+  },
+  "$defs": {
+    "vec3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "u": {"type": "number", "minimum": 0, "maximum": 1},
+    "lval": {"type": ["number", "string"]},
+    "preset": {"type": "string", "enum": ["density", "halo", "phases", "ion:HI", "ion:OVI", "speed", "metals"], "description": "ids of js/stage/tfstory.js PRESETS (the stage draws these)"},
+    "dockState": {"type": "string", "enum": ["strip", "pair", "hero"]},
+    "tfKey": {"type": "object", "required": ["u", "preset"], "additionalProperties": false, "properties": {
+      "u": {"$ref": "#/$defs/u"}, "preset": {"$ref": "#/$defs/preset"}, "chip": {"type": "string", "description": "HUD label id when it differs from the preset (composite = phases with every cloud shell)"}, "focusR": {"type": ["number", "null"]},
+      "darkSky": {"type": "boolean"}, "gain": {"type": "number", "minimum": 0, "maximum": 2}}},
+    "numKey": {"type": "object", "required": ["u", "v"], "additionalProperties": false, "properties": {
+      "u": {"$ref": "#/$defs/u"}, "v": {"type": "number"}}},
+    "numOrKeys": {"type": ["number", "array"], "items": {"$ref": "#/$defs/numKey"}},
+    "anchor": {"type": "object", "required": ["kind"], "additionalProperties": false, "properties": {
+      "kind": {"type": "string", "enum": ["cell", "cloud", "l", "origin", "dock", "probe"]},
+      "ref": {"type": ["number", "string"]}}},
+    "text": {"type": "object", "required": ["id", "band", "part", "u0", "u1"], "additionalProperties": false, "properties": {
+      "id": {"type": "string", "pattern": "^B[0-9]+[a-e]?(\\.[a-z0-9]+)?$"},
+      "band": {"type": "string", "enum": ["act", "text"]},
+      "part": {"type": "string", "enum": ["display", "sub", "all"]},
+      "u0": {"$ref": "#/$defs/u"}, "u1": {"$ref": "#/$defs/u"},
+      "fadeIn": {"type": "number", "minimum": 0}, "fadeOut": {"type": "number", "minimum": 0},
+      "anchor": {"$ref": "#/$defs/anchor"},
+      "when": {"type": "string", "enum": ["default", "T263>hot", "T263<cool"]},
+      "cond": {"type": "string", "description": "copy.json flag (e.g. has_pair, lite): passed through to FrameState.text for the shell to evaluate"},
+      "words": {"type": "integer", "minimum": 0, "description": "words in the slot copy (display/sub), for the hold-to-fly reading rate; generated from copy.json"},
+    "alt": {"type": "boolean", "description": "an alternative to the previous slot (same window); shown only when its cond holds"}}},
+    "eq": {"type": "object", "required": ["id", "u0", "u1", "anchor", "hl"], "additionalProperties": false, "properties": {
+      "id": {"type": "string", "pattern": "^E[0-9][a-z]?$"},
+      "u0": {"$ref": "#/$defs/u"}, "u1": {"$ref": "#/$defs/u"},
+      "anchor": {"$ref": "#/$defs/anchor"},
+      "hl": {"type": "array", "items": {"type": "object", "required": ["term", "u0", "u1"], "additionalProperties": false, "properties": {
+        "term": {"type": "string"}, "u0": {"$ref": "#/$defs/u"}, "u1": {"$ref": "#/$defs/u"}}}},
+      "ghost": {"type": "string", "enum": ["T125", "T263", "N492"]},
+      "totals": {"type": "boolean"},
+      "noPhone": {"type": "boolean", "description": "review2 three_d T3: not shown on phone/narrow layouts (on-axis camera stretch)"},
+      "phoneU": {"type": "array", "items": {"$ref": "#/$defs/u"}, "minItems": 2, "maxItems": 2, "description": "review2 science M2: chain row a phone shows for u in [u0, u1)"}}},
+    "field": {"type": "object", "required": ["name", "level"], "additionalProperties": false, "properties": {
+      "name": {"type": "string", "enum": ["nH", "T", "Z", "vel", "HI", "OVI"], "description": "viz manifest field names, as js/stage/tfstory.js fieldsOf returns them (vel = the vx/vy/vz velocity pack)"},
+      "level": {"type": "string", "enum": ["L0", "L1"]}}},
+    "beat": {
+      "type": "object",
+      "required": ["id", "p0", "p1", "kind", "l0", "l1", "ion", "shot", "tf", "dock", "fields", "lead", "textBand", "text", "eqs", "interactions", "copyRef", "spec", "shells"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^B[0-9]+[a-e]?$"},
+        "cond": {"type": "string", "description": "copy.json flag of a beat whose entry has no else block (B6 has_hot_stretch, B7e has_cold_knot): when the shell finds it false, the beat shows no text and the rail and PageDown skip it (timeline.setSkip); the camera still flies through"},
+        "p0": {"$ref": "#/$defs/u"}, "p1": {"$ref": "#/$defs/u"},
+        "kind": {"type": "string", "enum": ["gate", "hold", "flight", "stop", "still"]},
+        "l0": {"$ref": "#/$defs/lval"}, "l1": {"$ref": "#/$defs/lval"},
+        "lu": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/u"}},
+        "ion": {"type": "string", "enum": ["OVI", "HI"]},
+        "shot": {"type": "string"},
+        "cell": {"type": "integer", "minimum": 0},
+        "stops": {"type": "object", "required": ["n"], "properties": {"n": {"type": "integer", "minimum": 2, "maximum": 8}}},
+        "tf": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/tfKey"}},
+        "dock": {"type": ["string", "array"], "pattern": "^(strip|pair|hero)$", "items": {"type": "object", "required": ["u", "state"], "additionalProperties": false,
+          "properties": {"u": {"$ref": "#/$defs/u"}, "state": {"$ref": "#/$defs/dockState"}}}},
+        "fields": {"type": "array", "items": {"$ref": "#/$defs/field"}},
+        "lead": {"type": "number", "minimum": 0, "maximum": 0.2},
+        "textBand": {"type": "string", "enum": ["act", "text"]},
+        "text": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+        "eqs": {"type": "array", "items": {"$ref": "#/$defs/eq"}},
+        "interactions": {"type": "array", "items": {"type": "string", "enum": ["hold", "watch", "skip", "readAsText", "scrub", "orbit",
+          "tfChips", "picker", "pin", "hoverTerms", "dragTau0", "threshold", "axisToggle", "speedZero", "dragT", "brush", "freeLook",
+          "dragN", "ribbon", "R", "sn", "newNoise", "refit", "truth", "ion", "openSpectra", "see3d", "replay", "explore"]}},
+        "copyRef": {"type": "string"},
+        "spec": {"type": "object", "required": ["mode"], "additionalProperties": false, "properties": {
+          "mode": {"type": "string", "enum": ["intrinsic", "observed", "fit", "explore"]},
+          "R": {"$ref": "#/$defs/numOrKeys"}, "sn": {"$ref": "#/$defs/numOrKeys"}}},
+        "ui": {"type": "object", "additionalProperties": false, "properties": {"inset": {"$ref": "#/$defs/numOrKeys"}}},
+        "shells": {"type": "string", "enum": ["none", "auto", "all"]},
+        "cellStops": {"type": "boolean"},
+        "quality": {"type": "string", "enum": ["flight", "stop"]},
+        "watch_s": {"type": "number", "exclusiveMinimum": 0}
+      }
+    }
+  }
+}

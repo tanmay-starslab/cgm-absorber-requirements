@@ -1,0 +1,1825 @@
+{
+ "schema": "story-beats/2",
+ "meta": {
+  "about": "One timeline source for scroll, Watch, reduced-motion stops, the narrative and the film (DESIGN D10, DESIGN_final §3.5). Display text lives in copy.json (copyRef); every number is a key there. l values are kpc on the hero ray and scale with the ray's half length for other rays. fix1: act subtitles enter after their titles exit (SC-10); B14 holds to p = 1 (SC-7).",
+  "refGalaxy": 488530,
+  "refRay": "rand_b062_a062",
+  "refHalf": 246.35,
+  "watchTotal_s": 312.0,
+  "fadeP": 0.004,
+  "groupGapP": 0.004,
+  "leadDefault": 0.03,
+  "refRayGeom": {
+   "about": "fallback ray for 488530 / rand_b062_a062 when the story data has no ray block (catalog.json p0/p1, viz manifest_v2 Lhat); story-data/2 ray wins",
+   "p0": [
+    -79.2,
+    -239.3,
+    31.4
+   ],
+   "p1": [
+    48.84,
+    202.34,
+    -145.58
+   ],
+   "zdisk": [
+    0.04170790684964916,
+    -0.8403492677980035,
+    -0.5404383023228281
+   ]
+  }
+ },
+ "beats": [
+  {
+   "id": "B0",
+   "watch_s": 7.5,
+   "p0": 0.0,
+   "p1": 0.02,
+   "kind": "gate",
+   "l0": -246.35,
+   "l1": -246.35,
+   "ion": "OVI",
+   "shot": "gate",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "density",
+     "gain": 1.0,
+     "darkSky": false
+    }
+   ],
+   "dock": "strip",
+   "fields": [
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.0,
+   "textBand": "act",
+   "text": [
+    {
+     "id": "B0",
+     "band": "act",
+     "part": "display",
+     "u0": 0.0,
+     "u1": 0.55,
+     "fadeIn": 0,
+     "words": 5
+    }
+   ],
+   "eqs": [],
+   "interactions": [
+    "hold",
+    "watch",
+    "skip",
+    "readAsText"
+   ],
+   "copyRef": "B0",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "none"
+  },
+  {
+   "id": "B1",
+   "watch_s": 12.5,
+   "p0": 0.02,
+   "p1": 0.07,
+   "kind": "hold",
+   "l0": -246.35,
+   "l1": -246.35,
+   "ion": "OVI",
+   "shot": "coldopen",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "density",
+     "gain": 1.0,
+     "darkSky": false
+    }
+   ],
+   "dock": "strip",
+   "fields": [
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.02,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B1",
+     "band": "act",
+     "part": "display",
+     "u0": 0.08,
+     "u1": 0.26,
+     "anchor": {
+      "kind": "l",
+      "ref": -200
+     },
+     "words": 7
+    },
+    {
+     "id": "B1",
+     "band": "text",
+     "part": "sub",
+     "u0": 0.42,
+     "u1": 0.56,
+     "words": 18
+    },
+    {
+     "id": "B1.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.8,
+     "u1": 0.9,
+     "words": 5
+    }
+   ],
+   "eqs": [],
+   "interactions": [
+    "scrub"
+   ],
+   "copyRef": "B1",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "none"
+  },
+  {
+   "id": "B2",
+   "watch_s": 20.0,
+   "p0": 0.07,
+   "p1": 0.125,
+   "kind": "hold",
+   "l0": -246.35,
+   "l1": -246.35,
+   "ion": "OVI",
+   "shot": "halo",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "density",
+     "gain": 1.0,
+     "darkSky": false
+    },
+    {
+     "u": 0.4,
+     "preset": "halo",
+     "gain": 1,
+     "darkSky": false
+    }
+   ],
+   "dock": "strip",
+   "fields": [
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B2",
+     "band": "act",
+     "part": "display",
+     "u0": 0.08,
+     "u1": 0.36,
+     "anchor": {
+      "kind": "origin"
+     },
+     "words": 8
+    },
+    {
+     "id": "B2",
+     "band": "text",
+     "part": "sub",
+     "u0": 0.51,
+     "u1": 0.6,
+     "words": 22
+    },
+    {
+     "id": "B2.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.82,
+     "u1": 0.92,
+     "words": 22
+    }
+   ],
+   "eqs": [],
+   "interactions": [
+    "scrub",
+    "orbit",
+    "tfChips",
+    "picker"
+   ],
+   "copyRef": "B2",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "none"
+  },
+  {
+   "id": "B3",
+   "watch_s": 17.5,
+   "p0": 0.125,
+   "p1": 0.184,
+   "kind": "flight",
+   "l0": -246.35,
+   "l1": -219,
+   "ion": "OVI",
+   "shot": "drop",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "halo",
+     "darkSky": false
+    },
+    {
+     "u": 0.3,
+     "preset": "density",
+     "darkSky": true
+    },
+    {
+     "u": 0.7,
+     "preset": "phases",
+     "darkSky": true
+    }
+   ],
+   "dock": "strip",
+   "fields": [
+    {
+     "name": "nH",
+     "level": "L0"
+    },
+    {
+     "name": "T",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.04,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B3",
+     "band": "text",
+     "part": "all",
+     "u0": 0.5,
+     "u1": 0.5949,
+     "words": 24
+    },
+    {
+     "id": "B3.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.8017,
+     "u1": 0.8966,
+     "words": 21
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E1",
+     "u0": 0.62,
+     "u1": 0.92,
+     "anchor": {
+      "kind": "cell",
+      "ref": "probe"
+     },
+     "hl": []
+    }
+   ],
+   "interactions": [
+    "scrub",
+    "pin",
+    "hoverTerms"
+   ],
+   "copyRef": "B3",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto"
+  },
+  {
+   "id": "B4",
+   "watch_s": 11.0,
+   "p0": 0.184,
+   "p1": 0.224,
+   "kind": "flight",
+   "l0": -219,
+   "l1": -165,
+   "ion": "OVI",
+   "shot": "first",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "focusR": 25,
+     "darkSky": true
+    }
+   ],
+   "dock": "strip",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L0"
+    },
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B4",
+     "band": "text",
+     "part": "all",
+     "u0": 0.1525,
+     "u1": 0.8475,
+     "cond": "has_first_ovi",
+     "words": 28
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E3",
+     "u0": 0.15,
+     "u1": 0.5,
+     "anchor": {
+      "kind": "cell",
+      "ref": "probe"
+     },
+     "hl": [
+      {
+       "term": "tau0",
+       "u0": 0.2,
+       "u1": 0.5
+      }
+     ],
+     "noPhone": true
+    },
+    {
+     "id": "E3b",
+     "u0": 0.62,
+     "u1": 0.92,
+     "anchor": {
+      "kind": "cell",
+      "ref": "probe"
+     },
+     "hl": [],
+     "noPhone": true
+    }
+   ],
+   "interactions": [
+    "scrub",
+    "pin",
+    "dragTau0"
+   ],
+   "copyRef": "B4",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "cellStops": true
+  },
+  {
+   "id": "B5",
+   "watch_s": 18.0,
+   "p0": 0.224,
+   "p1": 0.312,
+   "kind": "flight",
+   "l0": -165,
+   "l1": -124,
+   "ion": "HI",
+   "shot": "cloudA",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "focusR": 14,
+     "darkSky": true
+    },
+    {
+     "u": 0.5,
+     "preset": "phases",
+     "focusR": 14,
+     "darkSky": true
+    },
+    {
+     "u": 0.6,
+     "preset": "ion:HI",
+     "focusR": 14,
+     "darkSky": true
+    },
+    {
+     "u": 0.88,
+     "preset": "ion:HI",
+     "focusR": 14,
+     "darkSky": true
+    },
+    {
+     "u": 1.0,
+     "preset": "phases",
+     "focusR": 14,
+     "darkSky": true
+    }
+   ],
+   "dock": [
+    {
+     "u": 0,
+     "state": "strip"
+    },
+    {
+     "u": 0.12,
+     "state": "pair"
+    }
+   ],
+   "fields": [
+    {
+     "name": "T",
+     "level": "L0"
+    },
+    {
+     "name": "nH",
+     "level": "L0"
+    },
+    {
+     "name": "HI",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B5",
+     "band": "act",
+     "part": "display",
+     "u0": 0.08,
+     "u1": 0.36,
+     "anchor": {
+      "kind": "cloud",
+      "ref": "A"
+     },
+     "cond": "hi_black",
+     "words": 3
+    },
+    {
+     "id": "B5.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.45,
+     "u1": 0.605,
+     "words": 32
+    },
+    {
+     "id": "B5.2",
+     "band": "text",
+     "part": "all",
+     "u0": 0.7447,
+     "u1": 0.9306,
+     "words": 15
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E2",
+     "u0": 0.4,
+     "u1": 0.9,
+     "anchor": {
+      "kind": "cell",
+      "ref": 125
+     },
+     "hl": [
+      {
+       "term": "T",
+       "u0": 0.45,
+       "u1": 0.65
+      },
+      {
+       "term": "m",
+       "u0": 0.65,
+       "u1": 0.85
+      }
+     ],
+     "ghost": "T125"
+    }
+   ],
+   "interactions": [
+    "scrub",
+    "tfChips",
+    "threshold",
+    "hoverTerms"
+   ],
+   "copyRef": "B5",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "cellStops": true
+  },
+  {
+   "id": "B6",
+   "watch_s": 22.5,
+   "p0": 0.312,
+   "p1": 0.382,
+   "kind": "flight",
+   "l0": -124,
+   "l1": -42,
+   "ion": "OVI",
+   "shot": "quiet",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": false
+    },
+    {
+     "u": 0.12,
+     "preset": "halo",
+     "darkSky": false
+    },
+    {
+     "u": 0.45,
+     "preset": "halo",
+     "darkSky": false
+    },
+    {
+     "u": 0.52,
+     "preset": "speed",
+     "darkSky": false
+    },
+    {
+     "u": 0.78,
+     "preset": "speed",
+     "darkSky": false
+    },
+    {
+     "u": 0.95,
+     "preset": "phases",
+     "darkSky": true
+    }
+   ],
+   "dock": [
+    {
+     "u": 0,
+     "state": "pair"
+    },
+    {
+     "u": 0.1,
+     "state": "strip"
+    }
+   ],
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    },
+    {
+     "name": "vel",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.04,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B6",
+     "band": "text",
+     "part": "all",
+     "u0": 0.3,
+     "u1": 0.3928,
+     "cond": "has_hot_stretch",
+     "words": 32
+    },
+    {
+     "id": "B6.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.5672,
+     "u1": 0.68,
+     "words": 27
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E4",
+     "u0": 0.57,
+     "u1": 0.68,
+     "anchor": {
+      "kind": "cloud",
+      "ref": "A"
+     },
+     "hl": [
+      {
+       "term": "lambda",
+       "u0": 0.58,
+       "u1": 0.63
+      },
+      {
+       "term": "vgal",
+       "u0": 0.63,
+       "u1": 0.68
+      }
+     ]
+    }
+   ],
+   "interactions": [
+    "scrub",
+    "axisToggle",
+    "speedZero"
+   ],
+   "copyRef": "B6",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "cond": "has_hot_stretch"
+  },
+  {
+   "id": "B7a",
+   "watch_s": 2.0,
+   "p0": 0.382,
+   "p1": 0.407,
+   "kind": "flight",
+   "l0": -42,
+   "l1": -35.28,
+   "ion": "OVI",
+   "shot": "cloudB",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "focusR": 9,
+     "darkSky": true
+    }
+   ],
+   "dock": "strip",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "act",
+   "text": [
+    {
+     "id": "B7a",
+     "band": "act",
+     "part": "display",
+     "u0": 0.28,
+     "u1": 0.62,
+     "anchor": {
+      "kind": "cloud",
+      "ref": "B"
+     },
+     "words": 2
+    }
+   ],
+   "eqs": [],
+   "interactions": [
+    "scrub"
+   ],
+   "copyRef": "B7a",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto"
+  },
+  {
+   "id": "B7b",
+   "watch_s": 18.5,
+   "p0": 0.407,
+   "p1": 0.46,
+   "kind": "stop",
+   "l0": -35.28,
+   "l1": -35.28,
+   "ion": "OVI",
+   "shot": "stop263",
+   "cell": 263,
+   "stops": {
+    "n": 4
+   },
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "focusR": 7,
+     "darkSky": true
+    }
+   ],
+   "dock": [
+    {
+     "u": 0,
+     "state": "strip"
+    },
+    {
+     "u": 0.1,
+     "state": "pair"
+    }
+   ],
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B7b",
+     "band": "text",
+     "part": "all",
+     "u0": 0.2,
+     "u1": 0.4273,
+     "cond": "ovi_strong",
+     "words": 29
+    },
+    {
+     "id": "B7b.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.6576,
+     "u1": 0.8849,
+     "words": 19
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E1",
+     "u0": 0.22,
+     "u1": 1.0,
+     "anchor": {
+      "kind": "cell",
+      "ref": 263
+     },
+     "hl": [
+      {
+       "term": "nH",
+       "u0": 0.22,
+       "u1": 0.27
+      },
+      {
+       "term": "fion",
+       "u0": 0.27,
+       "u1": 0.32
+      }
+     ],
+     "phoneU": [
+      0,
+      0.55
+     ]
+    },
+    {
+     "id": "E2",
+     "u0": 0.3,
+     "u1": 1.0,
+     "anchor": {
+      "kind": "cell",
+      "ref": 263
+     },
+     "hl": [
+      {
+       "term": "T",
+       "u0": 0.33,
+       "u1": 0.55
+      }
+     ],
+     "phoneU": [
+      0.55,
+      0.9
+     ]
+    },
+    {
+     "id": "E3",
+     "u0": 0.55,
+     "u1": 1.0,
+     "anchor": {
+      "kind": "cell",
+      "ref": 263
+     },
+     "hl": [
+      {
+       "term": "N",
+       "u0": 0.58,
+       "u1": 0.7
+      },
+      {
+       "term": "b",
+       "u0": 0.7,
+       "u1": 0.82
+      },
+      {
+       "term": "V",
+       "u0": 0.82,
+       "u1": 0.95
+      }
+     ],
+     "phoneU": [
+      0.9,
+      1.0
+     ]
+    }
+   ],
+   "interactions": [
+    "scrub",
+    "hoverTerms",
+    "orbit"
+   ],
+   "copyRef": "B7b",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "quality": "stop"
+  },
+  {
+   "id": "B7c",
+   "watch_s": 11.0,
+   "p0": 0.46,
+   "p1": 0.485,
+   "kind": "stop",
+   "l0": -35.28,
+   "l1": -35.28,
+   "ion": "OVI",
+   "shot": "drag263",
+   "cell": 263,
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "focusR": 7,
+     "darkSky": true
+    }
+   ],
+   "dock": "pair",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.02,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B7c",
+     "band": "text",
+     "part": "all",
+     "u0": 0.25,
+     "u1": 0.75,
+     "when": "default",
+     "words": 27
+    },
+    {
+     "id": "B7c.hot",
+     "band": "text",
+     "part": "all",
+     "u0": 0.25,
+     "u1": 0.75,
+     "when": "T263>hot",
+     "words": 23
+    },
+    {
+     "id": "B7c.cool",
+     "band": "text",
+     "part": "all",
+     "u0": 0.25,
+     "u1": 0.75,
+     "when": "T263<cool",
+     "words": 23
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E2",
+     "u0": 0.0,
+     "u1": 0.92,
+     "anchor": {
+      "kind": "cell",
+      "ref": 263
+     },
+     "hl": [
+      {
+       "term": "T",
+       "u0": 0.0,
+       "u1": 0.92
+      }
+     ],
+     "ghost": "T263"
+    }
+   ],
+   "interactions": [
+    "dragT"
+   ],
+   "copyRef": "B7c",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "quality": "stop"
+  },
+  {
+   "id": "B7d",
+   "watch_s": 10.5,
+   "p0": 0.485,
+   "p1": 0.52,
+   "kind": "flight",
+   "l0": -35.28,
+   "l1": -18,
+   "ion": "OVI",
+   "shot": "restB",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true
+    },
+    {
+     "u": 0.3,
+     "preset": "phases",
+     "darkSky": true,
+     "gain": 0.65,
+     "focusR": 16
+    }
+   ],
+   "dock": "pair",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B7d",
+     "band": "text",
+     "part": "all",
+     "u0": 0.45,
+     "u1": 0.8257,
+     "words": 28
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E5",
+     "u0": 0.42,
+     "u1": 0.92,
+     "anchor": {
+      "kind": "dock"
+     },
+     "hl": []
+    }
+   ],
+   "interactions": [
+    "scrub",
+    "brush"
+   ],
+   "copyRef": "B7d",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "cellStops": true
+  },
+  {
+   "id": "B7e",
+   "watch_s": 9.5,
+   "p0": 0.52,
+   "p1": 0.545,
+   "kind": "flight",
+   "l0": -18,
+   "l1": -1,
+   "ion": "HI",
+   "shot": "coldknot",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true,
+     "gain": 0.65,
+     "focusR": 16
+    }
+   ],
+   "dock": "pair",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B7e",
+     "band": "text",
+     "part": "all",
+     "u0": 0.244,
+     "u1": 0.6,
+     "cond": "has_cold_knot",
+     "words": 25
+    }
+   ],
+   "eqs": [],
+   "interactions": [
+    "scrub",
+    "brush"
+   ],
+   "copyRef": "B7e",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "cellStops": true,
+   "cond": "has_cold_knot"
+  },
+  {
+   "id": "B8",
+   "watch_s": 6.0,
+   "p0": 0.545,
+   "p1": 0.58,
+   "kind": "flight",
+   "l0": -1,
+   "l1": 30,
+   "ion": "OVI",
+   "shot": "halfway",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true,
+     "gain": 0.65,
+     "focusR": 16
+    },
+    {
+     "u": 0.75,
+     "preset": "phases",
+     "darkSky": true,
+     "gain": 0.65,
+     "focusR": 16
+    },
+    {
+     "u": 1.0,
+     "preset": "phases",
+     "darkSky": true
+    }
+   ],
+   "dock": [
+    {
+     "u": 0,
+     "state": "pair"
+    },
+    {
+     "u": 0.15,
+     "state": "strip"
+    }
+   ],
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B8",
+     "band": "text",
+     "part": "all",
+     "u0": 0.42,
+     "u1": 0.62,
+     "words": 14
+    }
+   ],
+   "eqs": [],
+   "interactions": [
+    "scrub",
+    "freeLook"
+   ],
+   "copyRef": "B8",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "quality": "stop"
+  },
+  {
+   "id": "B9",
+   "watch_s": 30.0,
+   "p0": 0.58,
+   "p1": 0.665,
+   "kind": "flight",
+   "l0": 30,
+   "l1": 81,
+   "ion": "OVI",
+   "shot": "thread",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true
+    },
+    {
+     "u": 0.45,
+     "preset": "phases",
+     "darkSky": true
+    },
+    {
+     "u": 0.55,
+     "preset": "speed",
+     "darkSky": true
+    },
+    {
+     "u": 0.82,
+     "preset": "speed",
+     "darkSky": true
+    },
+    {
+     "u": 0.95,
+     "preset": "phases",
+     "darkSky": true
+    }
+   ],
+   "dock": [
+    {
+     "u": 0,
+     "state": "strip"
+    },
+    {
+     "u": 0.1,
+     "state": "pair"
+    }
+   ],
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    },
+    {
+     "name": "vel",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.04,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B9",
+     "band": "act",
+     "part": "display",
+     "u0": 0.06,
+     "u1": 0.26,
+     "anchor": {
+      "kind": "l",
+      "ref": 66
+     },
+     "words": 6
+    },
+    {
+     "id": "B9",
+     "band": "text",
+     "part": "sub",
+     "u0": 0.36,
+     "u1": 0.46,
+     "words": 18
+    },
+    {
+     "id": "B9.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.6106,
+     "u1": 0.6976,
+     "cond": "has_pair",
+     "words": 29
+    },
+    {
+     "id": "B9.2",
+     "band": "text",
+     "part": "all",
+     "u0": 0.8412,
+     "u1": 0.9282,
+     "words": 21
+    }
+   ],
+   "eqs": [],
+   "interactions": [
+    "scrub",
+    "brush"
+   ],
+   "copyRef": "B9",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "cellStops": true
+  },
+  {
+   "id": "B10",
+   "watch_s": 16.0,
+   "p0": 0.665,
+   "p1": 0.72,
+   "kind": "flight",
+   "l0": 81,
+   "l1": 122,
+   "ion": "HI",
+   "shot": "cloudD",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true
+    },
+    {
+     "u": 0.12,
+     "preset": "ion:HI",
+     "darkSky": true,
+     "gain": 0.55,
+     "focusR": 16
+    },
+    {
+     "u": 0.85,
+     "preset": "ion:HI",
+     "darkSky": true,
+     "gain": 0.55,
+     "focusR": 16
+    },
+    {
+     "u": 1.0,
+     "preset": "ion:HI",
+     "darkSky": true
+    }
+   ],
+   "dock": "pair",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L1"
+    },
+    {
+     "name": "nH",
+     "level": "L1"
+    },
+    {
+     "name": "HI",
+     "level": "L1"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B10",
+     "band": "text",
+     "part": "all",
+     "u0": 0.12,
+     "u1": 0.3936,
+     "words": 18
+    },
+    {
+     "id": "B10.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.6155,
+     "u1": 0.889,
+     "cond": "hi_black",
+     "words": 22
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E3",
+     "u0": 0.2,
+     "u1": 0.92,
+     "anchor": {
+      "kind": "cell",
+      "ref": 492
+     },
+     "hl": [
+      {
+       "term": "N",
+       "u0": 0.25,
+       "u1": 0.92
+      }
+     ],
+     "ghost": "N492"
+    }
+   ],
+   "interactions": [
+    "scrub",
+    "dragN"
+   ],
+   "copyRef": "B10",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "auto",
+   "cellStops": true
+  },
+  {
+   "id": "B11",
+   "watch_s": 9.5,
+   "p0": 0.72,
+   "p1": 0.78,
+   "kind": "flight",
+   "l0": 122,
+   "l1": 246.35,
+   "lu": [
+    0,
+    0.5
+   ],
+   "ion": "OVI",
+   "shot": "lookback",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "ion:HI",
+     "darkSky": true
+    },
+    {
+     "u": 0.15,
+     "preset": "phases",
+     "darkSky": true,
+     "chip": "composite"
+    }
+   ],
+   "dock": "pair",
+   "fields": [
+    {
+     "name": "HI",
+     "level": "L0"
+    },
+    {
+     "name": "T",
+     "level": "L0"
+    },
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.03,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B11",
+     "band": "act",
+     "part": "display",
+     "u0": 0.1,
+     "u1": 0.45,
+     "anchor": {
+      "kind": "l",
+      "ref": 200
+     },
+     "words": 7
+    },
+    {
+     "id": "B11",
+     "band": "text",
+     "part": "sub",
+     "u0": 0.62,
+     "u1": 0.8983,
+     "words": 16
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E5",
+     "u0": 0.62,
+     "u1": 0.95,
+     "anchor": {
+      "kind": "dock"
+     },
+     "hl": [],
+     "totals": true
+    }
+   ],
+   "interactions": [
+    "scrub",
+    "ribbon"
+   ],
+   "copyRef": "B11",
+   "spec": {
+    "mode": "intrinsic"
+   },
+   "shells": "all"
+  },
+  {
+   "id": "B12a",
+   "watch_s": 17.0,
+   "p0": 0.78,
+   "p1": 0.83,
+   "kind": "still",
+   "l0": 246.35,
+   "l1": 246.35,
+   "ion": "OVI",
+   "shot": "telescope",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true,
+     "chip": "composite"
+    }
+   ],
+   "dock": [
+    {
+     "u": 0,
+     "state": "pair"
+    },
+    {
+     "u": 0.15,
+     "state": "hero"
+    }
+   ],
+   "fields": [
+    {
+     "name": "T",
+     "level": "L0"
+    },
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.02,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B12a",
+     "band": "text",
+     "part": "all",
+     "u0": 0.35,
+     "u1": 0.4919,
+     "words": 20
+    },
+    {
+     "id": "B12a.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.736,
+     "u1": 0.8779,
+     "cond": "hi_black",
+     "words": 24
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E6",
+     "u0": 0.18,
+     "u1": 0.95,
+     "anchor": {
+      "kind": "dock"
+     },
+     "hl": [
+      {
+       "term": "R",
+       "u0": 0.18,
+       "u1": 0.9
+      }
+     ]
+    }
+   ],
+   "interactions": [
+    "R"
+   ],
+   "copyRef": "B12a",
+   "shells": "all",
+   "spec": {
+    "mode": "observed",
+    "R": [
+     {
+      "u": 0.12,
+      "v": 150000
+     },
+     {
+      "u": 0.6,
+      "v": 5000
+     },
+     {
+      "u": 0.9,
+      "v": 30000
+     }
+    ],
+    "sn": 1000
+   },
+   "ui": {
+    "inset": [
+     {
+      "u": 0.08,
+      "v": 0
+     },
+     {
+      "u": 0.25,
+      "v": 1
+     }
+    ]
+   },
+   "quality": "stop"
+  },
+  {
+   "id": "B12b",
+   "watch_s": 19.5,
+   "p0": 0.83,
+   "p1": 0.88,
+   "kind": "still",
+   "l0": 246.35,
+   "l1": 246.35,
+   "ion": "OVI",
+   "shot": "telescopeHold",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true,
+     "chip": "composite"
+    }
+   ],
+   "dock": "hero",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L0"
+    },
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.02,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B12b",
+     "band": "text",
+     "part": "all",
+     "u0": 0.122,
+     "u1": 0.378,
+     "words": 22
+    },
+    {
+     "id": "B12b.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.622,
+     "u1": 0.878,
+     "words": 28
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E7",
+     "u0": 0.1,
+     "u1": 0.95,
+     "anchor": {
+      "kind": "dock"
+     },
+     "hl": [
+      {
+       "term": "sn",
+       "u0": 0.15,
+       "u1": 0.9
+      }
+     ]
+    }
+   ],
+   "interactions": [
+    "R",
+    "sn",
+    "newNoise"
+   ],
+   "copyRef": "B12b",
+   "shells": "all",
+   "spec": {
+    "mode": "observed",
+    "R": 30000,
+    "sn": [
+     {
+      "u": 0.12,
+      "v": 4
+     },
+     {
+      "u": 0.7,
+      "v": 100
+     },
+     {
+      "u": 0.92,
+      "v": 10
+     }
+    ]
+   },
+   "ui": {
+    "inset": 1
+   },
+   "quality": "stop"
+  },
+  {
+   "id": "B13",
+   "watch_s": 36.0,
+   "p0": 0.88,
+   "p1": 0.965,
+   "kind": "still",
+   "l0": 246.35,
+   "l1": 246.35,
+   "ion": "OVI",
+   "shot": "readback",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true,
+     "chip": "composite"
+    },
+    {
+     "u": 0.3,
+     "preset": "phases",
+     "darkSky": true
+    }
+   ],
+   "dock": "hero",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L0"
+    },
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.02,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B13",
+     "band": "text",
+     "part": "all",
+     "u0": 0.22,
+     "u1": 0.32,
+     "words": 25
+    },
+    {
+     "id": "B13.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.465,
+     "u1": 0.575,
+     "words": 27
+    },
+    {
+     "id": "B13.3",
+     "band": "text",
+     "part": "all",
+     "u0": 0.73,
+     "u1": 0.85,
+     "words": 22
+    }
+   ],
+   "eqs": [
+    {
+     "id": "E8",
+     "u0": 0.2,
+     "u1": 0.9,
+     "anchor": {
+      "kind": "dock"
+     },
+     "hl": []
+    }
+   ],
+   "interactions": [
+    "R",
+    "sn",
+    "refit",
+    "truth"
+   ],
+   "copyRef": "B13",
+   "shells": "all",
+   "spec": {
+    "mode": "fit",
+    "R": 30000,
+    "sn": 10
+   },
+   "ui": {
+    "inset": 1
+   },
+   "quality": "stop"
+  },
+  {
+   "id": "B14",
+   "watch_s": 17.5,
+   "p0": 0.965,
+   "p1": 1.0,
+   "kind": "still",
+   "l0": 246.35,
+   "l1": 246.35,
+   "ion": "OVI",
+   "shot": "yours",
+   "tf": [
+    {
+     "u": 0,
+     "preset": "phases",
+     "darkSky": true
+    }
+   ],
+   "dock": "hero",
+   "fields": [
+    {
+     "name": "T",
+     "level": "L0"
+    },
+    {
+     "name": "nH",
+     "level": "L0"
+    }
+   ],
+   "lead": 0.02,
+   "textBand": "text",
+   "text": [
+    {
+     "id": "B14",
+     "band": "text",
+     "part": "all",
+     "u0": 0.35,
+     "u1": 1.0,
+     "fadeOut": 0,
+     "words": 24
+    },
+    {
+     "id": "B14.1",
+     "band": "text",
+     "part": "all",
+     "u0": 0.35,
+     "u1": 1.0,
+     "cond": "lite",
+     "fadeOut": 0,
+     "alt": true,
+     "words": 20
+    }
+   ],
+   "eqs": [],
+   "interactions": [
+    "R",
+    "sn",
+    "ion",
+    "picker",
+    "openSpectra",
+    "see3d",
+    "replay",
+    "explore"
+   ],
+   "copyRef": "B14",
+   "shells": "all",
+   "spec": {
+    "mode": "explore",
+    "R": 30000,
+    "sn": 10
+   },
+   "ui": {
+    "inset": 1
+   },
+   "quality": "stop"
+  }
+ ]
+}

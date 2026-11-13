@@ -68,6 +68,45 @@ function render(ctx, state, t, data) {
   }
 }
 function ready(data) { K.tauCache(data, K.LEAD); K.picks(data); }
+
+/* ---- v2 dock mode "intrinsic" (DESIGN_final §5.4): the same lesson ("shadows add up") live along the flight ----------
+   A = panel axes map (plot.js axesMap), pe = {model, ion, role, T}: model.ions[ion] = {tau, prev, cell} from the dock's
+   frame model (τ(s) = Σ W_i(s) τ_i, stateless). Draws the light getting through, the depth gained over the last few kpc
+   (burn shine) and the probe cell's own share; role "spark" draws the other ion as a 3 px barcode. Pure. */
+const VGRID = new WeakMap();
+function gridV(S) { let v = VGRID.get(S); if (!v) { v = Float64Array.from({length: S.N}, (_, j) => S.grid0 + j); VGRID.set(S, v); } return v; }
+export function fillBetween(A, v, ya, yb, color, alpha) {
+  const c = A.ctx, b = A.box; c.save(); c.beginPath(); c.rect(b.x, b.y - 1, b.w, b.h + 2); c.clip();
+  c.beginPath(); let first = -1, last = -1;
+  for (let i = 0; i < v.length; i++) { if (v[i] < A.v0 || v[i] > A.v1) continue; const X = A.X(v[i]), Y = A.Y(ya(i)); if (first < 0) { c.moveTo(X, Y); first = i; } else c.lineTo(X, Y); last = i; }
+  if (first < 0) { c.restore(); return; }
+  for (let i = last; i >= first; i--) c.lineTo(A.X(v[i]), A.Y(yb(i)));
+  c.closePath(); c.globalAlpha *= alpha; c.fillStyle = color; c.fill(); c.restore();
+}
+export function dockSum(A, pe) {
+  const I = pe.model && pe.model.ions[pe.ion], S = pe.T && pe.T[pe.ion]; if (!I || !S) return;
+  const v = gridV(S), col = K.ionColor(pe.ion), tau = I.tau, prev = I.prev;
+  if (pe.role === "spark") {   // 3 px barcode of the other ion: darkness = light taken
+    const c = A.ctx, b = A.box; c.save();
+    for (let j = 0; j < v.length; j++) { if (v[j] < A.v0 || v[j] > A.v1) continue; const d = 1 - Math.exp(-tau[j]); if (d < 0.01) continue;
+      c.globalAlpha = Math.min(1, 0.15 + d); c.fillStyle = col; c.fillRect(A.X(v[j] - 0.5), b.y, Math.max(1, A.X(v[j] + 0.5) - A.X(v[j] - 0.5)), b.h); }
+    c.restore(); return;
+  }
+  const F = i => Math.exp(-tau[i]);
+  K.shade(A, v, F, {color: col, alpha: 0.16});
+  // burn shine: what the last few kpc added (stateless: τ(s) − τ(s − δ))
+  fillBetween(A, v, i => Math.exp(-prev[i]), F, K.COL.beam, 0.22);
+  K.curve(A, v, i => Math.exp(-prev[i]), {color: K.COL.beam, width: 1, alpha: 0.35, dash: [2, 3]});
+  // the probe cell's own share (W_i(s) τ_i): accent band between e^−(τ − W τ_i) and e^−τ
+  if (I.cell) {
+    const ci = I.cell.idx, w = I.cell.w, st = S.csr.start[ci], L = S.csr.len[ci], o = S.csr.ptr[ci];
+    if (L > 0) {
+      const part = i => (i >= st && i < st + L ? w * S.csr.vals[o + i - st] : 0);
+      fillBetween(A, v, i => Math.exp(-(tau[i] - part(i))), F, K.COL.accent, 0.6);
+    }
+  }
+  K.curve(A, v, F, {color: col, width: 2.2, glow: 6});
+}
 const controls = {view: {label: "show", options: ["light", "tau"]}, tap: {label: "tap a dip", kind: "tapV"}};
 const scene = {id: "sum", chapter: "sum", steps: STEPS, scrub: ["sum-1"], defaults: {}, controls, ready, render,
   handoff: {ions: ["OVI"], layout: "1", R: [30000, 30000], sn: [10, 10], intr: true}};

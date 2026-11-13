@@ -4,147 +4,537 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=1920, height=1080" />
 <meta name="robots" content="noindex" />
-<title>How a spectrum is made (render)</title>
+<title>How a spectrum is made (film)</title>
 <!--
-  HyperFrames composition for the film (PLAN_final section 5). Generated outputs only: never hand-edit the MP4.
-  data-duration is stamped from steps.json by `node scripts/story_vtt.mjs --stamp` (film cut here; other cuts
-  are written to build/render_<cut>.html). This page ignores the URL fragment and localStorage; the story
-  engine is created in mode "render" with captions off (soft VTT captions ride on the MP4 instead).
-  Galaxy and sightline come from the query (?g=&ray=) or HyperFrames variables (default 488530 / rand_b062_a062);
-  any galaxy of the 198 that has data/story_<g>_<ray>.json renders the same film.
+  The film of the v2 story (DESIGN §11, DESIGN_final §5.9; owner brief item 7). A HyperFrames composition and a CDP frame
+  source (scripts/story_stills.mjs): both call window.__film.renderT(t). Nothing here draws its own physics or its own 3D:
+  every frame is seek(p) (js/core/seek.js over beats.json + shots.json) -> the 3D stage (js/stage/stage.js) -> the shell's
+  kinetic text, plaque and solver (js/ui/hud.js) -> the equations overlay (js/eq/equations.js) -> the spectrum dock.
+  film.json picks the p range (whole beats) of each chunk, its duration, a transfer-function override, and the caption
+  that names the parameter the chunk isolates (copy.json film.captions). Generated outputs only: never hand-edit the MP4.
+
+  Deterministic frames (G8): every field the film uses is resident (L0 + L1) before frame 0; each output frame is a decoy
+  pass + K accumulation passes with the stage's 64-frame jitter phase aligned to the frame index, the governor off and a
+  fixed volume scale; no browser clock, transitions or animations; the noise seed comes from seek (B12b).
+
+  Query / HyperFrames variables: g, ray, cut ("film" | "beams"), viz (manifest_v2 URL of the cubes; default the repo
+  manifest), three (URL of three.module.min.js 0.169; default the explorer's CDN pin with SRI), burn (chunk captions;
+  default on, as designed), requireGpu (fail on a software GL renderer), layers ("all" | "stage": the 3D only, for the
+  AVIF stills), w, h (viewport), K (accumulation passes), scale (volume target), quality (stage quality ladder).
+
+  The spectrum dock is U_spec's (js/spectrum/dock.js createDock); until it exists this page draws a film dock from the
+  verified v1 physics in js/plot.js (per-cell Voigt tau, the yt kernel CDF of story-data/2 for the partial cells, the
+  explorer's degradeV for R and S/N): same numbers, plainer look. When the integrator's js/main.js exports createScene(),
+  this page uses it and only maps film time to p.
 -->
 <script>
-  // HyperFrames serves the composition from the project root (docs/tng50), not from its own folder, so every
-  // relative URL (steps.json, css, js, data) is anchored here. Served from its real path (preview, http.server)
-  // the page keeps its own folder.
-  (function () {
-    var p = location.pathname, k = p.indexOf("/how-a-spectrum-is-made/");
-    var href = k >= 0 ? p.slice(0, k) + "/how-a-spectrum-is-made/" : (document.documentElement.getAttribute("data-story-root") || "/learn/how-a-spectrum-is-made/");
-    var b = document.createElement("base"); b.href = location.origin + href; document.head.prepend(b);
-    // the stylesheet is added here, after <base>: a static <link> gets its href rewritten by the render server
-    // (doubled learn/... path, 404 in M1's log)
-    var l = document.createElement("link"); l.rel = "stylesheet"; l.href = "css/story.css";
-    window.__storyCss = new Promise(function (ok, no) { l.onload = ok; l.onerror = function () { no(new Error(l.href + " did not load")); }; });
-    document.head.appendChild(l);
-  })();
+// HyperFrames serves the project root (docs/tng50); anchor every relative URL at the story folder (v1 rule, kept).
+(function () {
+  var p = location.pathname, k = p.indexOf("/how-a-spectrum-is-made/");
+  var href = k >= 0 ? p.slice(0, k) + "/how-a-spectrum-is-made/" : (document.documentElement.getAttribute("data-story-root") || "/learn/how-a-spectrum-is-made/");
+  var b = document.createElement("base"); b.href = location.origin + href; document.head.prepend(b);
+  // three.js: the explorer's pin by default; a render node without network passes ?three=<local copy> (story_render.sbatch)
+  var q = new URLSearchParams(location.search), pin = "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js";
+  var map = {imports: {three: q.get("three") || pin}};
+  if (!q.get("three")) { map.integrity = {}; map.integrity[pin] = "sha384-eCdgjbMm+jekI8fyaeCZ4Pnyg5k4Jn45w2qs3lfnAd5ES5IO4hKOXNisVBTyUzDO"; }
+  var im = document.createElement("script"); im.type = "importmap"; im.textContent = JSON.stringify(map); document.head.appendChild(im);
+  // stylesheets after <base> (a static <link> gets its href rewritten by the render server: v1 M1 log)
+  window.__storyCss = Promise.all(["css/story.css", "css/story2.css"].map(function (h) {
+    return new Promise(function (res) { var l = document.createElement("link"); l.rel = "stylesheet"; l.href = h; l.onload = res; l.onerror = res; document.head.appendChild(l); });
+  }));
+})();
 </script>
 <style>
-  /* the vendored faces, declared here too so the renderer's static font check sees them (story.css is added by script) */
-  @font-face{font-family:"Space Grotesk";font-style:normal;font-weight:300 700;font-display:swap;src:url(vendor/space-grotesk-latin.woff2) format("woff2");
-  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-  @font-face{font-family:"Space Grotesk";font-style:normal;font-weight:300 700;font-display:swap;src:url(vendor/space-grotesk-latin-ext.woff2) format("woff2");
-  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
-  @font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(vendor/jetbrains-mono-latin.woff2) format("woff2");
-  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-  @font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(vendor/jetbrains-mono-latin-ext.woff2) format("woff2");
-  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
-  @font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:100 800;font-display:swap;src:url(vendor/jetbrains-mono-greek.woff2) format("woff2");
-  unicode-range:U+0370-0377,U+037A-037F,U+0384-038A,U+038C,U+038E-03A1,U+03A3-03FF}
-  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #05070c; }
-  #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
-  #stage { position: absolute; inset: 0; width: 1920px; height: 1080px; }
-  /* caption layer hidden unless burn is on (rows.json: the 16:9 film burns its display lines; soft VTT rides along) */
-  #root [data-layer="caption"], #root .story-caption, #root .caption { display: none !important; }
-  #root.burn [data-layer="caption"], #root.burn .story-caption { display: block !important; }
-  /* nothing runs on the browser clock in a render: story.css transitions are switched off here */
+  /* the film's faces, declared here as well as in css/story*.css so the renderer sees them up front (vendored, SIL OFL) */
+  @font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 300 700; font-display: block; src: url(vendor/space-grotesk-latin.woff2) format("woff2"); }
+  @font-face { font-family: "Newsreader"; font-style: normal; font-weight: 400; font-display: block; src: url(vendor/newsreader/newsreader-display-latin.woff2) format("woff2"); }
+  @font-face { font-family: "Newsreader"; font-style: italic; font-weight: 400; font-display: block; src: url(vendor/newsreader/newsreader-display-latin-italic.woff2) format("woff2"); }
+  @font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 100 800; font-display: block; src: url(vendor/jetbrains-mono-latin.woff2) format("woff2"); }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #04050a; }
+  /* nothing runs on the browser clock in a render */
   *, *::before, *::after { transition: none !important; animation: none !important; }
-  #burn { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); width: 1400px; text-align: center;
-          font: 300 44px/1.25 "Space Grotesk", system-ui, sans-serif; color: #f4f1ea; text-shadow: 0 2px 12px rgba(0,0,0,.8); }
-  #fail { position: absolute; inset: 0; display: none; color: #ff6b6b; font: 32px/1.4 monospace; padding: 80px; white-space: pre-wrap; }
+  #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+  #root #stage { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #stage canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* scroll chrome has no place in a film: chapter chip, menu, rail, hint, sheets */
+  #root #act-chip, #root #menu-btn, #root #rail, #root #hint, #root #sheets { display: none !important; }
+  #root #dock { pointer-events: none; }
+  #dockcv { position: absolute; left: 0; top: 0; pointer-events: none; }
+  #cap { position: absolute; left: 0; top: 0; font: 300 30px/1.2 "Space Grotesk", system-ui, sans-serif; letter-spacing: .01em;
+         color: #f4f1ea; opacity: 0; white-space: nowrap; text-shadow: 0 2px 14px rgba(0,0,0,.85); }
+  #cap b { font-weight: 500; color: #ffd9b8; }
+  #card { position: absolute; inset: 0; display: none; place-items: center; background: #04050a; color: #f4f1ea; text-align: center; }
+  #card > div { position: absolute; left: 50%; top: 50%; width: 1600px; transform-origin: 50% 50%; }   /* laid out at film size, then scaled to fit */
+  #card .t { font: 400 64px/1.1 Newsreader, Georgia, serif; }
+  #card .u { margin-top: 24px; font: 400 24px/1.3 "JetBrains Mono", monospace; color: #c9c6d8; }
+  #card .hh { margin-top: 44px; font: 500 15px/1 "Space Grotesk", system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: #8d8aa0; }
+  #card .h { margin: 16px auto 0; max-width: 1500px; font: 400 18px/1.45 "Space Grotesk", system-ui, sans-serif; color: #a9a6b8; text-align: left; columns: 2; column-gap: 48px; }
+  #card .h p { margin: 0 0 6px; break-inside: avoid; }
+  #fade { position: absolute; inset: 0; background: #04050a; opacity: 0; pointer-events: none; }
+  #fail { position: absolute; inset: 0; display: none; color: #ff6b6b; background: #04050a; font: 24px/1.4 monospace; padding: 80px; white-space: pre-wrap; z-index: 99; }
+  html.stage-only #labels, html.stage-only #kinetic, html.stage-only #dock, html.stage-only #hud, html.stage-only #cap,
+  html.stage-only #eqlayer, html.stage-only #world, html.stage-only #card, html.stage-only #fade { display: none !important; }
 </style>
 </head>
 <body>
-<div id="root" data-composition-id="spectrum-story" data-start="0" data-duration="131"
-     data-width="1920" data-height="1080" data-fps="30" data-no-timeline data-cut="film"
-     data-composition-variables='[{"id":"g","type":"string","label":"Galaxy","default":"tng50-1-99-488530"},{"id":"ray","type":"string","label":"Sightline","default":"rand_b062_a062"},{"id":"burn","type":"boolean","label":"Burn captions","default":false}]'>
-  <div id="stage" class="clip story-stage" data-start="0" data-duration="131" data-track-index="0"
-       data-layout-allow-overflow aria-hidden="true"></div>
-  <div id="burn" class="story-caption" aria-hidden="true"></div>
+<div id="root" data-composition-id="spectrum-story" data-start="0" data-duration="176" data-width="1920" data-height="1080" data-fps="30"
+     data-no-timeline data-cut="film"
+     data-composition-variables='[{"id":"g","type":"string","label":"Galaxy","default":"488530"},{"id":"ray","type":"string","label":"Sightline","default":"rand_b062_a062"},{"id":"cut","type":"string","label":"Cut","default":"film"},{"id":"viz","type":"string","label":"Cube manifest URL","default":""},{"id":"burn","type":"boolean","label":"Burn chunk captions","default":true},{"id":"requireGpu","type":"boolean","label":"Fail on software GL","default":false}]'>
+  <main id="stage" class="clip story-stage film" data-start="0" data-duration="176" data-track-index="0" data-layout-allow-overflow aria-hidden="true">
+    <canvas id="gl"></canvas>
+    <svg id="world" aria-hidden="true"></svg>
+    <div id="labels"></div>
+    <div id="eqlayer"></div>
+    <div id="kinetic" aria-hidden="true"></div>
+    <section id="dock" aria-label="Spectrum"><canvas id="dockcv"></canvas></section>
+    <div id="hud">
+      <button id="act-chip" class="hud-pill" type="button"><span class="act-l"></span></button>
+      <button id="phase-pill" class="hud-pill" type="button" hidden></button>
+      <button id="menu-btn" class="hud-btn" type="button"></button>
+      <div id="hint" hidden></div>
+    </div>
+    <nav id="rail"></nav>
+    <div id="sheets"><div id="menu-sheet" hidden></div></div>
+    <ol id="narrative" hidden></ol>
+    <section id="text-overlay" hidden></section>
+    <div id="live" hidden></div>
+  </main>
+  <div id="cap" aria-hidden="true"></div>
+  <div id="card" aria-hidden="true"><div><div class="t"></div><div class="u"></div><div class="hh"></div><div class="h"></div></div></div>
+  <div id="fade"></div>
   <pre id="fail"></pre>
 </div>
 <script type="module">
-const root = document.getElementById("root");
-const stage = document.getElementById("stage");
-const FPS = Number(root.dataset.fps);
-const CUT = root.dataset.cut;
-const hf = window.__hyperframes;
-
+const root = document.getElementById("root"), failEl = document.getElementById("fail");
+const fail = msg => { failEl.textContent = "render.html: " + msg; failEl.style.display = "block"; throw new Error(msg); };
+const Q = new URLSearchParams(location.search);
+const hf = window.__hyperframes || null;
 function vars() {
-  const d = Object.fromEntries(JSON.parse(root.dataset.compositionVariables || "[]").map((x) => [x.id, x.default]));
-  let v = {};
-  try { v = (hf && hf.getVariables && hf.getVariables()) || {}; } catch { v = {}; }
-  const q = new URLSearchParams(location.search);
-  return { g: q.get("g") || v.g || d.g, ray: q.get("ray") || v.ray || d.ray, burn: q.has("burn") || v.burn === true || d.burn === true };
+  const d = Object.fromEntries(JSON.parse(root.dataset.compositionVariables || "[]").map(x => [x.id, x.default]));
+  const v = hf && hf.getVariables ? {...d, ...hf.getVariables()} : d;
+  const b = (k, x) => (Q.has(k) ? Q.get(k) !== "0" && Q.get(k) !== "false" : x);
+  return {g: Q.get("g") || v.g, ray: Q.get("ray") || v.ray, cut: Q.get("cut") || v.cut || "film", viz: Q.get("viz") || v.viz || "",
+          burn: b("burn", v.burn !== false), requireGpu: b("requireGpu", !!v.requireGpu), layers: Q.get("layers") || "all",
+          w: +(Q.get("w") || 1920), h: +(Q.get("h") || 1080), scale: Q.has("scale") ? +Q.get("scale") : null, K: Q.has("K") ? +Q.get("K") : null,
+          quality: Q.get("quality") || null};
 }
+const get = async u => { const r = await fetch(u, {cache: "no-store"}); if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`); return r.json(); };
+const getBin = async (u, gz) => { const r = await fetch(u, {cache: "no-store"}); if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`);
+  if (!gz) return r.arrayBuffer(); return new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer(); };
+const smoother = x => { const t = x < 0 ? 0 : x > 1 ? 1 : x; return t * t * t * (t * (6 * t - 15) + 10); };
+const clamp01 = x => (x < 0 ? 0 : x > 1 ? 1 : x);
 
-function fail(msg) {
-  const el = document.getElementById("fail");
-  el.textContent = "render.html: " + msg; el.style.display = "block";
-  throw new Error(msg);
-}
-
-// Engine (U1, js/engine.js): createEngine(opts) -> {ready(), seek(t), duration}. seek is pure in t and never fits.
-const FONTS = ['300 32px "Space Grotesk"', '400 32px "Space Grotesk"', '500 32px "Space Grotesk"', '700 32px "Space Grotesk"',
-               '400 32px "JetBrains Mono"', '500 32px "JetBrains Mono"'];
-// The render server may inline or move stylesheets, which breaks url(../vendor/...) in story.css. Re-register every
-// @font-face of story.css through the FontFace API with URLs resolved against the stylesheet itself, and load them all.
-async function loadFaces() {
-  const cssUrl = new URL("css/story.css", document.baseURI);
-  const r = await fetch(cssUrl); if (!r.ok) fail(`${cssUrl}: HTTP ${r.status}`);
-  const css = await r.text(), faces = [];
-  for (const m of css.matchAll(/@font-face\s*\{([^}]*)\}/g)) {
-    const d = (k) => { const x = new RegExp(k + "\\s*:\\s*([^;]+)").exec(m[1]); return x ? x[1].trim() : undefined; };
-    const fam = (d("font-family") || "").replace(/["']/g, ""), src = /url\(([^)]+)\)/.exec(d("src") || "");
-    if (!fam || !src) continue;
-    const url = new URL(src[1].replace(/["']/g, ""), cssUrl).href;
-    const desc = { weight: d("font-weight") || "400", style: d("font-style") || "normal", display: "block" };
-    if (d("unicode-range")) desc.unicodeRange = d("unicode-range");
-    const ff = new FontFace(fam, `url(${url}) format("woff2")`, desc);
-    document.fonts.add(ff); faces.push(ff.load());
+/* ------------------------------------------------------------------ film timeline (scripts/story_vtt.mjs mirrors it) */
+function filmTimeline(film, beats, cut = "film") {
+  const B = new Map(beats.map(b => [b.id, b])), fps = film.fps || 30, R = film.render || {};
+  const C = film.cuts && film.cuts[cut];
+  if (!C) throw new Error(`film.json has no cut "${cut}"`);
+  const pick = C.chunks === "all" || !C.chunks ? film.chunks : film.chunks.filter(c => C.chunks.includes(c.id));
+  let f = 0; const chunks = [];
+  for (const c of pick) {
+    const bs = c.beats.map(id => B.get(id)); if (bs.some(x => !x)) throw new Error(`chunk ${c.id}: unknown beat in ${c.beats}`);
+    const n = Math.round(c.s * fps); if (Math.abs(n / fps - c.s) > 1e-6) throw new Error(`chunk ${c.id}: ${c.s} s is not a whole number of frames`);
+    // the chunk's beats keep their Watch proportions (beats.json watch_s: reading time), scaled to the chunk's length
+    // inside a beat the camera dwells where a text line is up (weight 1 + dwell) and moves on between lines
+    const ws = bs.map(b => Math.max(0.1, +b.watch_s || (b.p1 - b.p0) * 300)), wt = ws.reduce((a, x) => a + x, 0), dwell = R.dwell ?? 3;
+    let acc = 0; const knots = [{x: 0, p: bs[0].p0}];
+    bs.forEach((b, i) => {
+      const win = (b.text || []).filter(t => !t.when || t.when === "default").map(t => [Math.max(0, t.u0), Math.min(1, t.u1)]);
+      const cuts = [...new Set([0, 1, ...win.flat()])].sort((x, y) => x - y);
+      const seg = cuts.slice(1).map((u1, k) => { const u0 = cuts[k], m = (u0 + u1) / 2; return {u1, w: (u1 - u0) * (1 + (win.some(([a, z]) => m > a && m < z) ? dwell : 0))}; });
+      const sw = seg.reduce((a, x) => a + x.w, 0) || 1;
+      for (const g of seg) { acc += ws[i] / wt * g.w / sw; knots.push({x: acc, p: b.p0 + (b.p1 - b.p0) * g.u1}); }
+    });
+    chunks.push({...c, p0: bs[0].p0, p1: bs[bs.length - 1].p1, f0: f, f1: f + n, frames: n, knots});
+    f += n;
   }
-  if (!faces.length) fail("css/story.css declares no @font-face");
-  await Promise.all(faces);
+  return {fps, frames: f, duration: f / fps, chunks, hold: R.hold_s ?? 1.6, fade: R.fade_s ?? 0.4, capS: R.caption_s ?? 2.4, ease: R.ease ?? 0.15};
 }
+/* travel fraction x (0..1) -> story position p: velocity ramps up over the first `ease` of the travel and down over the
+   last (smoothstep velocity), constant between; then the Watch-proportional knots of the chunk's beats */
+function travelP(TL, c, x) {
+  const e = Math.min(0.49, Math.max(1e-3, TL.ease)), S = t => t * t * t - t * t * t * t / 2, A = 1 - e;
+  x = x < 0 ? 0 : x > 1 ? 1 : x;
+  const pos = (x < e ? e * S(x / e) : x <= 1 - e ? e / 2 + (x - e) : A - e * S((1 - x) / e)) / A;
+  const K = c.knots; let i = 1; while (i < K.length - 1 && pos > K[i].x) i++;
+  const a = K[i - 1], b = K[i], t = (pos - a.x) / Math.max(1e-12, b.x - a.x);
+  return Math.min(c.p1 - 1e-6 * (c.p1 - c.p0), a.p + (b.p - a.p) * (t < 0 ? 0 : t > 1 ? 1 : t));
+}
+/* frame index -> {chunk, k, t, u (0..1 of the travel, eased), p, fade (0 clear .. 1 black), cap (caption opacity)} */
+function filmFrame(TL, fr) {
+  fr = Math.max(0, Math.min(TL.frames - 1, fr));
+  const k = TL.chunks.findIndex(c => fr >= c.f0 && fr < c.f1), c = TL.chunks[k];
+  const t = (fr - c.f0) / TL.fps, s = c.frames / TL.fps;
+  const travel = Math.max(1e-6, s - (c.card ? 0 : TL.hold)), u = clamp01(t / travel);
+  const p = travelP(TL, c, u);
+  const fin = k === 0 ? 0 : 1 - clamp01(t / TL.fade), fout = k === TL.chunks.length - 1 ? 0 : clamp01((t - (s - TL.fade)) / TL.fade);
+  const cap = c.card ? 0 : clamp01((t - (s - TL.capS)) / 0.35) * (1 - clamp01((t - (s - TL.fade)) / TL.fade));
+  return {chunk: c, k, t, u, p, fade: Math.max(fin, fout), cap};
+}
+/* chunk TF override at u: "preset" | [{u, preset}] | null -> {from, to, mix} | null */
+function chunkTF(spec, u) {
+  if (!spec) return null;
+  if (typeof spec === "string") return {from: spec, to: spec, mix: 0};
+  let i = 0; while (i < spec.length - 1 && u >= spec[i + 1].u) i++;
+  const a = spec[i], b = spec[i + 1];
+  if (!b || a.preset === b.preset) return {from: a.preset, to: a.preset, mix: 0};
+  return {from: a.preset, to: b.preset, mix: smoother((u - a.u) / Math.max(1e-9, b.u - a.u))};
+}
+/* beats.json names presets the stage does not have (integration finding, U_film report): map them, never crash */
+const TF_ALIAS = {HI: "ion:HI", OVI: "ion:OVI", composite: "phases", temperature: "phases"};
+const aliasTF = tf => ({...tf, from: TF_ALIAS[tf.from] || tf.from, to: TF_ALIAS[tf.to] || tf.to});
 
 async function boot() {
-  const v = vars();
-  if (v.burn) root.classList.add("burn");
-  const get = async (u) => { const r = await fetch(u, { cache: "no-store" }); if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`); return r.json(); };
-  const [doc, schema] = await Promise.all([get("steps.json"), get("steps.schema.json").catch(() => null)]);
-  const mod = await import("./js/engine.js");
-  if (typeof mod.createEngine !== "function") fail("js/engine.js does not export createEngine()");
-  const eng = await mod.createEngine({ doc, schema, stage, width: 1920, height: 1080, dpr: 1, mode: "render", cut: CUT,
-    query: { g: v.g, ray: v.ray }, reduced: false, layout: "land", physics: false, fonts: FONTS });
-  // burned display lines sit in a band at the bottom: keep the plots' axis titles above it
-  if (v.burn && eng.setEnv) eng.setEnv({ safe: { b: 250 } });
-  await loadFaces();
-  await window.__storyCss.catch((e) => fail(e.message));
-  await eng.ready();
-  await Promise.all(FONTS.map((f) => document.fonts.load(f)));
-  await document.fonts.ready;
-  // fonts.check() is true for undeclared families too, so require a loaded FontFace of each vendored family
-  const loaded = new Set([...document.fonts].filter((f) => f.status === "loaded").map((f) => f.family.replace(/["']/g, "")));
-  for (const f of ["Space Grotesk", "JetBrains Mono"]) if (!loaded.has(f)) fail(`font ${f} not loaded (css/story.css or vendor/ woff2 not reachable from ${document.baseURI})`);
-  const missing = eng.missingKeys ? eng.missingKeys() : [];
-  if (missing.length) fail("unresolved {{key}} in steps.json:\n" + missing.join("\n"));
-  const want = Number(root.dataset.duration);
-  if (Math.abs(eng.duration - want) > 0.5 / FPS) fail(`engine says the ${CUT} cut is ${eng.duration} s, render.html says ${want} s; run node scripts/story_vtt.mjs --stamp`);
-  await eng.seek(0);
-  window.__story = eng;
-  return eng;
+  const V = vars();
+  if (V.layers === "stage") document.documentElement.classList.add("stage-only");
+  if (V.w !== 1920 || V.h !== 1080) for (const el of [document.documentElement, document.body, root]) { el.style.width = V.w + "px"; el.style.height = V.h + "px"; }
+  await window.__storyCss;
+  const [film, beatsDoc, shotsDoc] = await Promise.all([get("film.json"), get("beats.json"), get("shots.json")]);
+  // keys resolved in node by story_vtt.mjs --stamp (the copy lint's own renderer); raw copy.json is the fallback
+  const copy = await get("build/film_copy.json").catch(() => get("copy.json"));
+  const TL = filmTimeline(film, beatsDoc.beats, V.cut);
+  if (V.cut === "beams" && !(film.cuts.beams && film.cuts.beams.enabled)) fail("the beams cut is disabled in film.json (its shots and captions are bound to the hero ray; see film.json cuts.beams.about)");
+  const want = Math.round(+root.dataset.duration * TL.fps);
+  if (V.cut === "film" && want !== TL.frames) fail(`data-duration ${root.dataset.duration} s != film ${TL.duration} s: run node scripts/story_vtt.mjs --stamp`);
+
+  // data: story-data/2 plus the decoded stored line (observed spectra), page fits and f_ion slice, as the page loads them
+  const E = await import("./js/engine.js");
+  const {data} = await E.loadStoryData(document.baseURI, V.g, V.ray);
+  if (!data.meta || data.meta.schema !== "story-data/2") fail("story data is not story-data/2 (U_data): " + (data.meta && data.meta.schema));
+  const [{makeSeek}, plot, fitjs] = await Promise.all([import("./js/core/seek.js"), import("./js/plot.js"), import("../../js/fit.js")]);
+  const seek = makeSeek({beats: beatsDoc, shots: shotsDoc});
+
+  // the integrator's scene, when it exists, wins (the page's own code); otherwise this page composes the same modules
+  let scene = null;
+  try { const M = await import("./js/main.js"); if (typeof M.createScene === "function") scene = await M.createScene({root: document.getElementById("stage"), mode: "render", data, film, width: V.w, height: V.h}); }
+  catch (e) { scene = null; }
+  if (!scene) scene = await composeScene({V, film, data, copy, beatsDoc, shotsDoc, plot, fitjs});
+  await scene.ready();
+  if (V.requireGpu && scene.software) fail(`software GL renderer (${scene.renderer}); this render needs the GPU`);
+
+  const capEl = document.getElementById("cap"), fadeEl = document.getElementById("fade"), card = document.getElementById("card");
+  const captions = (copy.film && copy.film.captions) || {};
+  const esc = s => String(s).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+  const capHtml = id => { const s = captions[id] || ""; const i = s.indexOf(":"); return i > 0 ? `<b>${esc(s.slice(0, i))}</b>${esc(s.slice(i))}` : esc(s); };
+  // end card: title, URL, the honest-simplification list (DESIGN_final §3.7 "film end card")
+  { const url = (copy.film && copy.film.url) || "tanmay-starslab.github.io/cgm-absorber-requirements/tng50/learn/how-a-spectrum-is-made/";
+    card.querySelector(".t").textContent = (copy.film && copy.film.end_card_title) || "How a spectrum is made";
+    card.querySelector(".u").textContent = url;
+    card.querySelector(".hh").textContent = (copy.film && copy.film.honesty_heading) || "What we simplified";
+    card.querySelector(".h").innerHTML = (copy.honesty || []).filter(s => !/\{\{/.test(s)).map(s => `<p>${esc(s)}</p>`).join(""); }
+
+  let lastInfo = null;
+  async function renderFrame(fr) {
+    const F = filmFrame(TL, fr), c = F.chunk;
+    const fs = seek(F.p, data, {});
+    const o = chunkTF(c.tf, F.u);           // chunk transfer-function override (film.json)
+    fs.tf = o ? {...fs.tf, ...o} : aliasTF(fs.tf);
+    await scene.frame(fs, {index: fr, chunk: c, u: F.u});
+    const cardOn = !!c.card && V.layers !== "stage";
+    card.style.display = cardOn ? "grid" : "none";
+    // fit the card to the frame: the §3.7 list grew to 16 items and overflowed 1080 px at the plain 1920x1080 scale
+    if (cardOn) { const box = card.firstElementChild, bw = box.offsetWidth || 1, bh = box.offsetHeight || 1;
+      box.style.transform = `translate(-50%, -50%) scale(${Math.min(V.w / 1920, V.h / 1080, 0.92 * V.w / bw, 0.92 * V.h / bh).toFixed(4)})`; }
+    if (cardOn) card.style.opacity = clamp01(F.t / 0.6).toFixed(3);
+    if (V.burn && V.layers !== "stage" && F.cap > 0) {
+      const h = capHtml(c.id); if (capEl.innerHTML !== h) capEl.innerHTML = h;
+      const r = scene.captionAnchor();
+      capEl.style.transform = `translate3d(${Math.round(r.x)}px,${Math.round(r.y + (1 - F.cap) * 10)}px,0)`;
+      capEl.style.opacity = F.cap.toFixed(3);
+    } else capEl.style.opacity = "0";
+    fadeEl.style.opacity = (V.layers === "stage" ? 0 : F.fade).toFixed(3);
+    lastInfo = {fr, chunk: c.id, p: +F.p.toFixed(6), beat: fs.beat.id, tf: fs.tf, l: +fs.l.toFixed(3), dock: fs.spec.dock, mode: fs.spec.mode, R: fs.spec.R, sn: fs.spec.sn};
+    return lastInfo;
+  }
+  window.__film = {
+    TL, version: 2, renderer: scene.renderer, software: scene.software,
+    renderT: t => renderFrame(Math.round(t * TL.fps)),
+    renderFrame,
+    renderP: async (p, ov = {}) => { const fs = seek(p, data, ov); fs.tf = aliasTF(fs.tf); await scene.frame(fs, {index: 0, still: true}); return {beat: fs.beat.id, l: fs.l}; },
+    info: () => lastInfo, stats: () => scene.stats(),
+  };
+  await renderFrame(0);
+  return window.__film;
 }
 
-const ready = boot();
-ready.catch((e) => { const el = document.getElementById("fail"); el.textContent = "render.html: " + (e && e.stack || e); el.style.display = "block"; });
-// burned captions (vertical cut, or an owner choice): the step's caption at time t, from the same resolver as the VTT
-const burnEl = document.getElementById("burn");
-function burn(eng, t) {
-  if (!root.classList.contains("burn")) return;
-  const L = eng.locate(t), s = L && eng.steps[L.item.index];
-  const txt = s ? eng.text(s.caption ?? s.text) : "";
-  if (burnEl.textContent !== txt) burnEl.textContent = txt;
+/* ------------------------------------------------------------------ the composition (until js/main.js exports createScene) */
+async function composeScene({V, film, data, copy, beatsDoc, shotsDoc, plot, fitjs}) {
+  const T = await import("three");
+  const [{createStage}, {probeGL}, RC, TFS, {loadManifestV2}] = await Promise.all([import("./js/stage/stage.js"), import("./js/stage/glcheck.js"),
+    import("./js/stage/raycells.js"), import("./js/stage/tfstory.js"), import("../../js/vizdata.js")]);
+  const R = film.render || {};
+
+  /* film presets: base preset + overrides, registered on tfstory's PRESETS (tfstory.js itself is not edited) */
+  for (const [id, sp] of Object.entries(film.presets || {})) {
+    if (id === "about" || !sp || !sp.base) continue;
+    const base = TFS.PRESETS[sp.base]; if (!base) fail(`film preset ${id}: unknown base ${sp.base}`);
+    TFS.PRESETS[id] = {...base, ...(sp.gamma != null ? {gamma: sp.gamma} : {}), look: {...base.look, ...(sp.look || {})},
+      state: () => ({...base.state(), ...(sp.state || {}), ...(sp.gamma != null ? {gamma: sp.gamma} : {})})};
+  }
+
+  /* geometry (story-data/2): ray, 672 cells in l order, the yt kernel table resampled onto raycells' (b/h, t) grid */
+  const G = data.geometry, ray = {o: G.ray.p0.map((x, a) => x + G.ray.half * G.ray.n[a]), n: G.ray.n, half: G.ray.half};
+  const C = G.cells, OV = data.ions.OVI.cells;
+  const cells = C.idx.map((i, j) => ({i, idx: i, centre: [C.centre[3 * j], C.centre[3 * j + 1], C.centre[3 * j + 2]], h: C.h[j], d: C.d[j], l: C.lc[j],
+    s_in: C.s_in[j], s_out: C.s_out[j], logT: Math.log10(OV.T[i])}));
+  const K = G.kernel_cdf;
+  const kAt = (q, u) => { const nq = K.q.length, nu = K.u.length;
+    const fq = clamp01(q) * (nq - 1), iq = Math.min(Math.floor(fq), nq - 2), aq = fq - iq;
+    const fu = (Math.max(-1, Math.min(1, u)) + 1) / 2 * (nu - 1), iu = Math.min(Math.floor(fu), nu - 2), au = fu - iu, t = K.table;
+    return (1 - aq) * ((1 - au) * t[iq][iu] + au * t[iq][iu + 1]) + aq * ((1 - au) * t[iq + 1][iu] + au * t[iq + 1][iu + 1]); };
+  { const nb = RC.NB, nt = RC.NT, tab = new Float32Array(nb * nt);
+    for (let ib = 0; ib < nb; ib++) for (let it = 0; it < nt; it++) tab[ib * nt + it] = kAt(ib / (nb - 1), -1 + 2 * it / (nt - 1));
+    RC.setKernelTable(tab); }
+
+  /* tube (story-tube/1: 14 B records in the ray frame) -> the stage's tube object in the disk frame */
+  let tube = null;
+  try {
+    const hdr = await get("data/" + data.tube.path.replace(/\.bin\.gz$/, ".json"));
+    const buf = await getBin("data/" + data.tube.path, true), n = hdr.n, dv = new DataView(buf), st = 14;
+    const lo = hdr.lo, sp = hdr.span, Fr = hdr.frame || G.ray.frame, p0 = G.ray.p0, half = G.ray.half;
+    const f = () => new Float32Array(n), pos = new Float32Array(3 * n), lognH = f(), logT = f(), logZ = f(), req = f(), vlos = f(), l = f(), cloud = new Uint8Array(n);
+    for (let i = 0; i < n; i++) { const o = i * st;
+      const L = lo[0] + dv.getUint16(o, true) / 65535 * sp[0], U = lo[1] + dv.getUint16(o + 2, true) / 65535 * sp[1], S = lo[2] + dv.getUint16(o + 4, true) / 65535 * sp[2];
+      for (let a = 0; a < 3; a++) pos[3 * i + a] = p0[a] + (L + half) * Fr.n[a] + U * Fr.up[a] + S * Fr.side[a];
+      l[i] = L; lognH[i] = dv.getUint8(o + 6) / 255 * 8 - 7; logT[i] = dv.getUint8(o + 7) / 255 * 5 + 3; logZ[i] = dv.getUint8(o + 8) / 255 * 4 - 3;
+      req[i] = 10 ** (dv.getUint8(o + 9) / 255 * 3.5 - 2); cloud[i] = dv.getUint8(o + 12); vlos[i] = dv.getInt8(o + 13) * 4; }
+    tube = {n, pos, lognH, logT, logZ, req, ion: new Uint8Array(n), cloud, vlos, l, hasIon: false};
+  } catch (e) { console.warn("film: no tube", e); }
+
+  /* cubes */
+  const vizUrl = V.viz || new URL("../../data/viz/manifest_v2.json", document.baseURI).href;
+  const manifest = await loadManifestV2(vizUrl), base = new URL(".", vizUrl).href;
+  const gl = probeGL({force3d: true});
+  const canvas = document.getElementById("gl");
+  const scale = V.scale ?? R.scale ?? 1.0;
+  const stage = await createStage({canvas, T, manifest, base, ray, cells, tube, opts: {scale, governor: false, preserve: true, dpr: 1, bloom: true}});
+  stage.setGovernor(false, scale);
+  const renderer = stage.stats.renderer || String(gl.renderer || ""), software = /swiftshader|llvmpipe|software|basic render|lavapipe/i.test(renderer);
+  const NK = Math.max(1, V.K ?? R.accumulate ?? 8), CALLS = NK + 1;
+
+  /* shell (kinetic text, plaque, solver) and equations overlay; each optional: a failure keeps the 3D and the dock */
+  const els = id => document.getElementById(id);
+  let shell = null, bands = null, overlay = null, plaqueRule = null;
+  const live = {};
+  if (V.layers !== "stage") {
+    try { localStorage.setItem("story2.hintSeen", "1"); } catch (e) { /* no storage */ }
+    try {
+      const {createShell, activeText} = await import("./js/ui/hud.js");
+      // the page's plaque rule (main.js plaqueSubject/actTitleUp, fix3 R6/H2), so the film's plaque never contradicts its sentence
+      try { const [{focusStyle}, {copyFlags}] = await Promise.all([import("./js/ui/kinetic.js"), import("./js/copy/derive.js")]);
+        const flags = {...copyFlags(copy, data), ...(data.flags || {})};
+        plaqueRule = {focusStyle, actTitleUp: fs => activeText(fs.text || [], flags).some(t => t.band === "act" && focusStyle(t.phase).opacity > 0.5)};
+      } catch (e) { console.warn("film: plaque rule unavailable (plaque follows the probe)", e); }
+      shell = createShell({root: els("stage"), hud: els("hud"), rail: els("rail"), kinetic: els("kinetic"), labels: els("labels"), sheets: els("sheets"),
+        menuButton: els("menu-btn"), menuSheet: els("menu-sheet"), narrativeList: els("narrative"), live: els("live"), textOverlay: els("text-overlay"),
+        canvas, actChip: els("act-chip"), phasePill: els("phase-pill"), hint: els("hint")},
+        {beats: beatsDoc.beats, copy, data, lookup: null, honesty: copy.honesty || [], clouds: [], lToP: () => 0, hooks: {onLayout: L => { bands = L.bands; }, setScrims: rs => stage.setScrims(rs)}});   // GL scrims follow the placed text, as on the page (main.js)
+    } catch (e) { console.warn("film: shell unavailable", e); shell = null; }
+    try {
+      const EQ = await import("./js/eq/equations.js");
+      overlay = EQ.createOverlay({eq: await EQ.loadEq(), data, fion: data.fion, bus: {emit() {}, publish() {}, send() {}}, root: els("eqlayer")});
+    } catch (e) { console.warn("film: equations unavailable", e); overlay = null; }
+  }
+  await document.fonts.ready;
+
+  /* the page's camera framing (main.js frame): U_motion's lens shift puts the look target in the world band of the solved layout,
+     the keep-in keeps the probe and the selected cell on screen above the dock, and the beam corridor is the whole drawn beam.
+     Without it the film framed every shot at the plain camera centre, unlike the page. */
+  let framing = null;
+  try {
+    const [SH, SK, LCm, HU] = await Promise.all([import("./js/core/shots.js"), import("./js/core/seek.js"), import("./js/ui/layoutclass.js"), import("./js/ui/hud.js")]);
+    const prep = SK.prepare(data, beatsDoc, shotsDoc), cls = LCm.layoutClass(V.w, V.h), Z = {top: 0, right: 0, bottom: 0, left: 0};
+    const bandsFn = (sd, dk) => LCm.computeBands(cls, V.w, V.h, {textSide: sd, dock: dk, insets: Z});
+    const P = l => G.ray.p0.map((x, a) => x + (l + G.ray.half) * G.ray.n[a]);
+    framing = fs => {
+      const kw = SH.keepWeight(beatsDoc.beats, fs.p, fs.l, G.ray.half);
+      const keep = kw > 0 ? {pt: P(fs.l), pts: SH.keepPts(fs, prep.cellPos), marginPx: SH.KEEP_MARGIN_PX, rect: bandsFn(fs.cam.textSide || "left", fs.spec.dock || "strip").world, weight: kw} : null;
+      const view = SH.viewFor(fs.cam, V.w, V.h, bandsFn, {dock: fs.spec.dock, dockFrom: fs.spec.dockFrom, dockMix: fs.spec.dockMix, keep});
+      return {view, offset: SH.threeViewOffset(view), corridor: HU.beamCorridor(fs.cam, view, P, G.ray.half, 13)};
+    };
+  } catch (e) { console.warn("film: page framing unavailable (plain camera centre)", e); framing = null; }
+
+  /* the spectrum dock: U_spec's when present, else v1 physics (plot.js) */
+  let dock = null, LC = null;
+  try {
+    const S = await import("./js/spectrum/dock.js");
+    if (S.createSpectrum) {
+      LC = await import("./js/ui/layoutclass.js");
+      if (!data.clouds_full && data.clouds && data.clouds.path) { try { data.clouds_full = await get("data/" + data.clouds.path); } catch (e) { console.warn("film: no clouds_full", e); } }
+      dock = specDock(S, els("dock"), data);
+      await dock.ready();
+    }
+  } catch (e) { console.warn("film: U_spec dock unavailable, using the v1-physics film dock", e); dock = null; }
+  if (!dock) dock = filmDock({canvas: els("dockcv"), data, cells, plot, fitjs, copy, kAt});
+
+  let readyFields = [], failedFields = [];
+  async function ready() {
+    for (const f of R.fields || ["nH", "T"]) {
+      try { await stage.ready([f], ["L0", "L1"]); readyFields.push(f); } catch (e) { failedFields.push(f + ": " + (e && e.message)); }
+    }
+    for (let i = 0; i < 6000; i++) { const up = stage.core.pump(); if (!up || !up.pending) break; await new Promise(r => setTimeout(r, 0)); }   // setup only, no clock
+  }
+
+  async function frame(fs, meta) {
+    fs.quality = V.quality || R.quality || fs.quality;
+    fs.scrim = V.layers !== "stage";
+    let fr = null;
+    if (framing) { try { fr = framing(fs); stage.cam.setViewOffset(...fr.offset); fs = {...fs, cam: {...fs.cam, fov: fr.view.fov}}; } catch (e) { fr = null; } }
+    // jitter phase: the stage's frame counter mod 64 at this frame's first pass = (CALLS * index) mod 64
+    const want = (CALLS * (meta.index || 0)) % 64;
+    const decoy = {...fs, cam: {...fs.cam, pos: [fs.cam.pos[0], fs.cam.pos[1], fs.cam.pos[2] + 997]}};
+    for (let guard = 0; (stage.stats.frames % 64) !== want && guard < 64; guard++) stage.render(decoy);
+    stage.render(decoy);                       // decoy: the next pass sees a camera jump and restarts the accumulation
+    // K - 1 passes, then the shell (it needs the camera for stage.project and hands this frame's text rects to stage.setScrims),
+    // then the last pass, whose post step applies those scrims. Same pass count (CALLS) as before, so the jitter phase holds.
+    for (let k = 0; k < NK - 1; k++) stage.render(fs);
+    if (V.layers === "stage") { stage.render(fs); return; }
+    let eqItems = [];
+    if (overlay) { try { eqItems = overlay.equations(fs, {cls: bands ? bands.cls : "desktop", live, beats: beatsDoc.beats, maxW: 760}) || []; } catch (e) { eqItems = []; } }
+    const probeP = G.ray.p0.map((x, a) => x + (fs.l + G.ray.half) * G.ray.n[a]);
+    const A = stage.project(probeP.map((x, a) => x - 40 * G.ray.n[a])), B = stage.project(probeP.map((x, a) => x + 60 * G.ray.n[a]));
+    const corridors = fr ? (fr.corridor ? [fr.corridor] : []) : !A.behind && !B.behind ? [{a: [A.x, A.y], b: [B.x, B.y], r: 12}] : [];
+    if (dock.corridors) { try { corridors.push(...dock.corridors(fs)); } catch (e) { /* connector corridors are optional */ } }
+    let solved = null;
+    if (shell) {
+      try {
+        solved = shell.render({...fs, tf: {...fs.tf, from: legendOf(fs.tf.from), to: legendOf(fs.tf.to)}}, {project: p => stage.project(p), corridors, plaque: plaqueAt(fs), eqs: eqItems.map(e => ({...e, id: String(e.id).replace(/^eq:/, "")})),
+          dockKids: dock.kids ? dock.kids(fs) : [], reduced: false, watch: false, paused: false, travelled: Math.max(0, fs.l + G.ray.half), maxKpc: 2 * G.ray.half});
+      } catch (e) { console.warn("film: shell.render", e); }
+    }
+    stage.render(fs);
+    if (overlay && solved) { try { const placed = {}; for (const [k, b] of Object.entries(solved.byId || {})) if (k.startsWith("eq:")) placed[k] = b;
+      overlay.render(fs, placed, {cls: bands ? bands.cls : "desktop", live, beats: beatsDoc.beats}); } catch (e) { /* keep the frame */ } }
+    dock.render(fs, bands && bands.dock ? bands.dock : null, live);
+  }
+  /* the HUD's colour legend knows the story's preset names; film presets show the legend of their base look */
+  const LEGEND = {"ion:HI": "hi", "ion:OVI": "ovi", halo: "density"};
+  const legendOf = id => { const sp = (film.presets || {})[id]; const b = sp && sp.base ? sp.base : id; return LEGEND[b] || b; };
+  const SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+  const fmtE = x => { if (!(x > 0)) return null; const e = Math.floor(Math.log10(x)), m = x / 10 ** e;
+    return `${m.toFixed(1)}×10${(e < 0 ? "⁻" : "") + String(Math.abs(e)).replace(/\d/g, d => SUP[d])}`; };
+  /* as the page (main.js plaqueAt): while an equation bound to a fixed cell is up (B5 E2 on cell 125, B7b on 263, B10 E3 on
+     492) the plaque shows that cell and hangs off it; while an act title is up and no such equation is, the plaque waits */
+  function plaqueAt(fs) {
+    if (!plaqueRule) return plaqueFor(fs);
+    let subj = null, bo = 0.5;
+    for (const e of fs.eqs || []) { const a = e.anchor; if (!a || a.kind !== "cell" || !Number.isFinite(+a.ref)) continue;
+      const o = plaqueRule.focusStyle(e.phase ?? 0).opacity; if (o > bo) { bo = o; subj = +a.ref; } }
+    if (subj == null) return plaqueRule.actTitleUp(fs) ? null : plaqueFor(fs);
+    return plaqueFor({...fs, cell: {idx: subj, w: 0.5}});
+  }
+  function plaqueFor(fs) {
+    // the plaque floats beside the cell the probe is crossing, in flight and stop beats only (not in the cold open or at the telescope)
+    if (!fs.cell || !copy.plaque || !(fs.beat.kind === "flight" || fs.beat.kind === "stop") || !(fs.cell.w > 0.02 && fs.cell.w < 0.98) && fs.beat.kind !== "stop") return null;
+    const i = fs.cell.idx, ion = fs.spec.lead || "OVI", Ci = data.ions[ion] && data.ions[ion].cells; if (!Ci) return null;
+    const P = copy.plaque.physics || {}, Lw = copy.plaque.lay || {}, ionName = ion === "OVI" ? "O VI" : "H I", el = ion === "OVI" ? "oxygen" : "hydrogen";
+    const vals = {nH: fmtE(Ci.nH[i]), T: fmtE(Ci.T[i]), v: (Math.round(Ci.V[i]) < 0 ? "−" : Math.round(Ci.V[i]) > 0 ? "+" : "") + Math.abs(Math.round(Ci.V[i])), f: fmtE(Ci.f_ion[i]), element: el};
+    if (Object.values(vals).some(x => x == null)) return null;
+    const sub = s => String(s || "").replace(/\{\{\$cell\.(\w+)\}\}/g, (m, q) => vals[q] ?? m).replace(/\{\{\$ion\}\}/g, ionName);
+    // the film is the default (lay) layer: symbol + value, then the value's plain unit once (copy.plaque.lay), never both forms
+    const lines = ["nH", "T", "v", "f"].map(k => { const s = sub(P[k] || k), j = s.indexOf(" = "), lay = sub(Lw[k]);
+      return {k: j > 0 ? s.slice(0, j) : s, v: lay || (j > 0 ? s.slice(j + 3) : "")}; });
+    const c = cells.find(x => x.idx === i);
+    return {lines, anchor: c ? c.centre : null};
+  }
+  /* U_spec's live dock (js/spectrum/dock.js createSpectrum) behind the film-dock interface {kids(fs), render(fs), rect(), corridors()}.
+     It is drawn once per frame, before the shell solves (the shell needs its registered children), from the same seek state,
+     with the stage's real projection for the connector and tethers. No worker: the τ caches build synchronously at setup. */
+  function specDock(S, parent, data) {
+    Object.assign(parent.style, {position: "absolute", left: "0", top: "0", width: V.w + "px", height: V.h + "px"});
+    const sp = S.createSpectrum({parent, data, bus: {emit() {}, on() {}, off() {}}, dials: true});
+    const project = p => { const q = stage.project(p); return {x: q.x, y: q.y, ok: !q.behind}; };
+    let lastFs = null, drawn = null;
+    const draw = fs => {
+      if (lastFs === fs) return;
+      lastFs = fs;
+      const last = sp.render(fs, {w: V.w, h: V.h, dpr: 1, cls: LC.layoutClass(V.w, V.h), project});
+      drawn = (last && last.drawn) || (S.dockRects(fs, {w: V.w, h: V.h, dpr: 1, cls: LC.layoutClass(V.w, V.h)}).drawn) || null;
+    };
+    return {kind: "spec", ready: () => sp.ready(),
+            kids(fs) { draw(fs); return sp.kids(); },
+            corridors(fs) { draw(fs); return sp.corridors(); },
+            render(fs) { draw(fs); },
+            rect: () => drawn};
+  }
+  function captionAnchor() { const r = dock.rect && dock.rect(); return r ? {x: r.x + 18, y: r.y - 50} : {x: 96, y: V.h * 0.7}; }
+  return {ready, frame, renderer, software, captionAnchor,
+    stats: () => ({renderer, software, frames: stage.stats.frames, scale: stage.scale, readyFields, failedFields, splats: stage.stats.splats, fields: stage.stats.fields,
+                   upload: stage.stats.upload, shell: !!shell, overlay: !!overlay, dock: dock.kind || "film", bands: bands ? {cls: bands.cls, dock: bands.dock, text: bands.text} : null})};
 }
-hf.registerFrameSource({ element: stage, ready, render: async (t) => { const eng = await ready; await eng.seek(t); burn(eng, t); } });
+
+/* ------------------------------------------------------------------ film dock (v1 physics; replaced by U_spec's dock) */
+function filmDock({canvas, data, cells, plot, fitjs, copy, kAt}) {
+  const g = canvas.getContext("2d");
+  const ION = {OVI: {name: "O VI 1032", col: "#FB7A3C"}, HI: {name: "H I 1216", col: "#9293F8"}};
+  const caches = {OVI: plot.tauCache(data, "OVI"), HI: plot.tauCache(data, "HI")};
+  const v = caches.OVI.v, NV = v.length;
+  /* partial tau: sum_i W_i(s) tau_i(v), W from the yt kernel CDF of story-data/2 (stateless in s: C_eng P0-5) */
+  const W = (s, c) => { const cc = Math.sqrt(Math.max(c.h * c.h - c.d * c.d, 0)); if (cc <= 0) return s >= c.l ? 1 : 0;
+    const u = (s - c.l) / cc; return u <= -1 ? 0 : u >= 1 ? 1 : kAt(c.d / c.h, u); };
+  const buf = {OVI: new Float64Array(NV), HI: new Float64Array(NV)};
+  function tauAt(ion, s) {
+    const cc = caches[ion], out = buf[ion]; out.fill(0);
+    for (const c of cells) { const w = W(s, c); if (w <= 0) continue; const j = c.i, st = cc.start[j], o = cc.ptr[j]; for (let q = 0; q < cc.len[j]; q++) out[st + q] += w * cc.vals[o + q]; }
+    return out;
+  }
+  let rect = null;
+  const font = (px, w = 400, mono = false) => `${w} ${px}px ${mono ? '"JetBrains Mono", monospace' : '"Space Grotesk", system-ui, sans-serif'}`;
+  const D = copy.dock || {};
+  const fmtI = x => String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  function line(X, Y, vs, fs, from = 0, to = vs.length, lo = -400, hi = 400) { let s0 = false; g.beginPath();
+    for (let q = from; q < to; q++) { if (vs[q] < lo || vs[q] > hi) continue; const x = X(vs[q]), y = Y(fs[q]); s0 ? g.lineTo(x, y) : (g.moveTo(x, y), s0 = true); } g.stroke(); }
+  function render(fs, band) {
+    const W0 = canvas.parentElement.clientWidth || 1920, H0 = canvas.parentElement.clientHeight || 1080;
+    const st = fs.spec.dock || "strip", frac = st === "hero" ? 0.46 : st === "pair" ? 0.26 : 0.15;
+    // the solver's dock band, never shorter than the state's share of the screen (the hero dock is the spectrum's close-up)
+    const need = H0 * frac * 0.95;
+    const r = band && band.w > 0 ? {x: band.x, w: band.w, h: Math.max(band.h, need), y: band.y + band.h - Math.max(band.h, need)}
+                                 : {x: 0.05 * W0, y: H0 * (0.97 - frac), w: 0.9 * W0, h: need};
+    rect = r;
+    if (canvas.width !== Math.round(r.w) || canvas.height !== Math.round(r.h)) { canvas.width = Math.round(r.w); canvas.height = Math.round(r.h); }
+    canvas.style.transform = `translate3d(${Math.round(r.x)}px,${Math.round(r.y)}px,0)`; canvas.style.width = r.w + "px"; canvas.style.height = r.h + "px";
+    const w = canvas.width, h = canvas.height; g.clearRect(0, 0, w, h);
+    const ions = st === "strip" ? [fs.spec.lead || "OVI"] : (fs.spec.ions || ["OVI", "HI"]).slice(0, 2);
+    const mode = fs.spec.mode || "intrinsic", obs = mode === "observed" || mode === "fit" || mode === "explore";
+    const head = obs ? 30 : 0, axisH = st === "strip" ? 0 : 28, padY = 8, rowH = (h - head - axisH - padY) / ions.length, labW = 170;
+    const X = vv => labW + (vv + 400) / 800 * (w - labW - 12);
+    ions.forEach((ion, k) => {
+      const y0 = head + padY / 2 + k * rowH, y1 = y0 + rowH - 8, Y = F => y0 + 4 + (1 - F) * (y1 - y0 - 8);
+      g.save(); g.beginPath(); g.rect(0, y0 - 2, w, y1 - y0 + 4); g.clip();    // noise never climbs into the row above or the header
+      g.strokeStyle = "rgba(244,241,234,0.14)"; g.lineWidth = 1; g.beginPath(); g.moveTo(X(-400), Y(1)); g.lineTo(X(400), Y(1)); g.moveTo(X(-400), Y(0)); g.lineTo(X(400), Y(0)); g.stroke();
+      g.fillStyle = ION[ion].col; g.font = font(Math.max(14, Math.min(20, rowH * 0.3)), 500); g.textBaseline = "middle"; g.fillText(ION[ion].name, 8, (y0 + y1) / 2);
+      if (!obs) {
+        const t = tauAt(ion, fs.l), F = Float64Array.from(t, x => Math.exp(-x));
+        g.strokeStyle = ION[ion].col; g.lineWidth = st === "strip" ? 2 : 2.5; line(X, Y, v, F);
+      } else {
+        const I = plot.ion(data, ion);
+        if (I && I.F) { g.strokeStyle = "rgba(244,241,234,0.30)"; g.lineWidth = 1.4; line(X, Y, I.F.v, I.F.flux); }
+        const seed = Number.isFinite(fs.spec.seed) && fs.spec.seed ? fitjs.seedFor(fs.spec.seed, ion, 0) : null;
+        const o = plot.observed(data, ion, fs.spec.R || 15000, fs.spec.sn || 0, seed);
+        if (o && o.v) { g.strokeStyle = ION[ion].col; g.lineWidth = 2; line(X, Y, o.v, o.flux); }
+        if (mode === "fit" && I) {
+          const comps = I.fits && I.fits[0] && I.fits[0].comps && I.fits[0].comps.length ? I.fits[0].comps : I.lib;
+          if (comps && comps.length) { const m = plot.cloudModel(data, ion, comps, fs.spec.R || 15000);
+            if (m && m.v) { g.setLineDash([7, 5]); g.strokeStyle = "#f4f1ea"; g.lineWidth = 1.6; line(X, Y, m.v, m.flux); g.setLineDash([]); }
+            g.fillStyle = "#f4f1ea"; for (const c of comps) if (c.v > -400 && c.v < 400) { g.beginPath(); g.arc(X(c.v), Y(1) - 2, 3.5, 0, 7); g.fill(); } }
+        }
+      }
+      g.restore();
+    });
+    if (axisH) { g.fillStyle = "rgba(244,241,234,0.62)"; g.textBaseline = "alphabetic"; g.font = font(14, 400, true);
+      for (const t of [-300, -150, 0, 150, 300]) { const s = (t < 0 ? "−" : t > 0 ? "+" : "") + Math.abs(t); g.fillText(s, X(t) - g.measureText(s).width / 2, h - 8); }
+      g.font = font(14); g.fillText(D.axis_speed || "Speed along the beam (km/s)", 8, h - 8); }
+    if (obs) { g.font = font(16, 500); g.fillStyle = "rgba(244,241,234,0.88)"; g.textBaseline = "top";
+      const a = `${D.sharpness || "Sharpness (R)"}  ${fmtI(fs.spec.R || 0)}`, b = `${D.exposure || "Exposure (S/N)"}  ${fs.spec.sn ? fmtI(fs.spec.sn) : "∞"}`;
+      const wb = g.measureText(b).width; g.fillText(b, w - 12 - wb, 6); g.fillText(a, w - 12 - wb - 40 - g.measureText(a).width, 6); }
+  }
+  return {render, rect: () => rect, kids: null, kind: "film"};
+}
+
+const ready = boot().catch(e => { failEl.textContent = "render.html: " + (e && e.stack || e); failEl.style.display = "block"; window.__filmError = String(e && e.message || e); throw e; });
+window.__filmReady = ready;
+if (hf && hf.registerFrameSource) hf.registerFrameSource({element: document.getElementById("stage"), ready, render: async t => { const F = await ready; await F.renderT(t); }});
 </script>
 </body>
 </html>

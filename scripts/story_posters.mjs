@@ -7,6 +7,10 @@
 // and writes
 //   <out>/<g>_<ray>/{light_core_stars, light_wide_stars, light_wide_gas, pencil_stars, pencil_gas}.webp
 //   <out>/<g>_<ray>/posters.json      geometry the scenes use (beam, impact point, scale, other sightlines), sources
+// and, for the v2 gate (B0) and the explorer's first-visit card (camera.json "gate", unit U_entry), one composite of gas,
+// starlight and the beam per variant:
+//   <gate-out>/poster_<g>_<ray>.webp (landscape), poster_<g>_<ray>_p.webp (portrait), poster_<g>_<ray>_card.webp (card)
+//   <gate-out>/poster_<g>_<ray>.json  variant geometry (beam end points in px, kpc per px, centre) and sources
 // The scenes (js/scenes/light.js, pencil.js) work without posters too (procedural fallback), so a galaxy without
 // stills still tells the story. Everything is CPU (orthographic ray sums, trilinear, worker threads); no browser, no
 // WebGL, deterministic: the same inputs give the same bytes (no timestamps written).
@@ -14,7 +18,9 @@
 //   node scripts/story_posters.mjs --g 488530                       # default ray from ROOT/data/index.json
 //   node scripts/story_posters.mjs --g 411449,505100 --out <dir>    # other galaxies (any of the 198 with a pack)
 //   node scripts/story_posters.mjs --g all                          # every galaxy under --gal-root with viz/
+//   node scripts/story_posters.mjs --g 488530 --shots gate          # only the gate posters (v1 stills untouched)
 //   options: --ray <id>  --gal-root <dir>  --viz <dir|url>  --catalog <file|url>  --camera <json>  --workers <n>
+//            --shots <name,...|gate>  --gate-out <dir> (default ROOT/img)  --max-kb <n> (gate size cap, default 150)
 //            --quick (quarter-size, for checks)  --check (geometry only, no images)
 //
 // Inputs per galaxy g: viz = <gal-root>/<g>/viz (or --viz; an http(s) base such as the hosted <viz_base> works too),
@@ -83,14 +89,15 @@ export function halfWidth(spec, R200c) {
    q; job: {W, H, rows [y0, y1), hw (kpc), cam, out (SharedArrayBuffer f32, ch per pixel)} */
 function projectRows(job) {
   const {W, H, y0, y1, hw, cam, levels, tables, ch} = job, out = new Float32Array(job.out), hh = hw * H / W;
+  const [offA, offB] = job.off || [0, 0];     // image-plane kpc of the galaxy centre from the image centre (gate framing)
   const Ls = levels.map(l => ({...l, q: new Uint8Array(l.buf), lim: l.half - l.vox}));
   const outer = Ls[Ls.length - 1].half, f = cam.f, e1 = cam.e1, e2 = cam.e2, acc = new Float64Array(ch);
   const T = tables.map(t => new Float64Array(t));
   const STEP = 0.7;
   for (let py = y0; py < y1; py++) {
-    const b = hh - (py + 0.5) / H * 2 * hh;
+    const b = hh - (py + 0.5) / H * 2 * hh - offB;
     for (let px = 0; px < W; px++) {
-      const a = -hw + (px + 0.5) / W * 2 * hw;
+      const a = -hw + (px + 0.5) / W * 2 * hw - offA;
       const ox = a * e1[0] + b * e2[0], oy = a * e1[1] + b * e2[1], oz = a * e1[2] + b * e2[2];
       // slab of the outer cube
       let t0 = -Infinity, t1 = Infinity;
@@ -144,13 +151,15 @@ function args(argv) {
   const o = {g: null, ray: null, galRoot: path.join(process.env.TNG_WORK || process.env.CGM_WORK || ".", "data", "gal"),   // <work>/data/gal (tngenv.sh sets TNG_WORK)
     viz: null, catalog: null,
     camera: path.join(HERE, "story_posters.camera.json"), out: path.join(ROOT, "img/posters"), workers: Math.min(16, os.cpus().length),
-    quick: false, check: false};
+    quick: false, check: false, shots: null, gateOut: path.join(ROOT, "img"), maxKb: 150};
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i], v = () => argv[++i];
     if (k === "--g") o.g = v(); else if (k === "--ray") o.ray = v(); else if (k === "--gal-root") o.galRoot = v();
     else if (k === "--viz") o.viz = v(); else if (k === "--catalog") o.catalog = v(); else if (k === "--camera") o.camera = v();
     else if (k === "--out") o.out = v(); else if (k === "--workers") o.workers = Math.max(1, +v() | 0);
     else if (k === "--quick") o.quick = true; else if (k === "--check") o.check = true;
+    else if (k === "--shots") o.shots = v().split(",").map(x => x.trim()).filter(Boolean);
+    else if (k === "--gate-out") o.gateOut = v(); else if (k === "--max-kb") o.maxKb = +v();
     else throw new Error(`unknown option ${k}`);
   }
   if (!o.g) throw new Error("--g <id[,id...]|all> is required");
@@ -211,13 +220,13 @@ function table(vmin, vmax, ch) {
   return T.buffer;
 }
 
-async function project(levels, tables, ch, W, H, hw, cam, nWorkers) {
+async function project(levels, tables, ch, W, H, hw, cam, nWorkers, off = [0, 0]) {
   const out = new SharedArrayBuffer(4 * W * H * ch), file = fileURLToPath(import.meta.url);
   const pool = Array.from({length: nWorkers}, () => new Worker(file, {workerData: {kind: "story-posters", levels, tables, ch}}));
   const band = Math.max(1, Math.ceil(H / (nWorkers * 6))), jobs = [];
   for (let y = 0; y < H; y += band) jobs.push([y, Math.min(H, y + band)]);
   await Promise.all(pool.map(w => new Promise((res, rej) => {
-    const next = () => { const j = jobs.shift(); if (!j) { res(); return; } w.postMessage({W, H, y0: j[0], y1: j[1], hw, cam, out}); };
+    const next = () => { const j = jobs.shift(); if (!j) { res(); return; } w.postMessage({W, H, y0: j[0], y1: j[1], hw, cam, out, off}); };
     w.on("message", next); w.on("error", rej); next();
   })));
   await Promise.all(pool.map(w => w.terminate()));
@@ -261,8 +270,11 @@ async function one(o, cam, g) {
     camera_sha256: createHash("sha256").update(JSON.stringify(cam)).digest("hex").slice(0, 16),
     sources: {manifest: man.schema, catalog: path.basename(path.dirname(cat.path)) + "/" + path.basename(cat.path),
       cubes: {}}, shots: {}};
+  const shotList = Object.entries(cam.shots).filter(([n]) => !o.shots || o.shots.includes(n));
+  const doGate = !!cam.gate && (!o.shots || o.shots.includes("gate"));
   const cubesNeeded = new Set();
-  for (const s of Object.values(cam.shots)) { if (s.layers.stars) cubesNeeded.add("stars"); if (s.layers.gas) cubesNeeded.add("gas:" + s.layers.gas.field); }
+  for (const [, s] of shotList) { if (s.layers.stars) cubesNeeded.add("stars"); if (s.layers.gas) cubesNeeded.add("gas:" + s.layers.gas.field); }
+  if (doGate) { if (cam.gate.layers.stars) cubesNeeded.add("stars"); if (cam.gate.layers.gas) cubesNeeded.add("gas:" + cam.gate.layers.gas.field); }
   const loaded = {};
   if (!o.check) {
     for (const key of cubesNeeded) {
@@ -282,9 +294,9 @@ async function one(o, cam, g) {
       const ord = levels.map((l, i) => i).sort((a, b) => levels[a].half - levels[b].half);
       loaded[key] = {levels: ord.map(i => levels[i]), tables: ord.map(i => tables[i])};
     }
-    await mkdir(dir, {recursive: true});
+    if (shotList.length) await mkdir(dir, {recursive: true});
   }
-  for (const [name, s] of Object.entries(cam.shots)) {
+  for (const [name, s] of shotList) {
     const hw = halfWidth(s.half_w, R200c), C = camera(B, s.tilt_deg, s.roll_deg), kpx = 2 * hw / W0;
     const P = q => { const pt = [dot(q, C.e1), dot(q, C.e2)]; return [+(W0 / 2 + pt[0] / kpx).toFixed(1), +(H0 / 2 - pt[1] / kpx).toFixed(1)]; };
     const shot = {scene: s.scene, size: [W0, H0], half_w_kpc: +hw.toFixed(3), kpc_per_px: +kpx.toFixed(5), tilt_deg: s.tilt_deg, roll_deg: s.roll_deg,
@@ -332,8 +344,92 @@ async function one(o, cam, g) {
     }
     rec.shots[name] = shot;
   }
-  if (!o.check) await writeFile(path.join(dir, "posters.json"), JSON.stringify(rec, null, 1) + "\n");
+  if (!o.check && shotList.length) await writeFile(path.join(dir, "posters.json"), JSON.stringify(rec, null, 1) + "\n");
+  if (doGate) rec.gate = await gatePosters(o, cam, {g, ray, B, p0, p1, R200c, loaded, sources: rec.sources, catalogB: cat.entry.b_kpc});
   return rec;
+}
+
+/* ------------------------------------------------------------------ gate posters (v2 B0 gate, explorer card) */
+/* layer images (gas through the explorer LUT with a black-sky fade, starlight by the Lupton composite) are screen-blended,
+   then the beam is drawn as a thin warm core with a soft glow, and a dot at the quasar end (p1) when it is in frame */
+export function screen(a, b) { return 255 - Math.round((255 - a) * (255 - b) / 255); }
+export function drawBeam(rgb, W, H, A, Bp, st) {
+  const [r0, g0, b0] = st.color || [255, 244, 223], core = st.width_px ?? 2, glow = st.glow_px ?? 9, al = st.alpha ?? 0.8, ga = st.glow_alpha ?? 0.3;
+  /* st.extend: the light goes on past the observer end A toward the telescope, drawn as a fade over extend x |AB| */
+  const ext = st.extend ?? 0; if (ext > 0) A = [A[0] - (Bp[0] - A[0]) * ext, A[1] - (Bp[1] - A[1]) * ext];
+  const tA = ext / (1 + ext), fi = st.fade_in ?? 0;   // tA: the observer end on the extended segment
+  const dx = Bp[0] - A[0], dy = Bp[1] - A[1], L2 = dx * dx + dy * dy || 1, R = 3 * glow;
+  const x0 = Math.max(0, Math.floor(Math.min(A[0], Bp[0]) - R)), x1 = Math.min(W - 1, Math.ceil(Math.max(A[0], Bp[0]) + R));
+  const y0 = Math.max(0, Math.floor(Math.min(A[1], Bp[1]) - R)), y1 = Math.min(H - 1, Math.ceil(Math.max(A[1], Bp[1]) + R));
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const t = Math.max(0, Math.min(1, ((x + 0.5 - A[0]) * dx + (y + 0.5 - A[1]) * dy) / L2));
+    const ex = x + 0.5 - (A[0] + t * dx), ey = y + 0.5 - (A[1] + t * dy), d2 = ex * ex + ey * ey;
+    if (d2 > R * R) continue;
+    let fade = t >= tA ? 0.75 + 0.25 * (t - tA) / (1 - tA || 1) : 0.75 * (t / (tA || 1)) ** 1.6;
+    if (fi > 0 && t < fi) fade *= (t / fi) ** 1.3;   // st.fade_in: the line rises from nothing over this fraction from A
+    const w = fade * (al * Math.exp(-d2 / (2 * (core / 2) ** 2)) + ga * Math.exp(-d2 / (2 * glow * glow)));
+    if (w < 1e-3) continue;
+    const i = 3 * (y * W + x), k = Math.min(1, w);
+    rgb[i] = Math.round(rgb[i] + (r0 - rgb[i]) * k); rgb[i + 1] = Math.round(rgb[i + 1] + (g0 - rgb[i + 1]) * k); rgb[i + 2] = Math.round(rgb[i + 2] + (b0 - rgb[i + 2]) * k);
+  }
+  const q = st.quasar_r_px ?? 0;
+  if (q > 0 && Bp[0] >= 0 && Bp[0] < W && Bp[1] >= 0 && Bp[1] < H) {
+    const Rq = 6 * q;
+    for (let y = Math.max(0, Math.floor(Bp[1] - Rq)); y <= Math.min(H - 1, Math.ceil(Bp[1] + Rq)); y++)
+      for (let x = Math.max(0, Math.floor(Bp[0] - Rq)); x <= Math.min(W - 1, Math.ceil(Bp[0] + Rq)); x++) {
+        const d2 = (x + 0.5 - Bp[0]) ** 2 + (y + 0.5 - Bp[1]) ** 2, k = Math.min(1, Math.exp(-d2 / (2 * q * q)) + 0.35 * Math.exp(-d2 / (2 * (3 * q) ** 2)));
+        const i = 3 * (y * W + x); rgb[i] = Math.round(rgb[i] + (r0 - rgb[i]) * k); rgb[i + 1] = Math.round(rgb[i + 1] + (g0 - rgb[i + 1]) * k); rgb[i + 2] = Math.round(rgb[i + 2] + (b0 - rgb[i + 2]) * k);
+      }
+  }
+}
+async function encodeCapped(rgb, W, H, file, q0, maxBytes) {
+  const require = createRequire(import.meta.url), sharp = require("sharp");
+  let q = q0, buf;
+  for (;;) {
+    buf = await sharp(Buffer.from(rgb.buffer, rgb.byteOffset, rgb.length), {raw: {width: W, height: H, channels: 3}}).webp({quality: q, effort: 6, smartSubsample: true}).toBuffer();
+    if (buf.length <= maxBytes || q <= 40) break;
+    q -= 6;
+  }
+  if (buf.length > maxBytes) throw new Error(`${path.basename(file)}: ${(buf.length / 1024).toFixed(0)} kB at quality ${q}, over the ${maxBytes / 1024} kB cap`);
+  await writeFile(file, buf);
+  return {bytes: buf.length, quality: q, sha256: createHash("sha256").update(buf).digest("hex").slice(0, 16)};
+}
+async function gatePosters(o, cam, ctx) {
+  const G = cam.gate, {g, ray, B, p0, p1, R200c, loaded} = ctx, C = camera(B, G.tilt_deg, G.roll_deg);
+  const meta = {schema: "story-gate-poster/1", galaxy: g, ray, R200c_kpc: +R200c.toFixed(3), tilt_deg: G.tilt_deg, roll_deg: G.roll_deg,
+    camera_sha256: createHash("sha256").update(JSON.stringify(G)).digest("hex").slice(0, 16), quick: o.quick || undefined,
+    convention: "observer at p0 (ray start), quasar at p1 (ray end); the drawn line is the full sightline", sources: ctx.sources, variants: {}};
+  if (!o.check) await mkdir(o.gateOut, {recursive: true});
+  for (const [vname, V] of Object.entries(G.variants)) {
+    const [W0, H0] = V.size, div = o.quick ? 4 : 1, W = Math.round(W0 / div), H = Math.round(H0 / div);
+    const hw = halfWidth(V.half_w, R200c), hh = hw * H0 / W0, kpx = 2 * hw / W0, [cx, cy] = V.center_frac || [0.5, 0.5];
+    const off = [(cx - 0.5) * 2 * hw, (0.5 - cy) * 2 * hh];
+    const P = q => [+(W0 * cx + dot(q, C.e1) / kpx).toFixed(1), +(H0 * cy - dot(q, C.e2) / kpx).toFixed(1)];
+    const rec = {size: [W0, H0], half_w_kpc: +hw.toFixed(3), kpc_per_px: +kpx.toFixed(5), center_px: [W0 * cx, H0 * cy], p0_px: P(p0), p1_px: P(p1),
+      impact_px: P(scl(B.u, B.b)), file: `poster_${g}_${ray}${V.suffix}.webp`};
+    if (!o.check) {
+      const t0 = Date.now(), rgb = new Uint8Array(W * H * 3).fill(0);
+      for (const [layer, L] of Object.entries(G.layers)) {
+        const key = layer === "stars" ? "stars" : "gas:" + L.field, Lc = loaded[key], ch = layer === "stars" ? 3 : 1;
+        const img = await project(Lc.levels, Lc.tables, ch, W, H, hw, C, o.workers, off);
+        if (layer === "stars") for (let i = 0; i < W * H; i++) { const c = lupton3(img[3 * i], img[3 * i + 1], img[3 * i + 2], L);
+          for (let k = 0; k < 3; k++) rgb[3 * i + k] = screen(rgb[3 * i + k], Math.round(255 * c[k])); }
+        else { const {lut} = await import("../docs/tng50/js/colormaps.js"), T = lut(L.lut || "tng_dusk"), gain = L.gain ?? 1;
+          for (let i = 0; i < W * H; i++) { const N = img[i] * CM_PER_KPC, lg = N > 0 ? Math.log10(N) : -Infinity;
+            let x = (lg - L.vmin) / (L.vmax - L.vmin); x = x > 0 ? Math.min(1, x) ** (L.gamma ?? 1) : 0;
+            const k4 = 4 * Math.round(255 * x), a = Math.min(1, x * (L.fade ?? 3)) * gain;
+            for (let k = 0; k < 3; k++) rgb[3 * i + k] = screen(rgb[3 * i + k], Math.round(T[k4 + k] * a)); } }
+      }
+      const s = 1 / div, bm = {...G.beam, ...(V.beam || {})}, k = s * (V.beam_scale ?? 1);   // variant beam keys override the shared ones
+      drawBeam(rgb, W, H, rec.p0_px.map(v => v * s), rec.p1_px.map(v => v * s), {...bm, width_px: (bm.width_px ?? 2) * k, glow_px: (bm.glow_px ?? 9) * k, quasar_r_px: (bm.quasar_r_px ?? 0) * k});
+      const r = await encodeCapped(rgb, W, H, path.join(o.gateOut, rec.file), V.quality ?? 76, (V.max_kb ?? o.maxKb) * 1024);
+      Object.assign(rec, r);
+      process.stderr.write(`  ${g} gate ${vname}: ${W}x${H} in ${((Date.now() - t0) / 1000).toFixed(1)} s, ${(r.bytes / 1024).toFixed(0)} kB (q ${r.quality})\n`);
+    }
+    meta.variants[vname] = rec;
+  }
+  if (!o.check) await writeFile(path.join(o.gateOut, `poster_${g}_${ray}.json`), JSON.stringify(meta, null, 1) + "\n");
+  return meta;
 }
 
 async function main() {

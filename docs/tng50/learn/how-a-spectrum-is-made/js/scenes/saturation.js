@@ -79,6 +79,7 @@ function render(ctx, state, t, data) {
   if (Fr.physics && !Fr.port && real < 0.5) {
     const pts = cog(data, b), x0 = mx, y0 = my + 2.6 * gap, w = mw, h = Math.min(mw * 0.8, M.box.h - 2.6 * gap - Fr.fs * 2);
     if (h > Fr.fs * 4) {
+      const Wmax = pts[pts.length - 1][1];   // v1 referenced an undefined Wmax here (Physics view threw); the curve's own end
       const X = n => x0 + (n - 11) / 10 * w, lw0 = Math.log10(pts[0][1]), lw1 = Math.log10(Wmax), Y = W_ => y0 + h - (Math.log10(Math.max(W_, 1e-3)) - lw0) / (lw1 - lw0) * h;
       ctx.save(); ctx.strokeStyle = K.COL.grid; ctx.strokeRect(x0, y0, w, h); ctx.beginPath(); pts.forEach(([n, W_], i) => i ? ctx.lineTo(X(n), Y(W_)) : ctx.moveTo(X(n), Y(W_)));
       ctx.strokeStyle = K.COL.muted; ctx.lineWidth = 1.4; ctx.stroke(); ctx.fillStyle = K.COL.accent; ctx.beginPath(); ctx.arc(X(logN), Y(W), 4, 0, 2 * Math.PI); ctx.fill(); ctx.restore();
@@ -97,6 +98,34 @@ function announce(data, ex) {
   return `Depth ${Math.round(100 * (1 - F[VW]))} percent, width ${Math.round(fwhmKms(GRID, F))} km/s`;
 }
 function ready(data) { K.picks(data); cog(data, K.picks(data).satB); }
+
+/* ---- v2 dock mode "ghost" (DESIGN_final §3.5 B10, C_science M3): "black is a ceiling" under the N drag ---------------
+   ghostProfile: the dragged cell alone (bind.js ghostCell output {logN, b, V}) as a full Voigt dip (H I wings included) on
+   a ±GHOST_HALF km/s grid; depth = 1 − F at its centre, width = full width at half depth (fwhmKms, the v1 meter). Above
+   10^18.5 the dock draws it on the widened ghost axis with a "damping wings" label. Memoised on (data, ion, logN, b, V). */
+export const GHOST_HALF = 600;
+const GGRID = K.vgrid(-GHOST_HALF, 1, 2 * GHOST_HALF + 1);
+export function ghostProfile(data, ion, cell) {
+  const P = K.prep(data), key = `ghost|${ion}|${(+cell.logN).toFixed(4)}|${(+cell.b).toFixed(4)}|${(+cell.V).toFixed(3)}`;
+  if (!P.memo.has(key)) {
+    const at = K.ion(data, ion).atom, tau = Number.isFinite(cell.logN) ? K.dipTau(at, cell.V, cell.logN, cell.b, GGRID) : new Float64Array(GGRID.length);
+    const F = K.expNeg(tau), j = Math.max(0, Math.min(GGRID.length - 1, Math.round(cell.V + GHOST_HALF)));
+    if (P.memo.size > 160) P.memo.delete(P.memo.keys().next().value);
+    P.memo.set(key, {v: GGRID, F, depth: 1 - F[j], width: fwhmKms(GGRID, F), wings: cell.logN > 18.5});
+  }
+  return P.memo.get(key);
+}
+export function dockGhost(A, pe) {
+  const g = pe.ghost; if (!g || !g.cell) return;
+  const pr = ghostProfile(pe.data, pe.ion, g.cell), col = K.ionColor(pe.ion);
+  K.curve(A, pr.v, pr.F, {color: K.COL.bg, width: 4.5, alpha: 0.6});
+  K.curve(A, pr.v, pr.F, {color: col, width: 2, dash: [6, 4], alpha: 0.95});
+  if (pr.wings) {   // mark the wings: where the dip is grey but the core already black
+    const c = A.ctx; c.save(); c.globalAlpha = 0.09; c.fillStyle = col;
+    let a = -1; for (let i = 0; i < pr.v.length; i++) { const grey = pr.F[i] > 0.02 && pr.F[i] < 0.9; if (grey && a < 0) a = i; if ((!grey || i === pr.v.length - 1) && a >= 0) { const x0 = A.X(pr.v[a]), x1 = A.X(pr.v[i]); c.fillRect(x0, A.box.y, Math.max(1, x1 - x0), A.box.h); a = -1; } }
+    c.restore();
+  }
+}
 const scene = {id: "saturation", chapter: "saturation", steps: STEPS, defaults: {}, controls, exploreStart, announce, ready, render,
   handoff: {ions: ["HI"], layout: "1", R: [30000, 30000], sn: [10, 10], intr: true}};
 export default scene;

@@ -1,0 +1,1059 @@
+{
+  "schema": "story-copy/2",
+  "meta": {
+    "owner": "U_copy",
+    "about": "Every word the v2 story shows: per-beat kinetic lines (display, display_short, sub, sub_short), screen-reader narrative, Physics layer, HUD and dock labels, plaque, shell chips, film captions, the honest-simplification list and credits. Numbers appear only as {{key}} templates; tests/js/story_copy_lint.mjs enforces it.",
+    "templates": "{{name}} reads story-data keys (flat key, then dotted path into keys, then dotted path into the story JSON root). {{$name}} is a live FrameState/UI value listed in `live`. Names listed in `derive` are computed from keys by the stated rule. A line with `when: flag` shows only when the data flag is true; otherwise its `else` block (or nothing, when `else` is null).",
+    "emphasis": "*text* marks the italic (Newsreader) part of a kinetic line.",
+    "beat_entry": "copy[beatId] = {display, display_short, sub, sub_short, narrative, physics, then?, chip?, hint?}. display/sub of the entry are the beat's first kinetic line (frozen interface, DESIGN_final 5.11); `then` lists the later lines of the same beat in order, each with its own id and u window within the beat. Text ids for FrameState.text are `<beatId>.0` (the entry) and `<beatId>.<k>` for then[k-1].",
+    "limits": "display <= 8 words, display_short <= 5, sub <= 25, sub_short <= 12; a {{template}} counts as one word, a digit group as one word.",
+    "conditions": "A line's `when` flag hides it (or swaps in its `else` block; `else: null` hides it). An `extra` block {when, sub, narrative} is appended to its line's sub and narrative when its flag is true; the word limits apply to the joined text. The beat's screen-reader text is the entry narrative (or else.narrative) followed by the narratives of its visible `then` lines and extras. A beat whose entry and every line are hidden is skipped by the timeline (B7e without has_cold_knot). A `then` line whose display and sub are both null shows nothing in the bands; it only adds its physics and narrative (B13.4, B14.1 sub-only line in the band)."
+  },
+  "beats_order": [
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7a",
+    "B7b",
+    "B7c",
+    "B7d",
+    "B7e",
+    "B8",
+    "B9",
+    "B10",
+    "B11",
+    "B12a",
+    "B12b",
+    "B13",
+    "B14"
+  ],
+  "B0": {
+    "chip": "How a spectrum is made",
+    "display": "How a spectrum is made",
+    "display_short": "How a spectrum is made",
+    "sub": "Ride one beam of quasar light through the gas around galaxy {{galaxy}}.",
+    "sub_short": "Ride one beam of quasar light.",
+    "narrative": "How a spectrum is made. You will ride one beam of quasar light through the gas around galaxy {{galaxy}}, and watch its spectrum build up cell by cell. Hold Space or the ride button to start, or choose Watch.",
+    "physics": null
+  },
+  "B1": {
+    "chip": "Light",
+    "display": "This light left a quasar long ago.",
+    "display_short": "Light from a distant quasar.",
+    "sub": "The strip below is this quasar's light, as a perfect telescope riding with it would record it. For now, all of it gets through.",
+    "sub_short": "For now, all the light gets through.",
+    "narrative": "A quasar far behind the galaxy sends its light toward us. The spectrum below is what a perfect telescope riding with the light would record. So far nothing is taken: all the light gets through.",
+    "physics": "The spectrum shows the fraction of light left at each speed along the beam. It is the light that has crossed every cell behind the packet, before any telescope blur.",
+    "then": [
+      {
+        "id": "B1.1",
+        "u": [
+          0.5,
+          1.0
+        ],
+        "display": "Something stood in its way.",
+        "display_short": "Something stood in its way.",
+        "sub": null,
+        "sub_short": null,
+        "narrative": null
+      }
+    ]
+  },
+  "B2": {
+    "chip": "The halo",
+    "act_title": true,
+    "display": "Galaxies sit inside gas *too faint to see.*",
+    "display_short": "Gas *too faint to see.*",
+    "sub": "The gas shows itself only by the light it takes from things behind it. These colours are our choice, not its light.",
+    "sub_short": "It shows only by the light it takes.",
+    "narrative": "From outside, galaxy {{galaxy}} sits in a halo of thin gas reaching {{R200c}} kpc from its centre. The gas is too faint to see directly; it shows itself by the light it takes from things behind it. The colours drawn here are our choice, not light the gas gives off.",
+    "physics": "Galaxy {{galaxy}}, TNG50-1 at z = 0, {{mw_compare}}. R200c = {{R200c}} kpc, M200c = {{M200c}} M☉. The beam passes {{b_kpc}} kpc from the centre; the path from −R200c to +R200c is {{length_kpc}} kpc. Only gas within R200c is counted; real light also crosses gas beyond it, including our own Galaxy's.",
+    "hint": "Drag to turn the halo.",
+    "then": [
+      {
+        "id": "B2.1",
+        "u": [
+          0.55,
+          1.0
+        ],
+        "display": "We ride this one beam through it.",
+        "display_short": "We ride this beam.",
+        "sub": "Every beam meets different gas, so every spectrum differs. Pick another beam at any time.",
+        "sub_short": "Every beam meets different gas.",
+        "narrative": null
+      }
+    ]
+  },
+  "B3": {
+    "chip": "The halo",
+    "display": "Every cell has a density, heat and speed.",
+    "display_short": "Each cell: density, heat, speed.",
+    "sub": "The beam touches hundreds of gas cells. Each one lights up as the light reaches it.",
+    "sub_short": "Each cell lights up as the light arrives.",
+    "narrative": "We drop onto the beam at the edge of the halo. The beam touches hundreds of gas cells; each lights up as the light reaches it, and its density, heat and speed float beside it. These outskirts are thin, so almost nothing is taken.",
+    "physics": "{{n_kernels}} smoothing kernels touch the beam; about {{n_crossed}} cells are actually crossed. The path inside a kernel has median {{dl_median_kpc}} kpc and maximum {{dl_max_kpc}} kpc. n_H = X_H ρ / m_H, with X_H between {{XH_min}} and {{XH_max}}.",
+    "hint": "Click a bead to pin its numbers.",
+    "then": [
+      {
+        "id": "B3.1",
+        "u": [
+          0.55,
+          1.0
+        ],
+        "display": "So far, almost nothing is taken.",
+        "display_short": "Almost nothing taken yet.",
+        "sub": "By now O VI has taken {{b3_ovi_depth}} % of the light at its deepest colour.",
+        "sub_short": "O VI has taken {{b3_ovi_depth}} % so far.",
+        "narrative": null
+      }
+    ]
+  },
+  "B4": {
+    "chip": "The halo",
+    "when": "has_first_ovi",
+    "display": "Each cell leaves a *shadow.*",
+    "display_short": "Each cell leaves a *shadow.*",
+    "sub": "Atoms take a sliver of one colour out of the light: the first cell's dip was {{b4_first_depth}} % deep. The rest goes on.",
+    "sub_short": "Atoms take a sliver of one colour.",
+    "narrative": "The first warm-hot cells light up on the beam, and the O VI row of the spectrum gets its first dip, {{b4_first_depth}} % deep. Atoms take a sliver of one colour out of the light; the rest of the light goes on.",
+    "physics": "Shadow, not glow: absorption makes a dark notch, not a bright one. τ₀ ∝ N f λ / b, and the dip's shape is τ(v) = τ₀ H(a, x), a Voigt profile whose core is a Gaussian in speed.",
+    "else": {
+      "display": "This beam is almost clear in O VI.",
+      "display_short": "Almost clear in O VI.",
+      "sub": "So the next steps use a made-up cell, marked as an example, to show how one cell leaves a shadow.",
+      "sub_short": "The next cell is a marked example.",
+      "narrative": "This beam is almost clear in O VI, so the next steps use a made-up cell, marked as an example, to show how one cell leaves a shadow."
+    }
+  },
+  "B5": {
+    "chip": "Cloud A",
+    "act_title": true,
+    "when": "hi_black",
+    "display": "A cool clump.",
+    "display_short": "A cool clump.",
+    "sub": null,
+    "sub_short": null,
+    "narrative": "The light enters cloud A, a cool clump of gas. In the cell holding most of its neutral hydrogen, one hydrogen atom in {{cloudA_xHI_one_in}} keeps its electron, against one in {{hot_xHI_one_in}} in warm-hot gas.",
+    "physics": "n(H I) = x_HI n_H, with x_HI from the simulation's own recipe; x_HI = {{cloudA_xHI}} in cloud A's core cell, the one holding most of its H I column (denser cells exist, and the cloud's cells range much lower). The equation uses the core cell: T = {{cloudA_core_T}} K gives b = {{cloudA_core_bH}} km/s for hydrogen and {{cloudA_core_bO}} km/s for oxygen, which is heavier. Black already: more hydrogen from here on cannot make it darker, only wider.",
+    "hint": "Drag the surface level: the cloud changes, the spectrum does not.",
+    "then": [
+      {
+        "id": "B5.1",
+        "u": [
+          0.2,
+          0.6
+        ],
+        "display": "*One hydrogen atom in {{cloudA_xHI_one_in}} keeps its electron.*",
+        "display_short": "*One in {{cloudA_xHI_one_in}} stays neutral.*",
+        "sub": "That is at its core. In warm-hot gas only one in {{hot_xHI_one_in}} does: about {{xHI_ratio_shown}} times fewer. Neutral hydrogen takes the colour we follow.",
+        "sub_short": "Neutral hydrogen takes the colour we follow."
+      },
+      {
+        "id": "B5.2",
+        "u": [
+          0.6,
+          1.0
+        ],
+        "display": "One clump, and the dip is black.",
+        "display_short": "One clump, a black dip.",
+        "sub": "Hydrogen's dip goes black within a few cells.",
+        "sub_short": "Black within a few cells.",
+        "extra": {
+          "when": "has_ovi_skin",
+          "sub": "Its warm-hot skin comes next: O VI loses another {{b5_ovi_drop}} % of its light.",
+          "narrative": "The clump's warm-hot skin comes next: by the end of this stretch O VI loses another {{b5_ovi_drop}} % of its light, at {{b5_ovi_V}} km/s."
+        },
+        "narrative": "Within a few cells the hydrogen dip goes black."
+      }
+    ],
+    "else": {
+      "display": "Here even hydrogen stays grey.",
+      "display_short": "Hydrogen stays grey.",
+      "sub": "Little cool gas lies on this beam, so no dip turns black.",
+      "sub_short": "Little cool gas on this beam.",
+      "narrative": "Here even hydrogen stays grey: little cool gas lies on this beam, so no dip turns black."
+    }
+  },
+  "B6": {
+    "chip": "The quiet",
+    "when": "has_hot_stretch",
+    "display": "Here the gas is *too hot to see.*",
+    "display_short": "*Too hot to see.*",
+    "sub": "So hot that oxygen loses even a sixth electron and hydrogen keeps almost none. O VI and H I take almost no light here.",
+    "sub_short": "Too hot for much O VI or H I.",
+    "narrative": "A long stretch of very hot gas follows. Oxygen loses even a sixth electron here, and hydrogen keeps almost none, so O VI and H I take almost no light: the spectrum barely changes. The gas is still there; it would show in X-rays.",
+    "physics": "The gas is still there: at these temperatures oxygen is mostly O VII and beyond, seen only in X-rays. Speeds are measured from the galaxy: we subtract its own motion, v_gal = {{v_gal}} km/s, so zero speed is the galaxy's. The slow expansion of space across the halo (up to {{hubble_kms}} km/s here) is not added.",
+    "hint": "Flip the axis between wavelength and speed.",
+    "else": null,
+    "then": [
+      {
+        "id": "B6.1",
+        "u": [
+          0.5,
+          1.0
+        ],
+        "display": "Where a dip sits *means speed.*",
+        "display_short": "A dip's place means speed.",
+        "sub": "Moving toward us shifts a shadow bluer, like a siren. Cloud A's dip sits left for its speed, not its order.",
+        "sub_short": "Toward us shifts bluer, like a siren.",
+        "narrative": "Where a dip sits means speed: gas moving toward us shifts its shadow bluer, like a siren. Cloud A's dip sits on the left because of its speed, not because it came first."
+      }
+    ]
+  },
+  "B7a": {
+    "chip": "Cloud B",
+    "act_title": true,
+    "display": "Cloud B",
+    "display_short": "Cloud B",
+    "sub": null,
+    "sub_short": null,
+    "narrative": "The camera slows as the light reaches cloud B, a long warm-hot structure. The O VI dip deepens.",
+    "physics": null
+  },
+  "B7b": {
+    "chip": "Cloud B",
+    "when": "ovi_strong",
+    "display": "Amount sets how much light is taken.",
+    "display_short": "Amount sets the bite.",
+    "sub": "This one cell holds {{c263_ovi_share_words}} of all the O VI on the beam. Its dip grows term by term: amount, width, place.",
+    "sub_short": "One cell holds {{c263_ovi_share_words}} of the O VI.",
+    "narrative": "We stop inside cell {{s5_cell}}, which holds {{c263_ovi_share_words}} of all the O VI on the beam. Its dip is drawn term by term: the amount sets its area, the heat sets its width, the speed sets its place. At the centre {{c263_Fc}} % of the light gets through.",
+    "physics": "Cell {{s5_cell}}: log N = {{c263_logN}}, b = {{c263_b}} km/s, f = {{ovi_f}}, λ = {{ovi_lam}} Å, so τ₀ = {{c263_tau0}} and {{c263_Fc}} % of the light gets through at the centre. Widths come from heat only, with no turbulence, so each cell's dip is as narrow as it can be. Hydrogen at that T would have b = {{c263_bH}} km/s, {{s5_bH_ratio}} times wider.",
+    "hint": "Hover a term to find it in the dip.",
+    "then": [
+      {
+        "id": "B7b.1",
+        "u": [
+          0.5,
+          1.0
+        ],
+        "display": "*Heat spreads it out.*",
+        "display_short": "*Heat spreads it out.*",
+        "sub": "Hotter ions jiggle faster, so the same amount spreads over more speeds: wider and shallower.",
+        "sub_short": "Hotter means wider and shallower.",
+        "narrative": null
+      }
+    ],
+    "else": {
+      "display": "One cell, one small dip.",
+      "display_short": "One cell, one dip.",
+      "sub": "O VI is faint on this beam; the strongest cell still shows how amount, heat and speed shape a dip.",
+      "sub_short": "Amount, heat and speed shape it.",
+      "narrative": "O VI is faint on this beam. We stop at its strongest cell, cell {{s5_cell}}, to see how amount, heat and speed shape one dip."
+    }
+  },
+  "B7c": {
+    "chip": "Cloud B",
+    "display": "Change the heat, watch the dip.",
+    "display_short": "Drag the heat.",
+    "sub": "Warmer gas spreads the dip wider. But O VI lives only in a band of heat: outside it, the dip fades.",
+    "sub_short": "O VI lives in a band of heat.",
+    "narrative": "Drag the temperature of cell {{s5_cell}}. Warmer gas spreads its dip wider. Above {{ovi_T_hot_fade}} K or below {{ovi_T_cool_fade}} K the share of oxygen in the O VI state falls below half its peak, and the dip fades.",
+    "physics": "Density and metal content are held fixed; real gas would also change density. The O VI share is read from the ionisation table at this cell's density. Equal area holds only while τ₀ is small; past that, saturation begins.",
+    "hint": "Drag the T term.",
+    "states": {
+      "hot": {
+        "when_live": "$T > ovi_T_hot_fade",
+        "display": "Too hot: oxygen loses another electron.",
+        "display_short": "Too hot: dip fades.",
+        "sub": "Above {{ovi_T_hot_fade}} K the O VI share here falls below half its peak, and the dip fades.",
+        "sub_short": "Above {{ovi_T_hot_fade}} K the dip fades."
+      },
+      "cool": {
+        "when_live": "$T < ovi_T_cool_fade",
+        "display": "Too cool: oxygen keeps more electrons.",
+        "display_short": "Too cool: dip fades.",
+        "sub": "Below {{ovi_T_cool_fade}} K the O VI share here falls below half its peak, and the dip fades.",
+        "sub_short": "Below {{ovi_T_cool_fade}} K the dip fades."
+      }
+    }
+  },
+  "B7d": {
+    "chip": "Cloud B",
+    "display": "One cloud, many speeds, a wide dip.",
+    "display_short": "Many speeds, one wide dip.",
+    "sub": "Each cell adds its own shadow at its own speed. The shadows stack: each passes a share of the light left.",
+    "sub_short": "Shadows stack; each passes a share of what is left.",
+    "narrative": "The rest of cloud B adds cells, each at its own speed. Their shadows stack into one broad, ragged O VI trough: each passes a share of the light left.",
+    "physics": "τ_total = Σ τ_i and F = e^(−τ_total): τ adds, light multiplies. Single cells have b = {{ovi_b_min}} to {{ovi_b_max}} km/s; it is their different speeds that spread the trough.",
+    "hint": "Brush a dip to light the cells that made it."
+  },
+  "B7e": {
+    "chip": "Cool cloud",
+    "when": "has_cold_knot",
+    "display": "Same place, *different gas.*",
+    "display_short": "Same place, other gas.",
+    "sub": "A second cool cloud hides in the black H I dip: about {{b7e_hi_v}} km/s at its densest. O VI beside it: {{b7e_ovi_v}} km/s.",
+    "sub_short": "A second cool cloud, hidden in black.",
+    "narrative": "At the far end of cloud B sits a second cool cloud. Its hydrogen, moving at about {{b7e_hi_v}} km/s where it is densest, is hidden inside the black hydrogen dip. The warm-hot O VI beside it moves at {{b7e_ovi_v}} km/s.",
+    "physics": "Each speed is the peak of that cloud's own optical depth (its cells alone), not a dip in the full spectrum: the H I trough is black across all of these speeds, so on its own the spectrum cannot place this cloud. Neighbouring phases can move differently; ions in one dip need not share a cloud.",
+    "else": null
+  },
+  "B8": {
+    "chip": "Halfway",
+    "display": "Halfway. The galaxy sits beside us.",
+    "display_short": "Halfway; galaxy beside us.",
+    "sub": "Its centre is {{b_ly}} light-years to the side.",
+    "extra": {
+      "when": "richest_not_closest",
+      "sub": "Closest does not mean most gas: {{ovi_frac_half}} % of the O VI is already behind us.",
+      "narrative": "Being closest does not mean the most gas: {{ovi_frac_half}} % of the O VI and {{hi_frac_half}} % of the hydrogen are already behind us."
+    },
+    "sub_short": "Its centre: {{b_ly}} light-years to the side.",
+    "narrative": "Halfway along the beam the galaxy swings into view. Its centre is {{b_ly}} light-years to the side, the closest the beam comes.",
+    "physics": "The midpoint of the path is the closest approach, b = {{b_kpc}} kpc. By here {{ovi_frac_half}} % of the O VI and {{hi_frac_half}} % of the H I have been collected.",
+    "hint": "Drag to look around."
+  },
+  "B9": {
+    "chip": "Cloud C",
+    "act_title": true,
+    "when": "has_b9_new_dips",
+    "display": "Past halfway, *new dips* still appear.",
+    "display_short": "*New dips* still appear.",
+    "sub": "New O VI dips appear at {{b9_new_minima}} km/s. The order of dips is not the order of clouds.",
+    "sub_short": "Dip order is not cloud order.",
+    "narrative": "Past halfway, new O VI dips appear at {{b9_new_minima}} km/s. The order of dips in the spectrum is not the order of clouds on the beam.",
+    "physics": "O VI traces a medium; at a higher density level it breaks into pieces. Every O VI cloud shown here exists only above the level we chose.",
+    "else": {
+      "display": "Past halfway, *the light goes on.*",
+      "display_short": "*The light goes on.*",
+      "sub": "No new O VI dip appears in this stretch.",
+      "sub_short": "No new O VI dip here.",
+      "narrative": "Past halfway, the light goes on, and no new O VI dip appears in this stretch of the beam.",
+      "physics": "O VI traces a medium; at a higher density level it breaks into pieces. Every O VI cloud shown here exists only above the level we chose."
+    },
+    "then": [
+      {
+        "id": "B9.1",
+        "u": [
+          0.4,
+          0.8
+        ],
+        "when": "has_pair",
+        "display": "Far apart, same speed, *same dip.*",
+        "display_short": "Far apart, *same dip.*",
+        "sub": "Gas {{pair_sep}} kpc apart moves at almost the same speed, so the spectrum cannot tell them apart: the clearest of {{n_pairs}} such pairs.",
+        "sub_short": "{{pair_sep}} kpc apart, one dip.",
+        "narrative": "Cell {{s6_cell_b}} drops its shadow into a dip that cell {{s6_cell_a}} made {{pair_sep}} kpc behind us: they move at almost the same speed, so the spectrum cannot tell them apart. This is the clearest of {{n_pairs}} such pairs on the beam.",
+        "physics": "Cells {{s6_cell_a}} (ℓ = {{pair_a_l}} kpc) and {{s6_cell_b}} (ℓ = {{pair_b_l}} kpc) differ in speed by less than either dip's width.",
+        "else": null
+      },
+      {
+        "id": "B9.2",
+        "u": [
+          0.8,
+          1.0
+        ],
+        "display": "The spectrum keeps speed and loses place.",
+        "display_short": "Speed kept, place lost.",
+        "sub": "A dip records how fast gas moves along the beam, not where it sits.",
+        "sub_short": "Speed, not place.",
+        "narrative": "The spectrum keeps speed and loses place."
+      }
+    ]
+  },
+  "B10": {
+    "chip": "Cloud D",
+    "display": "More gas, deeper dip.",
+    "display_short": "More gas, deeper dip.",
+    "sub": "More atoms darken a dip's centre while its width hardly changes, until the centre is black.",
+    "sub_short": "More atoms, darker centre.",
+    "narrative": "Cloud D is another cool clump. More atoms darken a dip's centre while its width hardly changes, until the centre is black.",
+    "physics": "τ₀ grows in proportion to N; the centre lets through e^(−τ₀). H I total log N = {{hi_logN}} ({{hi_lls}}), peak τ = {{hi_peaktau}}. Near the top of the slider the widening comes from the damping wings, not the core. On this beam the fits land {{hi_fit_dlo}} to {{hi_fit_dhi}} dex from the true amount: a black dip gives only a rough amount, and a fit can err either way.",
+    "hint": "Drag N on the ghost dip.",
+    "then": [
+      {
+        "id": "B10.1",
+        "u": [
+          0.45,
+          1.0
+        ],
+        "when": "hi_black",
+        "display": "Once black, *only wider.*",
+        "display_short": "Once black, *only wider.*",
+        "sub": "Cloud D's hydrogen lands on a dip that is already black: the trough widens, but cannot get darker.",
+        "sub_short": "Black dips can only widen.",
+        "else": null,
+        "narrative": "But cloud D's hydrogen lands on a dip that is already black: the trough widens and cannot get darker."
+      }
+    ]
+  },
+  "B11": {
+    "chip": "Looking back",
+    "act_title": true,
+    "display": "This is everything *the light carried out.*",
+    "display_short": "All the light carried out.",
+    "sub": "{{ovi_n_visible}} cells left a visible O VI shadow. Their shadows merged into a few broad dips.",
+    "sub_short": "{{ovi_n_visible}} shadows, a few dips.",
+    "narrative": "Leaving the halo, the camera turns to look back along the whole beam. {{ovi_n_visible}} cells left a visible O VI shadow, and they merged into a few broad dips. Each cloud is tied by a ribbon to the dips it made.",
+    "physics": "Total log N = log₁₀ Σ N: {{ovi_logN}} for O VI, {{hi_logN}} for H I. Peak τ = {{ovi_peaktau}}: O VI here {{ovi_sat}}. Single cells have b = {{ovi_b_min}} to {{ovi_b_max}} km/s, yet the trough spans {{trough_lo}} to +{{trough_hi}} km/s: motion, not heat, sets its extent.",
+    "hint": "Click a ribbon to see one cloud's share."
+  },
+  "B12a": {
+    "chip": "The telescope",
+    "display": "A blurry telescope *merges dips.*",
+    "display_short": "Blur merges dips.",
+    "sub": "Every telescope smears the spectrum a little. Less sharpness means neighbouring dips blend into one.",
+    "sub_short": "Less sharpness blends neighbouring dips.",
+    "narrative": "The light reaches the telescope, and the spectrum fills the screen. Every telescope smears the spectrum a little: with less sharpness, neighbouring dips blend into one.",
+    "physics": "F_obs = F ⊗ G, a Gaussian blur with FWHM = c/R: at R = {{$R}}, FWHM = {{$fwhm}} km/s. A real instrument, such as HST/COS, has broader wings than this bell. absreq compares this with Doppler profiles of b_fid = √(b_th² + (5 km/s)²); the explorer uses Voigt profiles with thermal b only.",
+    "then": [
+      {
+        "id": "B12a.1",
+        "u": [
+          0.5,
+          1.0
+        ],
+        "display": "Blur turns *narrow* black dips grey.",
+        "display_short": "Narrow black dips go grey.",
+        "sub": "A narrow black dip comes out grey, as if light got through. The wide hydrogen trough stays black.",
+        "sub_short": "Wide black troughs stay black.",
+        "when": "hi_black",
+        "narrative": "Narrow black dips turn grey, as if light got through, but the wide hydrogen trough stays black.",
+        "else": {
+          "display": "Blur turns *narrow* dark dips grey.",
+          "display_short": "Narrow dips go grey.",
+          "sub": "A narrow dark dip comes out paler, as if more light got through.",
+          "sub_short": "Narrow dips come out paler.",
+          "narrative": "Narrow dark dips come out paler, as if more light got through."
+        }
+      }
+    ]
+  },
+  "B12b": {
+    "chip": "The telescope",
+    "display": "Longer exposures *beat noise.*",
+    "display_short": "Longer exposures beat noise.",
+    "sub": "Twice as clean needs four times as long. The noise pattern stays the same; only its size shrinks.",
+    "sub_short": "Twice as clean takes four times longer.",
+    "narrative": "Now noise. Twice as clean needs four times as long.",
+    "physics": "S/N is per resolution element, with {{pix_per_resel}} pixels per resolution element at every R: σ_pix = {{$sigma_pix}} at S/N {{$sn}}. One noise draw, fixed by a recorded seed, is scaled by S/N. Noise is the same everywhere and flux is not allowed below zero; real detectors differ. When the noise is large, the plot averages each resolution element (display only; the fit uses every pixel).",
+    "then": [
+      {
+        "id": "B12b.1",
+        "u": [
+          0.5,
+          1.0
+        ],
+        "display": "Noise can hide dips, *and invent them.*",
+        "display_short": "Noise hides and invents dips.",
+        "sub": "At low exposure the smaller dip at {{s10_feature_v}} km/s drowns, and chance wiggles look like dips. The white line is the truth.",
+        "sub_short": "The white line is the truth.",
+        "narrative": "At low exposure the smaller dip at {{s10_feature_v}} km/s drowns, and chance wiggles look like dips; at high exposure it comes back."
+      }
+    ]
+  },
+  "B13": {
+    "chip": "Reading it back",
+    "display": "We fit a few *components.*",
+    "display_short": "We fit *components.*",
+    "sub": "A fit explains the noisy spectrum with a few smooth components, each with an amount, a width and a speed.",
+    "sub_short": "Each has an amount, width and speed.",
+    "narrative": "A fit explains the noisy spectrum with a few smooth components, each with an amount, a width and a speed.",
+    "physics": "Voigt fit at R = {{s11_R}}, S/N = {{s11_sn}}; three precomputed noise draws cycle (first: seed {{fit_seed}}); live fits run only in Explore. Fitted total log N = {{fit_logN}}, against {{ovi_logN}} from every cell on the beam. A fitted width is not a thermometer: at R = {{broad_R}}, S/N = {{broad_sn}} one component has b = {{broad_b}} km/s.",
+    "then": [
+      {
+        "id": "B13.1",
+        "u": [
+          0.3,
+          0.6
+        ],
+        "display": "Components are not clouds.",
+        "display_short": "Components are not clouds.",
+        "sub": "One component can draw on gas in several places, and clouds are not cells: one clump, many cells across, can feed several components.",
+        "sub_short": "Many to many. Clouds are not cells.",
+        "narrative": "The components fly back into the scene and land on the clouds that made them, often on more than one. Components are not clouds, and clouds are not cells: a cloud is a connected clump of gas, many cells across."
+      },
+      {
+        "id": "B13.3",
+        "u": [
+          0.6,
+          1.0
+        ],
+        "display": "A spectrum tells how much and how fast.",
+        "display_short": "How much, how fast.",
+        "sub": "…but not where, and one width alone is not a thermometer.",
+        "sub_short": "Not where. One width is no thermometer.",
+        "narrative": "A spectrum tells how much and how fast, but not where, and one fitted width alone is not a thermometer."
+      },
+      {
+        "id": "B13.4",
+        "u": [
+          0.6,
+          1.0
+        ],
+        "when": "has_invented",
+        "display": null,
+        "display_short": null,
+        "sub": null,
+        "sub_short": null,
+        "physics": "At R = {{invented_R}}, S/N = {{invented_sn}} the fit adds a component with b = {{inv_b}} km/s (total {{inv_logN}}): narrower than the blur can measure, so its width is not constrained. The gas cells explain only a small part of it (CREST β = {{facts2.invented.beta}}).",
+        "else": null
+      }
+    ]
+  },
+  "B14": {
+    "chip": "Yours",
+    "display": "Now it is yours. Same galaxy, same beam.",
+    "display_short": "Now it is yours.",
+    "sub": "Change sharpness and exposure, pick another of {{ngal}} galaxies, or open this beam in the explorer.",
+    "sub_short": "Try another beam.",
+    "narrative": "Now it is yours: the same galaxy and the same beam. Change the sharpness and the exposure, ride another beam from any of {{ngal}} galaxies, or open this beam in the explorer.",
+    "physics": "Sharpness is R, exposure is S/N, the components are the fit: each maps to one control in Spectra.",
+    "then": [
+      {
+        "id": "B14.1",
+        "u": [
+          0.0,
+          1.0
+        ],
+        "when": "lite",
+        "display": null,
+        "display_short": null,
+        "sub": "This beam has no cell-by-cell ride yet: you see its library spectrum, and the cells drawn did not make it.",
+        "sub_short": "Library spectrum; drawn cells are not its cells.",
+        "else": null,
+        "narrative": "This beam has no cell-by-cell ride yet: you see its library spectrum, and the cells drawn did not make it."
+      }
+    ]
+  },
+  "narrative_groups": [
+    {
+      "h2": "Light",
+      "beats": [
+        "B0",
+        "B1"
+      ]
+    },
+    {
+      "h2": "The halo",
+      "beats": [
+        "B2",
+        "B3",
+        "B4"
+      ]
+    },
+    {
+      "h2": "Cloud A",
+      "beats": [
+        "B5"
+      ]
+    },
+    {
+      "h2": "The quiet",
+      "beats": [
+        "B6"
+      ]
+    },
+    {
+      "h2": "Cloud B",
+      "beats": [
+        "B7a",
+        "B7b",
+        "B7c",
+        "B7d",
+        "B7e"
+      ]
+    },
+    {
+      "h2": "Halfway",
+      "beats": [
+        "B8"
+      ]
+    },
+    {
+      "h2": "Cloud C",
+      "beats": [
+        "B9"
+      ]
+    },
+    {
+      "h2": "Cloud D",
+      "beats": [
+        "B10"
+      ]
+    },
+    {
+      "h2": "Looking back",
+      "beats": [
+        "B11"
+      ]
+    },
+    {
+      "h2": "The telescope",
+      "beats": [
+        "B12a",
+        "B12b"
+      ]
+    },
+    {
+      "h2": "Reading it back",
+      "beats": [
+        "B13"
+      ]
+    },
+    {
+      "h2": "Yours",
+      "beats": [
+        "B14"
+      ]
+    }
+  ],
+  "ui": {
+    "gate_hold": "Hold to ride",
+    "gate_watch": "Watch ({{$watch_len}})",
+    "skip_intro": "Skip intro",
+    "read_as_text": "Read as text",
+    "hint_desktop": "Scroll, or hold Space, to ride the light",
+    "hint_touch": "Swipe up to ride the light",
+    "fly": "Fly",
+    "pause": "Pause",
+    "resume": "Resume",
+    "look": "Look",
+    "menu": "Menu",
+    "explore": "Explore",
+    "physics": "Physics",
+    "share": "Copy link to this moment",
+    "replay": "Replay",
+    "ride_another": "Ride another beam",
+    "open_spectra": "Open in Spectra",
+    "see_3d": "See it in 3D",
+    "stop_counter": "stop {{$stop.k}} of {{$stop.n}}",
+    "odometer": "{{$l_travelled}} kpc travelled",
+    "odometer_ly": "{{$ly_travelled}} light-years travelled",
+    "watch_remaining": "{{$watch_remaining}} left",
+    "drag_look": "Drag to look around",
+    "lite_badge": "Story-lite: library spectrum",
+    "field_fallback": "Showing density while {{$field}} loads",
+    "reduced_motion": "Reduced motion: one still per step",
+    "no_webgl": "This device cannot draw the 3D gas, so you see one still picture with the live spectrum.",
+    "software_gl": "3D is slow on this device, so you see one still picture with the live spectrum. Add ?force3d to try anyway.",
+    "keys_help": "Keys: Space ride or pause, arrows step, Page Up and Page Down jump, G grab, Esc release, T colours, R sharpness, N exposure",
+    "tf": {
+      "density": "Density",
+      "phases": "Gas phases",
+      "hi": "H I",
+      "ovi": "O VI",
+      "speed": "Speed along the beam",
+      "speed_cells_only": "Speed: cells only, no velocity data",
+      "speed_cells_only_short": "cells only",
+      "composite": "Phases and clouds"
+    },
+    "phase_legend": {
+      "cool": "cool",
+      "warm_hot": "warm-hot",
+      "hot": "hot"
+    },
+    "canvas_label": "{{$beat_title}}: the light at {{$l_travelled}} kpc along the beam",
+    "ride_another_short": "Another beam",
+    "open_spectra_short": "Spectra",
+    "replay_short": "Replay"
+  },
+  "dock": {
+    "all_through": "All the light gets through",
+    "lead_meter": "{{$ion}} gas crossed",
+    "light_left": "light left at the centre",
+    "black_width": "width of the black core",
+    "light_taken": "light taken",
+    "sharpness": "Sharpness (R)",
+    "exposure": "Exposure (S/N)",
+    "new_noise": "New noise",
+    "truth": "Truth",
+    "damping_wings": "damping wings",
+    "axis_speed": "Speed along the beam (km/s)",
+    "axis_wavelength": "Wavelength (Å)",
+    "cos_caveat": "Real instruments such as HST/COS have broader wings than this bell.",
+    "no_cell": "no cell",
+    "smaller_dip": "a smaller dip",
+    "ghost": "what if",
+    "refit": "Refit",
+    "fit_busy": "fitting",
+    "fit_timeout": "fit stopped early"
+  },
+  "plaque": {
+    "lay": {
+      "nH": "{{$cell.nH}} hydrogen atoms per cm³",
+      "T": "{{$cell.T}} K",
+      "v": "{{$cell.v}} km/s along the beam",
+      "f": "{{$cell.f}} of its {{$cell.element}} is {{$ion}}",
+      "Z": "{{$cell.Z}} Z⊙ metals",
+      "dl": "{{$cell.dl}} kpc of path"
+    },
+    "physics": {
+      "nH": "n_H = {{$cell.nH}} cm⁻³",
+      "T": "T = {{$cell.T}} K",
+      "v": "V = {{$cell.v}} km/s",
+      "f": "f_ion = {{$cell.f}}",
+      "Z": "Z = {{$cell.Z}} Z⊙",
+      "dl": "dl = {{$cell.dl}} kpc"
+    },
+    "rule": "Default (review M3 beauty): a pair of plain rows, grouped digits, no exponents: heat and speed, then the lead ion's share as '1 in N'. The Physics layer shows exactly 4 values (n_H, T, V and the lead ion's share; Z and dl replace them only when the active equation needs them). One value per line, never a dot separator.",
+    "plain": {
+      "tv": "{{$cell.Tw}} K, {{$cell.vw}}",
+      "v_away": "moving away at {{$cell.va}} km/s",
+      "v_toward": "moving toward us at {{$cell.va}} km/s",
+      "v_rest": "at rest",
+      "f": "{{$cell.fw}} {{$cell.element}} atoms is {{$ion}}",
+      "f_most": "most of its {{$cell.element}} is {{$ion}}",
+      "f_half": "about half its {{$cell.element}} is {{$ion}}"
+    }
+  },
+  "shells": {
+    "chip_letter": "cloud {{$letter}}",
+    "chip_ovi_structure": "O VI structure",
+    "ovi_caveat": "O VI clouds exist only above a density level we chose",
+    "open_edge": "extent is a lower limit here",
+    "threshold": "Surface level: changes the cloud, not the spectrum",
+    "lay_definition": "A cloud is a connected clump of gas in one phase that the beam passes through. Its surface is drawn at a level we choose."
+  },
+  "film": {
+    "rule": "Caption per chunk names the parameter it isolates (R_content 11). Chunk ids match film.json (U_film).",
+    "captions": {
+      "open": "density: where the gas is",
+      "outskirts": "heat: which gas is warm",
+      "cloudA": "amount: one clump goes black",
+      "too_hot": "speed: where a dip sits",
+      "cell263": "ion share: heat decides the ion",
+      "thread": "place is lost, speed is kept",
+      "cloudD": "amount: deeper, then only wider",
+      "lookback": "metals: an ingredient, not the switch",
+      "telescope": "sharpness and noise",
+      "fit": "how much and how fast, not where",
+      "end": "{{$url}}"
+    },
+    "end_card_title": "How a spectrum is made",
+    "honesty_heading": "What we simplified"
+  },
+  "physics_layer": {
+    "heading": "Physics",
+    "cells": "{{n_kernels}} smoothing kernels touch the beam; about {{n_crossed}} cells are actually crossed.",
+    "units": "Metal content is in solar units (Z⊙). Speeds are in km/s along the beam, measured from the galaxy; positive means moving away from us.",
+    "honesty_heading": "What we simplified"
+  },
+  "honesty": [
+    "One frozen snapshot at z = 0: light takes about {{light_crossing_myr}} million years to cross this path, while real gas would move.",
+    "No expansion of space along the beam; it would add up to {{hubble_kms}} km/s.",
+    "Dip widths come from heat only; no turbulence is added.",
+    "No Milky Way foreground, no gas beyond the halo, no blends with other ions.",
+    "O VI's second transition lies off the plotted speed range.",
+    "The telescope blur is a Gaussian; real instruments such as HST/COS have broader wings.",
+    "One noise draw, fixed by a recorded seed, is scaled by S/N.",
+    "On narrow screens a noisy spectrum is averaged over neighbouring pixels for display only, so it stays readable; the noise level shown is per pixel.",
+    "{{pix_per_resel}} pixels per resolution element at every R.",
+    "The pacing is time-warped: the camera slows where absorption happens. The odometer shows the true distance.",
+    "The fog is a smoothed grid, and its colours are our choice, not light the gas gives off.",
+    "The beads are smoothing kernels: {{n_kernels}} touch the beam, and about {{n_crossed}} cells are actually crossed.",
+    "The small gas splats beside the beam cannot be picked.",
+    "O VI clouds exist only above a density level we chose; at lower levels the O VI joins into one medium.",
+    "Warm-hot cloud extents are lower limits: the search stops at the edge of a tube around the beam.",
+    "Star streaks are a motion cue, not physics."
+  ],
+  "credits": {
+    "heading": "Credits and methods",
+    "items": [
+      "Simulation: IllustrisTNG, TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019).",
+      "Spectra: Trident (Hummels, Smith & Silvia 2017) on yt (Turk et al. 2011).",
+      "Ionisation: the Haardt & Madau (2012) UV background tables.",
+      "Cloud finding: techniques adapted from Lucchini, Han, Hernquist & Conroy (2024) and Lucchini et al. (2025, ApJ 990, 118), which build on Nelson et al. (2020) and Ramesh et al. (2023). No code was copied.",
+      "Cell and component attribution: CREST (T. Singh), which re-runs Trident's deposition per cell and splits each fitted component among the cells and clouds that made it.",
+      "vortrace (Beane & Smith) was evaluated and is not used or vendored; the count of crossed cells comes from nearest-generator sampling.",
+      "Equations typeset with KaTeX (MIT); 3D with three.js (MIT); fonts Newsreader, Space Grotesk and JetBrains Mono (SIL Open Font Licence)."
+    ],
+    "methods": [
+      "Clouds are connected groups of gas cells, linked by Voronoi neighbours in position and speed, with a density level chosen so that one structure does not swallow the halo. The level is logged, and a ladder of precomputed levels drives the surface handle.",
+      "O VI clouds exist only above that chosen level; below it the O VI joins into one medium. Warm-hot extents are lower limits at the edge of the search tube.",
+      "Each fitted component is split among cells by CREST responsibilities; a component that no cell explains is shown as no cell."
+    ]
+  },
+  "flags": {
+    "about": "Booleans exported per story by U_data (story JSON `flags`), each from the R_content 10 rule for any of the galaxies. A missing flag counts as false, so the conservative branch shows.",
+    "has_first_ovi": "some cell in flight order has O VI τ₀ > 0.05 (B4)",
+    "hi_black": "a cool cloud crosses the beam with H I peak τ₀ > 1 (B5, B10, B12a)",
+    "has_ovi_skin": "O VI cells within 10 kpc of that cool cloud with |ΔV| < 20 km/s (B5 skin sentence)",
+    "has_hot_stretch": "a stretch of at least 40 kpc with median T > 10⁶ K and no visible cells (B6 first line)",
+    "ovi_strong": "O VI peak τ ≥ 0.1 (B7b)",
+    "has_cold_knot": "an H I group within 15 kpc of an O VI group with |ΔV| > 50 km/s, positions from spectral minima (B7e)",
+    "has_pair": "the v1 S6 pair rule finds a pair (τ₀ > 0.05, |ΔV| < 0.5 min b, |Δℓ| ≥ 50 kpc) (B9 thread)",
+    "has_invented": "the page fits hold a component narrower than b for O VI at 30 000 K that the cells claim under a quarter of (CREST β < 0.25), as exported by U_data in facts2.flag_rules (B13 invented example; 488530: β = 0.088, column share 0.064). Replaces the earlier '< 5 % summed responsibility', which no reading meets on 488530. Pending science review.",
+    "lite": "story-lite: no cell-by-cell data for this beam (B14 honesty line)",
+    "richest_not_closest": "the richest O VI stretch (largest O VI group by column) does not contain the closest-approach point, so 'closest does not mean most gas' holds (B8, M14)",
+    "has_b9_new_dips": "the B9 window gains at least one new O VI spectral minimum (U_data facts2.b9_new_minima non-empty; review2 science M1: minima of the partial spectrum, not peaks of the optical depth gained); gates B9's entry, which quotes {{b9_new_minima}}. Without it B9 says only that no new dip appears."
+  },
+  "derive": {
+    "about": "Analogies and number words are generated from keys by these rules, never typed. Reference evaluator: deriveKeys() in tests/js/story_copy_lint.mjs. Each rule needs a science sign-off (status).",
+    "cloudA_xHI_one_in": {
+      "from": [
+        "cloudA_xHI"
+      ],
+      "rule": "one_in",
+      "text": "1/x rounded to one significant figure; written as a word up to twenty, otherwise as a grouped number (0.09 gives ten)",
+      "status": "pending science review"
+    },
+    "hot_xHI_one_in": {
+      "from": [
+        "hot_xHI"
+      ],
+      "rule": "one_in",
+      "text": "as above (5×10⁻⁶ gives 200 000)",
+      "status": "pending science review"
+    },
+    "xHI_ratio": {
+      "from": [
+        "cloudA_xHI",
+        "hot_xHI"
+      ],
+      "rule": "ratio_1sf",
+      "text": "a/b rounded to one significant figure, grouped (0.09 / 5×10⁻⁶ = 18 000 gives 20 000), always shown after 'about'",
+      "status": "pending science review"
+    },
+    "c263_ovi_share_words": {
+      "from": [
+        "c263_ovi_share"
+      ],
+      "rule": "fraction_words",
+      "text": "a share in % written as half, a third, a quarter, a fifth or a tenth when within 10 % (relative) of it, otherwise 'N %' (24.7 gives a quarter)",
+      "status": "pending science review"
+    },
+    "light_crossing_myr": {
+      "from": [
+        "length_kpc"
+      ],
+      "rule": "light_myr",
+      "text": "path length in kpc times 3261.56 light-years per kpc, in millions of years, one decimal (493 gives 1.6)",
+      "status": "unit conversion"
+    },
+    "xHI_ratio_shown": {
+      "from": [
+        "cloudA_xHI",
+        "hot_xHI"
+      ],
+      "rule": "ratio_1sf",
+      "text": "review M3: the ratio of the two rounded keys shown on screen, to one significant figure (0.08 / 5×10⁻⁶ gives 20 000), so it agrees with the two 'one in' numbers beside it; the exported xHI_ratio key (unrounded) is not used in copy",
+      "status": "pending science review"
+    }
+  },
+  "keys_contract": {
+    "about": "Keys the copy reads that story-data/1 does not have. DESIGN_final 3.6 names the first group (U_data must export them); the second group is requested by U_copy from U_data (same formatting as v1 keys: display strings, digit groups with a space, unicode minus and superscripts). frac_before_l0 per ion is exported by U_data as ovi_frac_half / hi_frac_half (percent strings), and the copy uses those names.",
+    "design_3_6": [
+      "n_kernels",
+      "n_crossed",
+      "n_pairs",
+      "cloudA_xHI",
+      "hot_xHI",
+      "cloudA_core_T",
+      "cloudA_core_bH",
+      "cloudA_core_bO",
+      "b3_ovi_depth",
+      "b4_first_depth",
+      "b5_ovi_depth",
+      "b5_ovi_drop",
+      "b5_ovi_depth_after",
+      "b9_new_dips",
+      "b9_new_minima",
+      "b9_deepened_minima",
+      "ovi_T_hot_fade",
+      "ovi_T_cool_fade",
+      "v_gal",
+      "ovi_frac_half",
+      "hi_frac_half"
+    ],
+    "requested_by_copy": {
+      "c263_ovi_share": "share of the beam's O VI column in the S5 cell, in % (24.7 for 488530)",
+      "b7e_hi_v": "H I position of the second cool cloud (cold_knot): its cloud's own spectral minimum, signed km/s (+37)",
+      "b7e_ovi_v": "O VI clouds beside it: each cloud's own spectral minimum, signed km/s joined by 'and' (−55 and +14)",
+      "s10_feature_v": "select.S10_feature.V_kms as a signed display string (+96)",
+      "pix_per_resel": "pixels per resolution element of the noise model (5)",
+      "flags": "object of booleans named in copy.flags (shipped 2026-11-12 11:37 with facts2.flag_rules)"
+    },
+    "status": "all requested keys and flags ship in story-data/2 (U_data regeneration 2026-11-12 11:37)"
+  },
+  "live": {
+    "about": "Runtime values filled by the shell, dock or plaque from FrameState or controls; never typed numbers.",
+    "fields": [
+      "$watch_len",
+      "$watch_remaining",
+      "$stop.k",
+      "$stop.n",
+      "$l_travelled",
+      "$ly_travelled",
+      "$cell.nH",
+      "$cell.T",
+      "$cell.v",
+      "$cell.f",
+      "$cell.Z",
+      "$cell.dl",
+      "$cell.element",
+      "$ion",
+      "$R",
+      "$fwhm",
+      "$sn",
+      "$sigma_pix",
+      "$letter",
+      "$field",
+      "$url",
+      "$beat_title",
+      "$T",
+      "$cell.Tw",
+      "$cell.vw",
+      "$cell.va",
+      "$cell.fw"
+    ]
+  },
+  "rules": {
+    "plain_language": {
+      "R": "sharpness (R in the Physics layer)",
+      "S/N": "exposure (S/N in the Physics layer)",
+      "column density": "amount (log N in the Physics layer)",
+      "absorption line": "dip",
+      "sightline": "beam",
+      "line-spread function": "blur",
+      "component": "component (B13 only, where the lesson needs the word)",
+      "temperature": "heat in display lines; T with units in the Physics layer",
+      "meters": "'{{$ion}} gas crossed', 'light left at the centre', 'width of the black core', 'light taken'"
+    },
+    "analogies": [
+      {
+        "id": "siren",
+        "where": "B6.1",
+        "text": "like a siren",
+        "basis": "Doppler shift; qualitative, no number",
+        "status": "pending science review"
+      },
+      {
+        "id": "one_in",
+        "where": "B5.1",
+        "text": "one hydrogen atom in N keeps its electron",
+        "basis": "derive.cloudA_xHI_one_in / hot_xHI_one_in",
+        "status": "pending science review"
+      },
+      {
+        "id": "ratio",
+        "where": "B5.1",
+        "text": "about N times fewer",
+        "basis": "derive.xHI_ratio",
+        "status": "pending science review"
+      },
+      {
+        "id": "quarter",
+        "where": "B7b",
+        "text": "a quarter of all the O VI",
+        "basis": "derive.c263_ovi_share_words",
+        "status": "pending science review"
+      },
+      {
+        "id": "sqrt_t",
+        "where": "B12b",
+        "text": "twice as clean needs four times as long",
+        "basis": "S/N grows as the square root of exposure time (photon counting); exact, not data-dependent",
+        "status": "pending science review"
+      },
+      {
+        "id": "jiggle",
+        "where": "B7b.1",
+        "text": "hotter ions jiggle faster",
+        "basis": "thermal speed b = √(2kT/m); qualitative",
+        "status": "pending science review"
+      }
+    ],
+    "positions": "A dip position on screen is a spectral-minimum key (b7e_*, b9_new_minima, s10_feature_v), never an N-weighted mean of cells (C_science H2).",
+    "cells_wording": "Display says 'hundreds of gas cells' only for the cells the beam touches (n_kernels); it never says hundreds of cells make the dips (v1 review P0-6: only ovi_n_visible leave a visible O VI shadow). Counts appear only in the Physics layer: n_kernels kernels touch, about n_crossed are crossed. ncross and n_cells are banned in copy."
+  },
+  "lint": {
+    "allow": [
+      {
+        "re": "\\b3D\\b|force3d",
+        "why": "the name of the 3D view and its URL flag"
+      },
+      {
+        "re": "TNG50-1",
+        "why": "simulation name"
+      },
+      {
+        "re": "TNG50",
+        "why": "simulation name"
+      },
+      {
+        "re": "R200c|M200c",
+        "why": "halo radius and mass symbols"
+      },
+      {
+        "re": "z = 0",
+        "why": "snapshot redshift is the definition of the data set (meta.redshift); stated once in Physics and honesty"
+      },
+      {
+        "re": "\\(5 km/s\\)²",
+        "why": "absreq's fixed non-thermal floor in b_fid, quoted from absreq/lines.py (the parent project's convention, not a story number)"
+      },
+      {
+        "re": "b_th²|χ²",
+        "why": "symbol with a squared exponent"
+      },
+      {
+        "re": "cm⁻³|cm³",
+        "why": "unit"
+      },
+      {
+        "re": "10⁶ K|10⁻⁶",
+        "why": "rule definitions in `flags` (not shown on screen)",
+        "sections": [
+          "flags",
+          "derive"
+        ]
+      },
+      {
+        "re": "\\b(19|20)\\d\\d\\b|ApJ 990, 118",
+        "why": "bibliographic years and journal reference",
+        "sections": [
+          "credits"
+        ]
+      },
+      {
+        "re": "\\d",
+        "why": "rule text for builders, not shown on screen",
+        "sections": [
+          "flags",
+          "derive",
+          "keys_contract",
+          "meta",
+          "rules",
+          "plaque.rule",
+          "film.rule",
+          "lint"
+        ]
+      }
+    ],
+    "allow_words": [
+      {
+        "re": "Twice as clean needs four times as long|Twice as clean takes four times longer",
+        "why": "square-root law of photon noise (rules.analogies sqrt_t)"
+      },
+      {
+        "re": "(a|even a) sixth electron",
+        "why": "O VII is oxygen with six electrons lost; definition of the ion, not data"
+      },
+      {
+        "re": "three precomputed noise draws",
+        "why": "page_fits holds three seeds (pipeline constant of v1, physics layer only)"
+      },
+      {
+        "re": "hundreds of gas cells",
+        "why": "D5: display says hundreds of cells for the kernels the beam touches (n_kernels)"
+      },
+      {
+        "re": "half its peak",
+        "why": "definition of the fade temperatures ovi_T_hot_fade / ovi_T_cool_fade (C_science M5)"
+      },
+      {
+        "re": "\\bhalf\\b",
+        "why": "rule text for builders",
+        "sections": [
+          "flags"
+        ]
+      }
+    ]
+  }
+}

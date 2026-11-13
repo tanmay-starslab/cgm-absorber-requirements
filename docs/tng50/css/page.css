@@ -438,6 +438,8 @@ body{background-image:radial-gradient(1200px 760px at 10% -12%,var(--glow1),tran
   #side-done.pbtn{background:none;border-color:transparent;box-shadow:none}
   /* the floating Ask button sits over the sheet: let the sheet scroll its last row clear of it */
   body:has(>#chat-open.fab:not([hidden])) #side{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  /* ... and keep the status bar (fit status, story hint) clear of it on its right */
+  body:has(>#chat-open.fab:not([hidden])) #bar{padding-right:calc(118px + env(safe-area-inset-right,0px))}
 }
 /* sliders and switches: white knob with a hairline edge and a soft shadow, accent fill; the switch off track is a light well */
 input[type=range]::-webkit-slider-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 1px 3px rgba(0,0,0,.30)}

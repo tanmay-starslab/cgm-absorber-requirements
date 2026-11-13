@@ -331,3 +331,121 @@ export function makeMaterial(T, opts = {}) {
     blendSrcAlpha: T.OneFactor, blendDstAlpha: T.ZeroFactor});
   return {material: mat, uniforms, empty1: e1, empty4: e4, lutTex, tfTex};
 }
+
+/* ---- Story variant (explainer v2, DESIGN_final §3.4, U_stage) ------------------------------------------------------------
+   The explorer's VERT/FRAG/makeMaterial above are untouched (their generated GLSL is byte-identical; tests/js/raymarch_parity.mjs).
+   FRAG_STORY reuses every helper of FRAG (decode, exact/fast sampling, level pick, LOD, TF lookup, shading, velocity) and
+   replaces only main(), compiled with `#define STORY` (ShaderMaterial.defines). The story main is volume mode only: no stars,
+   no integral or composite branches. What it adds:
+   - two segments (uSeg 1 = near: camera -> entry of the travelling capsule; 0 = far: capsule entry -> box exit), each drawn
+     into its own half-resolution target, so the near-field geometry (splats, ray cells, beam) is composited between them and
+     fog in front of it dims it by exp(-tau) (C_eng P0-3);
+   - the travelling capsule (uCap = l0, l1, r, edge about the ray uRayO + l uRayN): the volume weight is 1 - capF(p), the
+     splats use capF at their centre (same function, js/stage/tube.js capsuleF), so f_vol + f_splat = 1 (C_eng P0-4);
+   - depth fog to black (uFog: start, end distance from the camera, kpc) on the emission only (dark-sky rule, C_ux P0-3);
+   - output = premultiplied (C, A) of the segment, blended into its target as an EMA by the constant blend alpha. */
+const STORY_MAIN = `#ifdef STORY
+uniform int uSeg; uniform vec3 uRayO, uRayN; uniform vec4 uCap; uniform vec2 uFog;
+/* phase 1: focus radius about the probe (DESIGN §3.1 uFocus, C_ux P0-3 "lower the far-field gain with uFocus"): emission
+   farther than r from uFocus.xyz fades to uFocusDim over r..2r; uFocus.w = 0 is a no-op */
+uniform vec4 uFocus; uniform float uFocusDim;
+/* phase 1b (review2 beauty H2, M2; S0.md §9 B10): uVelRest = (floor, ramp km/s): in vel mode the emission of gas at rest along the
+   beam is scaled to floor and rises to 1 at |V| >= ramp, so only moving gas glows blue/red (floor 1 = off). uKnee = (start, top):
+   hue-preserving soft knee on the max channel of the summed emission, for every mode (start >= top = off) */
+uniform vec2 uVelRest, uKnee;
+float focW(vec3 p) { if (uFocus.w <= 0.0) return 1.0; return mix(uFocusDim, 1.0, 1.0 - smoothstep(uFocus.w, 2.0 * uFocus.w, length(p - uFocus.xyz))); }
+/* capsule weight: 1 inside the core, smooth to 0 over the outer edge fraction in radius and at both ends */
+float capF(vec3 p) {
+  if (uCap.z <= 0.0 || uCap.y <= uCap.x) return 0.0;
+  vec3 q = p - uRayO; float l = dot(q, uRayN), rho = length(q - l * uRayN), e = max(uCap.w, 1e-3);
+  float hl = 0.5 * (uCap.y - uCap.x), lc = 0.5 * (uCap.x + uCap.y);
+  return (1.0 - smoothstep(uCap.z * (1.0 - e), uCap.z, rho)) * (1.0 - smoothstep(hl * (1.0 - e), hl, abs(l - lc))); }
+/* entry/exit t of the capsule's bounding cylinder (radius r, l0 <= l <= l1) along o + t d; x > y when missed */
+vec2 capT(vec3 o, vec3 d) {
+  if (uCap.z <= 0.0 || uCap.y <= uCap.x) return vec2(1e9, -1e9);
+  vec3 q = o - uRayO; float ol = dot(q, uRayN), dl = dot(d, uRayN); vec3 op = q - ol * uRayN, dp = d - dl * uRayN;
+  float a = dot(dp, dp), b = dot(op, dp), c = dot(op, op) - uCap.z * uCap.z; vec2 tr;
+  if (a < 1e-9) { if (c > 0.0) return vec2(1e9, -1e9); tr = vec2(-1e9, 1e9); }
+  else { float disc = b * b - a * c; if (disc < 0.0) return vec2(1e9, -1e9); float s = sqrt(disc); tr = vec2((-b - s) / a, (-b + s) / a); }
+  vec2 tl;
+  if (abs(dl) < 1e-9) { if (ol < uCap.x || ol > uCap.y) return vec2(1e9, -1e9); tl = vec2(-1e9, 1e9); }
+  else { float ta = (uCap.x - ol) / dl, tb = (uCap.y - ol) / dl; tl = vec2(min(ta, tb), max(ta, tb)); }
+  return vec2(max(tr.x, tl.x), min(tr.y, tl.y)); }
+void main() {
+  vec3 o = uCamDisk, d = normalize(vPos - uCamDisk);
+  d = mix(d, vec3(1e-7), vec3(lessThan(abs(d), vec3(1e-7))));
+  vec2 tb = slab(o, d, uHalf.x); float t0 = max(tb.x, 0.0), t1 = tb.y;
+  fragColor = vec4(0.0);
+  if (t1 <= t0) return;
+  vec2 cp = capT(o, d); float ts = (cp.y > cp.x && cp.y > t0) ? clamp(cp.x, t0, t1) : t0;
+  float ga = uSeg == 1 ? t0 : ts, gb = uSeg == 1 ? ts : t1;
+  if (gb - ga <= 1e-4) return;
+  bool velMode = uVq > 0; vec3 gHave = velMode ? min(uVelHave, uWHave) : uGasHave;
+  if (gHave.x + gHave.y + gHave.z <= 0.0) return;
+  bool tfW = !velMode && uTFW == 1 && uGamma > 0.0;
+  float tspan = max(uTFWin.y - uTFWin.x, 1e-6), gdiv = 1.0 / max(uGradMax, 1e-6), wspan = max(uWWin.y - uWWin.x, 1e-6), span = max(uWin.y - uWin.x, 1e-6);
+  vec2 s1 = slab(o, d, uHalf.y), s2 = slab(o, d, uHalf.z);
+  if (s1.x >= s1.y) s1 = vec2(t1); if (s2.x >= s2.y) s2 = vec2(clamp(s1.x, t0, t1));
+  float bp[6]; bp[0] = ga; bp[1] = clamp(s1.x, ga, gb); bp[2] = clamp(s2.x, bp[1], gb); bp[3] = clamp(s2.y, bp[2], gb); bp[4] = clamp(s1.y, bp[3], gb); bp[5] = gb;
+  float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy + 5.588238 * float(uFrame & 63), vec2(0.06711056, 0.00583715))));
+  vec3 C = vec3(0.0); float A = 0.0, kappa = uVolK * uOpacity * uOpacity; int it = 0;
+  for (int s = 0; s < 5; s++) {
+    float ta = bp[s], tl = bp[s + 1] - ta; if (tl <= 1e-5 || A > 0.99) continue;
+    vec3 pm = o + d * (ta + 0.5 * tl);
+    int lg = pick(gHave, pm, 3), lw = tfW ? pick(uWHave, pm, 3) : -1;
+    float fp = uPxAng * max(length(pm - o), 1.0), mg = 1.0, mw = 1.0; int cg = -1, cw = -1;
+    lg = lodLevel(gHave, pm, lg, fp, uLodC.x, cg, mg); lw = lodLevel(uWHave, pm, lw, fp, uLodC.x, cw, mw);
+    if (lg < 0) continue;
+    float dt = 2.0 * hl(lg) / uN / uSpv; int n = max(1, int(ceil(tl / dt))); float h = tl / float(n);
+    for (int k = 0; k < 4096; k++) {
+      if (k >= n || it >= 4096 || A > 0.99) break; it++;
+      float tk = ta + (float(k) + jit) * h; vec3 p = o + d * tk;
+      float hw = h * smoothstep(uNear.x, uNear.y, tk) * (1.0 - capF(p)); if (hw <= 0.0) continue;
+      float fogw = (uFog.y > uFog.x ? 1.0 - smoothstep(uFog.x, uFog.y, tk) : 1.0) * focW(p);
+      if (velMode) {
+        float w = wVal(p, lg); vec4 m = velVal(p, lg); if (cg >= 0) { w = mix(wVal(p, cg), w, mg); m = mix(velVal(p, cg), m, mg); }
+        if (w > 0.0 && m.w > 1e-3) {
+          // review H2 (story only): speed along the BEAM, V = -v.n (the exporter's spectral V; cube and n in the disk frame,
+          // relative to SubhaloVel), so the fog colour matches the beads and the dips whatever the camera does
+          float qv = uVq == 1 ? -dot(m.xyz / m.w, uRayN) : velQ(m.xyz / m.w, p, d), xw = clamp((log2(w) / LOG2_10 - uWWin.x) / wspan, 0.0, 1.0);
+          float rw = mix(uVelRest.x, 1.0, smoothstep(0.0, max(uVelRest.y, 1e-3), abs(qv)));
+          if (xw > 0.0) { float a = 1.0 - exp(-kappa * xw * xw * hw); C += (1.0 - A) * a * fogw * rw * lutc((qv - uWin.x) / span); A += (1.0 - A) * a; } }
+      } else {
+        float v = gasVal(p, lg); if (cg >= 0) v = mix(gasVal(p, cg), v, mg);
+        float x = v > 0.0 ? (log2(v) / LOG2_10 - uTFWin.x) / tspan : -1.0;
+        if (x >= 0.0) {
+          vec3 g = vec3(0.0); float gn = 0.0;
+          if (uTF2D == 1) { g = gradAt(p, lg); if (cg >= 0 && mg < 1.0) g = mix(gradAt(p, cg), g, mg); gn = length(g) * gdiv; }
+          vec4 tf = tfAt(x, gn);
+          if (tf.a > 0.0) {
+            if (uShade > 0.0 && uTF2D != 1) { g = gradAt(p, lg); if (cg >= 0 && mg < 1.0) g = mix(gradAt(p, cg), g, mg); gn = length(g) * gdiv; }
+            float a = 1.0 - exp(-kappa * tf.a * hw), W = 1.0;
+            if (tfW && lw >= 0) { float w = wVal(p, lw); if (cw >= 0) w = mix(wVal(p, cw), w, mw); W = w > 0.0 ? exp2(uGamma * (log2(w) - LOG2_10 * uWRef)) : 0.0; }
+            C += (1.0 - A) * a * W * fogw * shadeTF(tf.rgb, g, gn, d); A += (1.0 - A) * a; }
+        }
+      }
+    }
+  }
+  vec3 e = C * uVolGain; float m = max(e.r, max(e.g, e.b));
+  float k0 = uKnee.x, k1 = uKnee.y;
+  if (k1 > k0 && m > k0) e *= (k0 + (k1 - k0) * (1.0 - exp(-(m - k0) / (k1 - k0)))) / m;
+  fragColor = vec4(min(e, vec3(1.0)), A);
+}
+#endif`;
+export const FRAG_STORY = FRAG.slice(0, FRAG.indexOf("void main()")) + STORY_MAIN;
+
+/* The story material: same uniforms as makeMaterial plus the story ones; drawn into a half-resolution target with an EMA
+   blend (blendAlpha = the EMA weight; ConstantAlpha factors), so each target keeps a running mean of the jittered frames. */
+export function makeStoryMaterial(T, opts = {}) {
+  const base = makeMaterial(T, opts), V3 = (a, b, c) => new T.Vector3(a, b, c);
+  Object.assign(base.uniforms, {uSeg: {value: 0}, uRayO: {value: V3(0, 0, 0)}, uRayN: {value: V3(0, 0, 1)},
+    uCap: {value: new T.Vector4(0, 0, 0, 0.3)}, uFog: {value: new T.Vector2(0, 0)}, uFocus: {value: new T.Vector4(0, 0, 0, 0)}, uFocusDim: {value: 1},
+    uVelRest: {value: new T.Vector2(1, 60)}, uKnee: {value: new T.Vector2(0.6, 1.0)}});
+  base.material.dispose();
+  const mat = new T.ShaderMaterial({glslVersion: T.GLSL3, vertexShader: VERT, fragmentShader: FRAG_STORY, uniforms: base.uniforms,
+    defines: {STORY: 1}, side: T.BackSide, transparent: true, depthWrite: false, depthTest: false,
+    blending: T.CustomBlending, blendEquation: T.AddEquation, blendSrc: T.ConstantAlphaFactor, blendDst: T.OneMinusConstantAlphaFactor,
+    blendSrcAlpha: T.ConstantAlphaFactor, blendDstAlpha: T.OneMinusConstantAlphaFactor});
+  mat.blendAlpha = 1;
+  return {...base, material: mat};
+}

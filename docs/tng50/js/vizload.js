@@ -7,7 +7,7 @@
    only after their sha256 checked out, a cached copy that fails the check is deleted and refetched once (FE-03), and
    cache.put no longer delays the first display (FE-04); the atlas decode, atlasToRaw and the hash run in a worker when
    one can be started (FE-10); a fallback base that answers 404 for everything is not tried again (FE-15) */
-import {atlasToRaw, cubeRef, cubeUrls, gunzipIfNeeded, sha256Hex} from "./vizdata.js";
+import {atlasToRaw, cubeRef, cubeUrls, gunzipIfNeeded, sha256Hex, packVelocity} from "./vizdata.js";
 
 const CACHE = "tng50-viz-v2";
 export const STALL_MS = 20000;
@@ -173,4 +173,27 @@ export function makeLoader({manifest, base, fallbackBase = null, cache = true, s
     return n;
   }
   return {load, prune};
+}
+
+/* explainer v2 (U_stage, C_eng P1-3): vizdata.packVelocity in a module worker, so packing the three component cubes into one
+   RGBA cube (4 n³ bytes) does not block the main thread. The component buffers are transferred (the caller must not reuse
+   them), so a worker that fails mid-job rejects (reload the level); without Worker/Blob it packs on this thread. The explorer does not call this (viewer3d.js packs as before). */
+let pW = null, pN = 0, pBroken = false; const pP = new Map();
+export function packVelocityOffThread(qx, qy, qz) {
+  if (pBroken || typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL?.createObjectURL !== "function") return Promise.resolve(packVelocity(qx, qy, qz));
+  try {
+    if (!pW) {
+      const src = `import {packVelocity} from ${JSON.stringify(new URL("./vizdata.js", import.meta.url).href)};
+        onmessage = ev => { const {id, x, y, z} = ev.data; try { const o = packVelocity(new Uint8Array(x), new Uint8Array(y), new Uint8Array(z));
+          postMessage({id, out: o.buffer}, [o.buffer]); } catch (e) { postMessage({id, error: String(e && e.message || e)}); } };`;
+      pW = new Worker(URL.createObjectURL(new Blob([src], {type: "text/javascript"})), {type: "module"});
+      pW.onmessage = ev => { const p = pP.get(ev.data.id); pP.delete(ev.data.id); if (!p) return;
+        if (ev.data.error) p.reject(new Error(ev.data.error)); else p.resolve(new Uint8Array(ev.data.out)); };
+      pW.onerror = ev => { ev.preventDefault?.(); pBroken = true; pW = null; const ps = [...pP.values()]; pP.clear();
+        for (const p of ps) p.reject(new Error("velocity pack worker failed")); };
+    }
+    const id = ++pN, cp = a => (a.byteOffset === 0 && a.byteLength === a.buffer.byteLength ? a.buffer : a.slice().buffer);
+    const bx = cp(qx), by = cp(qy), bz = cp(qz);
+    return new Promise((resolve, reject) => { pP.set(id, {resolve, reject}); pW.postMessage({id, x: bx, y: by, z: bz}, [bx, by, bz]); });
+  } catch { pBroken = true; return Promise.resolve(packVelocity(qx, qy, qz)); }
 }

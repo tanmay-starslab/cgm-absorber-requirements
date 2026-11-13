@@ -5,6 +5,11 @@
 //                                         or {type: "error", reqId, key, message}
 //   in  {type: "cancel", keys: [...]} drops queued (not yet running) requests with those cache keys
 //   in  {type: "clear"}               empties the queue
+// Story messages ("How a spectrum is made" v2 dock, B14 explore; the explorer never sends them):
+//   in  {type: "story-fit", reqId, req}   same request, queue and cache as "fit"
+//                                         -> out {type: "story-result", reqId, key, result: {comps, model, chi2, status}, cached}
+//                                            (compact: no per-component profiles; model a transferred Float32Array)
+//                                         or {type: "story-error", reqId, key, message}
 // Requests run one at a time in FIFO order. Between two fits the worker yields to its message loop, so a cancel or
 // clear sent while a fit runs takes effect before the next one starts. Finished results are kept in an LRU of
 // FIT_PARAMS.cacheSize entries keyed by cacheKey(req); a repeated request is answered from it without refitting.
@@ -37,18 +42,27 @@ function reply(reqId, key, result, cached) {
   send({type: "result", reqId, key, result: out, cached}, [model.buffer, ...profiles.map(p => p.buffer), ...(modelFull ? [modelFull.buffer] : []), ...profilesFull.map(p => p.buffer)]);
 }
 
+/* story dock answer: compact result, no per-component profiles */
+function replyStory(reqId, key, result, cached) {
+  const model = result.model ? new Float32Array(result.model) : new Float32Array(0);
+  const out = {comps: result.comps.map(c => ({...c})), model, chi2: result.chi2 ?? null, status: result.status ?? null};
+  send({type: "story-result", reqId, key, result: out, cached}, [model.buffer]);
+}
+const answer = (job, key, result, cached) => (job.story ? replyStory : reply)(job.reqId, key, result, cached);
+const fail = (job, key, message) => send({type: job.story ? "story-error" : "error", reqId: job.reqId, key, message});
+
 function runOne(job) {
   let key = null;
   try {
     key = cacheKey(job.req);
     const hit = cacheGet(key);
-    if (hit) return reply(job.reqId, key, hit, true);
+    if (hit) return answer(job, key, hit, true);
     const result = fitPanel(job.req);
-    if (result.status === "error") return send({type: "error", reqId: job.reqId, key, message: result.message || "fit failed"});
+    if (result.status === "error") return fail(job, key, result.message || "fit failed");
     cachePut(key, result);
-    reply(job.reqId, key, result, false);
+    answer(job, key, result, false);
   } catch (e) {
-    send({type: "error", reqId: job.reqId, key, message: String((e && e.message) || e)});
+    fail(job, key, String((e && e.message) || e));
   }
 }
 
@@ -65,12 +79,13 @@ function pump() {
 self.onmessage = (e) => {
   const m = e.data || {};
   try {
-    if (m.type === "fit") {
+    if (m.type === "fit" || m.type === "story-fit") {
+      const story = m.type === "story-fit";
       let key = null;
       try { key = cacheKey(m.req || {}); } catch (_) { /* reported by runOne */ }
       const hit = key && cacheGet(key);
-      if (hit) { reply(m.reqId, key, hit, true); return; }           // cache hits skip the queue
-      queue.push({reqId: m.reqId, req: m.req, key});
+      if (hit) { answer({reqId: m.reqId, story}, key, hit, true); return; }   // cache hits skip the queue
+      queue.push({reqId: m.reqId, req: m.req, key, story});
       setTimeout(pump, 0);
     } else if (m.type === "cancel") {
       const drop = new Set(m.keys || []);
