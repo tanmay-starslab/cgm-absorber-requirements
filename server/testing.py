@@ -4,7 +4,10 @@ exact tngsight.library.load_npz() layout (design.md §2.3): all registry lines o
 and generation.registry_tag. Used by the tests and for frontend development
 (`TNG_GENERATOR=server.testing:FakeGenerator`). Its spectra are NOT physical; never deploy it.
 
-Geometry: orientation dicts (canonicalize) and custom rays (canonicalize_endpoints, kind "endpoints").
+Geometry: orientation dicts (canonicalize), custom rays (canonicalize_endpoints, kind "endpoints") and
+resolved geometries (a dict with start_ckpch, as tngsight.generate.resolve_geometry takes; the jobs of
+non-default galaxies). `galaxy=<record>` (what the workers pass when the factory accepts it) sets the
+frame of unresolved requests; cutout/index_filename are recorded for tests.
 Stage "fit" (between the spectra and "save"): components="auto" uses the real
 tngsight.components.fit_payload when that module implements catalogue v2, else "fake" components read
 off the injected Gaussians (valid v2 shape, not a fit); "real" forces the real fitter (skipped if absent);
@@ -34,8 +37,9 @@ def __getattr__(name):
 
 class FakeGenerator:
     def __init__(self, cutout=None, ion_table_dir=None, index_filename=None, workdir=None,
-                 delay=0.0, fail_on=None, components="auto", logN=None):
+                 delay=0.0, fail_on=None, components="auto", logN=None, galaxy=None):
         self.delay, self.fail_on, self.loaded, self.calls = float(delay), fail_on, False, 0
+        self.cutout, self.index_filename, self.galaxy = cutout, index_filename, galaxy
         self.components = components
         self.logN = dict(logN or {})               # per-key ray column override (e.g. a damped H I)
 
@@ -46,17 +50,16 @@ class FakeGenerator:
 
     def generate(self, geom: dict, progress=None) -> dict:
         from tngsight import ions
-        from tngsight.geometry import make_endpoints, make_sightline
         from tngsight.library import native_grid
+        from .galaxies import make_geometry
         self.calls += 1
         cb = progress or (lambda *a: None)
         if self.fail_on and geom["id"] == self.fail_on:
             raise RuntimeError(f"fake failure for {geom['id']}")
-        if geom.get("kind") == "endpoints":
-            g = make_endpoints(geom["p0_kpc"], geom["p1_kpc"])
+        if "start_ckpch" in geom:              # a resolved geometry (a non-default galaxy's job), as is
+            g = {k: v for k, v in geom.items() if k not in ("id", "galaxy")}
         else:
-            g = make_sightline(geom["orientation"], float(geom["b_kpc"]), float(geom["azimuth_deg"]),
-                               seed=geom.get("seed"))
+            g = make_geometry(self.galaxy, geom)
         rng = np.random.default_rng(zlib.crc32(geom["id"].encode()))
         cb("ray", 0.1, "fake ray")
         v_sys = float(g["v_sys_kms"])

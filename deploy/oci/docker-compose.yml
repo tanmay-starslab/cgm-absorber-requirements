@@ -28,6 +28,14 @@ services:
       NODE_NAME: oci-a1
       TRUST_PROXY: "1"
       TRUSTED_HOPS: "1"
+      # galaxy sample (server/galaxies.py): other galaxies' slim cutouts are fetched on first use into
+      # /data/gal/<id>/ (this same volume), an LRU cache capped at CUTOUT_CACHE_GB; a fetch never leaves less
+      # than CUTOUT_MIN_FREE_GB free. Sized for the A1 VM (2 OCPU, 12 GB RAM, OCI's default 46.6 GB boot
+      # volume; check `df -h /` on the VM): one non-default galaxy stays loaded next to 488530
+      # (GALAXY_MAX_WARM). Override any of them in .env.
+      CUTOUT_CACHE_GB: ${CUTOUT_CACHE_GB:-10}
+      CUTOUT_MIN_FREE_GB: ${CUTOUT_MIN_FREE_GB:-4}
+      GALAXY_MAX_WARM: ${GALAXY_MAX_WARM:-1}
     volumes:
       - tngdata:/data
     expose: ["7860"]

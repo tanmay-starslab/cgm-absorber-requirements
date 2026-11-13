@@ -1,6 +1,8 @@
 """In-memory job queue: dedupe by sightline id, FIFO positions, worker leases with expiry/requeue,
-and SSE fan-out. State is guarded by a threading.Lock (the LocalWorker progress relay runs in a
-thread); subscribers are asyncio queues fed with loop.call_soon_threadsafe."""
+and SSE fan-out. Jobs of non-default galaxies carry geom["galaxy"]; they may wait in PREPARING while
+the coordinator fetches that galaxy's cutout, and only workers with the "galaxies" cap lease them.
+State is guarded by a threading.Lock (the LocalWorker progress relay runs in a thread); subscribers
+are asyncio queues fed with loop.call_soon_threadsafe."""
 from __future__ import annotations
 import asyncio
 import threading
@@ -9,18 +11,34 @@ import uuid
 from dataclasses import dataclass, field
 
 QUEUED, RUNNING, DONE, ERROR = "queued", "running", "done", "error"
+PREPARING = "preparing"                              # waiting for its galaxy's data (cutout fetch), not leasable
 JOB_ID_RE = r"^[0-9a-f]{32}$"
 ORIENTATION, ENDPOINTS = "orientation", "endpoints"   # job kinds
-CAPS = ("endpoints", "fit")                          # worker capabilities (Phase-1 workers send none)
+GALAXIES = "galaxies"                                # cap: runs jobs of non-default galaxies (geom["galaxy"])
+CAPS = ("endpoints", "fit", GALAXIES)                # worker capabilities (Phase-1 workers send none)
 
 
 def job_kind(geom: dict) -> str:
     return ENDPOINTS if geom.get("kind") == ENDPOINTS else ORIENTATION
 
 
-def can_run(kind: str, caps) -> bool:
-    """A worker without the "endpoints" capability only runs orientation jobs."""
-    return kind != ENDPOINTS or ENDPOINTS in (caps or ())
+def job_galaxy(geom: dict):
+    """The job's galaxy id, None for the default galaxy (the coordinator only sets geom["galaxy"] for others)."""
+    g = geom.get("galaxy")
+    return str(g) if g not in (None, "") else None
+
+
+def job_key(geom: dict) -> str:
+    """Dedupe key: the sightline id for the default galaxy (unchanged), "<galaxy>:<id>" for any other."""
+    g = job_galaxy(geom)
+    return geom["id"] if g is None else f"{g}:{geom['id']}"
+
+
+def can_run(kind: str, caps, galaxy=None) -> bool:
+    """A worker without the "endpoints" capability only runs orientation jobs; one without "galaxies"
+    only runs jobs of the default galaxy (galaxy None)."""
+    caps = caps or ()
+    return (kind != ENDPOINTS or ENDPOINTS in caps) and (galaxy is None or GALAXIES in caps)
 
 
 class QueueFull(Exception):
@@ -36,6 +54,7 @@ class Job:
     id: str                       # sightline id (canonical geom_id or cust_ id)
     geom: dict                    # canonicalize() / canonicalize_endpoints() output
     kind: str = ORIENTATION       # "orientation" | "endpoints"
+    galaxy: str | None = None     # None = the default galaxy
     job_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     status: str = QUEUED
     stage: str = "queued"
@@ -52,9 +71,10 @@ class Job:
     started: float = 0.0
     created: float = field(default_factory=time.time)
     finished: float = 0.0
+    prepare_since: float = 0.0
 
     def public(self, position=None) -> dict:
-        return {"job_id": self.job_id, "id": self.id, "kind": self.kind, "status": self.status,
+        return {"job_id": self.job_id, "id": self.id, "kind": self.kind, "galaxy": self.galaxy, "status": self.status,
                 "stage": self.stage, "frac": round(float(self.frac), 4), "msg": self.msg, "position": position,
                 "error": self.error, "entry": self.entry, "components": self.components,
                 "attempts": self.attempts}
@@ -62,12 +82,13 @@ class Job:
 
 class JobQueue:
     def __init__(self, lease_s=120.0, max_attempts=2, cap=30, job_timeout_s=900.0, ttl_s=3600.0,
-                 clock=time.time, queue_ttl_s=None, max_subs=16):
+                 clock=time.time, queue_ttl_s=None, max_subs=16, prepare_ttl_s=None):
         self.lease_s, self.max_attempts, self.cap = lease_s, max_attempts, cap
         self.job_timeout_s, self.ttl_s, self.clock = job_timeout_s, ttl_s, clock
         self.queue_ttl_s, self.max_subs = queue_ttl_s, max_subs   # queue_ttl_s None: queued jobs never expire
+        self.prepare_ttl_s = prepare_ttl_s                         # None: preparing jobs never expire
         self.jobs: dict[str, Job] = {}
-        self.inflight: dict[str, str] = {}     # sightline id -> job_id (queued/running)
+        self.inflight: dict[str, str] = {}     # job_key (id, or "<galaxy>:<id>") -> job_id (preparing/queued/running)
         self.order: list[str] = []             # queued job_ids, FIFO
         self.workers: dict[str, tuple] = {}    # remote worker name -> (last_seen epoch, caps tuple)
         self._subs: dict[str, list] = {}       # job_id -> [(loop, asyncio.Queue)]
@@ -75,22 +96,81 @@ class JobQueue:
         self._lock = threading.RLock()
 
     # ---------------------------------------------------------------- submit / query
-    def submit(self, geom: dict) -> tuple[Job, bool]:
-        """Enqueue a canonical geometry. Returns (job, created); same id in flight -> same job."""
+    def submit(self, geom: dict, preparing: bool = False) -> tuple[Job, bool]:
+        """Enqueue a canonical geometry. Returns (job, created); same (galaxy, id) in flight -> same job.
+        preparing=True parks a new job in PREPARING (not leasable) until prepared(galaxy) queues it or
+        prepare_failed(galaxy, msg) errs it; a job joined by dedupe keeps its state."""
+        key = job_key(geom)
         with self._lock:
-            jid = self.inflight.get(geom["id"])
+            jid = self.inflight.get(key)
             if jid:
                 return self.jobs[jid], False
             if len(self.inflight) >= self.cap:
                 raise QueueFull(f"queue full ({self.cap} jobs)")
-            job = Job(id=geom["id"], geom=dict(geom), kind=job_kind(geom), created=self.clock())
+            job = Job(id=geom["id"], geom=dict(geom), kind=job_kind(geom), galaxy=job_galaxy(geom),
+                      created=self.clock())
             self.jobs[job.job_id] = job
-            self.inflight[job.id] = job.job_id
-            self.order.append(job.job_id)
-            pos = len(self.order)
+            self.inflight[key] = job.job_id
+            if preparing:
+                job.status, job.stage, job.msg = PREPARING, "preparing", f"preparing galaxy {job.galaxy}"
+                job.prepare_since = job.created
+            else:
+                self.order.append(job.job_id)
+                pos = len(self.order)
+        if preparing:
+            self._emit(job.job_id, "preparing", {"galaxy": job.galaxy, "msg": job.msg})
+            return job, True
         self._emit(job.job_id, "queued", {"position": pos})
         self._wake()
         return job, True
+
+    def _key(self, j) -> str:
+        return j.id if j.galaxy is None else f"{j.galaxy}:{j.id}"
+
+    def prepared(self, galaxy) -> list:
+        """The galaxy's data is ready: queue its PREPARING jobs (submission order). Returns their job ids."""
+        with self._lock:
+            ids = [k for k, j in self.jobs.items() if j.status == PREPARING and j.galaxy == galaxy]
+            ids.sort(key=lambda k: self.jobs[k].created)
+            for k in ids:
+                j = self.jobs[k]
+                j.status, j.stage, j.msg = QUEUED, "queued", ""
+                self.order.append(k)
+            rest = list(self.order)
+        if ids:
+            self._emit_positions(rest)
+            self._wake()
+        return ids
+
+    def prepare_failed(self, galaxy, message) -> list:
+        """The galaxy's data could not be prepared: err its PREPARING jobs."""
+        now = self.clock()
+        with self._lock:
+            ids = [k for k, j in self.jobs.items() if j.status == PREPARING and j.galaxy == galaxy]
+            for k in ids:
+                self._err(self.jobs[k], message, now)
+        for k in ids:
+            self._emit(k, "error", {"message": self.jobs[k].error})
+        return ids
+
+    def preparing_progress(self, galaxy, msg) -> None:
+        """Relay a fetch status line to the galaxy's PREPARING jobs (SSE "preparing")."""
+        with self._lock:
+            ids = [k for k, j in self.jobs.items() if j.status == PREPARING and j.galaxy == galaxy]
+            for k in ids:
+                self.jobs[k].msg = str(msg)[:200]
+        for k in ids:
+            self._emit(k, "preparing", {"galaxy": galaxy, "msg": str(msg)[:200]})
+
+    def active_galaxies(self) -> set:
+        """Non-default galaxies with a job preparing, queued or running (their cutouts must stay cached)."""
+        with self._lock:
+            return {j.galaxy for j in self.jobs.values()
+                    if j.galaxy is not None and j.status in (PREPARING, QUEUED, RUNNING)}
+
+    def _err(self, j, message, now):                   # caller holds the lock
+        j.status, j.error, j.stage, j.finished = ERROR, str(message)[:500], "error", now
+        self.inflight.pop(self._key(j), None)
 
     def get(self, job_id) -> Job | None:
         with self._lock:
@@ -111,13 +191,14 @@ class JobQueue:
     def counts(self) -> dict:
         with self._lock:
             run = sum(1 for j in self.jobs.values() if j.status == RUNNING)
-            return {"queued": len(self.order), "running": run}
+            prep = sum(1 for j in self.jobs.values() if j.status == PREPARING)
+            return {"queued": len(self.order), "running": run, "preparing": prep}
 
     # ---------------------------------------------------------------- leases
     def lease(self, worker: str, lease_s=None, caps=()) -> Job | None:
         """Pop the oldest queued job `worker` can run with its `caps` (non-blocking)."""
         with self._lock:
-            jid = next((k for k in self.order if can_run(self.jobs[k].kind, caps)), None)
+            jid = next((k for k in self.order if can_run(self.jobs[k].kind, caps, self.jobs[k].galaxy)), None)
             if jid is None:
                 return None
             self.order.remove(jid)
@@ -231,7 +312,7 @@ class JobQueue:
             j.status, j.stage, j.frac, j.msg, j.entry = DONE, "done", 1.0, "ready", entry
             j.components = components
             j.finished, j.finishing, j.lease_token = self.clock(), False, None
-            self.inflight.pop(j.id, None)
+            self.inflight.pop(self._key(j), None)
             rest = list(self.order)
         self._emit(job_id, "done", {"id": j.id, "entry": entry, "components": components})
         if moved:
@@ -255,7 +336,7 @@ class JobQueue:
             else:
                 j.status, j.error, j.stage = ERROR, str(message)[:500], "error"
                 j.finished = self.clock()
-                self.inflight.pop(j.id, None)
+                self.inflight.pop(self._key(j), None)
                 new = ERROR
         if new == QUEUED:
             self._emit_positions(rest)                    # the requeued job is 1, everyone else moves down
@@ -264,19 +345,20 @@ class JobQueue:
             self._emit(job_id, "error", {"message": j.error})
         return new
 
-    def expire_queued(self, message, older_than=0.0, now=None, kind=None) -> list:
+    def expire_queued(self, message, older_than=0.0, now=None, kind=None, galaxies=False) -> list:
         """Error every queued job that has waited more than `older_than` s (e.g. no worker left);
-        `kind` (e.g. ENDPOINTS) limits it to jobs of that kind (no worker with the cap left)."""
+        `kind` (e.g. ENDPOINTS) limits it to jobs of that kind (no worker with the cap left), galaxies=True
+        to jobs of non-default galaxies (no worker with the "galaxies" cap left)."""
         now = self.clock() if now is None else now
         with self._lock:
             gone = [jid for jid in self.order if not self.jobs[jid].finishing
                     and (kind is None or self.jobs[jid].kind == kind)
+                    and (not galaxies or self.jobs[jid].galaxy is not None)
                     and now - self.jobs[jid].created > older_than]
             for jid in gone:
                 j = self.jobs[jid]
                 self.order.remove(jid)
-                j.status, j.error, j.stage, j.finished = ERROR, str(message)[:500], "error", now
-                self.inflight.pop(j.id, None)
+                self._err(j, message, now)
             rest = list(self.order)
         for jid in gone:
             self._emit(jid, "error", {"message": self.jobs[jid].error})
@@ -290,6 +372,14 @@ class JobQueue:
         now = self.clock() if now is None else now
         if self.queue_ttl_s is not None:
             self.expire_queued("waited too long in the queue; please resubmit", self.queue_ttl_s, now)
+        if self.prepare_ttl_s is not None:
+            with self._lock:
+                stale = [j for j in self.jobs.values() if j.status == PREPARING
+                         and now - j.prepare_since > self.prepare_ttl_s]
+                for j in stale:
+                    self._err(j, "preparing the galaxy took too long; please try again later", now)
+            for j in stale:
+                self._emit(j.job_id, "error", {"message": j.error})
         with self._lock:
             expired = [j.job_id for j in self.jobs.values() if j.status == RUNNING and not j.finishing
                        and (j.lease_until < now or now - j.started > self.job_timeout_s)]
