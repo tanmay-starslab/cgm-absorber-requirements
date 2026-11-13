@@ -16,7 +16,7 @@ size_categories:
 # TNG50-1 subhalo 488530: 3D visualisation cubes
 
 These are the gas and stellar cubes behind the 3D tab of the **TNG50 sightline explorer**:
-https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/
+https://galaxies.tanmaysingh.uk/
 
 They are **derived visualisation products** of one galaxy, subhalo 488530 of TNG50-1 at snapshot 99 (z = 0),
 from the public IllustrisTNG data release. Every raw resolution element was deposited onto nested 256³ grids:

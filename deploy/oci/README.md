@@ -85,7 +85,7 @@ curl -s https://<ip-dashes>.sslip.io/api/health      # "chat": {"claude": true}
 
 Never commit, print or paste the key into a shell history (`read -s` keeps it out of both).
 
-`CORS_ORIGINS` in `.env` already allows `https://tanmay-starslab.github.io` and the local preview
+`CORS_ORIGINS` in `.env` already allows `https://galaxies.tanmaysingh.uk`, `https://tanmay-starslab.github.io` and the local preview
 on port 8000.
 
 ## Operating it (on the VM: `ssh -i ~/.ssh/tng50_oci ubuntu@<ip>`, then `cd ~/tng50`)

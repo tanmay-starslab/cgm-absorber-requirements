@@ -1,0 +1,11 @@
+{
+  // Cloudflare Worker serving the static site built by scripts/build_site.mjs (no Worker code: static assets only).
+  // Deployed on every push to main by Workers Builds (build command: node scripts/build_site.mjs; deploy: npx wrangler deploy).
+  "name": "galaxies",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

@@ -11,7 +11,7 @@ not mounted. Every path can be overridden with the variables listed in `server/R
 
 ```bash
 deploy/laptop/serve.sh
-open "https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/?api=http://127.0.0.1:8787"
+open "https://galaxies.tanmaysingh.uk/?api=http://127.0.0.1:8787"
 
 # one-time: store the Space's WORKER_TOKEN in the login keychain
 security add-generic-password -a "$USER" -s tng50-worker-token -w '<token>' -U

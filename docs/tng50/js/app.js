@@ -506,7 +506,7 @@ function candidates() { const out = [];
   return [...new Set(out.map(normUrl).filter(u => /^https?:\/\/[^\s/]+/.test(u)))]; }
 /* a build's own server answers CORS only for the origins in its allow-list: from any other origin the probe is an opaque
    no-cors request (reachability only), so the browser logs no CORS error; explicit ?api= and stored URLs get the full probe */
-const API_ORIGINS = new Set(CFG.api_origins || ["https://tanmay-starslab.github.io", "http://localhost:8000", "http://127.0.0.1:8000"]);
+const API_ORIGINS = new Set(CFG.api_origins || ["https://galaxies.tanmaysingh.uk", "https://tanmay-starslab.github.io", "http://localhost:8000", "http://127.0.0.1:8000"]);
 function corsOk(url) { try { if (new URL(url).origin === location.origin || API_ORIGINS.has(location.origin)) return true; } catch { return false; }
   const ex = [new URLSearchParams(location.search).get("api"), store.get("tngsight.api")].filter(Boolean).flatMap(s => s.split(",")).map(normUrl);
   return ex.includes(normUrl(url)); }

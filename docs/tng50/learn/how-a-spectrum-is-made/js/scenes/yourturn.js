@@ -33,7 +33,7 @@ function render(ctx, state, t, data) {
     K.text(Fr, s, rx + Fr.fs, y, {size: 0.84, color: K.COL.ink, alpha: ai});
   });
   if (state.video || state.mode === "render") {   // the film's end card: where to go next (no buttons in a video)
-    const url = `tanmay-starslab.github.io/cgm-absorber-requirements/tng50/${String(P.meta.galaxy) !== String(K.DEFAULT_GALAXY) ? `#g=${P.meta.galaxy}` : ""}`;
+    const url = `galaxies.tanmaysingh.uk/${String(P.meta.galaxy) !== String(K.DEFAULT_GALAXY) ? `#g=${P.meta.galaxy}` : ""}`;
     const ua = K.seg(q, 0.45, 0.75);
     const y0 = b.y + b.h + Fr.fs * 1.7;
     K.text(Fr, "Explore this beam, and all the galaxies:", Fr.W / 2, y0, {align: "center", size: 0.95, color: K.COL.muted, alpha: ua});

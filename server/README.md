@@ -47,7 +47,7 @@ The event loop stays responsive while a ray is being cast, because the cast runs
 | `WORKER_TOKEN` | unset | Bearer token for `/api/worker/*`; unset = remote workers disabled (404) |
 | `HF_TOKEN`, `HF_DATASET` | unset | enable HFSync: `snapshot_download` at startup, upload `generated/*` (pending uploads persist in `<library>/.hfsync_pending.json`; a read-only token disables uploading) |
 | `HF_STARTUP_DOWNLOAD` | `1` | `0` skips the app's startup snapshot (the Space's `start.sh` sets it after its own successful sync) |
-| `CORS_ORIGINS` | `https://tanmay-starslab.github.io,http://localhost:8000,http://127.0.0.1:8000` | comma list |
+| `CORS_ORIGINS` | `https://galaxies.tanmaysingh.uk,https://tanmay-starslab.github.io,http://localhost:8000,http://127.0.0.1:8000` | comma list |
 | `TRUST_PROXY` | `0` | `1` = client IP from `X-Forwarded-For` (HF Space proxy). Only the hop the trusted proxy appended is used, never the client-supplied left part |
 | `TRUSTED_HOPS` | `1` | number of trusted proxies appending to `X-Forwarded-For`; the client is the `TRUSTED_HOPS`-th entry from the right |
 | `NODE_NAME` | `local` | shown in `/api/health` and the page's status pill |

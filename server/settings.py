@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_CORS = ("https://tanmay-starslab.github.io", "http://localhost:8000", "http://127.0.0.1:8000")
+DEFAULT_CORS = ("https://galaxies.tanmaysingh.uk", "https://tanmay-starslab.github.io", "http://localhost:8000", "http://127.0.0.1:8000")
 VERSION = "1.0.0"
 
 

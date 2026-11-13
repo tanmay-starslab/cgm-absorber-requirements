@@ -13,7 +13,7 @@ short_description: On-demand TNG50 CGM sightlines in 12 UV and X-ray ions
 # TNG50 sightline explorer: API backend
 
 Coordinator and fallback compute for the TNG50 sightline explorer
-(https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/). It serves the precomputed
+(https://galaxies.tanmaysingh.uk/). It serves the precomputed
 library of quasar sightlines through TNG50-1 subhalo 488530 (z = 0) and generates new geometries on
 demand with yt + Trident in the 12 lines of the ion registry (`tngsight/ions.json`): H I 1216, Mg II 2796,
 Si II 1260, C II 1335, Si III 1206, C III 977, Si IV 1403, C IV 1548, N V 1239, O VI 1032, Ne VIII 770 and
@@ -33,7 +33,7 @@ is refused (HTTP 422 "registry mismatch"), so update both together.
 | `HF_TOKEN` | secret | token with read access to the private dataset; write access also mirrors generated sightlines (with a read-only token the first upload's 401/403 disables mirroring; `/api/health` shows `hf.disabled`). A token or repo error at startup is not retried |
 | `HF_DATASET` | variable | `tanmay-starslab/tng50-sub488530-cgm` (default) |
 | `WORKER_TOKEN` | secret | long random string; enables `/api/worker/*` for `deploy/laptop/worker.sh` |
-| `CORS_ORIGINS` | variable | optional; default allows `https://tanmay-starslab.github.io` and localhost:8000 |
+| `CORS_ORIGINS` | variable | optional; default allows `https://galaxies.tanmaysingh.uk`, `https://tanmay-starslab.github.io` and localhost:8000 |
 | `ANTHROPIC_API_KEY` | secret | optional; enables the Claude backend of the page's Ask panel (`POST /api/chat`) |
 | `CHAT_CLAUDE` | variable | optional; `0` turns the Claude backend off while the key stays set |
 | `CHAT_DAILY_BUDGET` | variable | optional; upstream chat requests per UTC day, all clients (default 500) |

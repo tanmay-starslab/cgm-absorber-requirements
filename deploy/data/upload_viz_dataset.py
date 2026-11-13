@@ -16,7 +16,7 @@ rest go in commits of <= 100 files. Remote files are never deleted unless --prun
 
 The write token comes from $HF_TOKEN, else --token-file (default $HF_HOME/token). It is never printed, logged or
 put into an exception message. --verify (after an upload) and --verify-only fetch anonymously, with
-Origin: https://tanmay-starslab.github.io, the manifest, one WebP part and one gz per kind, and check status,
+Origin: https://galaxies.tanmaysingh.uk, the manifest, one WebP part and one gz per kind, and check status,
 CORS (on the 302 and on the final response), Content-Encoding, sha256 and a Range request.
 """
 from __future__ import annotations
@@ -42,8 +42,8 @@ HF_HOME = str(_config.hf_home())                       # HF_HOME, else $TNG_WORK
 DEFAULT_TOKEN_FILE = Path(HF_HOME) / "token"
 DEFAULT_VIZ = _config.library_dir() / "viz"            # TNG_LIBRARY_DIR, else $TNG_WORK/data/library
 CARD = ROOT / "deploy" / "data" / "viz_dataset_card.md"
-ORIGIN = "https://tanmay-starslab.github.io"
-PAGE_URL = "https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/"
+ORIGIN = "https://galaxies.tanmaysingh.uk"
+PAGE_URL = "https://galaxies.tanmaysingh.uk/"
 COMMIT_MAX = 100
 PREVIEW_MAX = 1_000_000
 from tngsight import ions as _ions  # noqa: E402  (the gas fields are nH, T, Z, every registry ion and vx, vy, vz)
