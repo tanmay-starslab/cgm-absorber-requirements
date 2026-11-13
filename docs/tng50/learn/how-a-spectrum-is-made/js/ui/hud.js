@@ -1,5 +1,5 @@
 // HUD and the shell composer (DESIGN_final §1.3 P1-3, P0-6, P0-7; §3.3; §4 G1, G2, G12; §5.6).
-// Chrome in flight is at most four elements: act chip, menu, Fly/pause, rail. The phase-legend pill appears on TF changes
+// Chrome in flight is at most four elements: act chip, menu, Play/Pause, rail. The phase-legend pill appears on TF changes
 // and at stops; the first-use hint shows until p has moved more than 1 % once (localStorage).
 //
 // Pure (node G1 runs exactly this):
@@ -353,7 +353,7 @@ export function createShell(els, opts = {}) {
       .map(f => document.fonts.load(f).catch(() => null))).then(() => H.onFonts && H.onFonts());
   }
   const kin = createKinetic(els.kinetic), plaque = createPlaque(els.labels);
-  const rail = createRail(els.rail, {flyStart: H.flyStart, flyEnd: H.flyEnd, flyToggle: H.flyToggle, jump: H.jump, key: H.key,
+  const rail = createRail(els.rail, {playToggle: H.watchToggle, flyStart: H.flyStart, flyEnd: H.flyEnd, flyToggle: H.flyToggle, jump: H.jump, key: H.key,
                                      tickLabel: t => (t ? actFor(opts.beats, (opts.beats || []).findIndex(b => b.id === t.id), opts.copy) : ""),
                                      watchRemaining: H.watchRemaining});
   const keyHelp = !H.keys && els.sheets ? createKeyHelp(els.sheets) : null;

@@ -212,3 +212,15 @@ html.reduced .kt-blur{display:none}
 .sg-music[aria-pressed="true"]{color:var(--sky-ink)}
 .to-cr{margin:2.5em 0 0;font:400 13px/1.5 var(--sans);color:var(--sky-muted)}
 .to-cr a{color:inherit}
+.snd,.sg-music{--snd-accent:#ffc978}
+/* music toggle highlight while the reader has not chosen yet (sound.js "invite"): accent ring, accent icon, a slow glow
+   (three times, then it rests lit; no glow under reduced motion) */
+.snd.invite{border-color:color-mix(in srgb,var(--snd-accent) 75%,transparent);color:var(--sky-ink);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--snd-accent) 18%,transparent)}
+.snd.invite svg,.sg-music.invite svg{color:var(--snd-accent)}
+.sg-music.invite{color:var(--sky-ink);padding:6px 12px 6px 10px;border-radius:18px;border:1px solid color-mix(in srgb,var(--snd-accent) 70%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--snd-accent) 15%,transparent);text-decoration:none}
+@media (prefers-reduced-motion:no-preference){
+  .snd.invite,.sg-music.invite{animation:sndinvite 2.6s ease-in-out 1.2s 3}
+}
+@keyframes sndinvite{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--snd-accent) 8%,transparent),0 0 22px color-mix(in srgb,var(--snd-accent) 35%,transparent)}}
