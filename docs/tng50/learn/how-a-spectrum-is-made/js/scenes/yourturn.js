@@ -3,6 +3,7 @@
 // maps the story's scenes to the explorer's controls. Buttons ("Open in Spectra", "See it in 3D", "Replay") are DOM
 // (U4); the hand-off hash is explorerHash(data, scene.handoff). In the video (state.video) the URL is drawn instead.
 import * as K from "../plot.js";
+import {observedSN, noiseBin, binned, drawNoisy} from "./noise.js";
 
 const STEPS = ["yourturn-1"];
 const VW = 300;
@@ -40,6 +41,24 @@ function render(ctx, state, t, data) {
   }
 }
 function ready(data) { K.picks(data); }
+
+/* ---- v2 dock mode "explore" (DESIGN_final §5.4, B14): "now it is yours" -----------------------------------------------
+   The reader's R and S/N (dials) on the explorer's own operator and noise draw; the live fit (fitworker.js "story-fit",
+   requested by the dock, never by seek) is drawn when it arrives: components dashed, their sum solid, ticks at their
+   speeds. The other ion shows its data at the same settings. Hand-off to the explorer: plot.explorerHash. Pure. */
+export function dockExplore(A, pe) {
+  const data = pe.data, m = pe.model || {}, R = m.R || 30000, sn = m.sn || 10, seed = (pe.fs && pe.fs.spec && pe.fs.spec.seed) || 0;
+  const o = observedSN(data, pe.ion, R, sn, K.caseSeed(seed, pe.ion, 0)); if (!o) return;
+  // review M5 / H2 (beauty): display-binned thin step at ~60 % alpha, and the noiseless model under it until the live fit lands
+  const nb = noiseBin(pe.panel, o), d = binned(o.v, o.flux, nb.f);
+  drawNoisy(A, d.v, d.y, {color: K.ionColor(pe.ion), alpha: 0.5});   // beauty H2 (fix3)
+  const res = pe.role === "lead" ? pe.fitResult : null, comps = res && Array.isArray(res.comps) ? res.comps : [];
+  if (!comps.length) { if (o.model) K.curve(A, o.v, o.model, {color: K.COL.beam, width: 1.6, alpha: 0.85}); return; }
+  comps.forEach((c, i) => { const mm = K.cloudModel(data, pe.ion, comps, R, 300, i); K.curve(A, mm.v, mm.model, {color: K.ionColor(pe.ion), width: 1.1, dash: [4, 4], alpha: 0.7}); });
+  const mm = K.cloudModel(data, pe.ion, comps, R, 300);
+  K.curve(A, mm.v, mm.model, {color: K.COL.ink, width: 2});
+  comps.forEach(c => { if (c.v > A.v0 && c.v < A.v1) K.tick(A, c.v, {color: K.COL.ink, y: A.Y(1.2), len: Math.max(8, A.box.h * 0.1)}); });
+}
 const scene = {id: "yourturn", chapter: "yourturn", steps: STEPS, defaults: {}, controls: {}, ready, render,
   handoff: {ions: ["OVI", "HI"], layout: "1", R: [30000, 30000], sn: [10, 10], fit: true}};
 export default scene;

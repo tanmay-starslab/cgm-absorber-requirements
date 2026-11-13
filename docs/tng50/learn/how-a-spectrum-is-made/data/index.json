@@ -14,5 +14,34 @@
    "label": "Subhalo 488530",
    "eligible": true
   }
+ ],
+ "film_beams": [
+  {
+   "galaxy": 488530,
+   "ray": "rand_b045_a300_s459727623",
+   "story": "story_488530_rand_b045_a300_s459727623.json",
+   "page_fits": "page_fits_488530_rand_b045_a300_s459727623.json",
+   "label": "Subhalo 488530",
+   "eligible": false,
+   "role": "most_OVI"
+  },
+  {
+   "galaxy": 488530,
+   "ray": "rand_b050_a215",
+   "story": "story_488530_rand_b050_a215.json",
+   "page_fits": "page_fits_488530_rand_b050_a215.json",
+   "label": "Subhalo 488530",
+   "eligible": false,
+   "role": "most_HI"
+  },
+  {
+   "galaxy": 488530,
+   "ray": "rand_b143_a150",
+   "story": "story_488530_rand_b143_a150.json",
+   "page_fits": "page_fits_488530_rand_b143_a150.json",
+   "label": "Subhalo 488530",
+   "eligible": false,
+   "role": "emptiest"
+  }
  ]
 }

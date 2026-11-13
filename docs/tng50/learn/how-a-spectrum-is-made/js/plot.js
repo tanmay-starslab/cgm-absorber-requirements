@@ -442,7 +442,7 @@ export function tick(A, v, o = {}) {
 }
 /* the instrument blur as a neutral grey bell of FWHM c/R, centred at v, height h (CSS px), base at y */
 export function bell(A, v, fwhm, y, h, o = {}) {
-  const c = A.ctx, s = fwhm / 2.35482; c.save(); c.globalAlpha *= o.alpha ?? 1; c.strokeStyle = COL.blur; c.lineWidth = 1.6;
+  const c = A.ctx, s = fwhm / 2.35482; c.save(); if (o.clip && A.box) clipBox(A); c.globalAlpha *= o.alpha ?? 1; c.strokeStyle = COL.blur; c.lineWidth = 1.6;
   c.beginPath(); for (let k = -60; k <= 60; k++) { const dv = k / 60 * 4 * s, X = A.X(v + dv), Y = y - h * Math.exp(-0.5 * (dv / s) ** 2); k === -60 ? c.moveTo(X, Y) : c.lineTo(X, Y); }
   c.stroke(); c.globalAlpha *= 0.12; c.fillStyle = COL.blur; c.lineTo(A.X(v + 4 * s), y); c.lineTo(A.X(v - 4 * s), y); c.closePath(); c.fill(); c.restore();
 }

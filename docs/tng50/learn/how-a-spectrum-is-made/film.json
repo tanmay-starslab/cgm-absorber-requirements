@@ -1,0 +1,66 @@
+{
+  "schema": "story-film/2",
+  "about": "The film of 'How a spectrum is made' (DESIGN §11 as amended by DESIGN_final §2/§5.9). The film is the story itself: render.html calls the same seek(p) over beats.json/shots.json and the same 3D stage as the scroll page, so no frame is drawn by film-only scene code. Each chunk plays a p range of beats (taken from beats.json at render time, so retimed beats move the film with them), overrides the transfer function to isolate one parameter, and ends on the spectrum with its caption (copy.json film.captions[chunk id]). Captions carry no literal numbers (G10 lint covers this file).",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "galaxy": 488530,
+  "ray": "rand_b062_a062",
+  "render": {
+    "about": "K jittered accumulation passes per output frame (decoy pass + K, so the stage's jitter phase repeats every 64 calls and each frame depends only on its own index). quality 'flight' for every frame (the K jittered passes do the refinement); the stage's 'stop' quality blows the phases look out to white near cell 263 at 1440x900 (U_film CPU still, reported to U_stage), so the film does not use it until that is tuned. scale = volume target in CSS px. Every field the film uses is resident (L0+L1) before frame 0, so no upload can land mid-film (G8).",
+    "accumulate": 8,
+    "quality": "flight",
+    "scale": 1.0,
+    "fade_s": 0.4,
+    "hold_s": 1.6,
+    "caption_s": 2.4,
+    "ease": 0.15,
+    "dwell": 3,
+    "pacing": "Within a chunk the beats keep their beats.json watch_s proportions (reading time), and inside a beat the camera moves 1 + dwell times slower while a text line is up; the travel speeds up over the first 15 % and slows over the last 15 % (smoothstep velocity), then holds hold_s on the spectrum with the caption. Chunk lengths run at about half the Watch pace (176 s against 312 s), long enough for every beat line to stay on screen for at least about a second and a half.",
+    "fields": ["nH", "T", "OVI", "HI", "Z", "vel"]
+  },
+  "presets": {
+    "about": "Film-tuned looks, registered at render time on top of js/stage/tfstory.js PRESETS (base preset + overrides; tfstory.js is not edited). 'state' merges over the base preset's tf.js state.",
+    "film:outskirts": {"base": "phases", "gamma": 0.6, "look": {"gain": 0.8}},
+    "film:hi": {"base": "ion:HI", "look": {"gain": 0.7, "opacity": 0.42},
+      "state": {"bands": [{"c": -7.5, "w": 0.8, "a": 0.12, "rgb": [146, 147, 248]}, {"c": -5.0, "w": 0.9, "a": 0.45, "rgb": [146, 147, 248]}, {"c": -2.5, "w": 1.0, "a": 0.8, "rgb": [176, 180, 255]}]}},
+    "film:ovi": {"base": "ion:OVI", "look": {"gain": 0.75, "opacity": 0.4},
+      "state": {"bands": [{"c": -8.6, "w": 0.35, "a": 0.12, "rgb": [251, 122, 60]}, {"c": -7.6, "w": 0.3, "a": 0.55, "rgb": [251, 122, 60]}, {"c": -6.7, "w": 0.35, "a": 0.9, "rgb": [255, 214, 170]}]}},
+    "film:metals": {"base": "metals", "gamma": 0.7, "look": {"gain": 1.4},
+      "state": {"win": [-1.2, 0.3], "ramp": {"lo": -1.0, "hi": 0.3, "a": 0.8}}}
+  },
+  "chunks": [
+    {"id": "open",      "s": 16, "beats": ["B1", "B2"],          "tf": "density"},
+    {"id": "outskirts", "s": 14, "beats": ["B3", "B4"],          "tf": "film:outskirts"},
+    {"id": "cloudA",    "s": 15, "beats": ["B5"],                "tf": "film:hi"},
+    {"id": "too_hot",   "s": 13, "beats": ["B6"],                "tf": "speed"},
+    {"id": "cell263",   "s": 25, "beats": ["B7a", "B7b", "B7c"], "tf": "film:ovi"},
+    {"id": "thread",    "s": 18, "beats": ["B9"],                "tf": [{"u": 0, "preset": "speed"}, {"u": 0.55, "preset": "speed"}, {"u": 0.7, "preset": "film:ovi"}]},
+    {"id": "cloudD",    "s": 10, "beats": ["B10"],               "tf": "film:hi"},
+    {"id": "lookback",  "s": 10, "beats": ["B11"],               "tf": "film:metals"},
+    {"id": "telescope", "s": 25, "beats": ["B12a", "B12b"],      "tf": null},
+    {"id": "fit",       "s": 22, "beats": ["B13"],               "tf": "phases"},
+    {"id": "end",       "s": 8,  "beats": ["B14"],               "tf": null, "card": true}
+  ],
+  "cuts": {
+    "film": {"chunks": "all", "enabled": true},
+    "beams": {
+      "enabled": false,
+      "about": "Optional second cut (DESIGN §11, R_content §10): the same three-chunk ride (cloudA, cell263, telescope) on three contrasting beams of the same galaxy, so the cubes are shared. Picked by rule from the 488530 library catalogue (data/library_v3r/catalog.json, data_version 2, 40 <= b <= 246 kpc): the most H I-rich, the most O VI-rich, and the emptiest (smallest log N(H I) + log N(O VI)). U_data has now exported story-data/2, tube and clouds for all three, but the cut stays disabled: beats.json shots, copy keys and the chunk names (cloudA, cell263) are bound to the hero ray (cell 125, cell 263, its CREST clouds), so the same chunks on another ray would fly to the wrong places and caption numbers that belong to the hero ray. It needs per-ray shots and copy (beats/copy owners) before render.html will render it.",
+      "rule": "catalog entries with data_version 2 and 40 <= b_kpc <= 246; most_HI = argmax logN.HI; most_OVI = argmax logN.OVI; emptiest = argmin logN.HI + logN.OVI",
+      "beams": [
+        {"role": "most_HI",  "ray": "rand_b050_a215",            "b_kpc": 50.0,  "logN_HI": 20.569, "logN_OVI": 14.505},
+        {"role": "most_OVI", "ray": "rand_b045_a300_s459727623", "b_kpc": 44.6,  "logN_HI": 18.875, "logN_OVI": 14.881},
+        {"role": "emptiest", "ray": "rand_b143_a150",            "b_kpc": 143.2, "logN_HI": 13.468, "logN_OVI": 12.762}
+      ],
+      "chunks": ["cloudA", "cell263", "telescope"]
+    }
+  },
+  "stills": {
+    "about": "AVIF stills for the no-WebGL2 / software-GL path (DESIGN_final P2-5), hero ray only, <= 150 kB each, rendered from the same page at the p of each stop (beats.json stops, else the beat midpoint). Written to ROOT/media/stills/<beat>[_<k>].avif with media/stills/index.json.",
+    "width": 1440,
+    "height": 900,
+    "max_bytes": 153600,
+    "beats": "all"
+  }
+}

@@ -2,38 +2,47 @@ WEBVTT
 Kind: chapters
 Language: en
 
-light
-00:00:00.000 --> 00:00:15.000
-Why can't we just look at the gas?
+1
+00:00:00.000 --> 00:00:16.000
+density: where the gas is
 
-cells
-00:00:15.000 --> 00:00:23.000
-What is the model galaxy made of?
+2
+00:00:16.000 --> 00:00:30.000
+heat: which gas is warm
 
-dip
-00:00:23.000 --> 00:00:47.000
-How does one cloud make a dip?
+3
+00:00:30.000 --> 00:00:45.000
+amount: one clump goes black
 
-sum
-00:00:47.000 --> 00:01:02.000
-How do many cells make a few dips?
+4
+00:00:45.000 --> 00:00:58.000
+speed: where a dip sits
 
-saturation
-00:01:02.000 --> 00:01:16.000
-What happens when a dip turns black?
+5
+00:00:58.000 --> 00:01:23.000
+ion share: heat decides the ion
 
-lsf
-00:01:16.000 --> 00:01:31.000
-What does the telescope do to it?
+6
+00:01:23.000 --> 00:01:41.000
+place is lost, speed is kept
 
-noise
-00:01:31.000 --> 00:01:41.000
-Why is it noisy?
+7
+00:01:41.000 --> 00:01:51.000
+amount: deeper, then only wider
 
-fit
-00:01:41.000 --> 00:02:01.000
-What can we read back?
+8
+00:01:51.000 --> 00:02:01.000
+metals: an ingredient, not the switch
 
-yourturn
-00:02:01.000 --> 00:02:11.000
-Now it is yours
+9
+00:02:01.000 --> 00:02:26.000
+sharpness and noise
+
+10
+00:02:26.000 --> 00:02:48.000
+how much and how fast, not where
+
+11
+00:02:48.000 --> 00:02:56.000
+{{$url}}
+

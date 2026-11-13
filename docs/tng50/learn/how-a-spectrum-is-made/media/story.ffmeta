@@ -4,53 +4,66 @@ title=How a spectrum is made
 [CHAPTER]
 TIMEBASE=1/1000
 START=0
-END=15000
-title=Why can't we just look at the gas?
+END=16000
+title=density: where the gas is
 
 [CHAPTER]
 TIMEBASE=1/1000
-START=15000
-END=23000
-title=What is the model galaxy made of?
+START=16000
+END=30000
+title=heat: which gas is warm
 
 [CHAPTER]
 TIMEBASE=1/1000
-START=23000
-END=47000
-title=How does one cloud make a dip?
+START=30000
+END=45000
+title=amount: one clump goes black
 
 [CHAPTER]
 TIMEBASE=1/1000
-START=47000
-END=62000
-title=How do many cells make a few dips?
+START=45000
+END=58000
+title=speed: where a dip sits
 
 [CHAPTER]
 TIMEBASE=1/1000
-START=62000
-END=76000
-title=What happens when a dip turns black?
+START=58000
+END=83000
+title=ion share: heat decides the ion
 
 [CHAPTER]
 TIMEBASE=1/1000
-START=76000
-END=91000
-title=What does the telescope do to it?
-
-[CHAPTER]
-TIMEBASE=1/1000
-START=91000
+START=83000
 END=101000
-title=Why is it noisy?
+title=place is lost, speed is kept
 
 [CHAPTER]
 TIMEBASE=1/1000
 START=101000
+END=111000
+title=amount: deeper, then only wider
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=111000
 END=121000
-title=What can we read back?
+title=metals: an ingredient, not the switch
 
 [CHAPTER]
 TIMEBASE=1/1000
 START=121000
-END=131000
-title=Now it is yours
+END=146000
+title=sharpness and noise
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=146000
+END=168000
+title=how much and how fast, not where
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=168000
+END=176000
+title={{$url}}
+

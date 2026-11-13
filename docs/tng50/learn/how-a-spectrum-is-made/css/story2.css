@@ -1,0 +1,193 @@
+/* v2 stage shell: one pinned full-viewport stage, no document scroll (DESIGN §2.1, §8; DESIGN_final §3.2-3.3, §5.6).
+   Tokens and fonts come from css/story.css. Every label the solver places (js/ui/layout.js) is position:absolute at 0,0 and
+   moved by transform only; nothing here sizes a placed box (the solver's box is the drawn box, G1). Only opacity and transform
+   animate; the focus pull cross-fades a pre-blurred copy (no animated filter, DESIGN_final P1-6). */
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;background:var(--sky);-webkit-text-size-adjust:100%}
+body{color:var(--sky-ink);font:400 16px/1.5 var(--sans);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+button{font:inherit;color:inherit}
+a{color:var(--accent)}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.vh{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ---- the stage and its layers (z order DESIGN §2.1) ---- */
+#stage{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;overflow:hidden;background:var(--sky);contain:strict;
+  touch-action:pinch-zoom;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#stage>*{position:absolute;inset:0}
+#gl{width:100%;height:100%;display:block;z-index:0}
+#world{z-index:10;pointer-events:none;overflow:visible;width:100%;height:100%}
+#labels{z-index:20;pointer-events:none}
+#kinetic{z-index:30;pointer-events:none}
+#dock{z-index:40;pointer-events:none}
+#dock>*{pointer-events:auto}
+#hud{z-index:50;pointer-events:none}
+#rail{z-index:50;inset:auto;left:0;top:0}
+#sheets{z-index:60;pointer-events:none}
+#sheets>*{pointer-events:auto}
+#labels>*,#kinetic>*,#hud>*{position:absolute;left:0;top:0;will-change:transform}
+#labels>*,#hud>*{pointer-events:auto}
+
+/* fallback scrims for no-GL paths (the 3D stage draws its own GL scrims; DESIGN_final §3.4) */
+#stage>.scrim-top,#stage>.scrim-bottom{position:absolute;left:0;right:0;pointer-events:none;z-index:5}
+#stage>.scrim-top{top:0;bottom:auto;height:12%;background:linear-gradient(180deg,rgba(4,5,10,.62),rgba(4,5,10,0))}
+#stage>.scrim-bottom{top:auto;bottom:0;height:40%;background:linear-gradient(0deg,rgba(4,5,10,.9),rgba(4,5,10,.55) 55%,rgba(4,5,10,0))}
+html:not(.no-gl-scrim) #stage>.scrim-top,html:not(.no-gl-scrim) #stage>.scrim-bottom{display:none}
+
+/* ---- kinetic type (DESIGN §8.3) ---- */
+.kt{transform-origin:50% 0;color:var(--sky-ink);text-shadow:0 1px 14px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.4)}
+.kt-c{display:block}
+.kt-blur{position:absolute;left:0;top:0;width:100%;filter:blur(9px)}
+.kt-l{display:block;white-space:nowrap}
+.kt-d{display:block;font:400 var(--dpx)/1.08 var(--serif);letter-spacing:-.01em;font-optical-sizing:auto}
+.kt-d em{font-style:italic;color:var(--phase-hue)}
+.kt-s{display:block;font:400 var(--spx)/1.45 var(--sans);color:var(--sky-muted)}
+.kt-s em{font-style:normal;color:var(--sky-ink)}
+.kt-d+.kt-s{margin-top:calc(var(--dpx) * .45)}
+.kt-act .kt-d{letter-spacing:-.015em}
+.kt-subonly .kt-s{color:var(--sky-ink)}
+
+/* ---- HUD pills: solid, no backdrop-filter, at every tier (S0.md §5, frozen: blur cost +0.2-0.7 ms per frame on the A100,
+   about +1-3.5 ms on a 5x laptop, against a 0.5 ms allowance) ---- */
+.hud-pill,.hud-btn{display:inline-flex;align-items:center;gap:10px;height:44px;border-radius:22px;border:1px solid var(--pill-edge);
+  background:var(--pill);color:var(--sky-ink);cursor:pointer;padding:0 16px;white-space:nowrap;overflow:hidden;
+  transition:border-color .2s var(--ease-ui),background-color .2s var(--ease-ui)}
+.hud-btn{justify-content:center;width:44px;padding:0}
+.hud-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.hud-pill:hover,.hud-btn:hover{border-color:color-mix(in srgb,var(--phase-hue) 55%,transparent)}
+.hud-pill:active,.hud-btn:active{transition-timing-function:var(--ease-press)}
+/* end hand-off (review SC-7): placed by the solver; row or column per its variant */
+#end-actions{display:flex;gap:8px;align-items:flex-start;box-sizing:border-box}
+#end-actions[data-mode=col]{flex-direction:column}
+#end-actions .end-s{display:none}
+#end-actions[data-mode=rowShort] .end-s{display:inline}
+#end-actions[data-mode=rowShort] .end-l{display:none}
+#end-actions[data-mode=wrap],#end-actions[data-mode=wrapTight]{flex-wrap:wrap;align-content:flex-start}
+#end-actions[data-mode=colTight]{flex-direction:column}
+#end-actions[data-mode=rowTight],#end-actions[data-mode=wrapTight],#end-actions[data-mode=colTight]{gap:4px}
+#end-actions[data-mode=wrap] .end-s,#end-actions[data-mode=rowTight] .end-s,#end-actions[data-mode=wrapTight] .end-s,#end-actions[data-mode=colTight] .end-s{display:inline}
+#end-actions[data-mode=wrap] .end-l,#end-actions[data-mode=rowTight] .end-l,#end-actions[data-mode=wrapTight] .end-l,#end-actions[data-mode=colTight] .end-l{display:none}
+#end-actions .end-a{box-sizing:border-box;justify-content:center;padding:0 16px;font:500 14px/1 var(--sans);color:var(--sky-ink);text-decoration:none;white-space:nowrap;cursor:pointer}
+#end-actions[data-mode$=Tight] .end-a{height:34px;padding:0 8px;font-size:13px}
+#end-actions .end-a:first-child{border-color:color-mix(in srgb,var(--phase-hue) 60%,transparent)}
+/* cloud letter chips (fix1, review M1): the shells and tethers carry their cloud's name */
+.cloud-chip{box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:13px;padding:0 10px;
+  font:500 12px/1 var(--sans);color:var(--sky-ink);background:var(--glass-solid,rgba(8,10,18,.82));border:1px solid var(--pill-edge);
+  pointer-events:none;white-space:nowrap}
+.cloud-chip[hidden]{display:none}
+#labels>.cloud-chip{pointer-events:none}
+.cloud-chip[data-ion=HI]{border-color:#8fb4ff}
+.cloud-chip[data-ion=OVI]{border-color:#ffb36b}
+#act-chip{font:500 14px/1 var(--sans);letter-spacing:.01em}
+#act-chip::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--phase-hue);box-shadow:0 0 10px var(--phase-hue);flex:none}
+#act-chip .act-l{overflow:hidden;text-overflow:ellipsis}
+#phase-pill{height:36px;border-radius:18px;padding:0 14px;font:400 13px/1 var(--sans);color:var(--sky-muted)}
+.ph-sw{display:inline-flex;gap:3px}
+.ph-sw i{display:block;width:9px;height:9px;border-radius:50%}
+#hint{display:flex;align-items:center;justify-content:center;height:40px;border-radius:20px;padding:0 18px;pointer-events:none;
+  font:400 14px/1 var(--sans);color:var(--sky-ink);background:rgba(8,10,20,.6);border:1px solid var(--glass-edge)}
+
+/* ---- rail: mini-map of the beam (DESIGN_final P1-2, P1-3) ---- */
+.rail>*{position:absolute}
+.rail-fly svg{width:18px;height:18px;fill:currentColor;stroke:none}
+.rail-fly .i-pause,.rail-fly.watch:not(.paused) .i-fly{display:none}
+.rail-fly.watch:not(.paused) .i-pause{display:inline}
+.rail-fly.on{border-color:var(--beam);color:var(--beam);box-shadow:0 0 0 3px color-mix(in srgb,var(--beam) 22%,transparent)}
+.rail-track{cursor:pointer;outline-offset:-2px;border-radius:8px}
+.rail-svg{position:absolute;left:0;right:0;top:50%;height:20px;margin-top:-10px;width:100%;overflow:visible}
+.rail-base{fill:rgba(236,240,255,.22)}
+.rail-tick{fill:rgba(236,240,255,.45)}
+.rail-subtick{fill:var(--beam)}
+.rail-fill{fill:var(--beam)}
+.rail-band{opacity:.85}
+.rail-band.ph-cold{fill:var(--cold)}.rail-band.ph-warm{fill:var(--warm)}.rail-band.ph-hot{fill:var(--hot)}.rail-band.ph-hi{fill:var(--hi)}.rail-band.ph-ovi{fill:var(--ovi)}
+.rail-track::after{content:"";position:absolute;top:50%;left:calc(var(--p,0) * 100%);width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;
+  background:var(--beam);box-shadow:0 0 12px 2px var(--beam-glow)}
+.rail-sub{position:absolute;right:0;top:3px;font:400 12px/1 var(--mono);color:var(--beam);white-space:nowrap}
+.rail-tip{position:absolute;bottom:100%;transform:translateX(-50%);margin-bottom:6px;padding:6px 9px;border-radius:8px;white-space:nowrap;
+  font:400 12px/1.2 var(--mono);color:var(--sky-ink);background:var(--glass-solid);border:1px solid var(--glass-edge);pointer-events:none}
+.rail-odo{font:400 var(--mono-px,12px)/1.5 var(--mono);color:var(--sky-muted);white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums}
+.rail-odo:focus-visible::after,.rail-odo:hover::after{content:attr(title);position:absolute;right:0;bottom:100%;margin-bottom:6px;padding:6px 9px;border-radius:8px;
+  white-space:nowrap;background:var(--glass-solid);border:1px solid var(--glass-edge);color:var(--sky-ink)}
+
+/* ---- plaque: moving label, so no glass (DESIGN §8.4) ---- */
+.plaque{padding:5px 10px 6px;border-left:2px solid var(--phase-hue);background:rgba(4,5,10,.72);border-radius:0 8px 8px 0;
+  font:400 var(--mono-px,12px)/1.4 var(--mono);color:var(--sky-ink);font-variant-numeric:tabular-nums}
+.pl-row{display:flex;gap:1ch;white-space:nowrap}
+.pl-k{color:var(--sky-muted);min-width:5ch}
+.pl-plain{font:400 max(12px,calc(var(--mono-px,12px) - 1px))/1.35 var(--sans);color:var(--sky-muted);margin:0 0 2px 6ch;white-space:nowrap}
+
+/* ---- menu sheet (modal layer) ---- */
+#menu-sheet{position:absolute;right:max(12px,var(--sar));top:calc(64px + var(--sat));min-width:248px;max-width:calc(100vw - 24px);padding:6px;
+  border-radius:16px;background:var(--glass-solid);border:1px solid var(--glass-edge);box-shadow:0 24px 60px rgba(0,0,0,.55)}
+[data-layout="phoneLandscape"] #menu-sheet{top:auto;bottom:calc(56px + var(--sab));left:max(12px,var(--sal));right:auto}
+.mn-i{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:44px;padding:9px 12px;border:0;border-radius:10px;
+  background:none;color:var(--sky-ink);text-align:left;cursor:pointer;text-decoration:none}
+.mn-i:hover,.mn-i:focus-visible{background:rgba(236,240,255,.07)}
+.mn-l{font:500 15px/1.2 var(--sans)}
+.mn-h{font:400 12px/1.2 var(--sans);color:var(--sky-muted)}
+.mn-i[aria-checked="true"] .mn-l::after{content:"  on";color:var(--beam);font-weight:400}
+/* picker: Ride another beam */
+.pk{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(480px,calc(100vw - 24px));max-height:min(640px,calc(100dvh - 24px));
+  display:flex;flex-direction:column;padding:16px 20px 18px;border-radius:16px;background:var(--glass-solid);border:1px solid var(--glass-edge);
+  color:var(--sky-ink);box-shadow:0 24px 60px rgba(0,0,0,.55)}
+.pk-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.pk h2{margin:0;font:500 17px/1.2 var(--sans)}
+.pk-s input{width:100%;box-sizing:border-box;min-height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--glass-edge);
+  background:rgba(236,240,255,.04);color:var(--sky-ink);font:400 15px/1 var(--sans)}
+.pk-list{overflow:auto;margin:10px -6px 0;padding:0 6px;flex:1 1 auto;min-height:88px}
+.pk-gl{font:500 12px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--sky-muted);margin:12px 0 6px}
+.pk-o{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:8px 12px;border-radius:10px;cursor:pointer}
+.pk-o:hover,.pk-o:focus-visible{background:rgba(236,240,255,.07)}
+.pk-o[aria-selected="true"] .pk-l{color:var(--beam)}
+.pk-o[aria-disabled="true"]{cursor:default;color:var(--sky-muted)}
+.pk-l{font:400 15px/1.25 var(--sans)}.pk-t{font:400 12px/1.2 var(--sans);color:var(--sky-muted);text-align:right}
+.pk-foot,.pk-none{margin:12px 0 0;font:400 13px/1.45 var(--sans);color:var(--sky-muted)}
+.pk-foot a{color:var(--accent)}
+/* key help (DESIGN §9.3) */
+.kh{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,calc(100vw - 24px));max-height:calc(100dvh - 24px);
+  overflow:auto;padding:16px 20px 20px;border-radius:16px;background:var(--glass-solid);border:1px solid var(--glass-edge);color:var(--sky-ink);
+  box-shadow:0 24px 60px rgba(0,0,0,.55)}
+.kh-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.kh h2{margin:0;font:500 17px/1.2 var(--sans)}
+.kh dl{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;margin:0;font:400 14px/1.35 var(--sans)}
+.kh dt{white-space:nowrap}.kh dd{margin:0;color:var(--sky-muted)}
+.kh kbd{display:inline-block;min-width:24px;padding:3px 6px;border-radius:6px;border:1px solid var(--glass-edge);font:400 12px/1 var(--mono);text-align:center}
+
+/* ---- narrative: always in the DOM for screen readers; "Read as text" shows it (the overlay scrolls, the page never does) ---- */
+#text-overlay{position:fixed;z-index:70;inset:0;overflow:auto;overscroll-behavior:contain;background:rgba(4,5,10,.96);color:var(--sky-ink)}
+#text-overlay:not([data-open]){position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);border:0}
+.to-in{max-width:680px;margin:0 auto;padding:calc(28px + var(--sat)) 22px calc(48px + var(--sab))}
+.to-in header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px;margin-bottom:12px}
+.to-in header .hud-pill{flex:none}
+.to-in h1,.to-in h2{font:400 clamp(28px,4vw,40px)/1.1 var(--serif);margin:0}
+#narrative{margin:0;padding:0 0 0 1.4em;font:400 17px/1.6 var(--sans)}
+#narrative>li{margin:0 0 18px}
+#narrative>li[aria-current]{color:var(--beam)}
+#narrative p{margin:0 0 6px}
+.nv-go{min-height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--glass-edge);background:none;color:var(--accent);cursor:pointer}
+.nv-honest ul{padding-left:1.2em;color:var(--sky-muted)}
+.skip{position:fixed;z-index:80;left:12px;top:12px;padding:10px 12px;border-radius:10px;background:var(--glass-solid);color:var(--sky-ink);
+  border:1px solid var(--glass-edge);font:500 13px/1 var(--sans);text-decoration:none;transform:translateY(-200%)}
+.skip:focus{transform:none}
+
+/* ---- motion and transparency preferences ---- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:0s!important;animation-duration:0s!important;animation-iteration-count:1!important}
+  .kt-blur{display:none}
+}
+html.reduced .kt-blur{display:none}
+@media (prefers-reduced-transparency:reduce){
+  .hud-pill,.hud-btn,.plaque,#hint{background:var(--glass-solid)}
+}
+@media (forced-colors:active){.hud-pill,.hud-btn,.plaque{border:1px solid CanvasText}}
+
+/* review perf M4: screen-reader-only text (the dock description) */
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* review2 three_d T4: the resting colour key inside the act chip (swatches, optional "cells only" note) */
+#act-chip .act-sw{display:inline-flex;align-items:center;gap:2px;margin-left:10px;flex:none}
+#act-chip .act-sw[hidden]{display:none}
+#act-chip .act-sw i{display:block;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1px #ffffff2e}
+#act-chip .act-note{margin-left:6px;font-size:13px;font-weight:400;color:rgba(236,240,255,0.78);white-space:nowrap}

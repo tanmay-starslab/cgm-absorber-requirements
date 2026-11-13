@@ -102,6 +102,23 @@ function announce(data, ex) {
 }
 function ready(data) { K.prep(data); K.picks(data); }
 
+/* ---- v2 dock mode "cell" (DESIGN_final §5.4; B7b stops): "one cell makes one dip" on the live panel ------------------
+   At a stop the cell under the probe gets its own full dip (dashed, e^−τ_i), the amount glyph (vertical arrow from the
+   continuum to its floor) and the width glyph (±b at half depth): the v1 S5 glyphs, now on the cell the camera sits in.
+   pe = {data, fs, ion, T}. Glyphs only; the dock's registered readouts carry the words. Pure. */
+export function dockCell(A, pe) {
+  const fs = pe.fs, S = pe.T && pe.T[pe.ion]; if (!fs || !fs.cell || !S) return;
+  const C = pe.data.ions[pe.ion].cells, i = fs.cell.idx, V = +C.V[i], b = +C.b[i];
+  if (!Number.isFinite(V) || !(b > 0) || V < A.v0 || V > A.v1) return;
+  const t = S.cellTau(i), v = Float64Array.from({length: S.N}, (_, j) => S.grid0 + j), F = j => Math.exp(-t[j]);
+  K.curve(A, v, F, {color: K.ionColor(pe.ion), width: 1.6, dash: [5, 4], alpha: 0.85});
+  const j0 = Math.round(V - S.grid0), Fmin = Math.exp(-t[Math.max(0, Math.min(S.N - 1, j0))]);
+  const x = A.X(V) + Math.max(10, A.fs * 0.9);
+  if (A.Y(Fmin) - A.Y(1) > 10) K.arrowV(A, x, A.Y(1), A.Y(Fmin), {color: K.COL.accent});
+  const fy = 1 - (1 - Fmin) * 0.5;
+  if (A.X(V + b) - A.X(V - b) > 6) K.spanH(A, A.X(V - b), A.X(V + b), A.Y(fy), {color: K.COL.accent});
+}
+
 const scene = {id: "dip", chapter: "dip", steps: STEPS, defaults: {}, controls, exploreStart, announce, ready, render,
   handoff: {ions: ["OVI"], layout: "1", R: [30000, 30000], sn: [10, 10], intr: true}};
 export default scene;

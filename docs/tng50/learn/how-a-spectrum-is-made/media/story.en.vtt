@@ -2,70 +2,179 @@ WEBVTT
 Kind: captions
 Language: en
 
-light-1
-00:00:00.000 --> 00:00:08.000
-Galaxies sit inside gas too faint to see
+1
+00:00:01.004 --> 00:00:03.030
+This light left a quasar long ago.
 
-light-2
-00:00:08.000 --> 00:00:15.000
-A light behind reveals it
+2
+00:00:03.080 --> 00:00:04.696
+The strip below is this quasar's light, as a perfect telescope riding with it would record it. For now, all of it gets through.
 
-cells-3
-00:00:15.000 --> 00:00:23.000
-A few cells make most of the absorption
+3
+00:00:04.746 --> 00:00:05.988
+Something stood in its way.
 
-dip-1
-00:00:23.000 --> 00:00:29.000
-Each gas cell leaves a shadow
+4
+00:00:06.038 --> 00:00:09.538
+Galaxies sit inside gas too faint to see.
 
-dip-2
-00:00:29.000 --> 00:00:35.000
-Moving gas shifts its shadow, like a siren
+5
+00:00:10.007 --> 00:00:11.770
+The gas shows itself only by the light it takes from things behind it. These colours are our choice, not its light.
 
-dip-3
-00:00:35.000 --> 00:00:41.000
-Amount sets how much light is taken
+6
+00:00:11.820 --> 00:00:13.550
+We ride this one beam through it. Every beam meets different gas, so every spectrum differs. Pick another beam at any time.
 
-dip-4
-00:00:41.000 --> 00:00:47.000
-Heat spreads it out
+7
+00:00:13.600 --> 00:00:15.600
+density: where the gas is
 
-sum-1
-00:00:47.000 --> 00:00:55.000
-Dozens of shadows merge into a few dips
+8
+00:00:18.992 --> 00:00:21.360
+Every cell has a density, heat and speed. The beam touches hundreds of gas cells. Each one lights up as the light reaches it.
 
-sum-2
-00:00:55.000 --> 00:01:02.000
-Motion, not heat, makes this width
+9
+00:00:21.410 --> 00:00:23.553
+So far, almost nothing is taken. By now O VI has taken 1.1 % of the light at its deepest colour.
 
-saturation-2
-00:01:02.000 --> 00:01:16.000
-Once black, only wider
+10
+00:00:23.603 --> 00:00:27.550
+Each cell leaves a shadow. Atoms take a sliver of one colour out of the light: the first cell's dip was 5.6 % deep. The rest goes on.
 
-lsf-1
-00:01:16.000 --> 00:01:24.000
-A blurry telescope merges dips
+11
+00:00:27.600 --> 00:00:29.600
+heat: which gas is warm
 
-lsf-2
-00:01:24.000 --> 00:01:31.000
-Blur turns black dips grey
+12
+00:00:31.228 --> 00:00:35.780
+A cool clump.
 
-noise-1
-00:01:31.000 --> 00:01:41.000
-Longer exposures beat the noise
+13
+00:00:36.138 --> 00:00:39.110
+One hydrogen atom in ten keeps its electron. That is at its core. In warm-hot gas only one in 200 000 does: about 20 000 times fewer. Neutral hydrogen takes the colour we follow.
 
-fit-1
-00:01:41.000 --> 00:01:48.000
-We fit a few clouds
+14
+00:00:39.160 --> 00:00:42.550
+One clump, and the dip is black. Hydrogen's dip goes black within a few cells.
 
-fit-2
-00:01:48.000 --> 00:01:54.000
-The total O VI survives
+15
+00:00:42.600 --> 00:00:44.600
+amount: one clump goes black
 
-fit-3
-00:01:54.000 --> 00:02:01.000
-The clouds are not the cells
+16
+00:00:47.653 --> 00:00:50.873
+Here the gas is too hot to see. So hot that oxygen loses even a sixth electron and hydrogen keeps almost none. O VI and H I take almost no light here.
 
-yourturn-1
-00:02:01.000 --> 00:02:11.000
-Now it is yours. Same galaxy, same beam
+17
+00:00:50.923 --> 00:00:54.923
+Where a dip sits means speed. Moving toward us shifts a shadow bluer, like a siren. Cloud A's dip sits left for its speed, not its order.
+
+18
+00:00:55.600 --> 00:00:57.600
+speed: where a dip sits
+
+19
+00:00:59.391 --> 00:01:00.748
+Cloud B
+
+20
+00:01:02.006 --> 00:01:06.499
+Amount sets how much light is taken. This one cell holds a quarter of all the O VI on the beam. Its dip grows term by term: amount, width, place.
+
+21
+00:01:07.637 --> 00:01:12.130
+Heat spreads it out. Hotter ions jiggle faster, so the same amount spreads over more speeds: wider and shallower.
+
+22
+00:01:13.394 --> 00:01:19.058
+Change the heat, watch the dip. Warmer gas spreads the dip wider. But O VI lives only in a band of heat: outside it, the dip fades.
+
+23
+00:01:20.600 --> 00:01:22.820
+ion share: heat decides the ion
+
+24
+00:01:24.434 --> 00:01:29.180
+Past halfway, new dips still appear.
+
+25
+00:01:29.755 --> 00:01:32.874
+New O VI dips appear at +61, +98 km/s. The order of dips is not the order of clouds.
+
+26
+00:01:32.924 --> 00:01:35.704
+Far apart, same speed, same dip. Gas 84 kpc apart moves at almost the same speed, so the spectrum cannot tell them apart: the clearest of 2 such pairs.
+
+27
+00:01:35.754 --> 00:01:38.550
+The spectrum keeps speed and loses place. A dip records how fast gas moves along the beam, not where it sits.
+
+28
+00:01:38.600 --> 00:01:40.820
+place is lost, speed is kept
+
+29
+00:01:41.936 --> 00:01:45.463
+More gas, deeper dip. More atoms darken a dip's centre while its width hardly changes, until the centre is black.
+
+30
+00:01:45.513 --> 00:01:48.550
+Once black, only wider. Cloud D's hydrogen lands on a dip that is already black: the trough widens, but cannot get darker.
+
+31
+00:01:48.600 --> 00:01:50.600
+amount: deeper, then only wider
+
+32
+00:01:51.838 --> 00:01:55.342
+This is everything the light carried out.
+
+33
+00:01:55.763 --> 00:01:58.550
+49 cells left a visible O VI shadow. Their shadows merged into a few broad dips.
+
+34
+00:01:58.600 --> 00:02:00.820
+metals: an ingredient, not the switch
+
+35
+00:02:04.506 --> 00:02:08.506
+A blurry telescope merges dips. Every telescope smears the spectrum a little. Less sharpness means neighbouring dips blend into one.
+
+36
+00:02:08.568 --> 00:02:12.480
+Blur turns narrow black dips grey. A narrow black dip comes out grey, as if light got through. The wide hydrogen trough stays black.
+
+37
+00:02:12.530 --> 00:02:16.821
+Longer exposures beat noise. Twice as clean needs four times as long. The noise pattern stays the same; only its size shrinks.
+
+38
+00:02:17.843 --> 00:02:22.324
+Noise can hide dips, and invent them. At low exposure the smaller dip at +96 km/s drowns, and chance wiggles look like dips. The white line is the truth.
+
+39
+00:02:23.600 --> 00:02:25.600
+sharpness and noise
+
+40
+00:02:29.447 --> 00:02:33.447
+We fit a few components. A fit explains the noisy spectrum with a few smooth components, each with an amount, a width and a speed.
+
+41
+00:02:34.196 --> 00:02:38.196
+Components are not clouds. One component can draw on gas in several places, and clouds are not cells: one clump, many cells across, can feed several components.
+
+42
+00:02:39.380 --> 00:02:43.564
+A spectrum tells how much and how fast. …but not where, and one width alone is not a thermometer.
+
+43
+00:02:45.600 --> 00:02:47.950
+how much and how fast, not where
+
+44
+00:02:48.000 --> 00:02:56.000
+How a spectrum is made
+

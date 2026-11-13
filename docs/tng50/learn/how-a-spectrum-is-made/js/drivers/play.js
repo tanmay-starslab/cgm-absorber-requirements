@@ -12,6 +12,86 @@
 
 import {SPEEDS} from "../store.js";
 
+// Play / Watch drivers.
+//
+// v2 (DESIGN_final §5.3, C_ux P1-9): createWatchDriver is "Watch (≈3 min)" on the SAME clock as scrolling. It moves the
+// clock's target along the beats' Watch schedule (beats.json watch_s; timeline.watch), so Watch, scroll and the film all
+// go through seek(p). Any user input that moves the clock pauses it (bus "input"); the page may bind Space to toggle().
+// createTicker is the page's frame loop (clock.step + one callback per frame while anything moves).
+// v1 (kept until the integrator retires the card page): createPlayDriver below, unchanged, drives engine.seek(t).
+//
+//   createWatchDriver({clock, timeline, bus, now, raf, caf, onTick, onState, onEnd, speeds})
+//     -> {play(fromP?), pause() -> p, toggle(), setSpeed(x), remaining() (s), get playing, get t, get speed, destroy()}
+//     onTick({t, p, total, beat})   after every frame; onState(playing, p); onEnd(p) at the end (no loop)
+
+export function createWatchDriver(o) {
+  const clock = o.clock, tl = o.timeline, W = tl.watch;
+  const now = o.now || (() => performance.now());
+  const raf = o.raf || (f => requestAnimationFrame(f)), caf = o.caf || (id => cancelAnimationFrame(id));
+  const SPEEDS_W = o.speeds || SPEEDS;
+  let playing = false, t = 0, t0 = 0, wall0 = 0, speed = 1, rafId = 0;
+  const offInput = o.bus ? o.bus.on("input", () => { if (playing) d.pause(); }) : null;
+
+  function frame() {
+    if (!playing) return;
+    t = Math.min(W.total, t0 + (now() - wall0) / 1000 * speed);
+    const p = W.pAt(t);
+    clock.setTarget(p, "watch");
+    o.onTick && o.onTick({t, p, total: W.total, beat: tl.locate(p).beat.id});
+    if (t >= W.total) { stop(); o.onEnd && o.onEnd(p); return; }
+    rafId = raf(frame);
+  }
+  function stop() { playing = false; if (rafId) caf(rafId); rafId = 0; clock.setMode("cruise"); o.onState && o.onState(false, clock.target); }
+
+  const d = {
+    get playing() { return playing; }, get t() { return t; }, get speed() { return speed; },
+    play(fromP) {
+      const p = Number.isFinite(fromP) ? fromP : clock.target;
+      t = p >= 1 - 1e-9 ? 0 : W.tAt(p);
+      if (t === 0 && p >= 1 - 1e-9) clock.jump(0);
+      t0 = t; wall0 = now(); playing = true; clock.setRate(0); clock.setMode("watch");
+      o.onState && o.onState(true, p);
+      rafId = raf(frame);
+      return d;
+    },
+    pause() { if (playing) { t = Math.min(W.total, t0 + (now() - wall0) / 1000 * speed); stop(); } return clock.target; },
+    toggle() { return playing ? d.pause() : d.play(); },
+    setSpeed(x) { if (!SPEEDS_W.includes(x)) return speed; if (playing) { t0 = Math.min(W.total, t0 + (now() - wall0) / 1000 * speed); wall0 = now(); } speed = x; return speed; },
+    remaining() { const tt = playing ? Math.min(W.total, t0 + (now() - wall0) / 1000 * speed) : W.tAt(clock.target); return Math.max(0, (W.total - tt) / speed); },
+    destroy() { if (playing) stop(); if (offInput) offInput(); },
+  };
+  return d;
+}
+
+/* Frame ticker for the page loop: steps the clock by the real frame time (capped, so a background tab does not jump) and
+   calls onFrame(state, dt) every frame while anything moves, plus once after it settles. now / raf / caf are injectable
+   for tests. -> {start(), stop(), kick() (force one frame, e.g. after an override), get running} */
+export function createTicker({clock, onFrame, now, raf, caf, maxDt = 0.25}) {
+  const tNow = now || (() => performance.now());
+  const req = raf || (f => requestAnimationFrame(f)), cancel = caf || (id => cancelAnimationFrame(id));
+  let id = 0, last = 0, running = false, dirty = true, wasIdle = false;
+  function frame() {
+    if (!running) return;
+    // maxDt guards the return from a background tab; while a hold flies (rate ≠ 0) a stalled frame keeps its full time
+    // (up to 2 s), so Space held 10 s is 0.12 p whatever the frame pacing (the spring is exact for any dt; G7)
+    const t = tNow(), el = Math.max(0, (t - last) / 1000), dt = Math.min(clock.state.rate ? Math.max(2, maxDt) : maxDt, el); last = t;
+    clock.step(dt);
+    const st = clock.state;
+    if (!st.idle || dirty || !wasIdle) { onFrame(st, dt); dirty = false; }
+    wasIdle = st.idle;
+    id = req(frame);
+  }
+  return {
+    start() { if (!running) { running = true; last = tNow(); id = req(frame); } },
+    stop() { running = false; if (id) cancel(id); id = 0; },
+    kick() { dirty = true; },
+    get running() { return running; },
+  };
+}
+
+/* ---------------------------------------------------------------- v1 Play driver (unchanged) */
+
+
 const INTERRUPTS = ["wheel", "touchstart", "pointerdown", "keydown"];
 
 export function createPlayDriver(o) {
