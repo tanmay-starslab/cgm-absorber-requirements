@@ -128,7 +128,7 @@ html:not(.no-gl-scrim) #stage>.scrim-top,html:not(.no-gl-scrim) #stage>.scrim-bo
 .mn-l{font:500 15px/1.2 var(--sans)}
 .mn-h{font:400 12px/1.2 var(--sans);color:var(--sky-muted)}
 .mn-i[aria-checked="true"] .mn-l::after{content:"  on";color:var(--beam);font-weight:400}
-/* picker: Ride another beam */
+/* picker: Try another beam */
 .pk{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(480px,calc(100vw - 24px));max-height:min(640px,calc(100dvh - 24px));
   display:flex;flex-direction:column;padding:16px 20px 18px;border-radius:16px;background:var(--glass-solid);border:1px solid var(--glass-edge);
   color:var(--sky-ink);box-shadow:0 24px 60px rgba(0,0,0,.55)}

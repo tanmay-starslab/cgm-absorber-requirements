@@ -29,7 +29,7 @@ export const INPUT_TUNE = Object.freeze({
   fine: 0.006,
   quantGap: 150, quantRatio: 1.6,
   holdRate: 0.012,          // the ceiling of the hold rate (p/s)
-  holdK: 1.25,              // review SC-4: hold rides each beat at holdK × its Watch speed (the reading budget), never above holdRate
+  holdK: 1.25,              // review SC-4: hold plays each beat at holdK × its Watch speed (the reading budget), never above holdRate
   holdMin: 0.002,
   holdWps: 4,               // review2 scrolly #2: hold reading speed inside a caption (240 words/min)
   holdCapMin: 0.0005,       // floor of the in-caption rate (p/s), so a hold always moves
@@ -113,7 +113,7 @@ export function nextStop(stops, x, dir) {
 const noscrub = t => !!(t && t.closest && t.closest("[data-noscrub]"));
 /* review SC-5: the vertical wheel scrubs everywhere on the stage (the dock, the rail, equation terms, the hero spectrum), except
    over things that own the wheel themselves: form controls and sliders, scrollable sheets and dialogs (menu, picker, text),
-   the gate (its own wheel listener starts the ride) and anything marked [data-wheel] (dials stop propagation themselves).
+   the gate (its own wheel listener starts the flight) and anything marked [data-wheel] (dials stop propagation themselves).
    [data-noscrub] still keeps drags and touch swipes off the clock. */
 // the story rail is itself the story's slider: the wheel over it scrubs like anywhere else (review2 scrolly #6)
 const wheelOwn = t => !!(t && t.closest && !t.closest(".rail-track, [data-story-slider]") &&

@@ -2,11 +2,11 @@
 // grammar the explorer's call to action writes (docs/tng50/js/app.js storyEntry).
 //
 // The gate is the first screen: a still of this galaxy's gas and starlight (img/poster_<g>_<ray>.webp, landscape, and
-// _p.webp, portrait; scripts/story_posters.mjs), the title, and two equal choices: "Hold to ride" (hold the button or
-// Space for HOLD_MS; one press under reduced motion; Enter on the focused button rides at once, so a keyboard never needs
+// _p.webp, portrait; scripts/story_posters.mjs), the title, and two equal choices: "Hold to fly" (hold the button or
+// Space for HOLD_MS; one press under reduced motion; Enter on the focused button starts at once, so a keyboard never needs
 // to hold) and "Watch (<length>)". Below them "Skip intro" and "Read as text", then a one-line credit for the still.
 // When the live volume is ready the integrator calls liveReady(): the gate's sky turns transparent; the poster stays until close.
-// While the gate is open it owns Space (capture phase), so the story's input layer does not fly before the ride starts;
+// While the gate is open it owns Space (capture phase), so the story's input layer does not fly before the flight starts;
 // a Space held through the end of the hold keeps flying once the gate closes (auto-repeat reaches input.js again).
 // Every box is in one flex column, so nothing can overlap; rects() lists the visible boxes for the G1 run (U_qa), and
 // the HUD and rail are hidden under html.gate-open (they would sit under the gate's still).
@@ -167,8 +167,8 @@ export function createGate(host, opts = {}) {
   vars.watch_len = watchLabel(opts.watchSeconds) || vars.watch_len;
   const phone = () => Math.min(win.innerWidth, win.innerHeight) <= 480;
   const title = fill(B0.display || "How a spectrum is made", vars);
-  const sub = fill(phone() && B0.sub_short ? B0.sub_short : B0.sub || "Ride one beam of quasar light through the gas around a galaxy.", vars);
-  const holdL = fill(ui.gate_hold || "Hold to ride", vars);
+  const sub = fill(phone() && B0.sub_short ? B0.sub_short : B0.sub || "Follow one beam of quasar light through the gas around a galaxy.", vars);
+  const holdL = fill(ui.gate_hold || "Hold to fly", vars);
   const watchL = () => (vars.watch_len ? fill(ui.gate_watch || "Watch ({{$watch_len}})", vars) : "Watch");
   const credit = opts.credit != null ? opts.credit : vars.galaxy != null
     ? `TNG50 galaxy ${vars.galaxy}: gas and starlight from the simulation; the line is the beam.` : "";
@@ -236,7 +236,7 @@ export function createGate(host, opts = {}) {
   el.querySelector('[data-testid="gate-skip"]').addEventListener("click", () => { if (isOpen && !done) { done = true; opts.onSkip && opts.onSkip(); } });
   el.querySelector('[data-testid="gate-text"]').addEventListener("click", () => { opts.onText && opts.onText(); });
 
-  /* Space belongs to the gate while it is open: hold to ride from anywhere except the other buttons (where Space
+  /* Space belongs to the gate while it is open: hold to fly from anywhere except the other buttons (where Space
      activates them, as a button should) */
   const onKey = e => {
     if (!isOpen || e.key !== " " && e.code !== "Space") return;

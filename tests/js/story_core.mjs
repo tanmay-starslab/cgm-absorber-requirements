@@ -395,7 +395,7 @@ else {
     for (const [k, r] of boxes) if (segHitsRect(seg[0], seg[1], r)) hits.push(`${f.beat.id}@${p.toFixed(4)} ${cls} ${w}x${h} ${k}`);
   }
   ok(hits.length === 0, `G3: beam never crosses a visible text/equation band (${frames} frames over ${sizes.size} CSS sizes × ${NP} p)${hits.length ? "\n   " + hits.slice(0, 12).join("\n   ") : ""}`);
-  { // review2 three_d T3 (owner brief item 2): some flight stretch rides the sightline, camera < 1.5 kpc off the ray
+  { // review2 three_d T3 (owner brief item 2): some flight stretch follows the sightline, camera < 1.5 kpc off the ray
     for (const cls of ["desktop", "phonePortrait"]) { let n = 0, best = 1e9;
       for (let i = 0; i <= 2000; i++) { const f = seek(i / 2000, data, {cls}); if (f.beat.kind !== "flight") continue;
         const d = f.cam.pos.map((x, a) => x - ctx.frame.mid[a]), t = d[0] * ctx.frame.n[0] + d[1] * ctx.frame.n[1] + d[2] * ctx.frame.n[2];

@@ -125,7 +125,7 @@
      "ease": "smoothstep"
     }
    ],
-   "note": "review2 three_d T3: on-axis stretch u 0.3-0.7 (camera 0.8 kpc above the ray, 2 kpc behind the probe, looking 30 kpc ahead): the reader rides the sightline through B4's cells"
+   "note": "review2 three_d T3: on-axis stretch u 0.3-0.7 (camera 0.8 kpc above the ray, 2 kpc behind the probe, looking 30 kpc ahead): the reader follows the sightline through B4's cells"
   },
   "cloudA": {
    "textSide": "left",
@@ -441,7 +441,7 @@
      "ease": "smoothstep"
     }
    ],
-   "about_fix3": "fix3 R4: from u 0.40 to 0.72 the camera holds a side view of the 84 kpc pair (cells 296 at l -18.2 and 438 at +65.7) aimed at their midpoint (l +24, hero-ray kpc) from 280 kpc off the beam, so both cells sit inside the world band in every layout class while B9.1 (u 0.61-0.70) is read; it rides back to the chase by u = 1. A later return breaks camera continuity or G3 at B9.2, an earlier one lets seek's comfort smoothing pull the frame off the pair."
+   "about_fix3": "fix3 R4: from u 0.40 to 0.72 the camera holds a side view of the 84 kpc pair (cells 296 at l -18.2 and 438 at +65.7) aimed at their midpoint (l +24, hero-ray kpc) from 280 kpc off the beam, so both cells sit inside the world band in every layout class while B9.1 (u 0.61-0.70) is read; it comes back to the chase by u = 1. A later return breaks camera continuity or G3 at B9.2, an earlier one lets seek's comfort smoothing pull the frame off the pair."
   },
   "cloudD": {
    "textSide": "left",

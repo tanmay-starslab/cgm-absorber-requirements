@@ -35,18 +35,18 @@
     "chip": "How a spectrum is made",
     "display": "How a spectrum is made",
     "display_short": "How a spectrum is made",
-    "sub": "Ride one beam of quasar light through the gas around galaxy {{galaxy}}.",
-    "sub_short": "Ride one beam of quasar light.",
-    "narrative": "How a spectrum is made. You will ride one beam of quasar light through the gas around galaxy {{galaxy}}, and watch its spectrum build up cell by cell. Hold Space or the ride button to start, or choose Watch.",
+    "sub": "Follow one beam of quasar light through the gas around galaxy {{galaxy}}.",
+    "sub_short": "Follow one beam of quasar light.",
+    "narrative": "How a spectrum is made. You will follow one beam of quasar light through the gas around galaxy {{galaxy}}, and watch its spectrum build up cell by cell. Hold Space or the hold button to start, or choose Watch.",
     "physics": null
   },
   "B1": {
     "chip": "Light",
     "display": "This light left a quasar long ago.",
     "display_short": "Light from a distant quasar.",
-    "sub": "The strip below is this quasar's light, as a perfect telescope riding with it would record it. For now, all of it gets through.",
+    "sub": "The strip below is this quasar's light, as a perfect telescope travelling with it would record it. For now, all of it gets through.",
     "sub_short": "For now, all the light gets through.",
-    "narrative": "A quasar far behind the galaxy sends its light toward us. The spectrum below is what a perfect telescope riding with the light would record. So far nothing is taken: all the light gets through.",
+    "narrative": "A quasar far behind the galaxy sends its light toward us. The spectrum below is what a perfect telescope travelling with the light would record. So far nothing is taken: all the light gets through.",
     "physics": "The spectrum shows the fraction of light left at each speed along the beam. It is the light that has crossed every cell behind the packet, before any telescope blur.",
     "then": [
       {
@@ -80,8 +80,8 @@
           0.55,
           1.0
         ],
-        "display": "We ride this one beam through it.",
-        "display_short": "We ride this beam.",
+        "display": "We follow this one beam through it.",
+        "display_short": "We follow this beam.",
         "sub": "Every beam meets different gas, so every spectrum differs. Pick another beam at any time.",
         "sub_short": "Every beam meets different gas.",
         "narrative": null
@@ -502,7 +502,7 @@
     "display_short": "Now it is yours.",
     "sub": "Change sharpness and exposure, pick another of {{ngal}} galaxies, or open this beam in the explorer.",
     "sub_short": "Try another beam.",
-    "narrative": "Now it is yours: the same galaxy and the same beam. Change the sharpness and the exposure, ride another beam from any of {{ngal}} galaxies, or open this beam in the explorer.",
+    "narrative": "Now it is yours: the same galaxy and the same beam. Change the sharpness and the exposure, try another beam from any of {{ngal}} galaxies, or open this beam in the explorer.",
     "physics": "Sharpness is R, exposure is S/N, the components are the fit: each maps to one control in Spectra.",
     "then": [
       {
@@ -514,10 +514,10 @@
         "when": "lite",
         "display": null,
         "display_short": null,
-        "sub": "This beam has no cell-by-cell ride yet: you see its library spectrum, and the cells drawn did not make it.",
+        "sub": "This beam has no cell-by-cell flight yet: you see its library spectrum, and the cells drawn did not make it.",
         "sub_short": "Library spectrum; drawn cells are not its cells.",
         "else": null,
-        "narrative": "This beam has no cell-by-cell ride yet: you see its library spectrum, and the cells drawn did not make it."
+        "narrative": "This beam has no cell-by-cell flight yet: you see its library spectrum, and the cells drawn did not make it."
       }
     ]
   },
@@ -604,12 +604,12 @@
     }
   ],
   "ui": {
-    "gate_hold": "Hold to ride",
+    "gate_hold": "Hold to fly",
     "gate_watch": "Watch ({{$watch_len}})",
     "skip_intro": "Skip intro",
     "read_as_text": "Read as text",
-    "hint_desktop": "Scroll, or hold Space, to ride the light",
-    "hint_touch": "Swipe up to ride the light",
+    "hint_desktop": "Scroll, or hold Space, to follow the light",
+    "hint_touch": "Swipe up to follow the light",
     "fly": "Fly",
     "pause": "Pause",
     "resume": "Resume",
@@ -619,7 +619,7 @@
     "physics": "Physics",
     "share": "Copy link to this moment",
     "replay": "Replay",
-    "ride_another": "Ride another beam",
+    "ride_another": "Try another beam",
     "open_spectra": "Open in Spectra",
     "see_3d": "See it in 3D",
     "stop_counter": "stop {{$stop.k}} of {{$stop.n}}",
@@ -632,7 +632,7 @@
     "reduced_motion": "Reduced motion: one still per step",
     "no_webgl": "This device cannot draw the 3D gas, so you see one still picture with the live spectrum.",
     "software_gl": "3D is slow on this device, so you see one still picture with the live spectrum. Add ?force3d to try anyway.",
-    "keys_help": "Keys: Space ride or pause, arrows step, Page Up and Page Down jump, G grab, Esc release, T colours, R sharpness, N exposure",
+    "keys_help": "Keys: Space play or pause, arrows step, Page Up and Page Down jump, G grab, Esc release, T colours, R sharpness, N exposure",
     "tf": {
       "density": "Density",
       "phases": "Gas phases",

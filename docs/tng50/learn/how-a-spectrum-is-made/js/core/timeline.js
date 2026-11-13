@@ -47,7 +47,7 @@ export function createTimeline(doc, opts = {}) {
      0) to u1; the landing sits a little inside that window (≤ 0.0015 p, ≤ a quarter of it) so the cruise spring's last
      approach from below is already at full opacity. Lines with an alt or a variant are not used (they may be hidden). A line
      with its own cond is used when that cond holds for this ray (the same skip() the shell uses; fix3 SC3-3: such lines are
-     on screen, so they get hold-to-ride, reading points, reduced-motion stops and the detent like any other). A line whose
+     on screen, so they get hold-to-play, reading points, reduced-motion stops and the detent like any other). A line whose
      cond is the beat's own is always used (the beat is skipped when it is false). */
   const plainBase = (t, b) => t && (!t.when || t.when === "default") && !t.alt && (t.band === "text" || t.band === "act");
   const shownLine = (t, b) => !t.cond || t.cond === b.cond || !skip({cond: t.cond});

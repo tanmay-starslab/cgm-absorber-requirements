@@ -780,7 +780,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         from tngsight.ions import registry_tag
         out = {"job_id": j.job_id, "geom": j.geom, "lease_s": int(S.lease_s), "attempt": j.attempts,
                "lease": j.lease_token, "registry_tag": registry_tag()}
-        if j.galaxy is not None:              # only "galaxies" workers lease these; the frame rides along
+        if j.galaxy is not None:              # only "galaxies" workers lease these; the frame travels along
             try:
                 out["galaxy"] = {"id": j.galaxy, "record": hub.record(j.galaxy)}
             except Exception as e:            # the geom is resolved already; the record is a convenience
