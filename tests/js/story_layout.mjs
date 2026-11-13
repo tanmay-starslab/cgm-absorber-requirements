@@ -209,7 +209,7 @@ const FIX_BEATS_RAW = [
    text: [{id, band: HUD.ACT_TITLE_BEATS.includes(id) ? "act" : "text", part: "all", u0: 0.15, u1: 0.8}]}));
 const FIX_BEATS = FIX_BEATS_RAW;
 const FIX_COPY = {
-  B0: {display: "How a spectrum is made", display_short: "How a spectrum is made", sub: "Hold to ride the light.", sub_short: "Hold to ride."},
+  B0: {display: "How a spectrum is made", display_short: "How a spectrum is made", sub: "Hold to follow the light.", sub_short: "Hold to fly."},
   B1: {display: "This light left a quasar long ago.", display_short: "Light left a quasar.", sub: "Something stood in its way.", sub_short: "Something stood in its way."},
   B2: {display: "Galaxies sit inside gas *too faint to see.*", display_short: "Gas *too faint to see.*", sub: "It shows itself only by the light it takes from things behind it.", sub_short: "It shows only by stolen light."},
   B3: {display: "Every cell has a density, heat and speed.", display_short: "Density, heat and speed.", sub: "So far, almost nothing is taken.", sub_short: "Almost nothing is taken."},

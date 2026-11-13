@@ -1,5 +1,5 @@
-// "Ride another beam" (DESIGN_final §5.6; brief req. 5: pick another sightline or galaxy). A dialog on the modal layer.
-// The story needs per-ray story data (U_data's story-data/2, listed in data/index.json); only staged rays can be ridden.
+// "Try another beam" (DESIGN_final §5.6; brief req. 5: pick another sightline or galaxy). A dialog on the modal layer.
+// The story needs per-ray story data (U_data's story-data/2, listed in data/index.json); only staged rays can be shown.
 // Every other galaxy and sightline of the sample lives in the explorer, so the picker ends with that hand-off instead of
 // pretending. Rays the data marks ineligible are listed, disabled, with the reason (U_data's rule, e.g. no visible O VI).
 //
@@ -41,7 +41,7 @@ export function createPicker(host, hooks = {}) {
   const el = document.createElement("div");
   el.id = "picker"; el.className = "pk"; el.hidden = true; el.dataset.noscrub = "";
   el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-labelledby", "pk-h");
-  el.innerHTML = `<div class="pk-head"><h2 id="pk-h">Ride another beam</h2>` +
+  el.innerHTML = `<div class="pk-head"><h2 id="pk-h">Try another beam</h2>` +
     `<button type="button" class="hud-btn pk-x" aria-label="Close"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg></button></div>` +
     `<label class="pk-s"><span class="vh">Find a galaxy or beam</span><input type="search" placeholder="Galaxy or beam" autocomplete="off" spellcheck="false"></label>` +
     `<div class="pk-list" role="listbox" aria-labelledby="pk-h" tabindex="-1"></div>` +
@@ -55,7 +55,7 @@ export function createPicker(host, hooks = {}) {
     list.innerHTML = m.groups.map(g => `<div class="pk-g" role="group" aria-label="${esc(g.label)}"><div class="pk-gl" aria-hidden="true" data-key="galaxy">${esc(g.label)}</div>` +
       g.rays.map(r => `<div class="pk-o" role="option" tabindex="-1" data-g="${g.galaxy}" data-ray="${esc(r.ray)}"` +
         ` aria-selected="${r.current}" aria-disabled="${!r.eligible}">` +
-        `<span class="pk-l" data-key="ray">${esc(r.label)}</span>${r.current ? `<span class="pk-t">riding now</span>` : r.reason ? `<span class="pk-t">${esc(r.reason)}</span>` : ""}</div>`).join("") +
+        `<span class="pk-l" data-key="ray">${esc(r.label)}</span>${r.current ? `<span class="pk-t">showing now</span>` : r.reason ? `<span class="pk-t">${esc(r.reason)}</span>` : ""}</div>`).join("") +
       "</div>").join("") || `<p class="pk-none">No staged beam matches.</p>`;
     const g = current.galaxy;
     foot.innerHTML = hooks.explorerHref ? `Every galaxy and sightline of the sample is in the <a href="${esc(hooks.explorerHref(g))}">explorer</a>; ` +

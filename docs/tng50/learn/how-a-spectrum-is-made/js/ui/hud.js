@@ -39,7 +39,7 @@ export const TF_LEGEND = Object.freeze({
   metals: {name: "Metals", sw: ["#3b528b", "#21918c", "#fde725"]},             // viridis (tfstory.js metals)
   composite: {name: "Everything", sw: ["var(--cold)", "var(--warm)", "var(--hot)"]},
 });
-export const HINT_TEXT = {fine: "Scroll, or hold Space, to ride the light", coarse: "Swipe up to ride the light"};   // copy.ui wins
+export const HINT_TEXT = {fine: "Scroll, or hold Space, to follow the light", coarse: "Swipe up to follow the light"};   // copy.ui wins
 
 /* UI string from copy.json "ui" (U_copy) with a built-in fallback; {{$name}} templates filled from vars */
 export function uiText(copy, key, fallback, vars = {}) {
@@ -186,7 +186,7 @@ export function frameItems(fs, env) {
       gap: 0, candidates: ["n"], fallback: "band", size: {w, h: 40, font: 14}});
   }
 
-  // the hand-off at rest (review SC-7): Ride another beam / Open in Spectra / Replay under the B14 text
+  // the hand-off at rest (review SC-7): Try another beam / Open in Spectra / Replay under the B14 text
   if (env.end) {
     const it = endItem(env.end, bands, type);
     if (it) items.push(it);

@@ -1,4 +1,4 @@
-// The one menu (DESIGN_final §1.3 P1-3): Explore, Physics, Read as text, Ride another beam, Watch, Share, Keys.
+// The one menu (DESIGN_final §1.3 P1-3): Explore, Physics, Read as text, Try another beam, Watch, Share, Keys.
 // A 44 px icon button in the HUD (in the rail in phone landscape) opening a sheet on the modal layer (z 60). Esc or a click
 // outside closes it and returns focus to the button. Each entry calls a hook; entries without a hook are not shown.
 //
@@ -9,9 +9,9 @@
 // Pure: KEYMAP, keyAction(e, state). DOM: createMenu(button, sheet, hooks), createKeyHelp(host, {onClose}).
 
 export const ENTRIES = Object.freeze([
-  {id: "watch", label: "Watch the ride", hint: null},          // length comes from hooks.watchHint() (the beats' Watch schedule)
+  {id: "watch", label: "Watch the flight", hint: null},          // length comes from hooks.watchHint() (the beats' Watch schedule)
   {id: "explore", label: "Explore this beam", hint: "your controls, same galaxy"},
-  {id: "picker", label: "Ride another beam", hint: "any galaxy of the sample"},
+  {id: "picker", label: "Try another beam", hint: "any galaxy of the sample"},
   {id: "physics", label: "Physics layer", hint: "the honest details", toggle: true},
   {id: "text", label: "Read as text", hint: "the whole story, no motion"},
   {id: "share", label: "Copy link to this moment"},

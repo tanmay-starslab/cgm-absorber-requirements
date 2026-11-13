@@ -278,13 +278,13 @@ async function boot() {
     // G10: the gate's numbers come from data (galaxy id) or the timeline (Watch length), not typed copy
     for (const e of gate.el.querySelectorAll(".sg-s, .sg-cr")) e.dataset.key = "galaxy";
     for (const e of gate.el.querySelectorAll(".sg-l")) e.dataset.num = "watch_total";
-    // a scrollytelling first screen: scrolling or swiping down on the gate starts the ride (the gate is data-noscrub, so the
+    // a scrollytelling first screen: scrolling or swiping down on the gate starts the flight (the gate is data-noscrub, so the
     // input layer never sees these); ctrl-wheel stays the browser's zoom
-    const ride = () => { closeGate(); clock.setTarget(Math.max(clock.state.target, B1read)); };
-    gate.el.addEventListener("wheel", e => { if (e.ctrlKey || e.metaKey || !(e.deltaY > 0)) return; e.preventDefault(); ride(); }, {passive: false});
+    const startFlight = () => { closeGate(); clock.setTarget(Math.max(clock.state.target, B1read)); };
+    gate.el.addEventListener("wheel", e => { if (e.ctrlKey || e.metaKey || !(e.deltaY > 0)) return; e.preventDefault(); startFlight(); }, {passive: false});
     let ty = null;
     gate.el.addEventListener("touchstart", e => { ty = e.touches.length === 1 ? e.touches[0].clientY : null; }, {passive: true});
-    gate.el.addEventListener("touchmove", e => { if (ty != null && e.touches.length === 1 && ty - e.touches[0].clientY > 30) { ty = null; ride(); } }, {passive: true});
+    gate.el.addEventListener("touchmove", e => { if (ty != null && e.touches.length === 1 && ty - e.touches[0].clientY > 30) { ty = null; startFlight(); } }, {passive: true});
   }
   /* fix3 beauty M6: the poster stays up until the first 3D frame with gas (first3d) on the live tier, so a reader who scrolls
      at once never sees beads on black; capped at GATE_WAIT_MS after the first close request (a slow cube fetch then shows
