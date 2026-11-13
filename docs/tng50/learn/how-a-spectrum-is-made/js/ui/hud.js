@@ -77,6 +77,8 @@ const CHIP_FONT = 14, CHIP_H = 44;
 export const TAG_MAX_DIST = 24;   // fix3 H1/R7: a world tag (cloud chip) never sits further than this from its anchor
 // chip = border 2 + padding 2×16 + dot 8 + gap 10 + label; pill = border 2 + padding 2×14 + swatches (9 + 3 gap each) + gap 10 + label
 export const chipWidth = label => Math.ceil(textWidth(label, "sans5", CHIP_FONT)) + 54;
+/* music pill (js/ui/sound.js): icon + the wider of "Music on" / "Music off"; icon only (44) on phones */
+export const soundWidth = cls => (isPhone(cls) ? 44 : Math.ceil(textWidth("Music off", "sans5", CHIP_FONT)) + 54);
 export const pillWidth = leg => Math.ceil(textWidth(leg.name, "sans", 13)) + 42 + leg.sw.length * 12;
 /* fix3 ux M1: one act-chip width for both placements (top HUD row and, on compact landscape, the rail). The chip holds the
    label plus the resting colour key (T4); the key is flex:none, so a box narrower than label + key ellipsizes the label (the
@@ -104,7 +106,9 @@ export function hudGeometry(bands, cls, type, state = {}) {
     const rowH = isPhone(cls) ? CHIP_H : Math.max(CHIP_H, bands.hud.h - (state.insetTop || 0));
     const y1 = top + Math.max(4, Math.round((Math.min(rowH, bands.hud.h - (state.insetTop || 0)) - CHIP_H) / 2));
     out.menu = {x: bands.hud.x + bands.hud.w - m - 44, y: y1, w: 44, h: CHIP_H};
-    const fit = actChipFit(state.act, state.restSw, state.restNote, out.menu.x - 8 - bands.hud.x - m);
+    const sw = soundWidth(cls);
+    out.sound = {x: out.menu.x - 8 - sw, y: y1, w: sw, h: CHIP_H, icon: sw === 44};
+    const fit = actChipFit(state.act, state.restSw, state.restNote, out.sound.x - 8 - bands.hud.x - m);
     out.act = {x: bands.hud.x + m, y: y1, w: fit.w, h: CHIP_H, rest: fit.rest};
     if (state.legend) {
       const pw = pillWidth(state.legend);
@@ -147,6 +151,7 @@ export function frameItems(fs, env) {
   const titleBeat = actHidden(fs);
   if (hg.act && !titleBeat) items.push({id: "hud:act", kind: "hud", priority: 100, rect: hg.act});
   if (hg.menu) items.push({id: "hud:menu", kind: "hud", priority: 100, rect: hg.menu});
+  if (hg.sound) items.push({id: "hud:sound", kind: "hud", priority: 100, rect: hg.sound});
   if (hg.phase) items.push({id: "hud:phase", kind: "hud", priority: 99, rect: hg.phase});
 
   // rail and its children
@@ -154,6 +159,7 @@ export function frameItems(fs, env) {
   const rg = railFor(bands, cls, type, env.act, restSw, restNote, env.maxKpc);
   items.push({id: "rail:fly", kind: "hud", priority: 86, rect: rg.fly, container: "rail"});
   if (rg.menu) items.push({id: "hud:menu", kind: "hud", priority: 86, rect: rg.menu, container: "rail"});
+  if (rg.sound) items.push({id: "hud:sound", kind: "hud", priority: 86, rect: rg.sound, container: "rail"});
   if (rg.act && !titleBeat) items.push({id: "hud:act", kind: "hud", priority: 86, rect: rg.act, container: "rail"});
   items.push({id: "rail:track", kind: "rail", priority: 86, rect: rg.track, container: "rail"});
   if (rg.odo) items.push({id: "rail:odo", kind: "rail", priority: 86, rect: rg.odo, container: "rail"});
@@ -254,7 +260,8 @@ function endItem(end, bands, type) {
           avoidSoft: bands.cls === "narrow"};
 }
 
-/* G12: HUD elements visible in flight (act chip, menu, fly, rail; phase pill and hint count when shown) */
+/* G12: HUD elements visible in flight (act chip, menu, fly, rail; phase pill and hint count when shown). The music toggle
+   (hud:sound) is always on screen at the owner's request and is not counted. */
 export function chromeCount(solved) {
   const ids = new Set(solved.placed.map(b => b.id));
   return ["hud:act", "hud:menu", "rail:fly", "rail", "hud:phase", "hint"].filter(id => ids.has(id)).length;
@@ -465,6 +472,8 @@ export function createShell(els, opts = {}) {
       }
       place(els.actChip, B["hud:act"]); }
     place(els.menuButton, B["hud:menu"]);
+    place(els.soundButton, B["hud:sound"]);
+    if (els.soundButton && B["hud:sound"]) els.soundButton.classList.toggle("icon", B["hud:sound"].w <= 44);
     if (els.phasePill) {
       if (B["hud:phase"] && legend) {
         const key = legend.id + (env.speedCellsOnly ? "|c" : "");

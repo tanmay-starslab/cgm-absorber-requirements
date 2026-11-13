@@ -21,7 +21,7 @@ export function lightYearsText(travelledKpc) {
   return ly >= 1e6 ? `${(ly / 1e6).toFixed(2)} million light-years` : `${Math.round(ly / 1000) * 1000} light-years`;
 }
 
-/* Boxes inside the rail band: fly button (left), menu (phone landscape only), act chip (phone landscape only), track,
+/* Boxes inside the rail band: fly button (left), menu and music (phone landscape only), act chip (phone landscape only), track,
    odometer (right). All children of the rail; fixed for a given band and font size. */
 export function railGeometry(band, cls, opts = {}) {
   const mono = opts.mono || 12, h = band.h, pad = Math.max(10, Math.round(h * 0.2));
@@ -29,7 +29,7 @@ export function railGeometry(band, cls, opts = {}) {
   const fly = {x: band.x + pad, y: cy - FLY_W / 2, w: FLY_W, h: FLY_W};
   let x = fly.x + fly.w + pad;
   const out = {fly};
-  if (opts.menuInRail) { out.menu = {x, y: cy - 22, w: 44, h: 44}; x += 44 + pad; }
+  if (opts.menuInRail) { out.menu = {x, y: cy - 22, w: 44, h: 44}; x += 44 + pad; out.sound = {x, y: cy - 22, w: 44, h: 44}; x += 44 + pad; }
   if (opts.actInRail && opts.actW) { out.act = {x, y: cy - 22, w: opts.actW, h: 44}; x += opts.actW + pad; }
   const odoW = Math.ceil(textWidth(odometerText(opts.maxKpc || 999), "mono", mono)) + 4;
   const odo = {x: band.x + band.w - pad - odoW, y: cy - mono * 0.75, w: odoW, h: Math.ceil(mono * 1.5)};

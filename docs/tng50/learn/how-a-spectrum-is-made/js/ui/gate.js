@@ -4,7 +4,7 @@
 // The gate is the first screen: a still of this galaxy's gas and starlight (img/poster_<g>_<ray>.webp, landscape, and
 // _p.webp, portrait; scripts/story_posters.mjs), the title, and two equal choices: "Hold to fly" (hold the button or
 // Space for HOLD_MS; one press under reduced motion; Enter on the focused button starts at once, so a keyboard never needs
-// to hold) and "Watch (<length>)". Below them "Skip intro" and "Read as text", then a one-line credit for the still.
+// to hold) and "Watch (<length>)". Below them "Skip intro", "Read as text" and the music toggle, then a one-line credit for the still.
 // When the live volume is ready the integrator calls liveReady(): the gate's sky turns transparent; the poster stays until close.
 // While the gate is open it owns Space (capture phase), so the story's input layer does not fly before the flight starts;
 // a Space held through the end of the hold keeps flying once the gate closes (auto-repeat reaches input.js again).
@@ -195,6 +195,9 @@ export function createGate(host, opts = {}) {
       `<div class="sg-k">` +
         `<button type="button" class="sg-a" data-g1="gate.skip" data-testid="gate-skip">${esc(fill(ui.skip_intro || "Skip intro", vars))}</button>` +
         `<button type="button" class="sg-a" data-g1="gate.text" data-testid="gate-text">${esc(fill(ui.read_as_text || "Read as text", vars))}</button>` +
+        (opts.music ? `<button type="button" class="sg-a sg-music" data-g1="gate.music" data-testid="gate-music" aria-pressed="false">` +
+          `<svg viewBox="0 0 20 20" aria-hidden="true"><path class="snd-spk" d="M3.5 7.6h2.6L10 4.5v11L6.1 12.4H3.5z"/><path class="snd-w" d="M12.6 7.4a3.6 3.6 0 0 1 0 5.2M14.8 5.4a6.4 6.4 0 0 1 0 9.2"/><path class="snd-x" d="M12.8 8l4 4M16.8 8l-4 4"/></svg>` +
+          `<span class="snd-l">${esc(ui.music_off || "Music off")}</span></button>` : "") +
       `</div>` +
       (credit ? `<p class="sg-cr" data-g1="gate.credit">${esc(credit)}</p>` : "") +
     `</div>`;
@@ -235,6 +238,8 @@ export function createGate(host, opts = {}) {
   watchB.addEventListener("click", () => { if (isOpen && !done) { done = true; opts.onWatch && opts.onWatch(); } });
   el.querySelector('[data-testid="gate-skip"]').addEventListener("click", () => { if (isOpen && !done) { done = true; opts.onSkip && opts.onSkip(); } });
   el.querySelector('[data-testid="gate-text"]').addEventListener("click", () => { opts.onText && opts.onText(); });
+  // the music toggle: opts.music = createSound() (js/ui/sound.js) binds the click and keeps the label in step
+  const musicB = el.querySelector('[data-testid="gate-music"]'); if (musicB && opts.music) opts.music.bind(musicB);
 
   /* Space belongs to the gate while it is open: hold to fly from anywhere except the other buttons (where Space
      activates them, as a button should) */

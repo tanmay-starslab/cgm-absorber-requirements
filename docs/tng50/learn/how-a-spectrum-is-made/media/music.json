@@ -1,0 +1,15 @@
+{
+ "work": "Ludwig van Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto",
+ "performer": "John Michel (cello arrangement and recording)",
+ "source": "https://commons.wikimedia.org/wiki/File:JOHN_MICHEL_CELLO-BEETHOVEN_SYMPHONY_7_Allegretto.ogg",
+ "license": "CC BY-SA 3.0",
+ "license_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+ "changes": "excerpted, dynamics compressed, equalised, light reverb, faded and looped",
+ "source_sha256": "0cc82867e2ff62baf4d22dfbc6d339f21bbcaf033a6c0565adfab4f65ebf482e",
+ "loop_s": 116.0,
+ "loop_window_s": [
+  8.0,
+  128.0
+ ],
+ "film_s": 176.0
+}

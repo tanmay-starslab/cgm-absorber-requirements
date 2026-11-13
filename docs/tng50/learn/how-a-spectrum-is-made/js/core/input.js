@@ -211,7 +211,9 @@ export function bindInput(o) {
     // keys inside [data-noscrub] stay with that widget, except beat navigation from a plain button (Menu, Chapter, Fly):
     // a keyboard user who tabbed to the HUD still pages through the story (review2 perf/a11y L5)
     if (e.defaultPrevented || typing(e.target)) return;
-    if (noscrub(e.target) && !(NAV_KEYS.has(e.key) && plainButton(e.target))) return;
+    // the shell's letter keys (M music, T colours, ...) also work from a plain HUD button, so clicking the music pill and
+    // then pressing M toggles it back
+    if (noscrub(e.target) && !(plainButton(e.target) && (NAV_KEYS.has(e.key) || /^[a-z?]$/i.test(e.key || "")))) return;
     if (o.onKey && o.onKey(e) === true) return;                   // the page claims the key (e.g. Space = pause in Watch)
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     const k = e.key;

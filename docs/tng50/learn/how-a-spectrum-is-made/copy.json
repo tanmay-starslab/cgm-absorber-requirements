@@ -620,6 +620,8 @@
     "share": "Copy link to this moment",
     "replay": "Replay",
     "ride_another": "Try another beam",
+    "music_on": "Music on",
+    "music_off": "Music off",
     "open_spectra": "Open in Spectra",
     "see_3d": "See it in 3D",
     "stop_counter": "stop {{$stop.k}} of {{$stop.n}}",
@@ -632,7 +634,7 @@
     "reduced_motion": "Reduced motion: one still per step",
     "no_webgl": "This device cannot draw the 3D gas, so you see one still picture with the live spectrum.",
     "software_gl": "3D is slow on this device, so you see one still picture with the live spectrum. Add ?force3d to try anyway.",
-    "keys_help": "Keys: Space play or pause, arrows step, Page Up and Page Down jump, G grab, Esc release, T colours, R sharpness, N exposure",
+    "keys_help": "Keys: Space play or pause, arrows step, Page Up and Page Down jump, G grab, Esc release, T colours, R sharpness, N exposure, M music",
     "tf": {
       "density": "Density",
       "phases": "Gas phases",
