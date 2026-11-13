@@ -1503,10 +1503,23 @@ COL_GROSS_DEX = 0.5         # a cube column this far from its reference at logN 
 # differ by less than 1e11 cm^-2 (both segment columns, cube and reference) is below any detection limit whatever
 # its dex (571454: L2 C III cube 10^10.74 vs smoothed 10^2.4 over a 50 kpc segment of empty gas)
 COL_FLOOR_DIFF_LOGN = 11.0
-# L0 (3.1 kpc voxels, h >= 2 voxels) smooths a steep disk edge: a gross L0 row is graded soft when the same sightline
-# and ion agree within COL_GROSS_DEX at a finer level (L1/L2 segment) and the L0 offset stays below this (372754:
-# rand_b031 at the cold-disk edge, L0 +0.5..+1.15 dex, L1/L2 within 0.17 dex)
+# A coarse level smooths what a finer one resolves: a gross L0 or L1 row is graded soft when the same sightline and ion
+# agree within COL_GROSS_DEX at a finer level (L0: the L1/L2 segment; L1: the L2 segment) and the offset stays below
+# this (372754: rand_b031 at the cold-disk edge, L0 +0.5..+1.15 dex, L1/L2 within 0.17 dex; 400973 L1 rand_b008 H I
+# -0.50 at logN 17.8, L2 +0.07). Only one sightline per level may be softened this way: a mis-scaled or misplaced
+# cube at one level with intact finer levels offsets every sightline of that level, not one.
 COL_L0_EDGE_MAX_DEX = 1.5
+# Relative column floor (owner decision 2026-11-12, notes/gal/U_grading.md). The deposit conserves every quantity to
+# 1e-15 (gate cube_conservation), so a cube column can only be wrong by atoms moved between neighbouring voxels.
+# Where a low-column sightline grazes a compact dense clump (b ~ h + one voxel), the trilinear cube read reaches about
+# one voxel beyond the kernel support and the ±Δ/2 smoothed bundle does not, so the two estimates of the
+# voxel-footprint column differ by a kernel tail of the clump: in the 7 run3 cases |ΔN| = 3e-7..8e-5 of the densest
+# smoothed column of that level and ion, from one or two cells 2-9 kpc off the ray. A misplaced, mis-scaled,
+# mis-framed or empty cube is wrong by a sizeable fraction of the dense columns themselves (ΔN/N_dense >= 0.1). So a
+# gross row is soft when |ΔN| <= COL_REL_FLOOR * N_dense, N_dense being the largest smoothed reference column among
+# that level's check sightlines for the ion, provided the N_dense row itself agrees within COL_GROSS_DEX and is not
+# the row being graded.
+COL_REL_FLOOR = 1e-3
 
 
 def grade_column_checks(chk: dict) -> dict:
@@ -1514,27 +1527,41 @@ def grade_column_checks(chk: dict) -> dict:
 
     hard (gate fails): no check rows at all, or any row with |Δ| > COL_GROSS_DEX where either segment column is
     ≥ 1e10 cm^-2 and the columns differ by ≥ 10^COL_FLOOR_DIFF_LOGN cm^-2 (a misplaced, mis-framed or empty cube;
-    resolution effects stay well below this), except L0 rows confirmed by a finer level (COL_L0_EDGE_MAX_DEX);
+    resolution effects stay well below this), except
+    - rows whose |ΔN| is ≤ COL_REL_FLOOR of the level's densest correctly deposited column of that ion (kernel-tail
+      leakage of a dense clump into a grazing low-column sightline), and
+    - L0/L1 rows confirmed by a finer level within COL_GROSS_DEX (|Δ| ≤ COL_L0_EDGE_MAX_DEX; one sightline per level);
     soft (reported as warnings, gate passes): rows beyond the 488530-tuned tolerances (physics 0.05, u8 0.02,
-    reference 0.02 dex) but within COL_GROSS_DEX, the L0 disk-edge rows, and rows below the difference floor.
+    reference 0.02 dex) but within COL_GROSS_DEX, the two exceptions above, and rows below the difference floor.
     Rows where both columns are below the floor (e.g. Mg II 1e-2.7 vs 0: Δ = -inf in the raw report) are ignored."""
     def lg(x):
         return -math.inf if x is None else float(x)
 
+    def lin(x):
+        return 10.0 ** x if math.isfinite(x) else 0.0
+
     def lin_diff(a_, b_):
-        return abs((10.0 ** a_ if math.isfinite(a_) else 0.0) - (10.0 ** b_ if math.isfinite(b_) else 0.0))
+        return abs(lin(a_) - lin(b_))
+
+    def dlog(a_, b_):
+        return a_ - b_ if math.isfinite(a_) and math.isfinite(b_) else (0.0 if a_ == b_ else math.inf)
 
     rows = chk.get("rows") or []
     refs = chk.get("reference") or []
-    warn, gross, floored, l0_edge, tiny = [], [], 0, [], 0
+    warn, gross, floored, l0_edge, tiny, rel = [], [], 0, [], 0, []
+    finer = {"L0": ("L1", "L2"), "L1": ("L2",)}
     fine_ok = set()
-    for r in rows:
-        if r.get("level") in ("L1", "L2"):
-            a_, b_ = lg(r.get("cube4")), lg(r.get("ref"))
-            d = a_ - b_ if math.isfinite(a_) and math.isfinite(b_) else (0.0 if a_ == b_ else math.inf)
-            if abs(d) <= COL_GROSS_DEX:          # the finer level is consistent (also when both are empty)
-                fine_ok.add((r["sid"], r["ion"]))
-    for r in rows:
+    dense = {}                                   # (level, ion) -> (N_ref, row agrees within COL_GROSS_DEX, row id)
+    for i, r in enumerate(rows):
+        a_, b_ = lg(r.get("cube4")), lg(r.get("ref"))
+        d = dlog(a_, b_)
+        if abs(d) <= COL_GROSS_DEX:              # this level is consistent (also when both are empty)
+            fine_ok.add((r.get("level"), r["sid"], r["ion"]))
+        k = (r.get("level"), r["ion"])
+        if k not in dense or lin(b_) > dense[k][0]:
+            dense[k] = (lin(b_), abs(d) <= COL_GROSS_DEX, i)
+    fine_soft = {}                               # level -> {sid: [tags]}
+    for i, r in enumerate(rows):
         tol = float(r.get("tol") or 0.05)
         a_, b_ = lg(r.get("cube4")), lg(r.get("ref"))
         if max(a_, b_) < COL_FLOOR_LOGN:
@@ -1543,12 +1570,17 @@ def grade_column_checks(chk: dict) -> dict:
         d = a_ - b_ if math.isfinite(a_) and math.isfinite(b_) else math.inf
         tag = f"physics {r['level']} {r['sid']} {r['ion']} {d:+.3f} (logN {max(a_, b_):.2f})"
         if abs(d) > COL_GROSS_DEX:
-            if lin_diff(a_, b_) < 10.0 ** COL_FLOOR_DIFF_LOGN:
+            nd, nd_ok, nd_i = dense.get((r.get("level"), r["ion"]), (0.0, False, i))
+            dn = lin_diff(a_, b_)
+            if dn < 10.0 ** COL_FLOOR_DIFF_LOGN:
                 tiny += 1
                 warn.append(tag + " [below the 1e11 difference floor]")
-            elif r.get("level") == "L0" and abs(d) <= COL_L0_EDGE_MAX_DEX and (r["sid"], r["ion"]) in fine_ok:
-                l0_edge.append(tag)
-                warn.append(tag + " [L0 resolution; finer level agrees]")
+            elif nd_ok and nd_i != i and dn <= COL_REL_FLOOR * nd:
+                rel.append(tag)
+                warn.append(tag + f" [|dN| = {dn / nd:.1e} of the densest {r['level']} column: relative floor]")
+            elif (r.get("level") in finer and abs(d) <= COL_L0_EDGE_MAX_DEX
+                  and any((f, r["sid"], r["ion"]) in fine_ok for f in finer[r["level"]])):
+                fine_soft.setdefault(r["level"], {}).setdefault(r["sid"], []).append(tag)
             else:
                 gross.append(tag)
         elif abs(d) > tol:
@@ -1557,6 +1589,13 @@ def grade_column_checks(chk: dict) -> dict:
         if du is not None and abs(du) > 0.02 and max(a_, b_) >= COL_FLOOR_LOGN:
             (gross if abs(du) > COL_GROSS_DEX else warn).append(
                 f"u8 {r['level']} {r['sid']} {r['ion']} {du:+.3f} (logN {max(a_, b_):.2f})")
+    for L, by_sid in fine_soft.items():
+        for tags in by_sid.values():
+            if len(by_sid) == 1:
+                l0_edge.extend(tags)
+                warn.extend(t + f" [{L} resolution; finer level agrees]" for t in tags)
+            else:                                # several sightlines of one level: a level-wide error, not resolution
+                gross.extend(t + f" [finer level agrees, but {len(by_sid)} {L} sightlines are off]" for t in tags)
     for r in refs:
         a_, b_ = lg(r.get("line_integral")), lg(r.get("npz"))
         if max(a_, b_) < COL_FLOOR_LOGN:
@@ -1570,11 +1609,14 @@ def grade_column_checks(chk: dict) -> dict:
             warn.append(tag)
     return {"hard_pass": bool(rows) and not gross, "n_rows": len(rows), "n_reference": len(refs),
             "n_below_floor": floored, "n_below_diff_floor": tiny, "n_l0_edge": len(l0_edge),
+            "n_relative_floor": len(rel), "relative_floor": rel[:30],
             "gross": gross[:30], "n_gross": len(gross), "warnings": warn[:40],
             "n_warnings": len(warn), "raw_fails": (chk.get("fails") or [])[:20], "summary": chk.get("summary"),
             "grading": (f"hard |d| > {COL_GROSS_DEX} dex at logN >= {COL_FLOOR_LOGN} with |dN| >= "
-                        f"1e{COL_FLOOR_DIFF_LOGN:g} cm^-2 (L0 rows confirmed by L1/L2 within {COL_GROSS_DEX} dex: "
-                        f"soft up to {COL_L0_EDGE_MAX_DEX} dex); soft beyond the 488530 tolerances")}
+                        f"1e{COL_FLOOR_DIFF_LOGN:g} cm^-2, except |dN| <= {COL_REL_FLOOR:g} x the level's densest "
+                        f"correctly deposited column of the ion (relative floor) and L0/L1 rows confirmed by a finer "
+                        f"level within {COL_GROSS_DEX} dex (soft up to {COL_L0_EDGE_MAX_DEX} dex, one sightline per "
+                        f"level); soft beyond the 488530 tolerances")}
 
 
 CUBE_GATES = ("cube_conservation", "column_checks", "HI_le_nH", "viz_manifest")

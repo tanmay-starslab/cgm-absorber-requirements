@@ -347,6 +347,58 @@ def test_grade_column_checks_floor_and_l0_edge():
     assert not GP.grade_column_checks({"rows": []})["hard_pass"]
 
 
+def _level(L, ion, dense=(20.6, 20.58), low=None, extra=()):
+    """The check rows of one level and ion like build_volumes writes them: a dense sightline through the disk, a
+    moderate one, and optionally a low-column one (`low` = (ref, cube))."""
+    rows = [_row(L, "face_b050", ion, *dense), _row(L, "rand_b031", ion, dense[0] - 3.0, dense[1] - 3.0)]
+    if low is not None:
+        rows.append(_row(L, "rand_b010", ion, *low))
+    return rows + list(extra)
+
+
+def test_grade_column_checks_relative_floor_run3_cases():
+    """U_grading (2026-11-12): the 7 run3 rows are kernel-tail leakage of a dense clump into one grazing low-column
+    sightline (|dN| <= 1e-3 of the level's densest column, which itself agrees): soft. Numbers from the reports."""
+    cases = [_level("L1", "HI", low=(14.357, 15.73)),                     # 358609 (|dN| 1.3e-5 of 10^20.6)
+             _level("L1", "HI", low=(13.709, 14.865)) + _level("L1", "CII", (16.0, 16.0), (10.296, 11.285)),  # 540082
+             _level("L1", "HI", low=(13.633, 14.252)),                    # 461785
+             _level("L0", "HI", low=(12.928, 14.441)),                    # 428177 (+1.513, over the finer-level cap)
+             _level("L0", "CIII", (15.0, 15.0), (12.139, 11.584)),        # 459557 (cube low, no finer row)
+             _level("L0", "HI", low=(14.29, 13.736))]                     # 491426
+    for rows in cases:
+        g = GP.grade_column_checks({"rows": rows})
+        assert g["hard_pass"] and g["n_relative_floor"] >= 1 and g["n_gross"] == 0, g
+    # 400973: rand_b008 H I -0.50 at logN 17.8 is 3e-3 of the dense column (over the floor) but L2 agrees (finer
+    # level, one L1 sightline); rand_b010 C III +1.29 at logN 11.3 is under the floor
+    rows = (_level("L1", "HI", low=(17.793, 17.291)) + [_row("L2", "rand_b010", "HI", 16.814, 16.886)]
+            + _level("L1", "CIII", (15.0, 15.0), extra=[_row("L1", "rand_b010_a294", "CIII", 10.056, 11.344)]))
+    g = GP.grade_column_checks({"rows": rows})
+    assert g["hard_pass"] and g["n_relative_floor"] == 1 and g["n_l0_edge"] == 1, g
+
+
+def test_grade_column_checks_corrupted_cubes_still_fail():
+    """The relative floor and the finer-level rule do not hide a broken cube: a mis-scaled cube (every row of a level
+    off, finer level intact), a misplaced cube (the dense column itself off), an empty cube, a low row 1 % of the
+    dense column off, and two sightlines of one level each 'confirmed' by the finer level all fail."""
+    fine = [_row("L2", s, "HI", 14.0, 14.0) for s in ("face_b050", "rand_b031", "rand_b010")]
+    scaled = [dict(r, cube4=r["ref"] + 1.0) for r in _level("L1", "HI", low=(14.0, 14.0))]
+    assert not GP.grade_column_checks({"rows": scaled + fine})["hard_pass"]
+    moved = _level("L1", "HI", dense=(20.6, 19.0), low=(14.357, 15.73))     # dense rows -1.6: no relative floor
+    g = GP.grade_column_checks({"rows": moved})
+    assert not g["hard_pass"] and g["n_relative_floor"] == 0 and g["n_gross"] == 3, g
+    empty = [dict(r, cube4=None) for r in _level("L1", "HI", low=(14.0, 14.0))]
+    assert not GP.grade_column_checks({"rows": empty})["hard_pass"]
+    big = _level("L1", "HI", dense=(16.0, 16.0), low=(13.0, 14.0))          # |dN| = 1e-2 of the dense column
+    assert not GP.grade_column_checks({"rows": big})["hard_pass"]
+    two = (_level("L1", "HI", dense=(15.0, 15.0), extra=[_row("L1", "x1", "HI", 14.0, 14.6),
+                                                         _row("L1", "x2", "HI", 14.0, 13.4)])
+           + [_row("L2", "x1", "HI", 13.0, 13.0), _row("L2", "x2", "HI", 13.0, 13.0)])
+    g = GP.grade_column_checks({"rows": two})
+    assert not g["hard_pass"] and g["n_gross"] == 2, g
+    one = two[:3] + [two[4]]                                                  # the same with one sightline: soft
+    assert GP.grade_column_checks({"rows": one})["hard_pass"]
+
+
 def test_cube_gate_snapshot(tmp_path):
     """review2_robust L3: after the float viz_cache is deleted a check regrades from logs/cube_gates.json (same
     manifest), or bootstraps from the previous check.json when the cubes were not rebuilt since."""
