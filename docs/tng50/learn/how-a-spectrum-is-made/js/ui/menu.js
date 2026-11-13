@@ -4,7 +4,7 @@
 //
 // Keys (DESIGN §9.3): U_motion's bindInput owns Space-hold, arrows, Shift+arrows, PageUp/PageDown, Home/End; the shell
 // claims the rest through bindInput({onKey}) with keyAction (pure): ? help, F formula trail, T colour preset, R / N focus
-// the sliders, G grab the camera, Esc release, Space = play/pause while Watch runs.
+// the sliders, G grab the camera, M music on/off, Esc release, Space = play/pause while Watch runs.
 //
 // Pure: KEYMAP, keyAction(e, state). DOM: createMenu(button, sheet, hooks), createKeyHelp(host, {onClose}).
 
@@ -73,7 +73,7 @@ export const KEYMAP = Object.freeze([
   {keys: ["N"], what: "noise (S/N) slider"},
   {keys: ["?"], what: "this help"},
 ]);
-const SHELL_KEYS = {"?": "help", f: "trail", t: "tf", r: "focusR", n: "focusSN", g: "grab"};
+const SHELL_KEYS = {"?": "help", f: "trail", t: "tf", r: "focusR", n: "focusSN", g: "grab", m: "music"};
 /* keydown -> {action, claim} | null. claim = the clock must not see the key. Never acts on modified keys or while typing
    in a field; letters are ignored on sliders' own keys only where they collide (none do). Pure. */
 export function keyAction(e, state = {}) {

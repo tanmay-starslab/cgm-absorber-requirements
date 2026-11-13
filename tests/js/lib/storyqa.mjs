@@ -175,8 +175,9 @@ export function evalLayout(snap, {areaTol = 4, maxChrome = 4, fontFloor = 12, g3
   /* G12 chrome */
   /* G12: rail parts (kind "rail" inside another box: track, odometer) are the rail, one element (§3.3: act chip, menu,
      Fly/pause, rail) */
-  /* the phase-legend pill shows only on TF changes and at stops (§3.3) and is not counted */
-  if (snap.flight) { const ch = vis.filter(b => isChrome(b) && !(b.kind === "rail" && b.parent) && !/(^|[:#-])phase/.test(String(b.id))); if (ch.length > maxChrome) f("G12", `${ch.length} chrome elements in flight (<= ${maxChrome}): ${ch.map(b => b.id).join(", ")}`); }
+  /* the phase-legend pill shows only on TF changes and at stops (§3.3) and is not counted; neither is the music toggle,
+     which the owner asked to keep visible at all times (2026-11-13) */
+  if (snap.flight) { const ch = vis.filter(b => isChrome(b) && !(b.kind === "rail" && b.parent) && !/(^|[:#-])(phase|sound)/.test(String(b.id))); if (ch.length > maxChrome) f("G12", `${ch.length} chrome elements in flight (<= ${maxChrome}): ${ch.map(b => b.id).join(", ")}`); }
   const want = dockState(snap.expectDock, snap.beatU);
   if (want && snap.dockState && !want.includes(snap.dockState)) f("G12", `dock is "${snap.dockState}", beats.json says "${want.join(" -> ")}"${snap.beatU !== undefined ? ` at u ${(+snap.beatU).toFixed(3)}` : ""}`);
   /* G10-dom */

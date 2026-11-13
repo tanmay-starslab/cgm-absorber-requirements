@@ -22,6 +22,7 @@ import {createPrefetcher} from "./core/prefetch.js";
 import {createWatchDriver, createTicker} from "./drivers/play.js";
 import {createStoryExplore} from "./drivers/explore.js";
 import {createShell, beatSkip, anchorL, beamCorridor, activeText} from "./ui/hud.js";
+import {createSound} from "./ui/sound.js";
 import {focusStyle} from "./ui/kinetic.js";
 import {computeBands, layoutClass, isPhone} from "./ui/layoutclass.js";
 import {createGate, parseEntry, entryFragment} from "./ui/gate.js";
@@ -174,7 +175,10 @@ async function boot() {
   /* ---------------- shell ---------------- */
   const els = {root: $("stage"), hud: $("hud"), rail: $("rail"), kinetic: $("kinetic"), labels: $("labels"), sheets: $("sheets"),
     menuButton: $("menu-btn"), menuSheet: $("menu-sheet"), narrativeList: $("narrative"), live: $("live"), textOverlay: $("text-overlay"),
-    canvas: $("gl"), actChip: $("act-chip"), phasePill: $("phase-pill"), hint: $("hint")};
+    canvas: $("gl"), actChip: $("act-chip"), phasePill: $("phase-pill"), hint: $("hint"), soundButton: $("sound-btn")};
+  // optional music (off by default, loaded on first use; js/ui/sound.js): the HUD pill, the gate toggle and the M key
+  const music = createSound({copy});
+  music.bind(els.soundButton);
   const clouds = (prep.clouds || []).filter(c => c.letter).map(c => ({l_in: c.l_in, l_out: c.l_out, phase: String(c.id).startsWith("HI") ? "cold" : "warm", label: "Cloud " + c.letter}));
   const lToP = l => { for (const b of beats) { if (b.l0 == null || b.l1 == null) continue; if (l >= Math.min(b.l0, b.l1) && l <= Math.max(b.l0, b.l1)) return b.p0 + (b.p1 - b.p0) * (l - b.l0) / ((b.l1 - b.l0) || 1); } return null; };
   const explorerHref = () => {
@@ -183,6 +187,7 @@ async function boot() {
   };
   let trailOn = false;
   const hooks = {
+    music: () => music.toggle(),
     setTarget: p => clock.setTarget(p),
     jump: p => (input ? input.jumpTo(p, "rail") : clock.setTarget(p)),
     flyStart: () => input && input.holdStart("fly"),
@@ -268,7 +273,7 @@ async function boot() {
   // review2 scrolly F3: the gate's first gesture lands where B1's first line is fully readable, not on B1's empty start
   const B1read = timeline.readPoint ? timeline.readPoint(B1) : B1.p0;
   if (deep == null && !Q.has("nogate") && !Q.has("still")) {
-    gate = createGate($("stage"), {copy, vars: {galaxy: data.meta.galaxy}, g: data.meta.galaxy, ray: data.meta.ray, watchSeconds: timeline.watch.total,
+    gate = createGate($("stage"), {copy, music, vars: {galaxy: data.meta.galaxy}, g: data.meta.galaxy, ray: data.meta.ray, watchSeconds: timeline.watch.total,
       onRide: ({holding} = {}) => { closeGate(); if (holding) { input.holdStart("gate"); const end = () => { input.holdEnd("gate"); removeEventListener("pointerup", end, true); removeEventListener("keyup", end, true); };
         addEventListener("pointerup", end, true); addEventListener("keyup", end, true); } else clock.setTarget(Math.max(clock.state.target, B1read)); },
       onWatch: () => { closeGate(); watch.play(clock.state.p); },

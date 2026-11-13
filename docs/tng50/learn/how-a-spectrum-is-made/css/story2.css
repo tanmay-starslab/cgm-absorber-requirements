@@ -22,7 +22,7 @@ a{color:var(--accent)}
 #kinetic{z-index:30;pointer-events:none}
 #dock{z-index:40;pointer-events:none}
 #dock>*{pointer-events:auto}
-#hud{z-index:50;pointer-events:none}
+#hud{z-index:51;pointer-events:none}   /* above #rail: on phone landscape the menu and music buttons sit inside the rail band */
 #rail{z-index:50;inset:auto;left:0;top:0}
 #sheets{z-index:60;pointer-events:none}
 #sheets>*{pointer-events:auto}
@@ -191,3 +191,24 @@ html.reduced .kt-blur{display:none}
 #act-chip .act-sw[hidden]{display:none}
 #act-chip .act-sw i{display:block;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1px #ffffff2e}
 #act-chip .act-note{margin-left:6px;font-size:13px;font-weight:400;color:rgba(236,240,255,0.78);white-space:nowrap}
+
+/* music toggle (js/ui/sound.js): a HUD pill next to the menu, icon + "Music on/off"; icon only where the solver gives 44 px */
+.snd{padding:0 14px 0 12px;gap:8px}
+.snd svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.snd .snd-spk{fill:currentColor;stroke:none}
+.snd .snd-w{display:none}
+.snd[aria-pressed="true"] .snd-w{display:inline}
+.snd[aria-pressed="true"] .snd-x{display:none}
+.snd[aria-pressed="true"]{border-color:color-mix(in srgb,var(--phase-hue) 70%,transparent);color:var(--sky-ink)}
+.snd[aria-pressed="false"]{color:var(--sky-muted)}
+.snd.icon{padding:0;justify-content:center}
+.snd.icon .snd-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+@media (prefers-reduced-motion:no-preference){.snd[aria-pressed="true"] .snd-w{animation:sndw 2.4s ease-in-out infinite}}
+@keyframes sndw{50%{opacity:.45}}
+.sg-music{display:inline-flex;align-items:center;gap:8px}
+.sg-music svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.sg-music .snd-spk{fill:currentColor;stroke:none}
+.sg-music .snd-w{display:none}.sg-music[aria-pressed="true"] .snd-w{display:inline}.sg-music[aria-pressed="true"] .snd-x{display:none}
+.sg-music[aria-pressed="true"]{color:var(--sky-ink)}
+.to-cr{margin:2.5em 0 0;font:400 13px/1.5 var(--sans);color:var(--sky-muted)}
+.to-cr a{color:inherit}

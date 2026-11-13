@@ -1,0 +1,10 @@
+music_loop.m4a (the page's optional music) and the soundtrack of story_1080p.mp4 / story_720p.mp4
+
+Work:       Ludwig van Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (public domain)
+Recording:  cello arrangement and recording by John Michel
+Source:     https://commons.wikimedia.org/wiki/File:JOHN_MICHEL_CELLO-BEETHOVEN_SYMPHONY_7_Allegretto.ogg
+Licence:    Creative Commons Attribution-ShareAlike 3.0 Unported, https://creativecommons.org/licenses/by-sa/3.0/
+Changes:    excerpted, dynamics compressed, equalised, light reverb added, faded and looped (scripts/story_music.py)
+
+These audio files, and the two films because they contain the recording, are under CC BY-SA 3.0. Everything else in
+this repository keeps its own licence.
