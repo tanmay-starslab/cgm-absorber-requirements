@@ -127,7 +127,7 @@ def test_plan_refusals(viz):
 def test_card_template_without_manifest():
     card = UP.render_card(None, [])
     assert "{{" not in card and "not been uploaded yet" in card and card.startswith("---\nlicense: other\n")
-    for cite in ("Nelson et al. 2019, *Computational Astrophysics and Cosmology* 6, 2", "*MNRAS* 490, 3234",
+    for cite in ("Nelson et al. 2019a, *Computational Astrophysics and Cosmology* 6, 2", "Nelson et al. 2019b", "*MNRAS* 490, 3234",
                  "Pillepich et al. 2019", "Hummels", "Turk et al. 2011", "Haardt & Madau 2012", "Bruzual & Charlot 2003",
                  "Lupton et al. 2004", "MIT"):
         assert cite in card, cite

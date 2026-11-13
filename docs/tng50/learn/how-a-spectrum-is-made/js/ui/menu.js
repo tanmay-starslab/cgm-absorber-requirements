@@ -6,7 +6,8 @@
 // claims the rest through bindInput({onKey}) with keyAction (pure): ? help, F formula trail, T colour preset, R / N focus
 // the sliders, G grab the camera, M music on/off, Esc release, Space = play/pause while Watch runs.
 //
-// Pure: KEYMAP, keyAction(e, state). DOM: createMenu(button, sheet, hooks), createKeyHelp(host, {onClose}).
+// Pure: KEYMAP, keyAction(e, state). DOM: createMenu(button, sheet, hooks), createKeyHelp(host, {onClose}),
+// createCredits(host, {galaxy, onClose}) (Data and credits: Simulation, Spectra, Music, Code; creditSections(galaxy)).
 
 export const ENTRIES = Object.freeze([
   {id: "watch", label: "Watch the flight", hint: null},          // length comes from hooks.watchHint() (the beats' Watch schedule)
@@ -16,6 +17,7 @@ export const ENTRIES = Object.freeze([
   {id: "text", label: "Read as text", hint: "the whole story, no motion"},
   {id: "share", label: "Copy link to this moment"},
   {id: "keys", label: "Keys and help"},
+  {id: "credits", label: "Data and credits"},
   {id: "explorer", label: "Back to the explorer", href: true},
 ]);
 
@@ -105,5 +107,60 @@ export function createKeyHelp(host, opts = {}) {
     e.stopPropagation();
   });
   document.addEventListener("pointerdown", e => { if (!el.hidden && !el.contains(e.target)) close(); });
+  return {open, close, get isOpen() { return !el.hidden; }, el};
+}
+
+/* ---------------------------------------------------------------- data and credits */
+/* the Data and credits dialog on the modal layer (same pattern as the key help): Esc, the close button or a click outside
+   closes it and focus returns to the opener; Tab cycles through its links and the close button */
+const A = (href, t) => `<a href="${href}" target="_blank" rel="noopener">${t}</a>`;
+/* sections: [{h, p: [html | {cls, t}]}]; the story's spectra are always cast with Trident (export_story_data.py, any host) */
+export function creditSections(galaxy) {
+  const beam = galaxy != null ? `This story's beam through subhalo ${galaxy}` : "This story's beam";
+  return [
+    {h: "Simulation", p: [
+      `IllustrisTNG, TNG50-1 at z = 0 (snapshot 99), from the ${A("https://www.tng-project.org/data/", "TNG public data release")} (free, registration required). ` +
+      `Please cite Nelson et al. 2019a (${A("https://arxiv.org/abs/1812.05609", "Computational Astrophysics and Cosmology 6, 2")}), ` +
+      `Nelson et al. 2019b (${A("https://arxiv.org/abs/1902.05554", "MNRAS 490, 3234")}) and Pillepich et al. 2019 (${A("https://arxiv.org/abs/1902.05553", "MNRAS 490, 3196")}).`,
+      "Used as the TNG Collaboration requests (citation); TNG data are not relicensed by this site.",
+      {cls: "cr-ack", t: "The IllustrisTNG simulations were undertaken with compute time awarded by the Gauss Centre for Supercomputing (GCS) under GCS " +
+        "Large-Scale Projects GCS-ILLU and GCS-DWAR on the GCS share of the supercomputer Hazel Hen at the High Performance Computing Center " +
+        "Stuttgart (HLRS), as well as on the machines of the Max Planck Computing and Data Facility (MPCDF) in Garching, Germany."}]},
+    {h: "Spectra", p: [
+      `${beam}: Trident (Hummels, Smith &amp; Silvia 2017) on yt (Turk et al. 2011) with the HM2012 UV background (Haardt &amp; Madau 2012); ` +
+      "the 3D ion cubes use the same Trident HM2012 tables.",
+      "The explorer's 198 Milky Way and M31 analogues: the SBI_CGM fiducial ray library, with rays through the TNG50 Voronoi mesh traced by THOR " +
+      `(Byrohl &amp; Nelson 2025, ${A("https://arxiv.org/abs/2507.11603", "arXiv:2507.11603")}), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background ` +
+      "(Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding."]},
+    {h: "Music", p: [
+      `Beethoven, Symphony No. 7, II. Allegretto; cello arrangement and recording by John Michel, ` +
+      `${A("https://commons.wikimedia.org/wiki/File:JOHN_MICHEL_CELLO-BEETHOVEN_SYMPHONY_7_Allegretto.ogg", "Wikimedia Commons")}, ` +
+      `${A("https://creativecommons.org/licenses/by-sa/3.0/", "CC BY-SA 3.0")}; excerpted, compressed, equalised, faded and looped.`]},
+    {h: "Code", p: [
+      `MIT, ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements", "github.com/tanmay-starslab/cgm-absorber-requirements")}; ` +
+      `third-party licences: ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements/blob/main/THIRD_PARTY_LICENSES", "THIRD_PARTY_LICENSES")}`,
+      "Hosted data: the public Hugging Face datasets tanmay-starslab/tng50-mwm31-web-0 to 3 and tng50-sub488530-viz (TNG-derived; the citation request applies)."]},
+  ];
+}
+export function createCredits(host, opts = {}) {
+  const el = document.createElement("div");
+  el.id = "credits"; el.className = "kh cr"; el.hidden = true; el.dataset.noscrub = "";
+  el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-labelledby", "cr-h");
+  el.innerHTML = `<div class="kh-head"><h2 id="cr-h">Data and credits</h2><button type="button" class="hud-btn kh-x" aria-label="Close">` +
+    `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg></button></div>` +
+    creditSections(opts.galaxy).map(s => `<section><h3>${s.h}</h3>` + s.p.map(x => (typeof x === "string" ? `<p>${x}</p>` : `<p class="${x.cls}">${x.t}</p>`)).join("") + "</section>").join("");
+  host.appendChild(el);
+  let opener = null;
+  const close = () => { if (el.hidden) return; el.hidden = true; if (opener && opener.focus) opener.focus(); opts.onClose && opts.onClose(); };
+  const open = op => { opener = op && op.focus ? op : document.activeElement; el.hidden = false; el.scrollTop = 0; el.querySelector(".kh-x").focus(); };
+  const focusables = () => [...el.querySelectorAll("button, a[href]")];
+  el.querySelector(".kh-x").addEventListener("click", close);
+  el.addEventListener("keydown", e => {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "Tab") { const f = focusables(), i = f.indexOf(document.activeElement);   // focus stays inside
+      e.preventDefault(); f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus(); }
+    e.stopPropagation();
+  });
+  document.addEventListener("pointerdown", e => { if (!el.hidden && !el.contains(e.target) && !(opener && opener.contains && opener.contains(e.target))) close(); });
   return {open, close, get isOpen() { return !el.hidden; }, el};
 }

@@ -51,5 +51,5 @@ the elements of all 12 registry ions (H, C, N, O, Ne, Mg, Si; 185.7 MB, built by
 
 ## Credits
 
-IllustrisTNG / TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), Trident (Hummels et al. 2017),
+IllustrisTNG / TNG50-1 (Nelson et al. 2019a, 2019b; Pillepich et al. 2019; used as the TNG Collaboration requests, not relicensed), Trident (Hummels et al. 2017),
 yt (Turk et al. 2011). Code: MIT, https://github.com/tanmay-starslab/cgm-absorber-requirements.

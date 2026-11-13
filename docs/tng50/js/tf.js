@@ -30,7 +30,7 @@ export const PRESET_LABELS = {ramp: "Default ramp", thor: "Gas phases (THOR)", i
    stay visible through the halo (with 0.9, 0.6, 0.45 the inner halo's hot gas hid the disk).
    Caveat: the T cube is the mass-weighted mean T per voxel, so a voxel mixing cold and hot gas reads as ~1e5 K; part of
    the 1e5 K and 3e5 K phases is this mixing at cloud edges (THOR_NOTE, shown as the preset's tooltip). */
-export const THOR_NOTE = "THOR gas phases (Byrohl & Nelson 2025): peaks at 2e4 K (blue), 1e5 K (orange) and 3e5 K (red), "
+export const THOR_NOTE = "THOR gas phases (Byrohl & Nelson 2025, arXiv:2507.11603): peaks at 2e4 K (blue), 1e5 K (orange) and 3e5 K (red), "
   + "brightness weighted by n_H. Voxel T is a mass-weighted mean, so the 1e5 and 3e5 K phases include mixing at cloud edges.";
 export const THOR = {field: "T", emis: "nH", gamma: 1, win: [3.9, 6.3],
   bands: [{c: Math.log10(2e4), w: 0.2, a: 0.8, rgb: [70, 140, 255]},

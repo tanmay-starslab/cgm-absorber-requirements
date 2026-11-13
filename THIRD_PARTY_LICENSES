@@ -14,22 +14,37 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
 2. yt (BSD 3-Clause), https://github.com/yt-project/yt
    - Used as a dependency only (not vendored). Licence reproduced below.
 
-3. IllustrisTNG / TNG50-1 simulation data, https://www.tng-project.org/data/
+3. IllustrisTNG / TNG50-1 simulation data (z = 0, snapshot 99), https://www.tng-project.org/data/
+   (free, registration required)
    - The TNG50-derived products (docs/tng50/data/*.bin and catalog.json, the npz library, the
      Learn page's story data, chapter images and film under docs/tng50/learn/*/data, img and
-     media (see 10), the private Hugging Face dataset with the slim cutout, and the PUBLIC Hugging Face dataset
-     tanmay-starslab/tng50-sub488530-viz with the 3D gas and stellar cubes, its manifest_v2.json
-     and the committed docs/tng50/data/viz/manifest_v2.json) are derived from IllustrisTNG data.
-     They are redistributed under the IllustrisTNG data access terms and citation request
-     (https://www.tng-project.org/data/docs/background/#citation), not under MIT. Use of them
-     requires citing the TNG papers:
-       Nelson et al. 2019, Comput. Astrophys. Cosmol. 6, 2 (TNG public data release)
-       Nelson et al. 2019, MNRAS 490, 3234 (TNG50)
-       Pillepich et al. 2019, MNRAS 490, 3196 (TNG50)
-   - Spectra were made with Trident (Hummels, Smith & Silvia 2017, ApJ 847, 59) on yt
-     (Turk et al. 2011, ApJS 192, 9); please cite both as well. The ion fractions in the 3D
-     cubes use the same Trident HM2012 table (Haardt & Madau 2012, ApJ 746, 125). The stellar
-     cubes use GFM_StellarPhotometrics (Bruzual & Charlot 2003 models, as documented by TNG).
+     media (see 10), the private Hugging Face dataset with the slim cutout, and the PUBLIC Hugging
+     Face datasets tanmay-starslab/tng50-mwm31-web-0 to tng50-mwm31-web-3 (the 198-galaxy sample)
+     and tanmay-starslab/tng50-sub488530-viz (3D gas and stellar cubes; manifest_v2.json also
+     committed as docs/tng50/data/viz/manifest_v2.json)) are derived from IllustrisTNG data.
+     They are used as the TNG Collaboration requests (citation,
+     https://www.tng-project.org/data/docs/background/#citation) and are not relicensed here (not
+     MIT). Please cite:
+       Nelson et al. 2019a, Computational Astrophysics and Cosmology 6, 2, "The IllustrisTNG
+         simulations: public data release" (arXiv:1812.05609)
+       Nelson et al. 2019b, MNRAS 490, 3234 (TNG50: outflows; arXiv:1902.05554)
+       Pillepich et al. 2019, MNRAS 490, 3196 (TNG50: discs; arXiv:1902.05553)
+     Acknowledgement: The IllustrisTNG simulations were undertaken with compute time awarded by
+     the Gauss Centre for Supercomputing (GCS) under GCS Large-Scale Projects GCS-ILLU and
+     GCS-DWAR on the GCS share of the supercomputer Hazel Hen at the High Performance Computing
+     Center Stuttgart (HLRS), as well as on the machines of the Max Planck Computing and Data
+     Facility (MPCDF) in Garching, Germany.
+   - Spectra of the 198 Milky Way and M31 analogues: the SBI_CGM fiducial ray library, with rays
+     through the TNG50 Voronoi mesh traced with THOR (Byrohl & Nelson 2025, "THOR: a
+     GPU-accelerated and MPI-parallel radiative transfer code", arXiv:2507.11603), ion fractions
+     from CLOUDY (Ferland et al. 2017, RMxAA 53, 385) with the FG11 UV background
+     (Faucher-Giguère et al. 2009, ApJ 703, 1416) and Rahmati et al. (2013, MNRAS 430, 2427)
+     H I self-shielding.
+   - Galaxy 488530's default and custom rays: Trident (Hummels, Smith & Silvia 2017, ApJ 847, 59)
+     on yt (Turk et al. 2011, ApJS 192, 9) with the HM2012 UV background (Haardt & Madau 2012,
+     ApJ 746, 125); please cite both as well. The ion fractions in every 3D cube use the same
+     Trident HM2012 table. The stellar cubes use GFM_StellarPhotometrics (Bruzual & Charlot 2003
+     models, as documented by TNG).
 
 
 4. three.js 0.169.0 (MIT), https://github.com/mrdoob/three.js
@@ -94,6 +109,11 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
      Versions are recorded in media/manifest.json.
    - Not used: GSAP (its Standard "No Charge" licence is not an open-source licence), Remotion
      (not free for universities), three.js inside the story, Lenis, Scrollama.
+   - Music (optional, off by default; media/music_loop.m4a, see media/MUSIC_LICENSE.txt): Beethoven,
+     Symphony No. 7, II. Allegretto; cello arrangement and recording by John Michel, Wikimedia
+     Commons (https://commons.wikimedia.org/wiki/File:JOHN_MICHEL_CELLO-BEETHOVEN_SYMPHONY_7_Allegretto.ogg),
+     CC BY-SA 3.0 (https://creativecommons.org/licenses/by-sa/3.0/); excerpted, compressed,
+     equalised, faded and looped. The excerpt stays under CC BY-SA 3.0, not MIT.
    - The story data, chapter images and film show TNG50 data and fall under item 3.
 
 ------------------------------------------------------------------------------------------------

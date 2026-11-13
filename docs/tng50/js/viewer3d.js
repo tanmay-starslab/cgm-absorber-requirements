@@ -214,7 +214,7 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d-leg .ticks{position:relative;height:14px}.v3d-leg .ticks span{position:absolute;transform:translateX(-50%);top:1px}
 .v3d-leg .ttl{font:500 11.5px var(--sans,system-ui,sans-serif);color:var(--s-ink);margin-bottom:3px}
 .v3d-leg .st{margin-top:4px;font:11px var(--sans,system-ui,sans-serif)}.v3d-leg .st i{display:inline-block;width:46px;height:8px;border-radius:2px;vertical-align:middle;margin-right:6px;background:linear-gradient(90deg,#4d6fd0,#fff4e6,#ffb347)}
-.v3d-lines{right:10px;bottom:10px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;padding:4px 8px}
+.v3d-lines{right:10px;bottom:48px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;padding:4px 8px}
 .v3d-lines i{display:inline-block;width:20px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
 .v3d-lines i.sel{border-top-width:5px;outline:1px dashed var(--s-ink);outline-offset:2px}
 .v3d-scale{left:50%;bottom:12px;transform:translateX(-50%);font:11px var(--mono,ui-monospace,monospace);text-align:center;padding:3px 8px}
@@ -225,6 +225,17 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d-leg .off{margin-top:4px;font:11px var(--sans,system-ui,sans-serif);color:var(--s-ink2)}
 .v3d-leg .gd{margin-top:4px;font:11px var(--sans,system-ui,sans-serif);color:var(--s-ink2)}.v3d-leg .gd i{display:inline-block;width:18px;height:0;border-top:2px solid #d9c38c;vertical-align:middle;margin-right:6px}
 .v3d-tt{display:none}
+/* credits ID badge: bottom-right of the full stage (the bottom-right lines key moves up above it); stacked in a narrow stage */
+.v3d-id{position:absolute;right:10px;bottom:10px;z-index:3;display:inline-flex;align-items:baseline;gap:8px;padding:5px 10px;cursor:pointer;
+  font:500 12px/1.25 var(--sans,system-ui,sans-serif);color:var(--s-ink);border:1px solid var(--s-edge);border-radius:var(--r-s,10px);
+  background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,0) 70%),var(--s-mat);box-shadow:var(--s-hi),0 4px 14px rgba(0,0,0,.28);
+  backdrop-filter:var(--s-blur);-webkit-backdrop-filter:var(--s-blur)}
+.v3d-id[hidden]{display:none}
+.v3d-id .s,.v3d-id .z{color:var(--s-ink2);font-weight:400}
+.v3d-id .g{font-family:var(--mono,ui-monospace,monospace);font-size:11.5px}
+.v3d-id:hover{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04)),var(--s-mat)}
+.v3d-id:focus-visible{outline:2px solid var(--s-accent);outline-offset:2px}
+.v3d-thumb .v3d-id,.v3d:fullscreen .v3d-id,.v3d.v3d-fs .v3d-id{display:none}   /* the credits dialog lives outside a fullscreen stage */
 /* Phase 3 thumbnail (mountThumb): the canvas fills the host, no overlays but a field tag and a 3D tag */
 .v3d.v3d-thumb{position:absolute;inset:0;border-radius:inherit;overflow:hidden}
 .v3d-thumb .v3d-stage{cursor:pointer;touch-action:auto;border-radius:inherit}
@@ -343,7 +354,9 @@ body.v3d-noscroll{overflow:hidden}
 /* Phase 3: the stage is a square fraction of the page (614 px at a 1024 px viewport), so the narrow-stage rule keys on the
    stage width too: under 720 px of stage the scale bar leaves the bottom row it would share with the colour bar */
 .v3d{container-type:inline-size}
-@container (max-width:719px){.v3d-scale{left:12px;top:12px;bottom:auto;transform:none}.v3d-msg{top:48px}}
+@container (max-width:719px){.v3d-scale{left:12px;top:12px;bottom:auto;transform:none}.v3d-msg{top:48px}
+  .v3d-id{flex-direction:column;align-items:flex-end;gap:0;padding:4px 8px;font-size:11px}.v3d-id .g{font-size:11px}.v3d-lines{bottom:72px}}
+@container (max-width:479px){.v3d .v3d-leg{width:min(220px,calc(100% - 150px))}}   /* phones: the colour key stops 12 px short of the ID badge */
 @media (max-width:720px){.v3d-lines{display:none}.v3d-msg{max-width:calc(100% - 24px);top:48px}.v3d-leg{width:min(220px,62%)}
   /* tune3: the scale bar moves to the top-left corner on narrow screens, so it never shares a row with the colour bar */
   .v3d-scale{left:12px;top:12px;bottom:auto;transform:none}
@@ -423,7 +436,8 @@ async function create(app, opts = {}) {
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
     <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="ends" hidden><span></span><span></span></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off (Layers)</div><div class="gd" hidden></div></div>
     <div class="v3d-ov v3d-lines" aria-hidden="true"><span><i style="border-color:var(--lib-line)"></i>library</span><span><i style="border-color:var(--s-accent)"></i>generated</span><span><i style="border-color:var(--s-fit)"></i>custom</span><span><i class="sel" style="border-color:var(--s-ink)"></i>selected</span></div>
-    <div class="v3d-tt" aria-hidden="true"><span class="f"></span><span>3D</span></div></div>`;
+    <div class="v3d-tt" aria-hidden="true"><span class="f"></span><span>3D</span></div>
+    <button type="button" class="v3d-id" id="v3-id" data-testid="v3d-id" aria-controls="pop-licence" aria-expanded="false" aria-haspopup="dialog" data-tip="Data and credits" hidden><span class="s"></span><span class="g"></span><span class="z"></span></button></div>`;
   const escH = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
   /* tips: one line per field button; speciesUnits() adds what is drawn and its unit, a disabled button gives the reason */
   const GAS_TIP = {nH: "Hydrogen number density nH", T: "Gas temperature, nH-weighted", Z: "Gas metallicity, nH-weighted"};
@@ -1476,6 +1490,18 @@ async function create(app, opts = {}) {
 
   const onSel = ev => { select(ev.detail?.id); syncPivot(); }, onCat = () => refreshLines();
   addEventListener("tng:select", onSel); addEventListener("tng:catalog", onCat);
+  /* credits (2026-11): the stage's ID badge names the simulation, the subhalo and the redshift (separate spans, no separator
+     characters); a click or Enter opens the page's Data and credits dialog (app.openCredits). The engine is rebuilt per galaxy,
+     and tng:galaxy refreshes it too */
+  const idEl = q("#v3-id");
+  function idBadge() { if (!idEl) return; const g = app.config?.galaxy || G, id = (typeof app.galaxy === "function" ? app.galaxy() : null) ?? g.subhalo_id;
+    idEl.hidden = id == null || typeof app.openCredits !== "function"; if (id == null) return;
+    const sim = g.sim || "TNG50-1", z = g.redshift ?? 0;
+    idEl.querySelector(".s").textContent = sim; idEl.querySelector(".g").textContent = `Subhalo ${id}`; idEl.querySelector(".z").textContent = `z = ${z}`;
+    idEl.setAttribute("aria-label", `${sim} subhalo ${id} at redshift ${z}, data credits`); }
+  idEl?.addEventListener("click", ev => { ev.stopPropagation(); app.openCredits?.(idEl); });
+  idEl?.addEventListener("pointerdown", ev => ev.stopPropagation());
+  const onGal = () => idBadge(); addEventListener("tng:galaxy", onGal); idBadge();
   /* tf3d API: setTf("ramp" | "thor" | "iso" | "clouds" | state) for the current field; tfState() a copy; tfOn() */
   function setTf(x) { if (typeof x === "string") return tfApplyPreset(x); if (!x || !tfOk(species)) return false;
     onTfEdit({...tfState(species), ...x, preset: x.preset || "custom"}, {commit: true, reason: "api"}); syncTfCard(); return true; }
@@ -1492,7 +1518,7 @@ async function create(app, opts = {}) {
       if (fallbackFs) toggleFullscreen(false); else if (fsEl() === el) document.exitFullscreen?.().catch(() => {});
       try { dprMq?.removeEventListener("change", onDpr); } catch { /* ignore */ }
       if (smoothW) { smoothW.terminate(); smoothW = null; for (const [, p] of smoothP) p[1](new Error("viewer disposed")); smoothP.clear(); }
-      ro.disconnect(); removeEventListener("tng:select", onSel); removeEventListener("tng:catalog", onCat);
+      ro.disconnect(); removeEventListener("tng:select", onSel); removeEventListener("tng:catalog", onCat); removeEventListener("tng:galaxy", onGal);
       document.removeEventListener("fullscreenchange", fsChanged); document.removeEventListener("webkitfullscreenchange", fsChanged); removeEventListener("keydown", onFsKey, true);
       for (const o of TEX.values()) o.tex.dispose(); RM.lutTex.dispose(); RM.material.dispose(); accRT.dispose(); blitMat.dispose(); controls.dispose(); renderer.dispose(); el.remove(); }});
   if (loader) loader.prune().catch(() => {});
