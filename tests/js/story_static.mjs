@@ -33,6 +33,7 @@
 import {readFileSync, existsSync, readdirSync, statSync} from "node:fs";
 import {join, resolve, dirname, relative, extname, sep as PSEP} from "node:path";
 import {pathToFileURL} from "node:url";
+import {spawnSync} from "node:child_process";
 import {ROOT as REPO, parseArgs, checker, sepHits} from "./lib/browser.mjs";
 import {jsStrings, htmlParts} from "./lib/jsscan.mjs";
 
@@ -204,8 +205,15 @@ if (!SCENES.length) note("no js/scenes/*.js yet");
 const allText = FILES.map(f => [f, read(f)]);
 const gs = allText.filter(([, s]) => /gsap/i.test(s)).map(([f]) => rel(f));
 check(!gs.length, `no gsap anywhere in the story (licence, §9)${gs.length ? ": " + gs.join(", ") : ""}`);
-const three = allText.filter(([f, s]) => /\.m?js$|\.html$/.test(f) && /(from\s*|import\s*\(\s*)["'][^"']*\bthree(\.module)?(\.min)?(\.js)?["']|three\.module/.test(s)).map(([f]) => rel(f));
-check(!three.length, `no three.js in the story (D17)${three.length ? ": " + three.join(", ") : ""}`);
+/* v2 (DESIGN_final D8): three.js 0.169 only through the bare specifier "three", which index.html maps to the explorer's pin with
+   SRI (render.html: the same pin, or a same-origin local copy on render nodes); any other way of loading three is refused */
+const three = allText.filter(([f, s]) => /\.m?js$|\.html$/.test(f) && /(from\s*|import\s*\(\s*)["'][^"']*\bthree(\.module)?(\.min)?(\.js)?["']|three\.module/.test(s))
+  .filter(([f, s]) => /(from\s*|import\s*\(\s*)["'](?!three["'])[^"']*\bthree(\.module)?(\.min)?(\.js)?["']/.test(s)).map(([f]) => rel(f));
+check(!three.length, `three.js only through the pinned "three" specifier (D8)${three.length ? ": " + three.join(", ") : ""}`);
+{ const ix = existsSync(join(SROOT, "index.html")) ? read(join(SROOT, "index.html")) : "";
+  const pin = "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js";
+  check(!ix || (ix.includes(pin) && /sha384-eCdgjbMm\+jekI8fyaeCZ4Pnyg5k4Jn45w2qs3lfnAd5ES5IO4hKOXNisVBTyUzDO/.test(ix) && ix.indexOf("importmap") < ix.search(/<script type="module"/)),
+    "index.html maps three to the explorer's three@0.169.0 pin with SRI, before any module script"); }
 const net = [];
 for (const f of JS) { const src = read(f);
   for (const m of src.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimportScripts\s*\(\s*)["'](https?:)?\/\/[^"']+["']/g)) net.push(`${rel(f)}: ${m[0].slice(0, 80)}`); }
@@ -232,7 +240,8 @@ for (const f of HTML) for (const m of read(f).matchAll(/<(?:script|link|img|sour
   if (!t || !inside(t) || !existsSync(t)) unres.push(`${rel(f)}: ${spec}`);
 }
 check(!unres.length, `every relative import, src and href resolves to a file inside ${rel(DIR)}${unres.length ? ` (${unres.length}): ` + unres.slice(0, 8).join("; ") : ""}`);
-check(!bare.length, `no bare module specifiers (no bundler, no import map)${bare.length ? ": " + bare.slice(0, 5).join("; ") : ""}`);
+{ const other = bare.filter(b => !/: "three"$/.test(b));
+  check(!other.length, `no bare module specifiers except the import-mapped "three" (no bundler)${other.length ? ": " + other.slice(0, 5).join("; ") : ""}`); }
 /** module specifiers of one JS source: static import/export from, dynamic import(), new URL(x, import.meta.url), new Worker(x) */
 function codeOnlyKeepSpecs(src) {
   const s = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1"), out = [];
@@ -288,10 +297,16 @@ else {
   check(attr("data-composition-id") === "spectrum-story", `render.html data-composition-id="spectrum-story" (${attr("data-composition-id")})`);
   check(attr("data-width") === "1920" && attr("data-height") === "1080" && attr("data-fps") === "30", `render.html 1920 x 1080 at 30 fps (${attr("data-width")} x ${attr("data-height")} at ${attr("data-fps")})`);
   check(/\bdata-no-timeline\b/.test(s), "render.html has data-no-timeline");
-  const dur = +attr("data-duration"), film = (STEPS || []).filter(x => x.film).reduce((a, x) => a + (+x.dur_s || 0), 0), all = (STEPS || []).reduce((a, x) => a + (+x.dur_s || 0), 0);
-  check(Number.isFinite(dur) && (Math.abs(dur - film) <= 1 / 30 + 1e-9 || Math.abs(dur - all) <= 1 / 30 + 1e-9) || /\{\{|\$\{/.test(attr("data-duration") || ""),
-    `render.html data-duration ${attr("data-duration")} = film cut ${film.toFixed(3)} s or full ${all.toFixed(3)} s (one frame)`);
+  // v2: the film's length comes from film.json (U_film; scripts/story_vtt.mjs --stamp writes data-duration), not steps.json
+  const dur = +attr("data-duration"), FJ = existsSync(join(SROOT, "film.json")) ? JSON.parse(read(join(SROOT, "film.json"))) : null;
+  const cut = FJ && FJ.cuts && FJ.cuts.film, chunks = FJ ? (cut && Array.isArray(cut.chunks) ? FJ.chunks.filter(c => cut.chunks.includes(c.id)) : FJ.chunks || []) : [];
+  const film = chunks.reduce((a, c) => a + (+c.s || 0), 0);
+  check(Number.isFinite(dur) && FJ && Math.abs(dur - film) <= 1 / 30 + 1e-9 || /\{\{|\$\{/.test(attr("data-duration") || ""),
+    `render.html data-duration ${attr("data-duration")} = film.json film cut ${film.toFixed(3)} s (one frame)`);
   const rjs = [s, ...JS.filter(f => /render|video/i.test(f)).map(read)].join("\n");
+  // review3 science M3 (fix3): film text snapshot + captions equal today's copy.json/beats.json render (story_vtt --check)
+  { const r = spawnSync(process.execPath, [join(REPO, "scripts/story_vtt.mjs"), "--check", "--root", SROOT], {encoding: "utf8"});
+    check(r.status === 0, `film copy and captions in sync with copy.json (scripts/story_vtt.mjs --check)${r.status === 0 ? "" : ": " + (r.stderr || r.stdout).trim().split("\n").join("; ")}`); }
   check(/registerFrameSource\s*\(\s*{[^}]*\belement\s*:/.test(rjs) && !/registerFrameSource\s*\(\s*{[^}]*\bhost\s*:/.test(rjs), "registerFrameSource({element, ready, render}), no host key (eng P0-3)");
 }
 

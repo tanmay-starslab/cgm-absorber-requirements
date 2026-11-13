@@ -45,6 +45,12 @@ if (!existsSync(PAGE) || !existsSync(STEPS_F)) {
   if (process.env.STORY_REQUIRE === "1") { console.log(`FAIL no story page at ${PAGE} (STORY_REQUIRE=1)`); process.exit(1); }
   console.log(`skipped (no story page or steps.json under ${relative(REPO, SROOT)})`); process.exit(0);
 }
+// v2 (pinned 3D stage, js/main.js) replaced the v1 card stepper this smoke drives (storyApp, [data-step] cards, Try it).
+// The v2 page is gated by story_a11y (G9, keyboard/stills/lite), story_overlap (G1-G3, G10, G12) and story_input (G7);
+// STORY_V1_SMOKE=1 still runs this file against a v1 tree.
+if (existsSync(join(SROOT, "js/main.js")) && process.env.STORY_V1_SMOKE !== "1") {
+  console.log("skipped (v2 story page: the v1 card-stepper smoke is retired; see story_a11y, story_overlap, story_input)"); process.exit(0);
+}
 const raw = JSON.parse(readFileSync(STEPS_F, "utf8")), STEPS = Array.isArray(raw) ? raw : raw.steps || [];
 const IDS = STEPS.map(s => s.id), CHAPTERS = [...new Set(STEPS.map(s => s.chapter))];
 const C = checker(), check = C.check, note = C.note;

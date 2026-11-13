@@ -1,0 +1,49 @@
+{
+ "about": "U_qa seeded fixture: a desktop B9 frame at 1440x900 laid out as DESIGN_final §3.3 (text column left, world right, dock pair 24 %, rail).",
+ "viewport": {
+  "w": 390,
+  "h": 844,
+  "zoom": 1
+ },
+ "cls": "phone-portrait",
+ "pinned": true,
+ "contract": true,
+ "flight": true,
+ "beat": "B9",
+ "expectDock": "pair",
+ "dockState": "pair",
+ "boxes": [
+  {
+   "id": "act-title",
+   "kind": "text",
+   "role": "display",
+   "x": 16,
+   "y": 84,
+   "w": 358,
+   "h": 108,
+   "font": 32,
+   "lines": 3
+  },
+  {
+   "id": "dock",
+   "kind": "dock",
+   "x": 0,
+   "y": 560,
+   "w": 390,
+   "h": 253
+  },
+  {
+   "id": "rail",
+   "kind": "chrome",
+   "chrome": true,
+   "x": 0,
+   "y": 812,
+   "w": 390,
+   "h": 32,
+   "font": 12
+  }
+ ],
+ "paths": [],
+ "literals": [],
+ "name": "overlap_defect_G2_phone_lines"
+}

@@ -1,0 +1,8 @@
+{
+ "about": "U_qa seeded fixture: the flat shape of the owner's laptop ?bench=1 JSON (G5b).",
+ "renderer": "ANGLE (Apple, Apple M2, Metal)",
+ "scale": 0.35,
+ "p50": 8.4,
+ "p95": 14.9,
+ "name": "bench_defect_G5b_scale"
+}

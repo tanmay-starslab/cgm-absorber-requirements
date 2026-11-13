@@ -1,0 +1,185 @@
+{
+ "about": "U_qa seeded fixture: a desktop B9 frame at 1440x900 laid out as DESIGN_final §3.3 (text column left, world right, dock pair 24 %, rail).",
+ "viewport": {
+  "w": 1440,
+  "h": 900,
+  "zoom": 1
+ },
+ "cls": "desktop",
+ "pinned": true,
+ "contract": true,
+ "flight": true,
+ "beat": "B9",
+ "expectDock": "pair",
+ "dockState": "pair",
+ "boxes": [
+  {
+   "id": "act-title",
+   "kind": "text",
+   "role": "display",
+   "x": 72,
+   "y": 90,
+   "w": 520,
+   "h": 64,
+   "font": 48,
+   "lines": 1,
+   "band": "text",
+   "group": "B9a"
+  },
+  {
+   "id": "band-sub",
+   "kind": "text",
+   "x": 72,
+   "y": 170,
+   "w": 520,
+   "h": 52,
+   "font": 18,
+   "lines": 2,
+   "band": "text",
+   "group": "B9a"
+  },
+  {
+   "id": "eq-E4",
+   "kind": "eq",
+   "x": 72,
+   "y": 380,
+   "w": 460,
+   "h": 90,
+   "font": 20
+  },
+  {
+   "id": "plaque-438",
+   "kind": "plaque",
+   "x": 1300,
+   "y": 140,
+   "w": 220,
+   "h": 96,
+   "font": 14
+  },
+  {
+   "id": "dock",
+   "kind": "dock",
+   "x": 0,
+   "y": 648,
+   "w": 1440,
+   "h": 216
+  },
+  {
+   "id": "dock-readout",
+   "kind": "label",
+   "parent": "dock",
+   "x": 24,
+   "y": 656,
+   "w": 180,
+   "h": 18,
+   "font": 13
+  },
+  {
+   "id": "dock-axis",
+   "kind": "label",
+   "parent": "dock",
+   "x": 24,
+   "y": 840,
+   "w": 1392,
+   "h": 16,
+   "font": 12
+  },
+  {
+   "id": "act-chip",
+   "kind": "chrome",
+   "chrome": true,
+   "x": 24,
+   "y": 16,
+   "w": 140,
+   "h": 32,
+   "font": 13
+  },
+  {
+   "id": "menu",
+   "kind": "chrome",
+   "chrome": true,
+   "x": 1376,
+   "y": 16,
+   "w": 40,
+   "h": 32,
+   "font": 13
+  },
+  {
+   "id": "fly",
+   "kind": "chrome",
+   "chrome": true,
+   "x": 1320,
+   "y": 16,
+   "w": 44,
+   "h": 32,
+   "font": 13
+  },
+  {
+   "id": "rail",
+   "kind": "chrome",
+   "chrome": true,
+   "x": 0,
+   "y": 864,
+   "w": 1440,
+   "h": 36,
+   "font": 12
+  }
+ ],
+ "paths": [
+  {
+   "id": "beam",
+   "kind": "beam",
+   "pts": [
+    [
+     640,
+     620
+    ],
+    [
+     1100,
+     380
+    ],
+    [
+     1400,
+     200
+    ]
+   ]
+  },
+  {
+   "id": "connector",
+   "kind": "connector",
+   "pts": [
+    [
+     1010,
+     236
+    ],
+    [
+     1010,
+     648
+    ]
+   ],
+   "attach": [
+    "plaque-438",
+    "dock"
+   ]
+  },
+  {
+   "id": "tether-A",
+   "kind": "tether",
+   "pts": [
+    [
+     1200,
+     420
+    ],
+    [
+     1250,
+     648
+    ]
+   ],
+   "attach": [
+    "dock"
+   ]
+  }
+ ],
+ "literals": [],
+ "name": "overlap_defect_G1_offscreen"
+}

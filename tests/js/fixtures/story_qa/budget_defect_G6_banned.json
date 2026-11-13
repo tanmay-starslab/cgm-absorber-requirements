@@ -1,0 +1,19 @@
+{
+ "about": "U_qa seeded fixture: G6 numbers of one desktop and one mobile run.",
+ "shellGz": 98304,
+ "fontsBytes": 184320,
+ "liveMs": 1100,
+ "first3dMs": 3200,
+ "desktopBytes": 32505856,
+ "mobileBytes": 9437184,
+ "gpuDesktop": 398458880,
+ "gpuMobile": 157286400,
+ "banned": [
+  "gsap (js/stage/post.js)"
+ ],
+ "videoOutsideMedia": [],
+ "backdropFrac": 0.012,
+ "offOrigin": [],
+ "cls": 0.01,
+ "name": "budget_defect_G6_banned"
+}

@@ -1,0 +1,144 @@
+{
+ "about": "U_qa seeded fixture: keyboard path, audit result, reduced-motion animations and the stills runs.",
+ "beats": [
+  "B0",
+  "B1",
+  "B2",
+  "B3",
+  "B4",
+  "B5",
+  "B6",
+  "B7a",
+  "B7b",
+  "B8",
+  "B9",
+  "B10",
+  "B11",
+  "B12a",
+  "B12b",
+  "B13",
+  "B14"
+ ],
+ "keyPath": [
+  "B0",
+  "B1",
+  "B2",
+  "B3",
+  "B4",
+  "B5",
+  "B6",
+  "B7a",
+  "B7b",
+  "B8",
+  "B9",
+  "B10",
+  "B11",
+  "B12a",
+  "B12b",
+  "B13",
+  "B14"
+ ],
+ "violations": [
+  {
+   "id": "region",
+   "impact": "moderate",
+   "n": 2
+  },
+  {
+   "id": "button-name",
+   "impact": "serious",
+   "n": 1,
+   "help": "Buttons must have discernible text"
+  }
+ ],
+ "reduced": true,
+ "animations": [
+  {
+   "name": "opacity",
+   "ms": 200
+  }
+ ],
+ "stillsRuns": [
+  {
+   "name": "no-webgl2",
+   "quality": "stills",
+   "reachedEnd": true
+  },
+  {
+   "name": "swiftshader",
+   "quality": "stills",
+   "reachedEnd": true
+  }
+ ],
+ "narrative": {
+  "items": 17,
+  "beats": 17
+ },
+ "jumpText": [
+  {
+   "id": "B1",
+   "text": "story line of B1"
+  },
+  {
+   "id": "B2",
+   "text": "story line of B2"
+  },
+  {
+   "id": "B3",
+   "text": "story line of B3"
+  },
+  {
+   "id": "B4",
+   "text": "story line of B4"
+  },
+  {
+   "id": "B5",
+   "text": "story line of B5"
+  },
+  {
+   "id": "B6",
+   "text": "story line of B6"
+  },
+  {
+   "id": "B7a",
+   "text": "story line of B7a"
+  },
+  {
+   "id": "B7b",
+   "text": "story line of B7b"
+  },
+  {
+   "id": "B8",
+   "text": "story line of B8"
+  },
+  {
+   "id": "B9",
+   "text": "story line of B9"
+  },
+  {
+   "id": "B10",
+   "text": "story line of B10"
+  },
+  {
+   "id": "B11",
+   "text": "story line of B11"
+  },
+  {
+   "id": "B12a",
+   "text": "story line of B12a"
+  },
+  {
+   "id": "B12b",
+   "text": "story line of B12b"
+  },
+  {
+   "id": "B13",
+   "text": "story line of B13"
+  },
+  {
+   "id": "B14",
+   "text": "story line of B14"
+  }
+ ],
+ "name": "a11y_defect_G9_audit"
+}

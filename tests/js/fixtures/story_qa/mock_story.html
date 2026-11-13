@@ -1,0 +1,95 @@
+<!doctype html>
+<!-- U_qa browser fixture: a stand-in for the v2 story that implements the window.__story contract of DESIGN_final §5.11
+     (state, beats, rects, setTarget, quality) on a static layout. mock_story.html is clean; mock_story.html?defect=1
+     seeds one defect per gate: no band text after a jump past B1 (G9), overlap (G1), 10 px text (G2), beam across the title (G3), an unkeyed number (G10),
+     a fifth chrome element and a dock state that disagrees with beats.json (G12), an unnamed button, a 2 s infinite
+     animation under reduced motion and a short narrative (G9). Used by story_overlap.mjs and story_a11y.mjs to prove
+     their in-page collectors and the v2 adapter catch what the fixtures say. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>U_qa mock story</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05060a; color: #e8ecf4; font: 16px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; background: radial-gradient(circle at 70% 40%, #141a2c, #05060a 60%); }
+  .band { position: fixed; left: 5vw; top: 9vh; width: 37vw; }
+  h1 { font-size: 44px; line-height: 1.1; margin: 0 0 12px; font-weight: 500; }
+  .sub { font-size: 18px; color: #c9d1e2; margin: 0; }
+  #dock { position: fixed; left: 0; right: 0; bottom: 5vh; height: 24vh; background: #0b0f19; border-top: 1px solid #2a3350; }
+  #dock .readout { position: absolute; left: 24px; top: 8px; font-size: 13px; color: #c9d1e2; }
+  .chip { position: fixed; top: 16px; height: 32px; padding: 0 12px; border: 1px solid #2a3350; border-radius: 16px; background: #0b0f19; color: #e8ecf4; font-size: 13px; }
+  #act { left: 24px; } #menu { right: 24px; } #fly { right: 84px; }
+  #rail { position: fixed; left: 0; right: 0; bottom: 0; height: 5vh; background: #0b0f19; font-size: 12px; display: flex; align-items: center; padding-left: 16px; box-sizing: border-box; }
+  #plaque { position: fixed; left: 70vw; top: 30vh; font-size: 14px; background: #0b0f19; padding: 8px 12px; border: 1px solid #2a3350; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 2s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { * { transition-duration: 0s !important; } }
+</style>
+</head>
+<body>
+<div id="stage" data-testid="story-stage" tabindex="-1"></div>
+<div class="band" data-band="text" data-group="B1">
+  <h1 id="title" data-reg="display">Light crosses the gas</h1>
+  <p class="sub" id="sub" data-reg="sub">The beam crosses <span data-key="n_kernels">672</span> smoothing kernels.<span class="vlist-s" style="font-size:2px">&#8203;</span></p>
+</div>
+<div id="plaque" data-reg="plaque">Cell <span data-key="cell">438</span></div>
+<div id="dock" data-reg="dock"><span class="readout" id="readout">O VI <span data-key="ovi_depth">37</span> %</span></div>
+<button class="chip" id="act" data-chrome aria-label="Act 1">Act <span data-num>1</span></button>
+<button class="chip" id="menu" data-chrome aria-label="Menu">=</button>
+<button class="chip" id="fly" data-chrome aria-label="Fly">Fly</button>
+<div id="rail" data-chrome>stop <span data-num>1</span> of <span data-num>4</span></div>
+<ol data-narrative class="sr"><li>Light crosses the gas.</li><li>A cool clump.</li><li>The spectrum.</li></ol>
+<script>
+(() => {
+  const defect = new URLSearchParams(location.search).has("defect");
+  if (defect) {
+    const t = document.getElementById("title");
+    const over = document.createElement("div"); over.id = "overlay-tag"; over.textContent = "warm-hot";
+    Object.assign(over.style, {position: "fixed", left: "calc(5vw + 40px)", top: "calc(9vh + 12px)", fontSize: "16px", background: "#222", padding: "4px"});
+    over.dataset.reg = "label"; document.body.appendChild(over);                                         // G1 overlap with the title
+    const small = document.createElement("div"); small.id = "tiny"; small.textContent = "kpc"; small.dataset.reg = "label";
+    Object.assign(small.style, {position: "fixed", left: "70vw", top: "60vh", fontSize: "10px"}); document.body.appendChild(small);   // G2
+    document.getElementById("sub").insertAdjacentHTML("beforeend", " It is 84 kpc long.");                // G10 unkeyed number
+    const extra = document.createElement("button"); extra.className = "chip spin"; extra.dataset.chrome = ""; extra.style.left = "45vw";
+    extra.innerHTML = "<svg width=10 height=10></svg>"; document.body.appendChild(extra);                // G12 fifth chrome, G9 unnamed button + infinite animation
+    document.querySelector("ol[data-narrative] li:last-child").remove();                                 // G9 narrative short
+  }
+  const beats = [{id: "B1", p0: 0, p1: 0.4, dock: "pair"}, {id: "B2", p0: 0.4, p1: 0.7, dock: "pair"}, {id: "B3", p0: 0.7, p1: 1, dock: "pair"}];
+  let p = 0;
+  const beatAt = q => beats.find(b => q >= b.p0 && q < b.p1) || beats[beats.length - 1];
+  const reg = () => [...document.querySelectorAll("[data-reg]")].map(e => { const r = e.getBoundingClientRect(), k = e.dataset.reg;
+    return {id: e.id, kind: k, x: r.left, y: r.top, w: r.width, h: r.height, font: parseFloat(getComputedStyle(e).fontSize), role: k === "display" ? "display" : undefined,
+      parent: e.parentElement && e.parentElement.closest("[data-reg]") ? e.parentElement.closest("[data-reg]").id : undefined,
+      band: e.closest("[data-band]") ? "text" : undefined, group: e.closest("[data-group]") ? e.closest("[data-group]").dataset.group : undefined}; });
+  const beam = () => { const W = innerWidth, H = innerHeight;
+    return defect ? [[0.02 * W, 0.12 * H], [0.6 * W, 0.15 * H], [0.98 * W, 0.2 * H]] : [[0.5 * W, 0.7 * H], [0.98 * W, 0.12 * H]]; };
+  window.__story = {version: "mock-1",
+    beats: () => beats.map(b => ({...b})),
+    state: () => { const b = beatAt(p); return {p, beat: {id: b.id, i: beats.indexOf(b), u: (p - b.p0) / (b.p1 - b.p0), stop: null}, quality: "flight",
+      spec: {dock: defect ? "hero" : b.dock}}; },
+    setTarget: q => { p = Math.max(0, Math.min(1, q)); if (defect) document.querySelector("[data-band]").style.opacity = p >= 0.4 ? "0" : ""; },   // G9: jumps past B1 land with no text
+    seek: q => window.__story.state(),
+    quality: () => "flight",
+    rects: () => ({boxes: reg(), paths: [{id: "beam", kind: "beam", pts: beam()}]}),
+    /* stand-in for stage.stats (story_perf --mock): per-frame GPU pass timers like stage.js's EXT_disjoint_timer_query
+       arrays; ?defect=1 makes the far volume 5 ms and blocks the main thread 120 ms at boot (a long task) */
+    stage: {stats: {gpuMs: {far: [], near: [], splats: []}, fields: {color: "T", bound: {color: defect ? [] : ["L0", "L1"], weight: []}}},
+            core: {stats: {loads: defect ? [] : [{key: "T|L0"}, {key: "T|L1"}]}}}};   // residency (RESIDENT): ?defect=1 never loads a cube
+  { const g = window.__story.stage.stats.gpuMs; let k = 0;
+    const tick = () => { k++; g.far.push(defect ? 5 + (k % 7) * 0.1 : 1.6 + (k % 7) * 0.1); g.near.push(0.02); g.splats.push(0.12);
+      for (const a of Object.values(g)) if (a.length > 600) a.shift(); requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+    if (defect) setTimeout(() => { const t = performance.now(); while (performance.now() - t < 120) {} }, 50); }
+  addEventListener("keydown", e => {
+    const i = beats.indexOf(beatAt(p));
+    if (e.key === "PageDown") { const n = beats[Math.min(beats.length - 1, i + 1)]; p = (n.p0 + n.p1) / 2; e.preventDefault(); }
+    if (e.key === "PageUp") { const n = beats[Math.max(0, i - 1)]; p = (n.p0 + n.p1) / 2; e.preventDefault(); }
+    window.__story.setTarget(p);
+  });
+  p = 0.2;
+})();
+</script>
+</body>
+</html>
