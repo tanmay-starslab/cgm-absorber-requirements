@@ -109,11 +109,10 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
      Versions are recorded in media/manifest.json.
    - Not used: GSAP (its Standard "No Charge" licence is not an open-source licence), Remotion
      (not free for universities), three.js inside the story, Lenis, Scrollama.
-   - Music (optional, off by default; media/music_loop.m4a, see media/MUSIC_LICENSE.txt): Beethoven,
-     Symphony No. 7, II. Allegretto; cello arrangement and recording by John Michel, Wikimedia
-     Commons (https://commons.wikimedia.org/wiki/File:JOHN_MICHEL_CELLO-BEETHOVEN_SYMPHONY_7_Allegretto.ogg),
-     CC BY-SA 3.0 (https://creativecommons.org/licenses/by-sa/3.0/); excerpted, compressed,
-     equalised, faded and looped. The excerpt stays under CC BY-SA 3.0, not MIT.
+   - Music (optional, off by default; media/music_loop.m4a and the films' soundtrack, see
+     media/MUSIC_LICENSE.txt): Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (the
+     work is public domain), an orchestral recording supplied by the site owner; excerpted, faded,
+     looped and loudness-levelled. The recording is not covered by this repository's MIT licence.
    - The story data, chapter images and film show TNG50 data and fall under item 3.
 
 ------------------------------------------------------------------------------------------------

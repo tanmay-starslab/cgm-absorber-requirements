@@ -1,5 +1,5 @@
-// Optional music for "How a spectrum is made": Beethoven, Symphony No. 7, II. Allegretto, cello arrangement and recording
-// by John Michel (Wikimedia Commons, CC BY-SA 3.0; media/music.json, scripts/story_music.py).
+// Optional music for "How a spectrum is made": Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (orchestral
+// recording; media/music.json, scripts/story_music.py).
 //
 // Off by default (owner, 2026-11-13), with the toggle highlighted until the reader has made a choice (class "invite":
 // accent ring and a short glow). Nothing is downloaded until it is turned on (media/music_loop.m4a, about 1.4 MB, a
@@ -12,7 +12,7 @@
 
 export const STORE_KEY = "tngStory.music";
 export const VOLUME = 0.55;
-export const MUSIC_CREDIT = "Music: Beethoven, Symphony No. 7, II. Allegretto; cello arrangement and recording by John Michel (CC BY-SA 3.0)";
+export const MUSIC_CREDIT = "Music: Beethoven, Symphony No. 7, II. Allegretto (orchestral recording)";
 
 export function musicLabel(on, copy) {
   const ui = (copy && copy.ui) || {};

@@ -133,9 +133,7 @@ export function creditSections(galaxy) {
       `(Byrohl &amp; Nelson 2025, ${A("https://arxiv.org/abs/2507.11603", "arXiv:2507.11603")}), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background ` +
       "(Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding."]},
     {h: "Music", p: [
-      `Beethoven, Symphony No. 7, II. Allegretto; cello arrangement and recording by John Michel, ` +
-      `${A("https://commons.wikimedia.org/wiki/File:JOHN_MICHEL_CELLO-BEETHOVEN_SYMPHONY_7_Allegretto.ogg", "Wikimedia Commons")}, ` +
-      `${A("https://creativecommons.org/licenses/by-sa/3.0/", "CC BY-SA 3.0")}; excerpted, compressed, equalised, faded and looped.`]},
+      "Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (orchestral recording); excerpted, faded and looped."]},
     {h: "Code", p: [
       `MIT, ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements", "github.com/tanmay-starslab/cgm-absorber-requirements")}; ` +
       `third-party licences: ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements/blob/main/THIRD_PARTY_LICENSES", "THIRD_PARTY_LICENSES")}`,
