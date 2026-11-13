@@ -34,6 +34,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import math
 import re
 import sys
@@ -58,7 +59,7 @@ HF_FILES_PER_REPO = 100_000
 FILES_PER_REPO_TARGET = 50_000
 HF_ENTRIES_PER_FOLDER = 10_000
 HF_FILE_MAX = 200e9
-COMMIT_MAX = 100
+COMMIT_MAX = int(os.environ.get("HF_COMMIT_MAX", "100"))   # files per commit; large uploads pass more (HF allows thousands)
 FREE_PRIVATE_BYTES = 100e9         # free user/org private storage (same page, "Storage plans")
 
 ALL_FIELDS = None                  # sentinel: every field of the manifest
