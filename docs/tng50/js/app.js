@@ -732,8 +732,69 @@ addEventListener("keydown", ev => { if (ev.target.closest && ev.target.closest("
   if (ev.key === "j") step(1); else if (ev.key === "k") step(-1); });
 $("#prev").addEventListener("click", () => step(-1)); $("#next").addEventListener("click", () => step(1));
 
+/* ---------------- story entry: hand-off hook into "How a spectrum is made" (explainer v2, U_entry) ----------------
+   Every a[data-story] (the CTA in the plot bar, the hint row, the first-visit card, How to read) opens the story on what
+   is on screen: #g=<subhalo>&ray=<sightline>&ion=<lead ion>&R=<int>&sn=<int>&from=explorer (grammar: the story's
+   js/ui/gate.js parseEntry; story_handoff.mjs checks both ends). The lead ion is the first selected story ion (O VI,
+   then H I), else the first selected line. The hint row is dismissible (remembered); the first-visit card is a .pop
+   opened once, only while no other popover, the drawer or the chat is open, so it never covers another popover. */
+const storyEntry = (() => {
+  const BASE = "learn/how-a-spectrum-is-made/", IONS = ["OVI", "HI"], SEEN = "tngsight.story.seen", HINT = "tngsight.story.hint";
+  const fromStory = /(?:^|[#&])from=story(?:&|$)/.test(location.hash);
+  const galaxy = () => { const h = new URLSearchParams(location.hash.replace(/^#/, "")), q = new URLSearchParams(location.search);
+    const m = String(h.get("g") || q.get("g") || (CFG.galaxy || {}).subhalo_id || "").match(/(\d+)$/); return m ? +m[1] : null; };
+  function hash() {
+    const ion = IONS.find(k => S.ions.includes(k)) || S.ions[0] || null, band = ion && ION[ion] ? ION[ion].band : "uv";
+    const R = (S.R[band] || S.R.uv || [])[0], sn = S.sn[0], g = galaxy(), id = S.id || pendingId, p = [];
+    if (g != null) p.push(`g=${g}`); if (id) p.push(`ray=${encodeURIComponent(id)}`); if (ion) p.push(`ion=${ion}`);
+    if (Number.isFinite(R)) p.push(`R=${Math.round(R)}`); if (Number.isFinite(sn)) p.push(`sn=${Math.round(sn)}`);
+    p.push("from=explorer"); return p.join("&");
+  }
+  const href = () => BASE + "#" + hash();
+  function links() { window.__storyEntry = true; const h = href(); for (const a of $$("a[data-story]")) if (a.getAttribute("href") !== h) a.setAttribute("href", h); }
+  for (const t of ["pointerdown", "focusin", "mouseover"]) document.addEventListener(t, ev => { if (ev.target.closest && ev.target.closest("a[data-story]")) links(); }, true);
+  addEventListener("hashchange", links); addEventListener("tng:instrument", links);
+  const hint = $("#story-hint"), hintX = $("#story-row .sh-x"), card = $("#pop-story"), cta = $("#story-cta");
+  if (hint && hintX && !fromStory && store.get(HINT) !== "0") hint.hidden = hintX.hidden = false;
+  hintX && hintX.addEventListener("click", () => { hint.hidden = hintX.hidden = true; store.set(HINT, "0");
+    const art = $("#story-row .sh-art"); if (art) art.hidden = true; cta && cta.focus({preventScroll: true}); });
+  const later = card && card.querySelector('[data-testid="story-card-later"]');
+  later && later.addEventListener("click", () => { closePops(); cta && cta.focus({preventScroll: true}); });
+  const blocked = () => S.tab !== "spectra" || $$(".pop").some(p => !p.hidden) || document.body.classList.contains("ctl-open") ||
+    document.body.classList.contains("chat-on") || !$("#chat-root").hidden || !cta || !cta.getClientRects().length ||
+    !!(document.activeElement && document.activeElement.closest && document.activeElement.closest("input,select,textarea"));
+  let tries = 0;
+  function maybeCard() {
+    if (!card || fromStory || store.get(SEEN)) return;
+    if (blocked()) { if (++tries < 20) setTimeout(maybeCard, 1500); return; }
+    store.set(SEEN, "1"); links();
+    const g = galaxy(), src = g != null && S.id ? `${BASE}img/poster_${g}_${S.id}_card.webp` : null;
+    // review2 beauty M4: from 640 px up the first visit is inline (a still in the story row and a short glow on the pill),
+    // so it never covers the spectra and the pill stays the only call to action; phones keep the bottom-sheet card
+    if (innerWidth >= 640) {
+      const row = $("#story-row"), art = row && row.querySelector(".sh-art");
+      if (row) row.classList.add("intro");
+      if (art && src) { art.onload = () => { art.hidden = false; requestAnimationFrame(() => art.classList.add("on")); }; art.onerror = () => { art.hidden = true; }; art.src = src; }
+      return;
+    }
+    const img = card.querySelector(".ps-art");
+    if (img && src && !img.src) { img.onload = () => { img.hidden = false; place(cta, card); }; img.onerror = () => { img.hidden = true; };
+      img.src = src; }
+    openPop(cta, card, false); cta.removeAttribute("aria-expanded");   // the CTA is a link, not the card's disclosure button
+  }
+  if (fromStory) store.set(SEEN, "1");
+  // review M6 (beauty): the first-visit card waits until the reader has been idle for 3 s (at least 6 s after ready), so it never
+  // lands on the spectra while they are being read
+  let lastAct = performance.now();
+  for (const ev of ["pointerdown", "wheel", "keydown", "touchstart"]) addEventListener(ev, () => { lastAct = performance.now(); }, {passive: true, capture: true});
+  const idleCard = () => { if (performance.now() - lastAct < 3000) { setTimeout(idleCard, 500); return; } maybeCard(); };
+  addEventListener("tng:ready", () => setTimeout(idleCard, 6000), {once: true});
+  return {links, href, hash, maybeCard};
+})();
+window.tngStoryEntry = storyEntry;
+
 /* ---------------- hash ---------------- */
-function writeHash() { try { history.replaceState(null, "", "#" + formatHash(S, pendingId)); } catch { /* sandboxed */ } }
+function writeHash() { try { history.replaceState(null, "", "#" + formatHash(S, pendingId)); } catch { /* sandboxed */ } storyEntry.links(); }
 const writeHashSoon = debounce(writeHash, 150);
 addEventListener("hashchange", () => {
   const prev = S.id, tab = S.tab, N = parseHash(location.hash, reg, S), want = N.id;
