@@ -175,7 +175,7 @@ async function boot() {
   /* ---------------- shell ---------------- */
   const els = {root: $("stage"), hud: $("hud"), rail: $("rail"), kinetic: $("kinetic"), labels: $("labels"), sheets: $("sheets"),
     menuButton: $("menu-btn"), menuSheet: $("menu-sheet"), narrativeList: $("narrative"), live: $("live"), textOverlay: $("text-overlay"),
-    canvas: $("gl"), actChip: $("act-chip"), phasePill: $("phase-pill"), hint: $("hint"), soundButton: $("sound-btn")};
+    canvas: $("gl"), actChip: $("act-chip"), phasePill: $("phase-pill"), hint: $("hint"), soundButton: $("sound-btn"), idBadge: $("id-badge")};
   // optional music (off by default, loaded on first use; js/ui/sound.js): the HUD pill, the gate toggle and the M key
   const music = createSound({copy});
   music.bind(els.soundButton);

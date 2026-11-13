@@ -140,13 +140,13 @@ original TNG50 data for science.
 
 ## Citation and terms
 
-The cubes are derived from IllustrisTNG data. They are shared under the IllustrisTNG data terms and citation
-request (https://www.tng-project.org/data/docs/background/#citation), not under an open-data licence. If you use
-them, please cite:
+The cubes are derived from IllustrisTNG data (TNG50-1, z = 0, snapshot 99; https://www.tng-project.org/data/). They
+are used as the TNG Collaboration requests (citation, https://www.tng-project.org/data/docs/background/#citation)
+and are not relicensed here (no open-data licence). If you use them, please cite:
 
-- Nelson et al. 2019, *Computational Astrophysics and Cosmology* 6, 2: the IllustrisTNG public data release
+- Nelson et al. 2019a, *Computational Astrophysics and Cosmology* 6, 2: the IllustrisTNG public data release
   (arXiv:1812.05609);
-- Nelson et al. 2019, *MNRAS* 490, 3234: TNG50, outflows (arXiv:1902.05554);
+- Nelson et al. 2019b, *MNRAS* 490, 3234: TNG50, outflows (arXiv:1902.05554);
 - Pillepich et al. 2019, *MNRAS* 490, 3196: TNG50, structure and kinematics (arXiv:1902.05553).
 
 The cubes also rely on:

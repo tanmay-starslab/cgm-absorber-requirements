@@ -323,23 +323,61 @@ def repo_checks(items: list[tuple[str, object, int]]) -> dict:
             "largest_folder": [f, c], "commits": math.ceil(n / COMMIT_MAX), "warnings": warn}
 
 
+PACK_TERMS = """
+This dataset holds derived products only, no raw simulation data.
+
+## Data terms and citation
+
+These files are derived from the public IllustrisTNG data release (https://www.tng-project.org/data/). They are shared
+under the IllustrisTNG data terms and citation request, **not under an open-data licence**: this repository does not
+relicense TNG data. If you use them, please cite:
+
+- Nelson et al. 2019a, *Computational Astrophysics and Cosmology* 6, 2: the IllustrisTNG public data release (arXiv:1812.05609);
+- Nelson et al. 2019b, *MNRAS* 490, 3234: TNG50, galactic outflows (arXiv:1902.05554);
+- Pillepich et al. 2019, *MNRAS* 490, 3196: TNG50, stellar and gaseous discs (arXiv:1902.05553);
+- Pillepich et al. 2024, *MNRAS* 535, 1721: the TNG50 Milky Way and Andromeda analogues (the galaxy sample).
+
+Please refer to the project as "IllustrisTNG" and the simulation as "TNG50".
+
+## How the spectra were made
+
+- Rays through the TNG50 Voronoi mesh, traced with THOR (Byrohl & Nelson 2025, arXiv:2507.11603), from the SBI_CGM fiducial ray library
+  (700 stratified rays per galaxy, fixed seed);
+- ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background (Faucher-Giguere et al. 2009) and
+  H I self-shielding after Rahmati et al. (2013);
+- the 3D ion cubes use Trident (Hummels, Smith & Silvia 2017, *ApJ* 847, 59) on yt (Turk et al. 2011, *ApJS* 192, 9)
+  with the HM2012 background (Haardt & Madau 2012, *ApJ* 746, 125).
+
+## Code
+
+The code that builds these files is MIT-licensed: https://github.com/tanmay-starslab/cgm-absorber-requirements
+(third-party licences in its THIRD_PARTY_LICENSES file).
+"""
+TNG_META = ("---\nlicense: other\nlicense_name: illustristng-data-terms\n"
+            "license_link: https://www.tng-project.org/data/docs/background/#citation\n")
+
+
 def dataset_card(repo: str, gids: list[int], kind: str, total: int) -> bytes:
+    """The HF dataset card. TNG-derived data carry the IllustrisTNG citation request, never an open-data licence
+    (the TNG data are not ours to relicense)."""
+    shard = repo.rsplit('-', 1)[-1]
     if kind == "pack":
-        body = (f"# TNG50 MW/M31 CGM explorer: web pack shard {repo.rsplit('-', 1)[-1]}\n\n"
-                "Synthetic CGM absorption spectra (683 sightlines, 12 ions, TNGS v2 binaries), Voigt components and 3D "
-                "gas/star cubes (tng50-viz/2) for TNG50-1 z = 0 Milky Way / M31 analogues (Pillepich et al. 2024), "
-                "read by the explorer page at https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/.\n\n"
-                f"Galaxies here: subhalo_id % {N_SHARDS} == {repo.rsplit('-', 1)[-1]} ({len(gids)} galaxies, "
-                f"{total / 1e9:.1f} GB). One folder per subhalo id: galaxy.json, catalog.json, components.json, "
-                "s/<sightline>.bin, viz/manifest_v2.json and the cubes it lists.\n\n"
-                "Derived from IllustrisTNG public data (Nelson et al. 2019; Pillepich et al. 2018, 2024). "
-                "Code: https://github.com/tanmay-starslab/cgm-absorber-requirements (MIT).\n")
-        meta = "---\nlicense: cc-by-4.0\npretty_name: TNG50 MW/M31 CGM explorer web pack\n---\n"
+        body = (f"# TNG50 MW/M31 CGM explorer: web pack, shard {shard}\n\n"
+                "Synthetic circumgalactic-medium absorption spectra (700 sightlines per galaxy, 12 transitions, TNGS v2 "
+                "binaries), their Voigt components, and 3D gas and star cubes (tng50-viz/2) for the Milky Way and M31 "
+                "analogues of TNG50-1 at z = 0 (snapshot 99; sample of Pillepich et al. 2024). They are read by the "
+                "explorer page at https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/.\n\n"
+                f"Galaxies here: subhalo_id % {N_SHARDS} == {shard} ({len(gids)} galaxies, {total / 1e9:.1f} GB). One "
+                "folder per subhalo id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
+                "viz/manifest_v2.json and the cubes it lists.\n" + PACK_TERMS)
+        meta = TNG_META + f"pretty_name: TNG50 MW/M31 CGM explorer web pack (shard {shard})\n---\n"
     else:
         body = ("# TNG50 MW/M31 slim cutouts (private)\n\nGas within 400 kpc of each host (the fields the sightline "
                 "generator reads) plus the slim Trident ion table; the explorer backend downloads one galaxy on demand "
-                f"for custom sightlines. {len(gids)} galaxies, {total / 1e9:.1f} GB.\n")
-        meta = "---\nlicense: other\n---\n"
+                f"for custom sightlines. {len(gids)} galaxies, {total / 1e9:.1f} GB.\n\n"
+                "Derived from IllustrisTNG data (https://www.tng-project.org/data/), private, not redistributed; the "
+                "IllustrisTNG citation request applies (Nelson et al. 2019a, 2019b; Pillepich et al. 2019).\n")
+        meta = TNG_META + "---\n"
     return (meta + "\n" + body).encode("utf-8")
 
 

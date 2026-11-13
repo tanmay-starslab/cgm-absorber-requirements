@@ -18,7 +18,7 @@ import {plaqueItem, plaqueLines, createPlaque} from "./plaque.js";
 import {viewFor, keepWeight, keepPts, KEEP_MARGIN_PX, project, projectSegment} from "../core/shots.js";
 import {planEquations} from "../eq/equations.js";
 import {resolveTemplate} from "../engine.js";
-import {createMenu, createKeyHelp, keyAction} from "./menu.js";
+import {createMenu, createKeyHelp, createCredits, keyAction} from "./menu.js";
 import {createNarrative} from "./narrative.js";
 import {createPicker} from "./picker.js";
 
@@ -79,6 +79,15 @@ export const TAG_MAX_DIST = 24;   // fix3 H1/R7: a world tag (cloud chip) never 
 export const chipWidth = label => Math.ceil(textWidth(label, "sans5", CHIP_FONT)) + 54;
 /* music pill (js/ui/sound.js): icon + the wider of "Music on" / "Music off"; icon only (44) on phones */
 export const soundWidth = cls => (isPhone(cls) ? 44 : Math.ceil(textWidth("Music off", "sans5", CHIP_FONT)) + 54);
+/* credits ID badge (2026-11): "TNG50-1" "Subhalo <id>" "z = 0" as three spans in one 36 px row, or stacked in two lines
+   (sim and z over the subhalo) on a 44 px chip where the row does not fit; padding 12 (10 stacked) + border 1 a side, gap 8 */
+export function badgeSizes(b) {
+  if (!b || b.galaxy == null) return null;
+  const t = [String(b.sim || "TNG50-1"), `Subhalo ${b.galaxy}`, `z = ${b.z ?? 0}`];
+  const row = Math.ceil(textWidth(t[0], "sans", 13)) + Math.ceil(textWidth(t[1], "sans5", 13)) + Math.ceil(textWidth(t[2], "sans", 13)) + 16 + 26;
+  const stack = Math.max(Math.ceil(textWidth(t[0], "sans", 12)) + 6 + Math.ceil(textWidth(t[2], "sans", 12)), Math.ceil(textWidth(t[1], "sans5", 12))) + 22;
+  return [{w: row, h: 36, mode: "row"}, {w: stack, h: CHIP_H, mode: "stack"}];
+}
 export const pillWidth = leg => Math.ceil(textWidth(leg.name, "sans", 13)) + 42 + leg.sw.length * 12;
 /* fix3 ux M1: one act-chip width for both placements (top HUD row and, on compact landscape, the rail). The chip holds the
    label plus the resting colour key (T4); the key is flex:none, so a box narrower than label + key ellipsizes the label (the
@@ -97,7 +106,9 @@ export function railActRoom(band, cls, opts) {
   return Math.max(0, band.x + band.w - pad - probe.track.x - pad - RAIL_TRACK_MIN);
 }
 
-/* HUD boxes. state = {act: label, legend: {name, sw} | null, insetTop} */
+/* HUD boxes. state = {act: label, legend: {name, sw} | null, insetTop, badge: {sim, galaxy, z} | null}
+   badge: right-aligned before the music pill, in the room the act chip (and a desktop phase pill) leave; else the bottom-right
+   corner of the world band */
 export function hudGeometry(bands, cls, type, state = {}) {
   const out = {};
   const m = Math.max(10, Math.round(16 * Math.min(1, type.fpx * 1.4)));
@@ -117,6 +128,19 @@ export function hudGeometry(bands, cls, type, state = {}) {
       if (isPhone(cls)) out.phase = bands.world && bands.world.h >= 36 ? {x: bands.world.x, y: bands.world.y, w: Math.min(pw, bands.world.w), h: 36} : null;
       else out.phase = {x: out.act.x + out.act.w + 8, y: y1 + 4, w: pw, h: 36};
     }
+    const bs = badgeSizes(state.badge);
+    if (bs) {
+      const x1 = out.sound.x - 8, x0 = Math.max(out.act.x + out.act.w, out.phase && !isPhone(cls) ? out.phase.x + out.phase.w : 0) + 8;
+      const v = bs.find(b => x1 - b.w >= x0);
+      if (v) out.badge = {x: x1 - v.w, y: y1 + Math.round((CHIP_H - v.h) / 2), w: v.w, h: v.h, mode: v.mode};
+    }
+  }
+  // no room in the top row (phones; the rail holds the menu in phone landscape): the bottom-right corner of the world band,
+  // just above the dock, where only lower-priority labels live; hidden there whenever anything else needs the room
+  if (!out.badge && bands.world) {
+    const bs = badgeSizes(state.badge), pad = 8, W = bands.world;
+    const v = bs && bs.find(b => b.w <= W.w - 2 * pad && b.h <= W.h - 2 * pad);
+    if (v) out.badge = {x: W.x + W.w - pad - v.w, y: W.y + W.h - pad - v.h, w: v.w, h: v.h, mode: v.mode};
   }
   return out;
 }
@@ -146,13 +170,15 @@ export function frameItems(fs, env) {
   const {bands, cls, type} = env, items = [];
   const legend = phaseVisible(fs) ? env.legend : null;
   const restSw = restSwatches(fs, env.legend), restNote = restSw ? restNoteText(env.copy, env.legend, env.speedCellsOnly) : "";
-  const hg = hudGeometry(bands, cls, type, {act: env.act, legend, insetTop: env.insetTop, restSw, restNote});
+  const hg = hudGeometry(bands, cls, type, {act: env.act, legend, insetTop: env.insetTop, restSw, restNote, badge: env.badge});
   // review2 beauty H1: in the title beat (B0) the chip would repeat the title on screen, so it waits for B1
   const titleBeat = actHidden(fs);
   if (hg.act && !titleBeat) items.push({id: "hud:act", kind: "hud", priority: 100, rect: hg.act});
   if (hg.menu) items.push({id: "hud:menu", kind: "hud", priority: 100, rect: hg.menu});
   if (hg.sound) items.push({id: "hud:sound", kind: "hud", priority: 100, rect: hg.sound});
   if (hg.phase) items.push({id: "hud:phase", kind: "hud", priority: 99, rect: hg.phase});
+  // the credits ID badge yields to everything else (placed last among fixed boxes, hidden on a collision); not counted by G12
+  if (hg.badge) items.push({id: "hud:badge", kind: "hud", priority: 44, rect: hg.badge});
 
   // rail and its children
   items.push({id: "rail", kind: "rail", priority: 85, rect: bands.rail});
@@ -261,7 +287,8 @@ function endItem(end, bands, type) {
 }
 
 /* G12: HUD elements visible in flight (act chip, menu, fly, rail; phase pill and hint count when shown). The music toggle
-   (hud:sound) is always on screen at the owner's request and is not counted. */
+   (hud:sound) is always on screen at the owner's request and is not counted; neither is the credits ID badge (hud:badge),
+   a data label that hides whenever anything else needs its room. */
 export function chromeCount(solved) {
   const ids = new Set(solved.placed.map(b => b.id));
   return ["hud:act", "hud:menu", "rail:fly", "rail", "hud:phase", "hint"].filter(id => ids.has(id)).length;
@@ -357,10 +384,23 @@ export function createShell(els, opts = {}) {
                                      tickLabel: t => (t ? actFor(opts.beats, (opts.beats || []).findIndex(b => b.id === t.id), opts.copy) : ""),
                                      watchRemaining: H.watchRemaining});
   const keyHelp = !H.keys && els.sheets ? createKeyHelp(els.sheets) : null;
+  // Data and credits (menu entry and the stage's ID badge, els.idBadge)
+  const credits = !H.credits && els.sheets ? createCredits(els.sheets, {galaxy: opts.current && opts.current.galaxy}) : null;
+  const openCredits = H.credits || (credits && (op => (credits.isOpen ? credits.close() : credits.open(op))));
+  const badge = els.idBadge && opts.current && opts.current.galaxy != null && !(typeof window !== "undefined" && window.__film)
+    ? {sim: (opts.data && opts.data.meta && opts.data.meta.sim) || "TNG50-1", galaxy: opts.current.galaxy, z: (opts.data && opts.data.meta && opts.data.meta.redshift) ?? 0} : null;
+  if (badge) {
+    const b = els.idBadge;
+    b.innerHTML = `<span class="idb-s">${badge.sim}</span><span class="idb-g">Subhalo ${badge.galaxy}</span><span class="idb-z">z = ${badge.z}</span>`;
+    b.setAttribute("aria-label", `${badge.sim} subhalo ${badge.galaxy} at redshift ${badge.z}, data credits`);
+    b.setAttribute("aria-haspopup", "dialog");
+    if (openCredits) b.addEventListener("click", e => { e.stopPropagation(); openCredits(b); });
+  }
   // opts.index = data/index.json, opts.current = {galaxy, ray}; H.pick({galaxy, ray}) loads the story (integrator)
   const picker = !H.picker && els.sheets && opts.index && H.pick ? createPicker(els.sheets, {onPick: H.pick, explorerHref: H.explorerHref}) : null;
   const menu = createMenu(els.menuButton, els.menuSheet, {watch: H.watch, explore: H.explore, physics: H.physics,
-    picker: H.picker || (picker && (() => picker.open(opts.index, opts.current))), text: () => narrative.open(), share: H.share, keys: H.keys || (keyHelp && keyHelp.open), explorerHref: H.explorerHref,
+    picker: H.picker || (picker && (() => picker.open(opts.index, opts.current))), text: () => narrative.open(), share: H.share, keys: H.keys || (keyHelp && keyHelp.open),
+    credits: openCredits ? () => openCredits(els.menuButton) : null, explorerHref: H.explorerHref,
     watchHint: H.watchHint});
   const narrative = createNarrative({list: els.narrativeList, live: els.live, overlay: els.textOverlay, canvas: els.canvas},
                                     {jump: H.jump, quiet: H.quiet});
@@ -439,7 +479,7 @@ export function createShell(els, opts = {}) {
     const env = {cls: S.cls, bands: S.bands, type: S.type, modelFor, act, legend, hint: !S.hintSeen,
                  hintText, plaque: ext.plaque, eqs: ext.eqs, dockKids: ext.dockKids,
                  tags: ext.tags, reduced: S.reduced, insetTop: S.insets.top, maxKpc: ext.maxKpc,
-                 end: endEl ? endState(fs, opts.beats, endLabels, endShort) : null, speedCellsOnly: !!ext.speedCellsOnly, copy: opts.copy};
+                 end: endEl ? endState(fs, opts.beats, endLabels, endShort) : null, speedCellsOnly: !!ext.speedCellsOnly, copy: opts.copy, badge};
     const items = frameItems(fs2, env);
     // hysteresis (review SC-2): last frame's slots are tried first, so a visible box does not jump between equal candidates;
     // a resize or a layout class change drops them
@@ -474,6 +514,7 @@ export function createShell(els, opts = {}) {
     place(els.menuButton, B["hud:menu"]);
     place(els.soundButton, B["hud:sound"]);
     if (els.soundButton && B["hud:sound"]) els.soundButton.classList.toggle("icon", B["hud:sound"].w <= 44);
+    if (badge) { place(els.idBadge, B["hud:badge"]); if (B["hud:badge"]) els.idBadge.dataset.mode = B["hud:badge"].h > 40 ? "stack" : "row"; }
     if (els.phasePill) {
       if (B["hud:phase"] && legend) {
         const key = legend.id + (env.speedCellsOnly ? "|c" : "");

@@ -224,3 +224,18 @@ html.reduced .kt-blur{display:none}
   .snd.invite,.sg-music.invite{animation:sndinvite 2.6s ease-in-out 1.2s 3}
 }
 @keyframes sndinvite{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--snd-accent) 8%,transparent),0 0 22px color-mix(in srgb,var(--snd-accent) 35%,transparent)}}
+/* credits ID badge (hud:badge, placed by the solver; js/ui/hud.js badgeSizes): sim, subhalo and redshift as separate spans,
+   one 36 px row or two lines on a 44 px chip; opens Data and credits */
+.idb{height:36px;border-radius:18px;padding:0 12px;gap:8px;font:400 13px/1 var(--sans);color:var(--sky-muted)}
+.idb .idb-g{font-weight:500;color:var(--sky-ink)}
+.idb[data-mode=stack]{height:44px;border-radius:14px;padding:0 10px;display:inline-grid;grid-template-columns:auto auto;column-gap:6px;row-gap:3px;
+  align-content:center;justify-content:center;font-size:12px}
+.idb[data-mode=stack] .idb-g{grid-column:1/-1;grid-row:2;text-align:center}
+.idb:focus-visible{outline:2px solid var(--beam);outline-offset:2px}
+/* Data and credits dialog: the key-help card, wider, with readable body text */
+.cr{width:min(520px,calc(100vw - 24px))}
+.cr h3{margin:14px 0 4px;font:500 14px/1.2 var(--sans);letter-spacing:.02em;color:var(--sky-ink)}
+.cr p{margin:0 0 8px;font:400 14px/1.55 var(--sans);color:var(--sky-muted)}
+.cr p.cr-ack{font-size:12.5px;line-height:1.5}
+.cr a{color:#a9bbff;overflow-wrap:anywhere}
+

@@ -774,14 +774,16 @@ function methodsText(sbi) {
   const ag = $("#about-gal"); if (!ag) return;
   if (!("tau" in MEL)) { const n = ag.nextElementSibling; MEL.tau = n && !n.id && /Trident/.test(n.textContent) ? n : null;
     MEL.ions = $("#methods-ions"); MEL.atomic = $("#methods-atomic");
-    MEL.lic = [...document.querySelectorAll("#pop-licence p")].find(p => /Spectra: Trident/.test(p.textContent)) || null;
+    MEL.lic = $("#lic-spectra"); MEL.lic2 = MEL.lic && MEL.lic.nextElementSibling;
     const pv = document.createElement("p"); pv.id = "methods-source"; pv.hidden = true; ag.after(pv); MEL.src = pv; }
   const SBI_TXT = {
     tau: "Optical depths from the SBI_CGM GPU Voigt renderer (fp64) at 0.5 km/s over ±1500 km/s, resampled by velocity; sightlines ±2 R200c long. Velocities are relative to the galaxy's systemic velocity.",
-    ions: "Spectra: CLOUDY FG11 ion tables (THOR) with Rahmati self-shielding for H I. 3D ion cubes: Trident HM2012 (H I from the TNG neutral fraction) within r ≤ 400 kpc, so a sightline drawn through a cube can differ from its spectrum by a few tenths of a dex.",
-    atomic: "Atomic data: the SBI_CGM profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits.",
-    lic: "Simulation: IllustrisTNG, TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), used under the IllustrisTNG data policy. Spectra of this galaxy: the SBI_CGM fiducial ray library (CLOUDY FG11 via THOR; engineering scope). 3D cubes: Trident (Hummels, Smith and Silvia 2017) on yt (Turk et al. 2011), HM2012."};
-  for (const k of ["tau", "ions", "atomic", "lic"]) { const el = MEL[k]; if (!el) continue; if (!(k in MTX)) MTX[k] = el.innerHTML;
+    ions: "Spectra: rays through the TNG50 Voronoi mesh traced by THOR (Byrohl & Nelson 2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background (Faucher-Giguère et al. 2009) and Rahmati et al. (2013) self-shielding for H I. 3D ion cubes: Trident HM2012 (H I from the TNG neutral fraction) within r ≤ 400 kpc, so a sightline drawn through a cube can differ from its spectrum by a few tenths of a dex.",
+    atomic: "Atomic data: the SBI_CGM profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits."};
+  /* Data and credits: both spectra paragraphs are always shown; the one that applies to this galaxy's library leads with "This galaxy" */
+  for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi]]) { if (!el) continue; let t = el.querySelector(".cur-l");
+    if (on && !t) { t = document.createElement("strong"); t.className = "cur-l"; t.textContent = "This galaxy: "; el.prepend(t); } else if (!on && t) t.remove(); }
+  for (const k of ["tau", "ions", "atomic"]) { const el = MEL[k]; if (!el) continue; if (!(k in MTX)) MTX[k] = el.innerHTML;
     if (sbi) el.textContent = SBI_TXT[k]; else el.innerHTML = MTX[k]; }
   MEL.src.hidden = !sbi; MEL.src.textContent = sbi ? (SRC.text || "") : "";
 }
@@ -971,6 +973,9 @@ function applyPatch(P) {
 window.tngApp = {
   version: 3, get config() { return cfgSnap(); },
   galaxies: () => (GIX ? GIX.list.map(e => ({...e})) : []), galaxy: () => GAL,
+  /* Data and credits (#pop-licence) from another opener, e.g. the 3D stage's ID badge; a second click closes it */
+  openCredits(opener) { const pop = $("#pop-licence"), b = opener || $("#credits-open"); if (!pop || !b) return false;
+    if (!pop.hidden && lastOpener === b) { closePops(); return false; } openPop(b, pop); return true; },
   async selectGalaxy(id, {source = "chat"} = {}) { return switchGalaxy(+id, {source}); },
   getState, entries: () => sorted().map(strip), entry: id => (CAT.has(id) ? strip(CAT.get(id)) : null),
   async select(id, {source = "chat"} = {}) { if (!CAT.has(id)) return false; if (id !== S.id) await select(id, false, source); return true; },

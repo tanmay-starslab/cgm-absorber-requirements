@@ -170,9 +170,18 @@ node tests/js/run_all.mjs story                   # story gates (TNG_BROWSER=1 f
 `scripts/export_tng50_web.py --out DIR` copies `learn/` along with the page, without `build/` and the film MP4s,
 which are hosted outside the repository.
 
-Credits: IllustrisTNG / TNG50-1 (Nelson et al. 2019; Pillepich et al. 2019), Trident (Hummels et
-al. 2017), yt (Turk et al. 2011). The star composite follows Lupton et al. (2004). The 3D viewer's approach
-(deposited cubes and column-integral rendering) was inspired by Scott Lucchini's TNG viewer.
+Credits: IllustrisTNG, TNG50-1 at z = 0, snapshot 99 (Nelson et al. 2019a, ComAC 6, 2, arXiv:1812.05609;
+Nelson et al. 2019b, MNRAS 490, 3234, arXiv:1902.05554; Pillepich et al. 2019, MNRAS 490, 3196, arXiv:1902.05553;
+data from https://www.tng-project.org/data/, used as the TNG Collaboration requests). Spectra of the 198 MW/M31
+galaxies: the SBI_CGM fiducial ray library, rays through the TNG50 Voronoi mesh traced with THOR (Byrohl & Nelson
+2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background
+(Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding. Galaxy 488530's default and custom rays,
+and every 3D ion cube: Trident (Hummels, Smith & Silvia 2017) on yt (Turk et al. 2011) with the HM2012 background
+(Haardt & Madau 2012). The star composite follows Lupton et al. (2004). The 3D viewer's approach (deposited cubes and
+column-integral rendering) was inspired by Scott Lucchini's TNG viewer. Explainer music: Beethoven, Symphony No. 7,
+II. Allegretto, cello arrangement and recording by John Michel
+([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:JOHN_MICHEL_CELLO-BEETHOVEN_SYMPHONY_7_Allegretto.ogg),
+[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/)).
 
 ## Caveats
 
@@ -198,8 +207,9 @@ Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full t
   `docs/tng50/learn/how-a-spectrum-is-made/vendor/` with their licence. The film is rendered with HyperFrames
   (Apache-2.0) and ffmpeg, build tools only, not vendored. No GSAP or Remotion.
 - **TNG50 data.** The TNG50-derived spectra, library, story data and 3D cubes (`docs/tng50/data/`, `docs/tng50/learn/*/data/`, the npz library, the
-  private HF dataset and the public viz dataset `tanmay-starslab/tng50-sub488530-viz`) are not MIT. They are redistributed under the
-  [IllustrisTNG data policy](https://www.tng-project.org/data/), which asks you to cite
-  Nelson et al. 2019 (ComAC 6, 2; MNRAS 490, 3234) and Pillepich et al. 2019 (MNRAS 490, 3196).
+  private HF dataset and the public datasets `tanmay-starslab/tng50-mwm31-web-0` to `-3` and `tanmay-starslab/tng50-sub488530-viz`)
+  are not MIT and are not relicensed here. They are used as the TNG Collaboration requests
+  ([citation](https://www.tng-project.org/data/docs/background/#citation)): please cite Nelson et al. 2019a (ComAC 6, 2),
+  Nelson et al. 2019b (MNRAS 490, 3234) and Pillepich et al. 2019 (MNRAS 490, 3196).
   Please also cite Trident (Hummels, Smith & Silvia 2017, ApJ 847, 59) and yt (Turk et al. 2011,
   ApJS 192, 9).
