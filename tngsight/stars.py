@@ -289,6 +289,10 @@ def star_arrays(pt4) -> dict:
     sft = np.asarray(pt4["GFM_StellarFormationTime"])
     keep = sft > 0
     x_kpc = np.asarray(pt4["Coordinates"], dtype=np.float64)[keep] / TNG_H
+    box = GALAXY.get("box_ckpch")
+    if box:                                       # periodic box: stars across the boundary move next to the centre
+        box_kpc = float(box) / TNG_H              # (shift is exactly 0 elsewhere, so x_kpc is unchanged bit for bit)
+        x_kpc = x_kpc - box_kpc * np.round((x_kpc - np.asarray(GALAXY["center_kpc"], dtype=np.float64)) / box_kpc)
     phot = np.asarray(pt4["GFM_StellarPhotometrics"])[keep]
     out = {"pos_disk": D.to_disk(x_kpc),
            "h_kpc": np.asarray(pt4["StellarHsml"], dtype=np.float64)[keep] / TNG_H,

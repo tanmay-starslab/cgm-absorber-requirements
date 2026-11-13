@@ -627,18 +627,32 @@ def proj_window(cubes_by_level: dict, key, r200=None) -> dict:
 
 def vol_window(cubes_by_level: dict, key, vmax) -> list:
     """[snap_down(p50 of the L1 valid voxels), vmax] (§3.5); falls back to the finest level given."""
-    L = "L1" if "L1" in cubes_by_level else [x for x in GAS_LEVELS if x in cubes_by_level][-1]
-    v = np.asarray(cubes_by_level[L][key], dtype=np.float64)
-    msk = level_mask(L, v.shape[0])
-    ok = np.isfinite(v) & (v > 0) & (True if msk is None else msk)
-    lo = VP.snap_down(float(np.percentile(np.log10(v[ok]), 50)))
-    return [lo, float(vmax)] if lo < vmax else [round(vmax - 0.1, 1), float(vmax)]
+    # L1 first, then the other built levels finest-first: a gas-poor halo can have no positive voxel of an ion in
+    # the whole L1 box (613192, run3) while another level has some; with none anywhere the narrow window is used
+    order = (["L1"] if "L1" in cubes_by_level else []) + \
+        [x for x in reversed(list(GAS_LEVELS)) if x in cubes_by_level and x != "L1"]
+    lo = None
+    for L in order:
+        v = np.asarray(cubes_by_level[L][key], dtype=np.float64)
+        msk = level_mask(L, v.shape[0])
+        ok = np.isfinite(v) & (v > 0) & (True if msk is None else msk)
+        if ok.any():
+            lo = VP.snap_down(float(np.percentile(np.log10(v[ok]), 50)))
+            break
+    return [lo, float(vmax)] if lo is not None and lo < vmax else [round(vmax - 0.1, 1), float(vmax)]
+
+
+EMPTY_LOG = -99.0          # stats percentiles of a cube with no positive voxel (JSON has no NaN; manifest needs numbers)
 
 
 def cube_stats(values, q) -> dict:
     v = np.asarray(values, dtype=np.float64)
     ok = np.asarray(q) > 0
-    lv = np.log10(v[ok]) if ok.any() else np.array([np.nan])
+    # percentiles over the voxels with a positive value: a voxel with gas but zero ion density gave log10(0) = -inf
+    # and NaN percentiles, and a cube with no positive voxel is legitimate (gas-poor halo: no Mg II in the whole L2
+    # box of 447914, run3), so it gets the finite EMPTY_LOG sentinel
+    pos = ok & np.isfinite(v) & (v > 0)
+    lv = np.log10(v[pos]) if pos.any() else np.array([EMPTY_LOG])
     return {"frac_empty": round(float(1.0 - ok.mean()), 6),
             "p01": round(float(np.percentile(lv, 1)), 4), "p50": round(float(np.percentile(lv, 50)), 4),
             "p99": round(float(np.percentile(lv, 99)), 4), "max": round(float(np.max(lv)), 4)}

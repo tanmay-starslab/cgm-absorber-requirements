@@ -209,6 +209,25 @@ def test_proj_window_column_and_weighted():
     assert vw == [V.VP.snap_down(-3.0), 0.5]
 
 
+def test_cube_stats_all_empty_cube_is_finite():
+    """An ion with no voxel above vmin (gas-poor 447914, Mg II at L2) must give finite stats the manifest accepts."""
+    v = np.zeros((8, 8, 8))
+    q = V.VP.quantize(v, None, -6.0, 0.0)
+    s = V.cube_stats(v, q)
+    assert s["frac_empty"] == 1.0
+    assert all(np.isfinite(s[k]) and s[k] == V.EMPTY_LOG for k in ("p01", "p50", "p99", "max"))
+
+
+def test_vol_window_empty_l1_falls_back():
+    """No positive voxel of an ion in the L1 box (gas-poor 613192, run3): use the next level, else the narrow window."""
+    n = 8
+    l2 = np.full((n, n, n), 1e-4)
+    cubes = {"L1": {"nH": np.zeros((n, n, n))}, "L2": {"nH": l2}}
+    assert V.vol_window(cubes, "nH", 0.5) == [V.VP.snap_down(-4.0), 0.5]
+    cubes["L2"]["nH"] = np.zeros((n, n, n))
+    assert V.vol_window(cubes, "nH", 0.5) == [0.4, 0.5]
+
+
 # ------------------------------------------------------------------------------- 6. cube files + fragment
 def test_encode_cube_job_fragment_and_validation(tmp_path):
     n = 16
