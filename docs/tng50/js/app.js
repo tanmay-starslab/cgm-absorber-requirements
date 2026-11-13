@@ -490,7 +490,7 @@ function status() {
      and ends with the id, muted */
   const n = nShow(e), rs = rowSource(e), extra = [e.orientation === "random" && e.seed != null ? `seed ${esc(e.seed)}` : "",
     n ? `${n} rich ${n === 1 ? "line" : "lines"}` : "", kindOf(e) !== "library" ? "your ray" : "",
-    rs !== srcOf(SRC) ? (rs === "trident" ? "Trident HM2012, ±R200c" : "SBI_CGM spectra") : "",
+    rs !== srcOf(SRC) ? (rs === "trident" ? "Trident HM2012, ±R200c" : "THOR spectra") : "",
     e.window_truncated ? "gas beyond ±1500 km/s" : ""].filter(Boolean);
   st.innerHTML = [...extra, `<span class="sid">${esc(e.id)}</span>`].join("  ");
   st.title = st.textContent;
@@ -763,10 +763,10 @@ function sourceUI() {
     chip.addEventListener("click", ev => { ev.stopPropagation(); const pop = $("#pop-methods"); if (pop) { if (pop.hidden) openPop(chip, pop); else closePops(); } });
     bar.insertBefore(chip, bar.firstChild); }
   const sbi = srcOf(SRC) === "sbi", gid = GAL ?? CFG.galaxy?.subhalo_id;
-  chip.textContent = `${GIX && gid != null ? gid + "  " : ""}${sbi ? "SBI_CGM" : "Trident"}${GFLAGS.gas_poor ? "  gas-poor" : ""}`;
-  chip.dataset.tip = sbi ? `Subhalo ${gid}: SBI_CGM engineering-scope spectra, CLOUDY FG11; click for details`
+  chip.textContent = `${GIX && gid != null ? gid + "  " : ""}${sbi ? "THOR" : "Trident"}${GFLAGS.gas_poor ? "  gas-poor" : ""}`;
+  chip.dataset.tip = sbi ? `Subhalo ${gid}: THOR rays through the Voronoi mesh, CLOUDY FG11 ions (SBI_CGM library); click for details`
     : `Subhalo ${gid}: Trident HM2012 spectra, ±R200c; click for details`;
-  chip.setAttribute("aria-label", `Subhalo ${gid}, spectra source ${SRC.label || (sbi ? "SBI_CGM" : "Trident")}. Open data and methods`);
+  chip.setAttribute("aria-label", `Subhalo ${gid}, spectra source ${sbi ? "THOR" : (SRC.label || "Trident")}. Open data and methods`);
   methodsText(sbi);
 }
 const MEL = {}, MTX = {};
