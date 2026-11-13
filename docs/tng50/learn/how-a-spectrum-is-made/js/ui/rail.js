@@ -71,7 +71,7 @@ const SVGNS = "http://www.w3.org/2000/svg";
 export function createRail(root, hooks = {}) {
   root.classList.add("rail"); root.dataset.chrome = "rail";
   root.innerHTML = `
-    <button class="rail-fly hud-btn" type="button" data-noscrub data-chrome="fly" aria-label="Hold to fly" title="Hold to fly (Space)">
+    <button class="rail-fly hud-btn" type="button" data-noscrub data-chrome="fly" aria-label="Play" title="Play from here (scroll to go at your own pace)">
       <svg viewBox="0 0 20 20" aria-hidden="true"><path class="i-fly" d="M6 4l9 6-9 6z"/><path class="i-pause" d="M6 4h3v12H6zM11 4h3v12h-3z"/></svg>
     </button>
     <div class="rail-track" role="slider" tabindex="0" aria-label="Story position" aria-valuemin="0" aria-valuemax="100" data-noscrub>
@@ -84,12 +84,11 @@ export function createRail(root, hooks = {}) {
   const odo = root.querySelector(".rail-odo"), sub = root.querySelector(".rail-sub"), tip = root.querySelector(".rail-tip");
   let model = {ticks: [], bands: []}, geom = null, lastKey = "";
 
-  // fly: hold to fly, or play/pause in Watch
-  const down = e => { e.preventDefault(); hooks.flyStart && hooks.flyStart(); fly.classList.add("on"); };
-  const up = () => { if (fly.classList.contains("on")) { fly.classList.remove("on"); hooks.flyEnd && hooks.flyEnd(); } };
-  fly.addEventListener("pointerdown", down);
-  for (const ev of ["pointerup", "pointercancel", "pointerleave"]) fly.addEventListener(ev, up);
-  fly.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); e.stopPropagation(); hooks.flyToggle ? hooks.flyToggle() : down(e); } });
+  // play / pause (owner, 2026-11-13: a play icon must mean "press once and it plays", not "hold"): one press plays the story
+  // from where the reader is at the Watch pace (each beat's reading time), the next press pauses. Scroll, keys or a tap on
+  // the stage also pause it (the Watch driver listens to the input bus), so the reader can always take over. Hold-to-fly
+  // stays on Space and on the start screen.
+  fly.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); hooks.playToggle && hooks.playToggle(); });
 
   const pAt = clientX => { const r = track.getBoundingClientRect(); return Math.min(1, Math.max(0, (clientX - r.left) / Math.max(1, r.width))); };
   track.addEventListener("click", e => { const t = nearestTick(model.ticks, pAt(e.clientX)); if (t && hooks.jump) hooks.jump(t.p, t.id); });
@@ -129,7 +128,9 @@ export function createRail(root, hooks = {}) {
     if (travelled != null) { odo.textContent = odometerText(travelled); odo.title = lightYearsText(travelled); }
     odo.hidden = !(g && g.odo);
     fly.classList.toggle("watch", !!opts.watch); fly.classList.toggle("paused", !!opts.paused);
-    fly.setAttribute("aria-label", opts.watch ? (opts.paused ? "Play" : "Pause") : "Hold to fly");
+    const playing = !!opts.watch && !opts.paused;
+    fly.setAttribute("aria-label", playing ? "Pause" : "Play");
+    fly.title = playing ? "Pause" : "Play from here (scroll to go at your own pace)";
     if (g) {
       const bx = opts.origin || {x: 0, y: 0};
       const place = (el, r) => { if (!r) return; el.style.left = (r.x - bx.x) + "px"; el.style.top = (r.y - bx.y) + "px"; el.style.width = r.w + "px"; el.style.height = r.h + "px"; };
