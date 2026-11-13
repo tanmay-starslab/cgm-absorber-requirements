@@ -150,7 +150,6 @@ export function galaxyCard(e) {
   return `<span class="gxid">${esc(e.id)}</span>${kindWord(e) ? `<span class="gxk">${kindWord(e)}</span>` : ""}` +
     kv("log M*", lg(e.Mstar), "Stellar mass, log M⊙") + kv("SFR", fmtSfr(e.SFR), "Star formation rate, M⊙/yr") +
     kv("log M200c", lg(e.M200c), "Halo mass M200c, log M⊙") + (Number.isFinite(+e.R200c) && e.R200c ? kv("R200c", `${Math.round(+e.R200c)} kpc`, "Halo radius R200c") : "") +
-    (srcOf(e) ? kv("spectra", srcOf(e) === "sbi" ? "SBI_CGM" : "Trident", "Where this galaxy's spectra come from") : "") +
     (e.gas_poor ? '<span class="gxk" data-tip="Little cold gas: expect weak low-ion absorption">gas-poor</span>' : "");
 }
 
