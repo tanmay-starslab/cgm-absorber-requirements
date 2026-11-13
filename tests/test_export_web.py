@@ -373,3 +373,136 @@ def test_default_library_follows_tng_work(tmp_path, monkeypatch):
         monkeypatch.setenv("TNG_LIBRARY_DIR", str(tmp_path / "lib"))
         assert EXP.default_library() == tmp_path / "lib"
         monkeypatch.delenv("TNG_WORK"); monkeypatch.delenv("TNG_LIBRARY_DIR")
+
+
+# ---------------------------------------------------------------- galaxy sample (multi-galaxy packs, CFG.galaxies)
+def _gal_root(tmp_path, fake_lib, gid, center_shift=(0.0, 0.0, 0.0), viz=None, **rec):
+    """<root>/<gid>/{galaxy.json, library/ (copy of fake_lib with the geom npz recentred), viz/} like the pipeline writes."""
+    import shutil
+    root = tmp_path / "galroot"
+    lib = root / str(gid) / "library"
+    shutil.copytree(fake_lib, lib)
+    c = (CENTER + np.asarray(center_shift)).tolist()
+    for p in (lib / "sightlines").glob("cgm_sid488530_*.npz"):
+        p.rename(p.with_name(p.name.replace("cgm_sid488530_", f"cgm_sid{gid}_")))
+    cat = json.loads((lib / "catalog.json").read_text())
+    for e in cat["entries"]:
+        e.pop("p0", None); e.pop("p1", None)
+    (lib / "catalog.json").write_text(json.dumps(cat))
+    _geom_npz(lib / "sightlines" / f"cgm_sid{gid}_edge_b100_a090.npz",
+              np.asarray([10.123, -200.456, 30.0]) + center_shift, np.asarray([-10.0, 180.004, -25.5]) + center_shift)
+    g = dict(GAL, subhalo_id=gid, center_kpc=c, source_path="/private/cutouts/snap_99.hdf5", source_sha256="ab" * 32, **rec)
+    (root / str(gid) / "galaxy.json").write_text(json.dumps(g))
+    if viz is not None:
+        import shutil as sh
+        sh.copytree(viz, root / str(gid) / "viz")
+    return root
+
+
+def test_single_galaxy_export_has_no_picker(fake_lib, tmp_path):
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(tmp_path / "noviz")) == 0
+    assert _page_config(out)["galaxies"] is None and not (out / "data" / "gal").exists()
+
+
+def test_galaxy_packs_and_index(fake_lib, tmp_path, capsys):
+    root = _gal_root(tmp_path, fake_lib, 900001, center_shift=(100.0, -50.0, 3.0),
+                     Mstar_Msun=6.2e10, SFR_Msun_yr=2.3456, M200c_Msun=9.8e11, R200c_kpc=205.04, central=False, mw=True)
+    (root / "900003").mkdir()                                          # not ready: no galaxy.json / library
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(tmp_path / "noviz"), "--galaxies-root", str(root), "--galaxies", "all") == 0
+    cfg = _page_config(out)
+    # the default galaxy is untouched: legacy data/ paths, same catalogue as a single-galaxy export
+    assert cfg["catalog_url"] == "data/catalog.json" and cfg["bin_dir"] == "data/s/" and cfg["components_url"] == "data/components.json"
+    G = cfg["galaxies"]
+    assert G["default"] == 488530 and G["base"] == "data/gal/" and G["viz_base"] is None
+    assert [r["id"] for r in G["list"]] == [488530, 900001]
+    r = G["list"][1]
+    assert r == {"id": 900001, "label": "Subhalo 900001", "Mstar": 6.2e10, "SFR": 2.35, "M200c": 9.8e11, "R200c": 205.0,
+                 "central": False, "mw": True, "m31": None, "n": 2, "viz": False}
+    assert G["list"][0]["n"] == 2 and G["list"][0]["central"] is True and G["list"][0]["Mstar"] == GAL["Mstar_Msun"]
+    pack = out / "data" / "gal" / "900001"
+    assert sorted(p.name for p in pack.iterdir()) == ["catalog.json", "components.json", "galaxy.json", "s"]
+    assert sorted(p.name for p in (pack / "s").iterdir()) == ["edge_b100_a090.bin", "face_b050_a000.bin"]
+    ents = {e["id"]: e for e in json.loads((pack / "catalog.json").read_text())["entries"]}
+    assert ents["edge_b100_a090"]["p0"] == [10.12, -200.46, 30.0] and ents["edge_b100_a090"]["p1"] == [-10.0, 180.0, -25.5]   # its own centre
+    pub = json.loads((pack / "galaxy.json").read_text())
+    assert pub["subhalo_id"] == 900001 and pub["Lhat"] == GAL["Lhat"] and pub["Mstar_Msun"] == 6.2e10 and pub["central"] is False
+    text = (pack / "galaxy.json").read_text() + (out / "index.html").read_text()
+    for private in ("/private/", "source_sha256", "source_path", "center_kpc", str(tmp_path)):
+        assert private not in text, private
+    o = capsys.readouterr().out
+    assert "galaxy 900003: not ready" in o and "galaxies: 2 in the picker" in o
+
+
+def test_galaxy_pack_viz_manifest(fake_lib, viz_dir, tmp_path, fake_vizpack):
+    root = _gal_root(tmp_path, fake_lib, 900002, viz=viz_dir)
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(viz_dir), "--galaxies-root", str(root), "--galaxies", "900002",
+                "--gal-base", "https://huggingface.co/datasets/x/packs/resolve/main/",
+                "--gal-viz-base", "https://huggingface.co/datasets/x/cubes/resolve/main/{id}/") == 0
+    G = _page_config(out)["galaxies"]
+    assert G["base"].startswith("https://") and G["viz_base"].endswith("/{id}/") and G["list"][1]["viz"] is True
+    pv = out / "data" / "gal" / "900002" / "viz"
+    assert (pv / "manifest_v2.json").read_bytes() == (viz_dir / "manifest_v2.json").read_bytes()
+    assert sorted(p.name for p in pv.iterdir()) == ["manifest_v2.json"]           # cubes only with --viz-local
+
+
+def test_galaxy_flags_refused(fake_lib, tmp_path, capsys):
+    root = _gal_root(tmp_path, fake_lib, 900001)
+    with pytest.raises(SystemExit):
+        _run(fake_lib, tmp_path / "s1", "--galaxies", "all")                                  # needs --galaxies-root
+    with pytest.raises(SystemExit):
+        _run(fake_lib, tmp_path / "s2", "--galaxies-root", str(root), "--galaxies", "abc")
+    with pytest.raises(SystemExit):
+        _run(fake_lib, tmp_path / "s3", "--galaxies-root", str(root), "--galaxies", "all", "--gal-viz-base", "https://x/")
+    with pytest.raises(SystemExit):                                                          # packs never go into docs/tng50
+        _run(fake_lib, tmp_path / "s4", "--galaxies-root", str(root), "--galaxies", "all",
+             "--pack-out", str(ROOT / "docs" / "tng50" / "data" / "gal"))
+    assert "refused inside docs/tng50" in capsys.readouterr().err
+    assert not (ROOT / "docs" / "tng50" / "data" / "gal").exists()
+
+
+def test_galaxy_entry_aliases():
+    e = EXP.galaxy_entry(5, {"StellarMass_30kpc": 1e11, "SFR_inst": 0.5, "HaloMass_M200c": 2e12, "flags": {"FlagCentral": 1}}, 3, True)
+    assert (e["Mstar"], e["SFR"], e["M200c"], e["central"], e["n"], e["viz"]) == (1e11, 0.5, 2e12, True, 3, True)
+    assert EXP.galaxy_entry(6, {"central": "false"}, 0, False)["central"] is False
+    assert EXP.list_galaxies(Path("/nonexistent"), "all") == [] and EXP.list_galaxies(Path("/x"), "1, 2") == [1, 2]
+
+
+def test_galaxy_hosting_index_and_failed_check(fake_lib, tmp_path, capsys):
+    """Sharded HF hosting: each listed galaxy carries its own base from the hosting index; a galaxy outside the index
+    or with a failing check.json is not listed (integrate3)."""
+    root = _gal_root(tmp_path, fake_lib, 900001)
+    _gal_root(tmp_path, fake_lib, 900002)
+    _gal_root(tmp_path, fake_lib, 900005)
+    (root / "900001" / "check.json").write_text(json.dumps({"pass": True, "gates": {}}))
+    (root / "900002" / "check.json").write_text(json.dumps({"pass": False, "gates": {"column_checks": {"pass": False}}}))
+    pub = root / "900001" / "web"
+    pub.mkdir()
+    (pub / "galaxy.json").write_text(json.dumps({"spectra_source": {"source": "sbi_cgm"}, "gas_poor": True}))
+    b1 = "https://huggingface.co/datasets/o/web-1/resolve/main/900001/"
+    idx = tmp_path / "hosting_index.json"
+    idx.write_text(json.dumps({"schema": "tng50-galaxy-hosting/1", "galaxies": {
+        "900001": {"repo": "o/web-1", "base": b1}, "900002": {"repo": "o/web-2", "base": b1.replace("1", "2")}}}))
+    out = tmp_path / "site"
+    assert _run(fake_lib, out, "--viz-dir", str(tmp_path / "noviz"), "--galaxies-root", str(root), "--galaxies", "all",
+                "--gal-index", str(idx)) == 0
+    G = _page_config(out)["galaxies"]
+    assert [r["id"] for r in G["list"]] == [488530, 900001]
+    r = G["list"][1]
+    assert r["base"] == b1 and r["src"] == "sbi" and r["gas_poor"] is True
+    assert "base" not in G["list"][0] and G["list"][0]["src"] == "trident"
+    o = capsys.readouterr().out
+    assert "galaxy 900002: not listed, check failed (column_checks)" in o
+    assert "galaxy 900005: not in the hosting index" in o
+    # without the index, --allow-unchecked lists the failing galaxy (testing only)
+    out2 = tmp_path / "site2"
+    assert _run(fake_lib, out2, "--viz-dir", str(tmp_path / "noviz"), "--galaxies-root", str(root), "--galaxies", "all",
+                "--allow-unchecked") == 0
+    assert [r["id"] for r in _page_config(out2)["galaxies"]["list"]] == [488530, 900001, 900002, 900005]
+    bad = tmp_path / "bad_index.json"
+    bad.write_text(json.dumps({"galaxies": {"900001": {"base": "http://insecure/900001/"}}}))
+    with pytest.raises(SystemExit):
+        _run(fake_lib, tmp_path / "site3", "--viz-dir", str(tmp_path / "noviz"), "--galaxies-root", str(root),
+             "--galaxies", "all", "--gal-index", str(bad))

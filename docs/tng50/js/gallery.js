@@ -43,6 +43,7 @@ export function sightLabel(e) {
 /* the one-line tip of the top-bar sightline button: the id (and the seed of a random ray), then the action */
 export function sightTip(e) {
   if (!e) return "Pick a sightline by orientation, b or Φ";
+  if (e.window_truncated) return `Id ${e.id}; some gas lies beyond ±1500 km/s; click to change`;
   return e.orientation === "random" && e.seed != null ? `Seed ${e.seed}, id ${e.id}; click to pick another` : `Id ${e.id}; click to pick another sightline`;
 }
 
@@ -82,13 +83,16 @@ export function matches(e, terms) {
   return terms.every(t => t.w != null ? w.includes(t.w) : t.k ? f[t.k] === t.n : Object.values(f).includes(t.n));
 }
 
-/* els: {pop, cur?, search, filter, showcase, list, count}; opts: {entries() -> sorted entries, current() -> id, onPick(id)} */
+/* els: {pop, cur?, search, filter, showcase, list, count}; opts: {entries() -> sorted entries, current() -> id, onPick(id),
+   libSource?() -> "sbi" | "trident" (the galaxy library's spectra source)} */
 export function createGallery(els, opts) {
   let view = [], hl = -1;
   const shown = () => view.slice(0, MAX_ROWS);
   function row(e, i, cur) {
     const k = kindOf(e), L = sightLabel(e), n = nShow(e);
-    const badge = k !== "library" ? '<span class="tag" data-tip="A ray you cast; not in the library">yours</span>'
+    /* a cast ray is Trident HM2012 over ±R200c; SBI_CGM galaxies' library rays are CLOUDY FG11 over ±2 R200c (review2 F2) */
+    const yt = e.spectra === "trident" && opts.libSource?.() === "sbi" ? "A ray you cast with Trident HM2012; library rays use SBI_CGM" : "A ray you cast; not in the library";
+    const badge = k !== "library" ? `<span class="tag" data-tip="${yt}">yours</span>`
       : n ? `<span class="gn" data-tip="${n} ${n === 1 ? "line has" : "lines have"} multi-component, unsaturated absorbers">${n}</span>` : "<span></span>";
     return `<li role="option" id="gal-opt-${i}" data-id="${esc(e.id)}" data-kind="${k}" aria-selected="${e.id === cur}" aria-label="${esc(L.text)}"${i === hl ? ' class="hl"' : ""}>` +
       `<span class="gp">${L.html}</span><span class="gid">${esc(e.id)}</span>${badge}</li>`;

@@ -15,6 +15,10 @@
   <h1 id="title" data-testid="title">TNG50 sightlines</h1>
   <div role="tablist" id="tabs" aria-label="Views"><button role="tab" id="tab-spectra" data-tip="Mock absorption spectra of the selected sightline" aria-controls="panel-spectra" aria-selected="true" tabindex="0" type="button">Spectra</button><button role="tab" id="tab-3d" data-tip="The galaxy in 3D: gas, ions, velocities, stars and sightlines" aria-controls="panel-3d" aria-selected="false" tabindex="-1" type="button">3D</button></div>
   <span class="sep hide-m"></span>
+  <!-- galaxy picker (galaxy-sample web contract; js/galaxies.js): shown only when CFG.galaxies lists two or more galaxies -->
+  <div class="grp" id="grp-gal" role="group" aria-label="Galaxy" hidden><span class="gl">Galaxy</span>
+    <button class="pbtn" id="gxy-open" type="button" data-testid="galaxy-open" aria-haspopup="dialog" aria-controls="gxy-pop" aria-expanded="false" data-tip="Pick a galaxy of the TNG50 Milky Way and M31 sample"><svg class="gxg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><ellipse cx="8" cy="8" rx="6.4" ry="2.6" transform="rotate(-20 8 8)"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/></svg><span class="glab" data-id="">488530</span><svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg></button>
+  </div>
   <div class="grp" id="grp-sight" role="group" aria-label="Sightline"><span class="gl">Sightline</span>
     <button class="pbtn sq" id="prev" type="button" aria-label="Previous sightline" data-tip="Previous sightline in the list (k)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3 5 8l5 5"/></svg></button>
     <button class="pbtn" id="gal-open" type="button" data-testid="gallery-open" aria-haspopup="dialog" aria-controls="gal-pop" aria-expanded="false" data-tip="Pick a sightline by orientation, b or Φ"><span class="slab" data-id="">loading</span><svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg></button>
@@ -104,6 +108,13 @@
     <select id="filter" aria-label="Filter" data-tip="Show one orientation, or only the rays you cast"><option value="all">all</option><option value="face-on">face-on</option><option value="edge-on">edge-on</option><option value="random">random</option><option value="new">your rays</option></select></div>
   <ul id="gal-list" role="listbox" aria-label="Sightlines"></ul>
   <div class="galf"><label><input type="checkbox" id="showcase" data-tip="Only sightlines with multi-component, unsaturated absorbers"> rich absorbers</label><span id="galcount"></span></div></div>
+<div class="pop" id="gxy-pop" role="dialog" aria-label="Galaxies" hidden>
+  <div class="gxycur" id="gxy-cur" data-testid="galaxy-current"></div>
+  <div class="fl"><input type="search" id="gxy-search" data-testid="galaxy-search" placeholder="search id, sat, m*>11, sfr<1" autocomplete="off" aria-controls="gxy-list" aria-label="Search galaxies by id, sat, MW, M31, 3d or a cut such as m*>10.8">
+    <select id="gxy-filter" aria-label="Filter galaxies" data-tip="Show every galaxy, only centrals or only satellites"><option value="all">all</option><option value="central">centrals</option><option value="satellite">satellites</option></select></div>
+  <div class="gxyhead" id="gxy-head" role="group" aria-label="Sort galaxies"></div>
+  <ul id="gxy-list" role="listbox" aria-label="Galaxies" data-testid="galaxy-list"></ul>
+  <div class="galf"><span class="msg">TNG50-1 z = 0 Milky Way and M31 analogues</span><span id="gxy-count"></span></div></div>
 <div class="pop" id="ion-pop" role="dialog" aria-label="Lines" hidden><div id="ion-list"></div>
   <div class="pbtns"><button id="ion-all" type="button">All</button><button id="ion-none" type="button" data-tip="Keep only the top line">One</button><button id="ion-default" type="button" data-tip="Back to the default set of lines">Default</button></div></div>
 <div class="pop" id="dl-menu" role="menu" hidden><button id="dlpng" type="button" role="menuitem" data-tip="Figure from the server when online, else the screen as shown">PNG</button><button id="dlpdf" type="button" role="menuitem" data-tip="Vector figure from the sightline server; its noise differs from the screen">Publication PDF</button></div>

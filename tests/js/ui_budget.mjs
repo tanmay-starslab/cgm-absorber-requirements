@@ -32,6 +32,7 @@ const MEASURE = `(() => { const w = __ui.words(), sep = __ui.sepScan(), t = docu
   return {iw: innerWidth, ih: innerHeight, dark: matchMedia("(prefers-color-scheme: dark)").matches, bg: getComputedStyle(document.body).backgroundColor + " " + getComputedStyle(document.body).backgroundImage.slice(0, 40),
     ink: getComputedStyle(document.body).color, words: w.n, list: w.list.join(" "), sep, titlePx: cs ? parseFloat(cs.fontSize) : null, titleText: t ? t.innerText.trim() : null,
     companion: /interactive\\s+companion/i.test(document.body.innerText), sp: __ui.rect("#spectra"), top: __ui.rect("#top"), sw: document.documentElement.scrollWidth,
+    uiz: parseFloat(getComputedStyle(document.documentElement).zoom) || 1,
     ctlOpen: __ui.vis(document.getElementById("controls-open")), state: tngApp.getState()}; })()`;
 const pct = (a, b) => (100 * a / b).toFixed(1) + " %";
 const bgs = {};
@@ -53,7 +54,8 @@ try {
       if (w >= 1024) {
         const fw = m.sp.w / w, fh = m.sp.h / h, need = w >= 1440 ? 0.75 : 0.70;
         check(fw >= need && fh >= 0.60, `${tag}: C9 #spectra ${m.sp.w.toFixed(0)}x${m.sp.h.toFixed(0)} = ${pct(m.sp.w, w)} width (>= ${need * 100} %), ${pct(m.sp.h, h)} height (>= 60 %)`);
-        check(m.top && m.top.h <= 48, `${tag}: top bar ${m.top ? m.top.h.toFixed(0) : "?"} px high (<= 48)`);
+        // the 48 px budget is in CSS px: on large screens the page renders at the owner's default zoom (page.css --uiz 1.12)
+        check(m.top && m.top.h / m.uiz <= 48.5, `${tag}: top bar ${m.top ? (m.top.h / m.uiz).toFixed(0) : "?"} CSS px high (<= 48; zoom ${m.uiz})`);
         check(m.sw <= w, `${tag}: no horizontal scroll (scrollWidth ${m.sw})`);
         const chips = await P.eval(`[...document.querySelectorAll("#ion-chips > button[data-ion]")].map(b => ({k: b.dataset.ion, vis: __ui.vis(b), ...__ui.textBox(b)}))`);
         check(chips.length === m.state.ions.length && chips.every(c => c.vis && c.w > 10 && c.px >= 9 && /\d/.test(c.text)),
