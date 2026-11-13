@@ -57,6 +57,9 @@ The event loop stays responsive while a ray is being cast, because the cast runs
 | `CHAT_DAILY_BUDGET` | `500` | upstream chat requests per UTC day, all clients together |
 | `CHAT_CLIENT_DAILY_BUDGET` | `50` | upstream chat requests per UTC day for one client (IPv4 address / IPv6 /64) |
 | `CHAT_DAILY_TOKENS` | `4000000` | upstream input + output tokens per UTC day, all clients (`0` = no token budget) |
+| `GAL_HF_DATASET` | `tanmay-starslab/tng50-mwm31-cutouts` | private dataset with each non-default galaxy's `cutout_slim_R400.hdf5` and `galaxy.json` (the layout `deploy/data/upload_galaxies.py` publishes); generated rays of those galaxies are mirrored under `<id>/generated/`. `HF_TOKEN` needs read (mirror: write) access. Empty = use `HF_DATASET` |
+| `GAL_HF_PATTERN` | `{id}/{name}` | repo path of a galaxy file in `GAL_HF_DATASET` |
+| `TNG_GALAXIES` | unset | optional JSON list of the galaxy ids this node serves (unset: any id whose `galaxy.json` the dataset has) |
 | `TNG_SPEC_MIN_TAU` | `1e-8` | Trident `min_tau` for new spectra; tests only (the v1 library was made with 1e-3, which drops part of the column of weak, diffuse absorbers) |
 
 ## Endpoints (prefix `/api`)

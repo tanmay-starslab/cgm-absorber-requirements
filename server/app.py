@@ -1,5 +1,8 @@
 """FastAPI coordinator for the TNG50 sightline explorer: catalog/sightline/figure API, a job queue
-with SSE progress, and a lease protocol for pull-based remote workers. Run with ONE process:
+with SSE progress, and a lease protocol for pull-based remote workers. Every galaxy-specific route takes
+`?g=<subhalo id>` (POST bodies may carry "galaxy" instead; default Settings.default_galaxy): each galaxy
+has its own store, and a custom ray in a galaxy whose cutout is not on this node waits in the
+"preparing" job state while server/galaxies.py fetches it into the LRU cutout cache. Run with ONE process:
 `uvicorn server.app:app --workers 1` (yt is not thread-safe and the warm dataset, the job queue and
 the rate-limit buckets all live in this process's memory)."""
 from __future__ import annotations
@@ -23,11 +26,12 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
-from .jobs import (CAPS, DONE, ENDPOINTS, ERROR, JOB_ID_RE, QUEUED, RUNNING, JobQueue, QueueFull,
-                   TooManySubscribers)
+from .jobs import (CAPS, DONE, ENDPOINTS, ERROR, GALAXIES, JOB_ID_RE, PREPARING, QUEUED, RUNNING, JobQueue,
+                   QueueFull, TooManySubscribers, job_key)
 from . import chat
 from .ratelimit import RateLimiter, client_ip
 from .settings import VERSION, Settings
+from .galaxies import GAL_ID_RE, GalaxyHub, GalaxyUnavailable, UnknownGalaxy, job_geometry, make_geometry
 from .storage import ID_RE, HFSync, LibraryStore
 from .workers import LocalWorker, generator_kwargs, public_error
 
@@ -63,11 +67,16 @@ class _M(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+_Galaxy = Optional[str]
+_GAL_FIELD = dict(default=None, pattern=GAL_ID_RE.pattern, max_length=9)
+
+
 class GeometryReq(_M):
     orientation: str = Field(min_length=1, max_length=16)
     b_kpc: float = Field(ge=-1e4, le=1e4, allow_inf_nan=False)
     azimuth_deg: float = Field(ge=-1e5, le=1e5, allow_inf_nan=False)
     seed: Optional[int] = Field(default=None, ge=0, le=SEED_MAX)
+    galaxy: _Galaxy = Field(**_GAL_FIELD)
 
 
 def _reg():
@@ -93,6 +102,7 @@ class FigureReq(_M):
     intrinsic: bool = False
     seed: Optional[int] = Field(default=None, ge=0, le=FIG_SEED_MAX)
     fmt: Literal["png", "pdf"] = "png"
+    galaxy: _Galaxy = Field(**_GAL_FIELD)
 
     @field_validator("ions")
     @classmethod
@@ -178,11 +188,12 @@ class CustomReq(_M):
     """Custom ray p0 -> p1, physical kpc relative to the galaxy centre (box axes)."""
     p0_kpc: list[_Coord] = Field(min_length=3, max_length=3)
     p1_kpc: list[_Coord] = Field(min_length=3, max_length=3)
+    galaxy: _Galaxy = Field(**_GAL_FIELD)
 
 
 class LeaseReq(_M):
     name: str = Field(pattern=_NAME_RE)
-    caps: list[Literal["endpoints", "fit"]] = Field(default_factory=list, max_length=len(CAPS))
+    caps: list[Literal["endpoints", "fit", "galaxies"]] = Field(default_factory=list, max_length=len(CAPS))
 
 
 class ProgressReq(_M):
@@ -305,17 +316,37 @@ def _default_renderer(payload, fmt, **kw):
 
 
 # ------------------------------------------------------------------------------ factory
-def create_app(settings: Settings | None = None, generator=None, figure_renderer=None, hf=None) -> FastAPI:
+def _galaxy_hf_factory(S):
+    """HFSync of a non-default galaxy's generated files: <dataset>/gal/<id>/generated/ (gal_hf_pattern's
+    directory), or None without a token/dataset."""
+    repo = S.gal_hf_dataset or S.hf_dataset
+    if not (S.hf_token and repo):
+        return None
+
+    def make(gid, local_dir):
+        prefix = S.gal_hf_pattern.format(id=gid, name="").rstrip("/")
+        return HFSync(S.hf_token, repo, local_dir, prefix=prefix)
+    return make
+
+
+def create_app(settings: Settings | None = None, generator=None, figure_renderer=None, hf=None,
+               galaxy_fetcher=None, galaxy_hf_factory=None) -> FastAPI:
     """`generator`: 'module:attr' spec or callable building a Generator (default settings.generator);
     `figure_renderer(payload, fmt, **kw) -> bytes` (default tngsight.figure.render_bytes);
-    `hf`: an HFSync-like object (default built from HF_TOKEN/HF_DATASET)."""
+    `hf`: an HFSync-like object (default built from HF_TOKEN/HF_DATASET);
+    `galaxy_fetcher`: the non-default galaxies' data source (server.galaxies.HFFetcher interface: fetch(gid,
+    name, dest), optional size(gid, name); default HFFetcher on GAL_HF_DATASET/HF_DATASET with HF_TOKEN);
+    `galaxy_hf_factory(gid, local_dir) -> HFSync | None` (default: gal/<id>/generated/ of that dataset)."""
     S = settings or Settings.from_env()
     if hf is None and S.hf_token and S.hf_dataset:
         hf = HFSync(S.hf_token, S.hf_dataset, S.library_dir)
     store = LibraryStore(S.library_dir, hf=hf)
     jobq = JobQueue(lease_s=S.lease_s, max_attempts=S.max_attempts, cap=S.queue_cap,
                     job_timeout_s=S.job_timeout_s, ttl_s=S.job_ttl_s, queue_ttl_s=S.queue_ttl_s,
-                    max_subs=S.max_subs_per_job)
+                    max_subs=S.max_subs_per_job, prepare_ttl_s=S.prepare_timeout_s)
+    local = None
+    hub = GalaxyHub(S, store, hf_factory=galaxy_hf_factory or _galaxy_hf_factory(S), fetcher=galaxy_fetcher,
+                    pinned=lambda: jobq.active_galaxies() | (local.pinned() if local is not None else set()))
     limiter = RateLimiter({"sightlines": S.rl_sightlines, "figure": S.rl_figure,
                            "figure_all": S.rl_figure_global})
     render = figure_renderer or _default_renderer
@@ -325,28 +356,33 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
     sse_open: dict = {}                     # client ip -> open event streams
     sse_lock = threading.Lock()
     local = LocalWorker(jobq, store, generator or S.generator, generator_kwargs(S), executor=S.local_executor,
-                        job_timeout_s=S.job_timeout_s) if S.local_worker else None
+                        job_timeout_s=S.job_timeout_s, galaxies=hub, max_warm=S.galaxy_max_warm,
+                        prepare_timeout_s=S.prepare_timeout_s) if S.local_worker else None
 
     @asynccontextmanager
     async def lifespan(app):
         tasks = []
 
         async def reaper():
-            since = {None: None, ENDPOINTS: None}       # need -> first time no such worker was seen
+            since = {None: None, ENDPOINTS: None, GALAXIES: None}   # need -> first time no such worker was seen
             msgs = {None: "no worker available; please try again later",
-                    ENDPOINTS: "no worker that can cast custom rays is available; please try again later"}
+                    ENDPOINTS: "no worker that can cast custom rays is available; please try again later",
+                    GALAXIES: "no worker that can cast rays in this galaxy is available; please try again later"}
             while True:
                 await asyncio.sleep(S.reap_every_s)
                 try:
                     jobq.reap()
                     now = time.time()
-                    for need in (None, ENDPOINTS):     # capless (Phase-1) workers never run custom rays
+                    for need in (None, ENDPOINTS, GALAXIES):   # capless (Phase-1) workers never run custom rays
                         if workers_available(now, need=need):
                             since[need] = None
                         elif since[need] is None:
                             since[need] = now
                         elif now - since[need] > S.no_worker_grace_s:
-                            jobq.expire_queued(msgs[need], kind=need)
+                            if need == GALAXIES:
+                                jobq.expire_queued(msgs[need], galaxies=True)
+                            else:
+                                jobq.expire_queued(msgs[need], kind=need)
                 except Exception:
                     log.exception("reaper")
         tasks.append(asyncio.create_task(reaper()))
@@ -376,12 +412,13 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
                 await local.stop()
             if hf is not None:
                 hf.stop()
+            hub.stop()
 
     app = FastAPI(title="TNG50 sightline explorer", version=VERSION, lifespan=lifespan,
                   docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.state.settings, app.state.store, app.state.jobs, app.state.local = S, store, jobq, local
-    app.state.limiter, app.state.fig_cache = limiter, fig_cache
+    app.state.limiter, app.state.fig_cache, app.state.galaxies = limiter, fig_cache, hub
     app.add_middleware(BodyLimit, limit=S.max_body,
                        limits={"/api/worker/result/": S.max_result, "/api/chat": S.chat_max_bytes + 4096})
     cors = dict(allow_origins=list(S.cors_origins), allow_methods=["GET", "POST", "OPTIONS"],
@@ -404,7 +441,46 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         if local is not None and local.state in ("starting", "warm", "busy"):
             return True
         live = jobq.live_workers(S.worker_seen_s, now)
-        return any(need is None or need in caps for caps in live.values())
+        needs = () if need is None else ((need,) if isinstance(need, str) else tuple(need))
+        return any(all(n in caps for n in needs) for caps in live.values())
+
+    def galaxy_of(g=None, body=None) -> str:
+        """The request's galaxy id (?g= and/or a body "galaxy"; default galaxy when neither). 422 on a
+        malformed id or a query/body mismatch."""
+        try:
+            a = hub.resolve(g) if g not in (None, "") else None
+            b = hub.resolve(body) if body not in (None, "") else None
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        if a is not None and b is not None and a != b:
+            raise HTTPException(422, f"galaxy {b} in the body differs from ?g={a}")
+        return a or b or hub.default
+
+    def _gal_call(fn, gid):
+        try:
+            return fn(gid)
+        except UnknownGalaxy:
+            raise HTTPException(404, f"unknown galaxy {gid}")
+        except GalaxyUnavailable as e:
+            raise HTTPException(503, f"galaxy {gid}: {e}", headers={"Retry-After": "60"})
+
+    def record_of(gid):
+        return _gal_call(hub.record, gid)
+
+    def store_of(gid) -> LibraryStore:
+        return _gal_call(hub.store, gid)
+
+    def npz_name(gid, sid) -> str:
+        return f"cgm_sid{gid}_{sid}.npz"
+
+    def galaxy_ready_for_rays(gid, endpoints: bool) -> bool:
+        """A worker can run this non-default galaxy's job: the local one (warm-ish and the cutout is cached
+        or fetchable), or a live remote worker with the galaxies (+ endpoints) caps."""
+        if local is not None and local.state in ("starting", "warm", "busy") and hub.can_prepare(gid):
+            return True
+        live = jobq.live_workers(S.worker_seen_s)
+        need = (GALAXIES, ENDPOINTS) if endpoints else (GALAXIES,)
+        return any(all(n in caps for n in need) for caps in live.values())
 
     def worker_auth(request: Request):
         if not S.worker_token:
@@ -435,31 +511,38 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             d.update(registry_tag=None, data_version=2, ions=[])
         if hf is not None:
             d["hf"] = hf.status()
+        try:                                      # default, open stores, cached cutouts, cache cap/usage
+            d["galaxies"] = hub.status()
+        except Exception as e:                    # never fail the health check over the cache
+            log.warning("galaxy status unavailable: %s", e)
+            d["galaxies"] = {"default": hub.default}
         return d
 
     @app.get("/api/catalog")
-    def catalog(request: Request):
-        body, etag = store.catalog_doc()
+    def catalog(request: Request, g: Optional[str] = Query(None, max_length=12)):
+        body, etag = store_of(galaxy_of(g)).catalog_doc()
         hdr = {"ETag": etag, "Cache-Control": "max-age=60"}
         if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
             return Response(status_code=304, headers=hdr)
         return Response(body, media_type="application/json", headers=hdr)
 
     @app.get("/api/sightline/{name}")
-    def sightline(name: str):
+    def sightline(name: str, g: Optional[str] = Query(None, max_length=12)):
+        gid = galaxy_of(g)
+        st = store_of(gid)
         if name.endswith(".bin"):
             sid = _sid(name, ".bin")
-            blob = store.bin_bytes(sid)
+            blob = st.bin_bytes(sid)
             if blob is None:
                 raise HTTPException(404, f"unknown sightline {sid}")
             return Response(blob, media_type="application/octet-stream",
                             headers={"Cache-Control": "public, max-age=86400"})
         sid = _sid(name, ".npz")
-        p = store.npz_path(sid)
+        p = st.npz_path(sid)
         if p is None:
             raise HTTPException(404, f"unknown sightline {sid}")
         return Response(p.read_bytes(), media_type="application/octet-stream",
-                        headers={"Content-Disposition": f'attachment; filename="cgm_sid488530_{sid}.npz"'})
+                        headers={"Content-Disposition": f'attachment; filename="{npz_name(gid, sid)}"'})
 
     def _canon(req: GeometryReq) -> dict:
         from tngsight.geometry import canonicalize
@@ -469,26 +552,39 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             raise HTTPException(422, str(e))
 
     @app.post("/api/geometry")
-    def geometry(req: GeometryReq):
-        from tngsight.geometry import make_sightline
+    def geometry(req: GeometryReq, g: Optional[str] = Query(None, max_length=12)):
+        gid = galaxy_of(g, req.galaxy)
         c = _canon(req)
-        g = make_sightline(c["orientation"], c["b_kpc"], c["azimuth_deg"], seed=c["seed"])
-        return {**c, "geom": json.loads(json.dumps(g, default=lambda x: x.tolist())),
-                "exists": store.has(c["id"])}
+        rec, st = record_of(gid), store_of(gid)
+        out = {**c, "geom": make_geometry(rec, c), "exists": st.has(c["id"])}
+        return out if hub.is_default(gid) else {**out, "galaxy": gid}
 
-    def enqueue(c: dict, request: Request, extra: dict | None = None):
-        """Ready (200) / queued-or-deduped (202) / refused (429, 503) for a canonical geometry.
-        Orientation and custom rays share the queue, the dedupe and the "sightlines" rate bucket."""
-        extra = extra or {}
-        e = store.entry(c["id"])
+    def enqueue(c: dict, request: Request, gid: str, extra: dict | None = None):
+        """Ready (200) / preparing-queued-or-deduped (202) / refused (429, 503) for a canonical geometry in
+        galaxy `gid`. Orientation and custom rays share the queue, the dedupe and the "sightlines" rate
+        bucket. A non-default galaxy's job carries its resolved geometry and "galaxy"; when the local worker
+        will run it and the cutout is not cached, it starts in "preparing" while the cutout is fetched."""
+        default = hub.is_default(gid)
+        extra = {**(extra or {}), **({} if default else {"galaxy": gid})}
+        st = store_of(gid)
+        e = st.entry(c["id"])
         if e is not None:
             return {"id": c["id"], "status": "ready", "entry": e, **extra}
-        jid = jobq.inflight.get(c["id"])
+        if not default:
+            c = job_geometry(record_of(gid), c, gid)
+        jid = jobq.inflight.get(job_key(c))
+        prepare = False
         if jid is None:                       # only new work is rate-limited / capped
             if not S.generation_possible:
                 return JSONResponse({"detail": "generation disabled on this node (no local or remote workers)"},
                                     503, headers={"Retry-After": "60"})
-            if c.get("kind") == ENDPOINTS:
+            if not default:
+                if not galaxy_ready_for_rays(gid, c.get("kind") == ENDPOINTS):
+                    return JSONResponse({"detail": f"no worker can cast rays in galaxy {gid} right now"}, 503,
+                                        headers={"Retry-After": "60"})
+                prepare = (local is not None and local.state in ("starting", "warm", "busy")
+                           and not hub.has_cutout(gid))
+            elif c.get("kind") == ENDPOINTS:
                 if not workers_available(need=ENDPOINTS):
                     return JSONResponse({"detail": "no worker that supports custom rays is available"}, 503,
                                         headers={"Retry-After": "60"})
@@ -498,20 +594,23 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             if wait:
                 return _limited(wait, "new sightlines")
         try:
-            job, created = jobq.submit(c)
+            job, created = jobq.submit(c, preparing=prepare)
         except QueueFull as e:
             if jid is None:
                 limiter.refund("sightlines", ip(request))      # refused: don't charge the caller
             return JSONResponse({"detail": str(e)}, 503, headers={"Retry-After": "60"})
         if jid is None and not created:       # raced into an existing job: not new work after all
             limiter.refund("sightlines", ip(request))
+        if created and prepare:
+            hub.prepare(gid, jobq)            # may queue (cached meanwhile) or err (no source) right away
         snap = jobq.snapshot(job.job_id)
         return JSONResponse({"id": c["id"], "job_id": job.job_id, "status": snap["status"],
                              "position": snap["position"], **extra}, 202)
 
     @app.post("/api/sightlines")
-    def submit(req: GeometryReq, request: Request):
-        return enqueue(_canon(req), request)
+    def submit(req: GeometryReq, request: Request, g: Optional[str] = Query(None, max_length=12)):
+        gid = galaxy_of(g, req.galaxy)
+        return enqueue(_canon(req), request, gid)
 
     def _canon_custom(req: CustomReq) -> dict:
         from tngsight.geometry import canonicalize_endpoints
@@ -521,30 +620,33 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             raise HTTPException(422, str(e))
 
     @app.post("/api/geometry/custom")
-    def geometry_custom(req: CustomReq):
-        from tngsight.geometry import make_endpoints
+    def geometry_custom(req: CustomReq, g: Optional[str] = Query(None, max_length=12)):
+        gid = galaxy_of(g, req.galaxy)
         c = _canon_custom(req)
-        g = make_endpoints(c["p0_kpc"], c["p1_kpc"])
-        return {"id": c["id"], "canonical": {"p0_kpc": c["p0_kpc"], "p1_kpc": c["p1_kpc"]},
-                "geom": json.loads(json.dumps(g, default=lambda x: x.tolist())), "exists": store.has(c["id"])}
+        rec, st = record_of(gid), store_of(gid)
+        out = {"id": c["id"], "canonical": {"p0_kpc": c["p0_kpc"], "p1_kpc": c["p1_kpc"]},
+               "geom": make_geometry(rec, c), "exists": st.has(c["id"])}
+        return out if hub.is_default(gid) else {**out, "galaxy": gid}
 
     @app.post("/api/sightlines/custom")
-    def submit_custom(req: CustomReq, request: Request):
+    def submit_custom(req: CustomReq, request: Request, g: Optional[str] = Query(None, max_length=12)):
+        gid = galaxy_of(g, req.galaxy)
         c = _canon_custom(req)
-        return enqueue(c, request, {"canonical": {"p0_kpc": c["p0_kpc"], "p1_kpc": c["p1_kpc"]}})
+        return enqueue(c, request, gid, {"canonical": {"p0_kpc": c["p0_kpc"], "p1_kpc": c["p1_kpc"]}})
 
     @app.get("/api/components")
-    def components_index(request: Request):
-        body, etag = store.components_index()
+    def components_index(request: Request, g: Optional[str] = Query(None, max_length=12)):
+        body, etag = store_of(galaxy_of(g)).components_index()
         hdr = {"ETag": etag, "Cache-Control": "max-age=60"}
         if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
             return Response(status_code=304, headers=hdr)
         return Response(body, media_type="application/json", headers=hdr)
 
     @app.get("/api/components/{name}")
-    def components_one(name: str):
+    def components_one(name: str, g: Optional[str] = Query(None, max_length=12)):
+        st = store_of(galaxy_of(g))
         sid = _sid(name, ".json")
-        d = store.components(sid)
+        d = st.components(sid)
         if d is None:
             raise HTTPException(404, f"no components for {sid}")
         return d                               # the per-sightline v2 doc (design.md §4.1)
@@ -578,6 +680,8 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
                 except TooManySubscribers:          # lost a race for the last slot: just close
                     return                          # (not an "error" event: the job itself is fine)
                 s = jobq.snapshot(job_id)
+                if s["status"] == PREPARING:
+                    yield {"event": "preparing", "data": json.dumps({"galaxy": s["galaxy"], "msg": s["msg"]})}
                 if s["status"] == DONE:
                     yield {"event": "done", "data": json.dumps({"id": s["id"], "entry": s["entry"],
                                                                 "components": s["components"]})}
@@ -610,14 +714,16 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
                 sse_open.pop(who, None)
 
     @app.post("/api/figure")
-    async def figure(req: FigureReq, request: Request):
+    async def figure(req: FigureReq, request: Request, g: Optional[str] = Query(None, max_length=12)):
+        gid = galaxy_of(g, req.galaxy)
+        st = await asyncio.to_thread(store_of, gid)          # a first use may fetch the galaxy record
         wait = limiter.check("figure", ip(request))
         if wait:
             return _limited(wait, "figures")
-        params = {**req.normalized(), "id": req.id, "fmt": req.fmt}
-        if store.npz_path(req.id) is None:
+        params = {**req.normalized(), "id": req.id, "fmt": req.fmt, "galaxy": gid}
+        if st.npz_path(req.id) is None:
             raise HTTPException(404, f"unknown sightline {req.id}")
-        lines = (store.entry(req.id) or {}).get("lines")
+        lines = (st.entry(req.id) or {}).get("lines")
         if lines:                          # v1 sightlines hold OVI and CIII only
             if params["ions"] is None:
                 from tngsight import ions as _ions
@@ -640,7 +746,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
 
             def work():
                 with fig_lock:                 # matplotlib is not thread-safe
-                    return render(store.load_payload(req.id), req.fmt, dpi=S.figure_dpi, **kw)
+                    return render(st.load_payload(req.id), req.fmt, dpi=S.figure_dpi, **kw)
             fig_pending[0] += 1
             try:
                 blob = await asyncio.to_thread(work)
@@ -655,7 +761,8 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         else:
             fig_cache.move_to_end(key)
         media = "image/png" if req.fmt == "png" else "application/pdf"
-        fn = f"tng50_{req.id}_{'-'.join(params['ions'] or ['default'])}_sn{params['sn'][0]}-{params['sn'][1]}.{req.fmt}"
+        sub = "" if hub.is_default(gid) else f"sub{gid}_"
+        fn = f"tng50_{sub}{req.id}_{'-'.join(params['ions'] or ['default'])}_sn{params['sn'][0]}-{params['sn'][1]}.{req.fmt}"
         return Response(blob, media_type=media, headers={"Content-Disposition": f'attachment; filename="{fn}"'})
 
     # -------------------------------------------------------------------------- worker protocol
@@ -671,8 +778,15 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         # `lease`: this lease's token; progress/fail must present it (a stale worker whose lease was
         # reassigned gets 409 instead of extending or failing the new holder's lease).
         from tngsight.ions import registry_tag
-        return {"job_id": j.job_id, "geom": j.geom, "lease_s": int(S.lease_s), "attempt": j.attempts,
-                "lease": j.lease_token, "registry_tag": registry_tag()}
+        out = {"job_id": j.job_id, "geom": j.geom, "lease_s": int(S.lease_s), "attempt": j.attempts,
+               "lease": j.lease_token, "registry_tag": registry_tag()}
+        if j.galaxy is not None:              # only "galaxies" workers lease these; the frame rides along
+            try:
+                out["galaxy"] = {"id": j.galaxy, "record": hub.record(j.galaxy)}
+            except Exception as e:            # the geom is resolved already; the record is a convenience
+                log.warning("lease %s: galaxy %s record unavailable: %s", j.job_id, j.galaxy, e)
+                out["galaxy"] = {"id": j.galaxy, "record": None}
+        return out
 
     @app.post("/api/worker/progress/{job_id}", dependencies=[Depends(worker_auth)])
     def worker_progress(job_id: str, req: ProgressReq, lease: str = Query(pattern=LEASE_RE)):
@@ -694,20 +808,21 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         if j.status in (DONE, ERROR):
             raise HTTPException(409, f"job already {j.status}")
         blob = await request.body()
+        st = await asyncio.to_thread(store_of, j.galaxy or hub.default)
         try:
-            payload = await asyncio.to_thread(store.validate_result, blob, j.geom, S.max_result)
+            payload = await asyncio.to_thread(st.validate_result, blob, j.geom, S.max_result)
         except ValueError as e:
             raise HTTPException(422, f"invalid result: {e}")
         if not jobq.claim(job_id):            # finished/claimed meanwhile: persist nothing
             raise HTTPException(409, f"job already {j.status if j.status in (DONE, ERROR) else 'finishing'}")
         try:
-            entry = await asyncio.to_thread(store.add_generated, payload)
+            entry = await asyncio.to_thread(st.add_generated, payload)
         except BaseException:
             jobq.unclaim(job_id)
             raise
         if j.worker:
             jobq.touch_worker(j.worker)
-        d = store.components(j.id)
+        d = st.components(j.id)
         if not jobq.complete(job_id, entry, components=d["components"] if d else None):
             raise HTTPException(409, "job finished concurrently")
         return {"ok": True, "id": j.id, "entry": entry}

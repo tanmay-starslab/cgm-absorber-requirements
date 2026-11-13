@@ -1,4 +1,5 @@
-"""CGM sightline geometry for TNG50-1 sub-488530 (port of tng50/scripts/cgm_geometry.py, same math).
+"""CGM sightline geometry for the selected TNG50-1 galaxy (default sub-488530; port of tng50/scripts/cgm_geometry.py,
+same math). The frame constants below come from config.GALAXY; config.use_galaxy() refreshes them in place.
 
 Sightline = line of length ±R200c through an anchor at perpendicular distance b from the centre,
 along n_los set by the orientation. Φ=0 = projected MAJOR axis, Φ=90 = projected MINOR (polar)
@@ -22,6 +23,17 @@ CENTER_KPC = np.array(GAL["center_kpc"])
 R200C = GAL["R200c_kpc"]
 LHAT = np.array(GAL["Lhat"]); XHAT = np.array(GAL["xhat"]); YHAT = np.array(GAL["yhat"])
 SUBVEL = np.array(GAL["SubhaloVel_kms"])
+
+
+def _refresh() -> None:
+    """Re-read the frame from config.GALAXY (after config.use_galaxy): arrays are updated in place so that modules
+    holding a reference (library's CENTER_KPC) follow; the floats H and R200C are rebound."""
+    global H, R200C
+    H = GAL["TNG_H"]
+    R200C = GAL["R200c_kpc"]
+    for arr, key in ((CENTER_KPC, "center_kpc"), (LHAT, "Lhat"), (XHAT, "xhat"), (YHAT, "yhat"),
+                     (SUBVEL, "SubhaloVel_kms")):
+        arr[:] = np.asarray(GAL[key], dtype=float)
 SEED_MAX = 2**32 - 1
 R_CUSTOM_MAX_KPC = 395.0        # endpoints stay inside the slim cutout (complete for r < 400 kpc)
 L_CUSTOM_MIN_KPC = 20.0

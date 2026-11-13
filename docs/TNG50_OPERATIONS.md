@@ -257,3 +257,103 @@ skip-if-identical, ordering, prune, the token never printed; a fake `HfApi`, no 
   by more.
 - **Formal errors.** Library fits use a pseudo-noise σ = 0.01 per pixel; the browser fitter's errors come from the
   noisy degraded spectrum of each displayed case.
+
+## 8. Multi-galaxy hosting (TNG50 MW/M31 sample)
+
+Every galaxy of the sample (198 z = 0 hosts, Pillepich et al. 2024) gets the products 488530 has. 488530 itself stays
+where it is (`docs/tng50/data` on Pages, cubes in `tanmay-starslab/tng50-sub488530-viz`); `--include-reference` puts a
+copy in its shard. Everything is planned by `deploy/data/upload_galaxies.py`, which uploads nothing unless given
+`--execute`. Uploads happen only after the owner approves.
+
+```bash
+GAL=$TNG_WORK/data/gal
+$PY deploy/data/upload_galaxies.py --measure-ref --ref-library $LIB --ref-manifest docs/tng50/data/viz/manifest_v2.json
+$PY deploy/data/upload_galaxies.py --root $GAL --family all --index-out $TNG_WORK/scratch/hosting_index.json  # plan
+$PY deploy/data/upload_galaxies.py --root $GAL --tier lite --tier-file showcase_full.json                   # tiered
+$PY deploy/data/upload_galaxies.py --root $GAL --verify-only            # anonymous CORS, Range, sha256 per galaxy
+$PY deploy/data/upload_galaxies.py --root $GAL --family all --execute   # write token: $HF_TOKEN or $HF_HOME/token
+```
+
+**Datasets.** There are two product families. The public web pack is sharded by galaxy. The private cutouts sit in
+one repo. A galaxy's shard is `subhalo_id % 4`. It depends only on the id, never on the galaxy list, so adding or
+dropping galaxies never moves a pack.
+
+| repo | visibility | per galaxy | contents |
+|---|---|---|---|
+| `tanmay-starslab/tng50-mwm31-web-{0..3}` | public | `<id>/` | `galaxy.json` (public fields), `catalog.json`, `components.json`, `s/<sightline>.bin` (TNGS v2), `viz/manifest_v2.json` (paths relative to `viz/`, filtered to the tier), `viz/gas/…`, `viz/stars/…`, `viz/luts/luts.json` |
+| `tanmay-starslab/tng50-mwm31-cutouts` | private | `<id>/` | `cutout_slim_R400.hdf5`, `galaxy.json` (full record with local paths stripped); plus `trident/hm2012_ss_hr.h5` once |
+
+The page's per-galaxy base is `https://huggingface.co/datasets/<repo>/resolve/main/<id>/`. Catalogue, binaries and
+manifest all sit under that base. `--index-out` writes `{id: {repo, base, tier, files, bytes}}` for the page export.
+The VM downloads one cutout with `hf_hub_download(CUTOUT_REPO, f"{id}/cutout_slim_R400.hdf5")` into its LRU cache. It
+builds the yt index (`*.ewah`) locally and never uploads it.
+
+Never uploaded: sightline npz (683 files and 0.31 GB per galaxy; regenerable with `galpipe rays`, and 133k files
+for the sample), `viz_cache/`, logs, `DONE.*`, `*.ewah`, `config.tri`, `yt.toml`, tokens. The allow-lists
+(`PACK_RE`, `CUTOUT_RE`) and `FORBIDDEN` reject anything else. Any absolute path or path-like key in a public JSON
+stops that galaxy. A galaxy is planned only when `DONE.web` exists and `check.json` passes; `--execute` refuses
+unchecked galaxies even with `--allow-unchecked`.
+
+**Sizes** (measured on 488530: 672 binaries + catalogue + components = 55.7 MB; 57 cubes = 271 MB WebP + 434 MB gz):
+
+| tier | cubes kept | files/galaxy | MB/galaxy | files, 198 | GB, 198 | max shard (files / GB) |
+|---|---|---|---|---|---|---|
+| `full` | all 18 fields × L0–L2 + S0–S2, WebP + gz | 962 | 761 | 190,476 | 150.7 | 54.8k / 43.4 |
+| `webp` | as `full`, no gz fallback | 905 | 327 | 179,190 | 64.8 | 51.6k / 18.6 |
+| `nol2` | no L2/S2, with gz | 867 | 512 | 171,666 | 101.4 | 49.4k / 29.2 |
+| `lite` | no L2/S2, no gz | 829 | 236 | 164,142 | 46.8 | 47.3k / 13.5 |
+| `core` | nH, T, Z, H I, Mg II, C IV, O VI, v at L0–L1, S0–S1, no gz | 765 | 157 | 151,470 | 31.1 | 43.6k / 9.0 |
+
+Spectra are always complete: each binary holds all 12 ions, so the spectra cost 11 GB for the sample in every
+tier. Private cutouts: the 400 kpc slim sphere holds about 82 % of a cutout's gas cells at about 100 bytes per cell,
+so roughly 30 GB for 198 galaxies (37 GB upper bound if every cell is kept; largest about 0.5 GB), plus 0.19 GB for
+the table. That fits the 100 GB free private quota. Adding npz would add 62 GB and exceed it.
+
+**Hugging Face limits** ([storage limits](https://huggingface.co/docs/hub/storage-limits)):
+- < 100k files per repo, < 10k entries per folder, < 200 GB per file (500 GB hard), about 100 files per commit, and
+  UX degradation after a few thousand commits.
+- No per-repo size limit, but public storage on a free account is best-effort ("beyond the first few gigabytes ...
+  responsibly"). PRO includes up to 10 TB public and 1 TB private; free private is 100 GB.
+- Large datasets need a dataset card; the script writes one per repo.
+
+One repo for all 198 full packs would hold 190k files, so it is sharded: at most 56 galaxies per shard (the id % 4
+split is 48/56/54/40), at most 55k files. That keeps headroom under 100k, because content-hashed cube names add files
+on a rebuild until `--prune`. No folder comes close to 10k entries: `s/` holds 672, `gas/L0/` 90, and the repo root
+at most 56 plus README.
+
+Commits are at most 100 files each, about 550 per full shard. The heavy files (cubes, binaries, cutouts) go first,
+then the galaxy JSONs and manifest, then the README, so the page never reads a manifest whose cubes are missing.
+Re-runs skip remote-identical files (LFS sha256 or git blob id).
+
+GitHub Pages cannot hold the packs. A published site may be at most 1 GB, with a soft limit of 100 GB per month
+bandwidth ([Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)).
+
+**CORS, Range, caching** (measured 2026-11-11 on `tng50-sub488530-viz` with `Origin: https://tanmay-starslab.github.io`):
+- An LFS/Xet file answers 302 to `us.aws.cdn.hf.co/xet-bridge-us/...` (ACAO echoes the origin on the 302, `*` on the
+  CDN). `Range: bytes=0-99` gives 206.
+- A small non-LFS JSON answers 307 to `/api/resolve-cache/<commit>/...` and then 206 from CloudFront. That cache is
+  keyed by commit, so a new commit is visible at once.
+- Each `/resolve/` request counts against the resolver rate limit: 3,000 per 5 min per anonymous IP
+  ([rate limits](https://huggingface.co/docs/hub/rate-limits); headers `RateLimit: "resolvers";r=…;t=…`). The CDN hop
+  does not count.
+- One galaxy costs 4 JSON requests, plus one per opened sightline, plus 4 per WebP cube, so viewing all 57 cubes is
+  228 requests. A visitor cannot reach the limit by normal use. The page should still back off on 429.
+
+**Tiering.** If public storage must stay small (free account, or HF asks), choose by galaxy with `--tier-file`
+(`{"<id>": "full", ...}` over a default `--tier lite`):
+- `full` for 488530 and a showcase set (say 10 galaxies, 7.6 GB).
+- `lite` for the rest (188 × 236 MB = 44 GB).
+- Total about 52 GB, against 151 GB if every galaxy is `full`.
+
+Two tier caveats:
+- `core` drops 8 of the 12 ion cubes but keeps all 12 in the spectra.
+- The gz-less tiers (`webp`, `lite`, `core`) set `formats.gz.hosted = false` in the published manifest. The page's
+  `vizload.js` must skip the gz fallback when that flag is false, or a failed WebP decode ends in a 404 instead of
+  the "cannot decode" message.
+
+Filtered manifests (levels or fields dropped) pass `tngsight.vizpack.validate_manifest_v2`. The 3D tab must offer
+only the levels and fields present in the galaxy's manifest.
+
+**Option, not implemented: bundle the binaries.** Concatenating the 672 binaries into one `spectra.pack` with an
+offset table read by Range requests (206 is supported, see above) would cut a galaxy to about 290 files. All 198 full
+packs would then fit one repo (57k files). The cost is a page and TNGS loader change, so sharding is the default.

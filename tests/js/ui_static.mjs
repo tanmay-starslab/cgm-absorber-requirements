@@ -82,6 +82,13 @@ const declaredId = id => new RegExp(`\\bid=["']${esc(id)}["']`).test(htmlText) ?
 { const ins = [...htmlText.matchAll(/<input\b[^>]*\bname=["']layout["'][^>]*>/g)].map(m => m[0]), vals = ins.map(s => (s.match(/\bvalue=["']([^"']+)["']/) || [])[1]);
   check(JSON.stringify([...vals].sort()) === JSON.stringify(["1", "2R", "2SN", "4"]) && ins.every(s => /data-testid="layout-/.test(s)), `C8 layout radios input[name=layout] are 1, 2R, 2SN, 4 with test ids (found ${vals.join(", ") || "none"})`); }
 check(/#v3d-stage\b[^{]*\{[^}]*aspect-ratio\s*:\s*1\s*(\/\s*1\s*)?[;}]/.test(cssText), "C13 #v3d-stage CSS sets aspect-ratio 1 / 1");
+{ /* galaxy sample: the picker group is hidden by default (the page shows it only with CFG.galaxies), its popover is a dialog
+     with a search box, a sort header and a listbox; read from the template so a page exported before it still passes */
+  const T = readFileSync(join(ROOT, "docs", "tng50", "_template.html"), "utf8"), G = readFileSync(join(ROOT, "docs", "tng50", "js", "galaxies.js"), "utf8");
+  check(/<div class="grp" id="grp-gal"[^>]*\bhidden\b/.test(T) && /id="gxy-open"[^>]*aria-controls="gxy-pop"/.test(T) && /<div class="pop" id="gxy-pop" role="dialog"/.test(T)
+    && /<input\b(?=[^>]*\bid="gxy-search")(?=[^>]*\btype="search")/.test(T) && /id="gxy-head"/.test(T) && /<ul id="gxy-list" role="listbox"/.test(T)
+    && /export function createGalaxyPicker/.test(G) && /galaxy picker \(galaxy-sample web contract; js\/galaxies\.js\) BEGIN/.test(readFileSync(join(ROOT, "docs", "tng50", "css", "page.css"), "utf8")) && /#gxy-pop\{/.test(cssText),
+  "galaxy picker: #grp-gal hidden by default, #gxy-pop dialog with search, sort header and listbox, CSS block present"); }
 check(!/<select\b[^>]*\bid=["']gallery["']/.test(htmlText) && /\bid="gal-pop"/.test(htmlText) && /<input\b(?=[^>]*\bid="gal-search")(?=[^>]*\btype="search")[^>]*>/.test(htmlText),
   'C6 gallery is a popover (#gal-pop with input#gal-search type search), no <select id="gallery">');
 /* ux4 B: the sightline button carries no id text (clean parameters come from gallery.js sightLabel), and the picker's
