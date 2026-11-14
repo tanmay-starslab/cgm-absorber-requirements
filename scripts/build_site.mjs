@@ -23,7 +23,7 @@ cpSync(join(SRC, "tng50"), OUT, {recursive: true, filter: src => !skip(src)});
 // Detect & Resolve at /requirements/: its links to tng50/... now point at the site root
 mkdirSync(join(OUT, "requirements"), {recursive: true});
 let dr = readFileSync(join(SRC, "index.html"), "utf8");
-dr = dr.replaceAll('href="tng50/learn/', 'href="/learn/').replaceAll('href="tng50/"', 'href="/"');
+dr = dr.replaceAll('href="tng50/learn/', 'href="/learn/').replaceAll('href="tng50/"', 'href="/"').replaceAll('href="tng50/favicon.ico"', 'href="/favicon.ico"').replaceAll('href="tng50/img/icon/', 'href="/img/icon/').replaceAll('href="tng50/site.webmanifest"', 'href="/site.webmanifest"');
 writeFileSync(join(OUT, "requirements", "index.html"), dr);
 
 // the explorer's companion link (was ../ on GitHub Pages)
