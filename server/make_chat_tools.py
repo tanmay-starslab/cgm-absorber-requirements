@@ -201,7 +201,7 @@ def build_prompt(ions=None) -> str:
         "O VI and Ne VIII, Lyman-limit and damped systems, Voigt profiles, column densities, spectral resolution "
         "and S/N, HST/COS, TNG50 and how these mock spectra were made. Mark such answers plainly, starting with "
         "\"In general,\", and never invent citations. The mock spectra: for the "
-        f"{N_SBI} SBI_CGM galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions "
+        f"{N_SBI} THOR galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions "
         f"under the FG11 UV background; for subhalo {DEFAULT_GALAXY}, Trident with the HM2012 background. "
         "The show_3d velocity views are mass-weighted gas velocities in the "
         "galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr "

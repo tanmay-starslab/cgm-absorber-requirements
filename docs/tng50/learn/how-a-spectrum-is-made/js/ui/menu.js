@@ -130,7 +130,7 @@ export function creditSections(galaxy) {
     {h: "Spectra", p: [
       `${beam}: Trident (Hummels, Smith &amp; Silvia 2017) on yt (Turk et al. 2011) with the HM2012 UV background (Haardt &amp; Madau 2012); ` +
       "the 3D ion cubes use the same Trident HM2012 tables.",
-      "The explorer's 198 Milky Way and M31 analogues: the SBI_CGM fiducial ray library, with rays through the TNG50 Voronoi mesh traced by THOR " +
+      "The explorer's 198 Milky Way and M31 analogues: rays through the TNG50 Voronoi mesh traced by THOR " +
       `(Byrohl &amp; Nelson 2025, ${A("https://arxiv.org/abs/2507.11603", "arXiv:2507.11603")}), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background ` +
       "(Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding."]},
     {h: "Music", p: [
