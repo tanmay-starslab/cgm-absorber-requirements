@@ -120,7 +120,10 @@ export function hudGeometry(bands, cls, type, state = {}) {
     const sw = soundWidth(cls);
     out.sound = {x: out.menu.x - 8 - sw, y: y1, w: sw, h: CHIP_H, icon: sw === 44};
     const fit = actChipFit(state.act, state.restSw, state.restNote, out.sound.x - 8 - bands.hud.x - m);
-    out.act = {x: bands.hud.x + m, y: y1, w: fit.w, h: CHIP_H, rest: fit.rest};
+    // back to the explorer (owner 2026-11-13): a 44 px arrow at the far left of the HUD row; the act chip moves right of it
+    out.back = {x: bands.hud.x + m, y: y1, w: 44, h: CHIP_H};
+    const fitB = actChipFit(state.act, state.restSw, state.restNote, out.sound.x - 8 - (out.back.x + 52));
+    out.act = {x: out.back.x + 52, y: y1, w: fitB.w, h: CHIP_H, rest: fitB.rest};
     if (state.legend) {
       const pw = pillWidth(state.legend);
       // phones: the pill takes the top-left of the world band while it shows (only lower-priority labels live there),
@@ -176,6 +179,7 @@ export function frameItems(fs, env) {
   if (hg.act && !titleBeat) items.push({id: "hud:act", kind: "hud", priority: 100, rect: hg.act});
   if (hg.menu) items.push({id: "hud:menu", kind: "hud", priority: 100, rect: hg.menu});
   if (hg.sound) items.push({id: "hud:sound", kind: "hud", priority: 100, rect: hg.sound});
+  if (hg.back) items.push({id: "hud:back", kind: "hud", priority: 100, rect: hg.back});
   if (hg.phase) items.push({id: "hud:phase", kind: "hud", priority: 99, rect: hg.phase});
   // the credits ID badge yields to everything else (placed last among fixed boxes, hidden on a collision); not counted by G12
   if (hg.badge) items.push({id: "hud:badge", kind: "hud", priority: 44, rect: hg.badge});
@@ -287,7 +291,7 @@ function endItem(end, bands, type) {
 }
 
 /* G12: HUD elements visible in flight (act chip, menu, fly, rail; phase pill and hint count when shown). The music toggle
-   (hud:sound) is always on screen at the owner's request and is not counted; neither is the credits ID badge (hud:badge),
+   (hud:sound) and the back arrow (hud:back) are always on screen at the owner's request and are not counted; neither is the credits ID badge (hud:badge),
    a data label that hides whenever anything else needs its room. */
 export function chromeCount(solved) {
   const ids = new Set(solved.placed.map(b => b.id));
@@ -513,6 +517,7 @@ export function createShell(els, opts = {}) {
       place(els.actChip, B["hud:act"]); }
     place(els.menuButton, B["hud:menu"]);
     place(els.soundButton, B["hud:sound"]);
+    place(els.backButton, B["hud:back"]);
     if (els.soundButton && B["hud:sound"]) els.soundButton.classList.toggle("icon", B["hud:sound"].w <= 44);
     if (badge) { place(els.idBadge, B["hud:badge"]); if (B["hud:badge"]) els.idBadge.dataset.mode = B["hud:badge"].h > 40 ? "stack" : "row"; }
     if (els.phasePill) {

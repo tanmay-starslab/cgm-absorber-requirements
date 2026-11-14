@@ -175,7 +175,7 @@ async function boot() {
   /* ---------------- shell ---------------- */
   const els = {root: $("stage"), hud: $("hud"), rail: $("rail"), kinetic: $("kinetic"), labels: $("labels"), sheets: $("sheets"),
     menuButton: $("menu-btn"), menuSheet: $("menu-sheet"), narrativeList: $("narrative"), live: $("live"), textOverlay: $("text-overlay"),
-    canvas: $("gl"), actChip: $("act-chip"), phasePill: $("phase-pill"), hint: $("hint"), soundButton: $("sound-btn"), idBadge: $("id-badge")};
+    canvas: $("gl"), actChip: $("act-chip"), phasePill: $("phase-pill"), hint: $("hint"), soundButton: $("sound-btn"), backButton: $("back-btn"), idBadge: $("id-badge")};
   // optional music (off by default, loaded on first use; js/ui/sound.js): the HUD pill, the gate toggle and the M key
   const music = createSound({copy});
   music.bind(els.soundButton);
@@ -185,6 +185,8 @@ async function boot() {
     const fs = lastFs, ov = explore.overrides;
     return "../../index.html#" + entryFragment({g: data.meta.galaxy, ray: data.meta.ray, R: ov.R ?? (fs && fs.spec.R), sn: ov.sn ?? (fs && fs.spec.sn)});
   };
+  // the back arrow follows the story: same galaxy, beam and instrument in the explorer (the href is refreshed on press)
+  { const bb = $("back-btn"); if (bb) bb.addEventListener("pointerdown", () => { bb.href = explorerHref(); }); bb && bb.addEventListener("focus", () => { bb.href = explorerHref(); }); }
   let trailOn = false;
   const hooks = {
     music: () => music.toggle(),

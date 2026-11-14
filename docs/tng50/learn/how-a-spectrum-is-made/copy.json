@@ -757,7 +757,7 @@
   "credits": {
     "heading": "Credits and methods",
     "items": [
-      "Simulation: IllustrisTNG, TNG50-1 (Nelson et al. 2019a, 2019b; Pillepich et al. 2019), used as the TNG Collaboration requests.",
+      "Simulation: IllustrisTNG, TNG50-1 (Nelson et al. 2019a, 2019b; Pillepich et al. 2019), used under the TNG team's terms.",
       "Spectra: Trident (Hummels, Smith & Silvia 2017) on yt (Turk et al. 2011).",
       "Ionisation: the Haardt & Madau (2012) UV background tables.",
       "Cloud finding: techniques adapted from Lucchini, Han, Hernquist & Conroy (2024) and Lucchini et al. (2025, ApJ 990, 118), which build on Nelson et al. (2020) and Ramesh et al. (2023). No code was copied.",
@@ -907,14 +907,14 @@
   },
   "rules": {
     "plain_language": {
-      "R": "sharpness (R in the Physics layer)",
-      "S/N": "exposure (S/N in the Physics layer)",
-      "column density": "amount (log N in the Physics layer)",
+      "R": "sharpness (R in Science details)",
+      "S/N": "exposure (S/N in Science details)",
+      "column density": "amount (log N in Science details)",
       "absorption line": "dip",
       "sightline": "beam",
       "line-spread function": "blur",
       "component": "component (B13 only, where the lesson needs the word)",
-      "temperature": "heat in display lines; T with units in the Physics layer",
+      "temperature": "heat in display lines; T with units in Science details",
       "meters": "'{{$ion}} gas crossed', 'light left at the centre', 'width of the black core', 'light taken'"
     },
     "analogies": [
@@ -962,7 +962,7 @@
       }
     ],
     "positions": "A dip position on screen is a spectral-minimum key (b7e_*, b9_new_minima, s10_feature_v), never an N-weighted mean of cells (C_science H2).",
-    "cells_wording": "Display says 'hundreds of gas cells' only for the cells the beam touches (n_kernels); it never says hundreds of cells make the dips (v1 review P0-6: only ovi_n_visible leave a visible O VI shadow). Counts appear only in the Physics layer: n_kernels kernels touch, about n_crossed are crossed. ncross and n_cells are banned in copy."
+    "cells_wording": "Display says 'hundreds of gas cells' only for the cells the beam touches (n_kernels); it never says hundreds of cells make the dips (v1 review P0-6: only ovi_n_visible leave a visible O VI shadow). Counts appear only in Science details: n_kernels kernels touch, about n_crossed are crossed. ncross and n_cells are banned in copy."
   },
   "lint": {
     "allow": [
