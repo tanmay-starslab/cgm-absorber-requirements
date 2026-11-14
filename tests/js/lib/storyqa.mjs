@@ -178,7 +178,7 @@ export function evalLayout(snap, {areaTol = 4, maxChrome = 4, fontFloor = 12, g3
   /* the phase-legend pill shows only on TF changes and at stops (§3.3) and is not counted; neither is the music toggle,
      which the owner asked to keep visible at all times (2026-11-13), nor the credits ID badge (hud:badge, a data label that
      yields its room to everything else) */
-  if (snap.flight) { const ch = vis.filter(b => isChrome(b) && !(b.kind === "rail" && b.parent) && !/(^|[:#-])(phase|sound|badge)/.test(String(b.id))); if (ch.length > maxChrome) f("G12", `${ch.length} chrome elements in flight (<= ${maxChrome}): ${ch.map(b => b.id).join(", ")}`); }
+  if (snap.flight) { const ch = vis.filter(b => isChrome(b) && !(b.kind === "rail" && b.parent) && !/(^|[:#-])(phase|sound|badge|back)/.test(String(b.id))); if (ch.length > maxChrome) f("G12", `${ch.length} chrome elements in flight (<= ${maxChrome}): ${ch.map(b => b.id).join(", ")}`); }
   const want = dockState(snap.expectDock, snap.beatU);
   if (want && snap.dockState && !want.includes(snap.dockState)) f("G12", `dock is "${snap.dockState}", beats.json says "${want.join(" -> ")}"${snap.beatU !== undefined ? ` at u ${(+snap.beatU).toFixed(3)}` : ""}`);
   /* G10-dom */

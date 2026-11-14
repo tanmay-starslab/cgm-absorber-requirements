@@ -13,7 +13,7 @@ export const ENTRIES = Object.freeze([
   {id: "watch", label: "Watch the flight", hint: null},          // length comes from hooks.watchHint() (the beats' Watch schedule)
   {id: "explore", label: "Explore this beam", hint: "your controls, same galaxy"},
   {id: "picker", label: "Try another beam", hint: "any galaxy of the sample"},
-  {id: "physics", label: "Physics layer", hint: "the honest details", toggle: true},
+  {id: "physics", label: "Science details", hint: "numbers, equations and caveats", toggle: true},
   {id: "text", label: "Read as text", hint: "the whole story, no motion"},
   {id: "share", label: "Copy link to this moment"},
   {id: "keys", label: "Keys and help"},
@@ -120,9 +120,9 @@ export function creditSections(galaxy) {
   return [
     {h: "Simulation", p: [
       `IllustrisTNG, TNG50-1 at z = 0 (snapshot 99), from the ${A("https://www.tng-project.org/data/", "TNG public data release")} (free, registration required). ` +
-      `Please cite Nelson et al. 2019a (${A("https://arxiv.org/abs/1812.05609", "Computational Astrophysics and Cosmology 6, 2")}), ` +
+      `The simulation is described in Nelson et al. 2019a (${A("https://arxiv.org/abs/1812.05609", "Computational Astrophysics and Cosmology 6, 2")}), ` +
       `Nelson et al. 2019b (${A("https://arxiv.org/abs/1902.05554", "MNRAS 490, 3234")}) and Pillepich et al. 2019 (${A("https://arxiv.org/abs/1902.05553", "MNRAS 490, 3196")}).`,
-      "Used as the TNG Collaboration requests (citation); TNG data are not relicensed by this site.",
+      "The TNG team makes these data free to use and asks that any work using them cites those three papers. This site follows that request; the TNG data stay under the TNG team's terms.",
       {cls: "cr-ack", t: "The IllustrisTNG simulations were undertaken with compute time awarded by the Gauss Centre for Supercomputing (GCS) under GCS " +
         "Large-Scale Projects GCS-ILLU and GCS-DWAR on the GCS share of the supercomputer Hazel Hen at the High Performance Computing Center " +
         "Stuttgart (HLRS), as well as on the machines of the Max Planck Computing and Data Facility (MPCDF) in Garching, Germany."}]},
@@ -136,8 +136,7 @@ export function creditSections(galaxy) {
       "Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (orchestral recording); excerpted, faded and looped."]},
     {h: "Code", p: [
       `MIT, ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements", "github.com/tanmay-starslab/cgm-absorber-requirements")}; ` +
-      `third-party licences: ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements/blob/main/THIRD_PARTY_LICENSES", "THIRD_PARTY_LICENSES")}`,
-      "Hosted data: the public Hugging Face datasets tanmay-starslab/tng50-mwm31-web-0 to 3 and tng50-sub488530-viz (TNG-derived; the citation request applies)."]},
+      `third-party licences: ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements/blob/main/THIRD_PARTY_LICENSES", "THIRD_PARTY_LICENSES")}`]},
   ];
 }
 export function createCredits(host, opts = {}) {
