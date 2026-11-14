@@ -7,5 +7,7 @@
     "directory": "./dist",
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "404-page"
-  }
+  },
+  // branch builds run `wrangler preview` (a preview URL per pull request); it needs this block, which may stay empty
+  "previews": {}
 }
