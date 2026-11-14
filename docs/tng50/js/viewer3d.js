@@ -192,7 +192,8 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
   --s-panel:#0c1016;--s-ink:#e9eef4;--s-ink2:#b3bdc9;--s-rule:#2f3844;--s-accent:#7db2f0;--s-fit:#f39a5c;--s-bad:#ff8a8a;--lib-line:#8d97a6;
   --s-mat:color-mix(in srgb,#0c1016 74%,transparent);--s-blur:blur(24px) saturate(1.5);--s-edge:rgba(200,215,240,.16);--s-hi:inset 0 1px 0 rgba(255,255,255,.10)}
 .v3d-stage{position:relative;width:100%;height:100%;touch-action:none;color-scheme:dark;background:${BG};color:var(--s-ink);overflow:hidden}
-.v3d-stage canvas{display:block;width:100%;height:100%;outline:none}
+.v3d-stage{background:#05070b}.v3d-stage canvas{display:block;width:100%;height:100%;outline:none;background:#05070b}
+.v3d.v3d-gl-off .v3d-stage canvas{visibility:hidden}
 .v3d-stage canvas:focus-visible{outline:2px solid var(--s-accent);outline-offset:-2px}
 #v3d-stage{position:relative}
 #v3d-stage .v3d:not(.v3d-thumb):not(.v3d-fs){position:absolute;inset:0}
@@ -369,7 +370,22 @@ body.v3d-noscroll{overflow:hidden}
 @media (prefers-contrast:more){.v3d{--s-edge:rgba(220,230,250,.5)}.v3c{--cg-edge:var(--mat-edge-hc,var(--muted,#98a0b8))}}`;
 
 const pretty = u => String(u || "").replace("cm^-3", "cm⁻³").replace("cm^-2", "cm⁻²").replace("Zsun", "Z☉");
-const isMobile = () => matchMedia("(max-width: 720px)").matches;
+/* "mobile" = the constrained GPU profile (192 MB texture budget, pixel ratio 1, no stars, serial loads). Width alone missed
+   large tablets (Galaxy Tab S8 Ultra, iPad Pro: desktop-width screens, mobile-browser GPU memory limits), which then lost the
+   WebGL context. A touch-only device, a mobile/tablet browser, a reported device memory <= 4 GB, or a context loss earlier
+   in this session (sessionStorage) all select it; ?gpu=full forces the desktop profile, ?gpu=lite the constrained one. */
+const LITE_KEY = "tng50.gpuLite";
+const isMobile = () => {
+  try { const q = new URLSearchParams(location.search).get("gpu"); if (q === "full") return false; if (q === "lite") return true; } catch { /* no URL */ }
+  try { if (sessionStorage.getItem(LITE_KEY) === "1") return true; } catch { /* private mode */ }
+  if (matchMedia("(max-width: 720px)").matches) return true;
+  if (matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches) return true;
+  if (navigator.userAgentData?.mobile) return true;
+  if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent || "")) return true;
+  if (/Macintosh/.test(navigator.userAgent || "") && (navigator.maxTouchPoints || 0) > 1) return true;   // iPadOS reports a Mac
+  if ((navigator.deviceMemory ?? 8) <= 4) return true;
+  return false;
+};
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
 const mb = b => (b / 1e6).toFixed(b > 1e7 ? 0 : 1) + " MB";
@@ -682,7 +698,7 @@ async function create(app, opts = {}) {
   /* ---- textures, LOD, GPU budget ---- */
   const loader = manifest ? makeLoader({manifest, base: viz.base, fallbackBase: viz.fallback_base, cache: viz.cache !== false}) : null;
   const TEX = new Map(), PEND = new Map(), FADE = new Map(), PROG = new Map();   // PROG: key -> {got, total} bytes (tune2)   // key "gas|nH|L1" / "stars||S1" -> {tex, bytes, used}
-  const BUDGET = (mobile ? 192 : 448) * 1e6;
+  let BUDGET = (mobile ? 192 : 448) * 1e6;
   let hostErr = null, useMovingExact = true, calibrated = "";
   const keyOf = (kind, k, L) => `${kind}|${k || ""}|${L}`;
   const hVis = () => camera.position.distanceTo(controls.target) * Math.tan(camera.fov * Math.PI / 360);
@@ -887,10 +903,23 @@ async function create(app, opts = {}) {
   }
   /* fix-ui FE-06: WebGL context loss. three.js rebuilds its GL state on restore and re-uploads every texture that still
      has its bytes; the cubes dropped theirs after upload, so they are dropped here and requested again (from CacheStorage) */
-  let ctxLost = false;
-  canvas.addEventListener("webglcontextlost", ev => { ev.preventDefault(); ctxLost = true;
-    say("The graphics context was lost (GPU reset or memory pressure). Restoring the 3D view…", true); });
-  canvas.addEventListener("webglcontextrestored", () => { ctxLost = false;
+  let ctxLost = false, losses = 0, restoreTimer = 0, gaveUp = false;
+  const giveUp = () => {
+    if (gaveUp) return; gaveUp = true; clearTimeout(restoreTimer);
+    el.classList.add("v3d-gl-off");
+    say("This device ran out of graphics memory for the 3D view. The spectra, sightlines and ray picking still work. Reload the page to try 3D again with lighter settings.", true);
+    try { viewer?.hooks?.onGLOff?.(); } catch { /* none */ }
+  };
+  canvas.addEventListener("webglcontextlost", ev => { ev.preventDefault(); ctxLost = true; losses++;
+    /* the next viewer in this session (reload, galaxy switch) starts in the constrained profile */
+    try { sessionStorage.setItem(LITE_KEY, "1"); } catch { /* private mode */ }
+    if (losses >= 2) { giveUp(); return; }
+    say("The 3D view ran short of graphics memory. Restoring it with lighter settings…", true);
+    clearTimeout(restoreTimer); restoreTimer = setTimeout(giveUp, 4000); });
+  canvas.addEventListener("webglcontextrestored", () => { ctxLost = false; clearTimeout(restoreTimer);
+    if (gaveUp) return;
+    /* lighter from here on: pixel ratio 1 or less, no stars, half the texture budget */
+    BUDGET = Math.min(BUDGET, 128e6); layer.stars = false; setPR(Math.min(curPR, 1));
     for (const [key, it] of [...TEX]) if (!it.tex.image?.data) TEX.delete(key);
     for (const sl of [...SLOT.gas, ...SLOT.w]) U[sl].value = RM.empty1; for (const sl of [...SLOT.stars, ...SLOT.vel]) U[sl].value = RM.empty4;
     U.uGasHave.value.set(0, 0, 0); U.uWHave.value.set(0, 0, 0); U.uStarHave.value.set(0, 0, 0); U.uVelHave.value.set(0, 0, 0); FADE.clear();
