@@ -34,8 +34,8 @@ check(deq(C.TOOLS.map(t => t.name), ["set_instrument", "select_sightline", "sear
   const page = join(ROOT, "docs", "tng50", "index.html");
   const m = existsSync(page) ? readFileSync(page, "utf8").match(/"galaxies":(\{"default".*?\]\})/) : null;
   if (m) { const G = JSON.parse(m[1]), sbi = G.list.filter(e => String(e.src || "").startsWith("sbi")).length;
-    check(prompt.includes(`${G.list.length} simulated`) && prompt.includes(`${sbi} SBI_CGM galaxies`) && prompt.includes(`subhalo ${G.default}`),
-      `prompt states the page's sample: ${G.list.length} galaxies, ${sbi} SBI_CGM, default ${G.default}`); }
+    check(prompt.includes(`${G.list.length} simulated`) && prompt.includes(`${sbi} THOR galaxies`) && prompt.includes(`subhalo ${G.default}`),
+      `prompt states the page's sample: ${G.list.length} galaxies, ${sbi} THOR, default ${G.default}`); }
   else console.log("skip sample size vs docs/tng50/index.html (no galaxies list)");
 }
 const fx = join(HERE, "fixtures", "query_schema.json");

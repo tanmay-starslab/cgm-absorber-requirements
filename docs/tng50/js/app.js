@@ -764,7 +764,7 @@ function sourceUI() {
     bar.insertBefore(chip, bar.firstChild); }
   const sbi = srcOf(SRC) === "sbi", gid = GAL ?? CFG.galaxy?.subhalo_id;
   chip.textContent = `${GIX && gid != null ? gid + "  " : ""}${sbi ? "THOR" : "Trident"}${GFLAGS.gas_poor ? "  gas-poor" : ""}`;
-  chip.dataset.tip = sbi ? `Subhalo ${gid}: THOR rays through the Voronoi mesh, CLOUDY FG11 ions (SBI_CGM library); click for details`
+  chip.dataset.tip = sbi ? `Subhalo ${gid}: THOR rays through the Voronoi mesh, CLOUDY FG11 ions; click for details`
     : `Subhalo ${gid}: Trident HM2012 spectra, ±R200c; click for details`;
   chip.setAttribute("aria-label", `Subhalo ${gid}, spectra source ${sbi ? "THOR" : (SRC.label || "Trident")}. Open data and methods`);
   methodsText(sbi);
@@ -777,9 +777,9 @@ function methodsText(sbi) {
     MEL.lic = $("#lic-spectra"); MEL.lic2 = MEL.lic && MEL.lic.nextElementSibling;
     const pv = document.createElement("p"); pv.id = "methods-source"; pv.hidden = true; ag.after(pv); MEL.src = pv; }
   const SBI_TXT = {
-    tau: "Optical depths from the SBI_CGM GPU Voigt renderer (fp64) at 0.5 km/s over ±1500 km/s, resampled by velocity; sightlines ±2 R200c long. Velocities are relative to the galaxy's systemic velocity.",
+    tau: "Optical depths from a GPU Voigt renderer (fp64) at 0.5 km/s over ±1500 km/s, resampled by velocity; sightlines ±2 R200c long. Velocities are relative to the galaxy's systemic velocity.",
     ions: "Spectra: rays through the TNG50 Voronoi mesh traced by THOR (Byrohl & Nelson 2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background (Faucher-Giguère et al. 2009) and Rahmati et al. (2013) self-shielding for H I. 3D ion cubes: Trident HM2012 (H I from the TNG neutral fraction) within r ≤ 400 kpc, so a sightline drawn through a cube can differ from its spectrum by a few tenths of a dex.",
-    atomic: "Atomic data: the SBI_CGM profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits."};
+    atomic: "Atomic data: the profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits."};
   /* Data and credits: both spectra paragraphs are always shown; the one that applies to this galaxy's library leads with "This galaxy" */
   for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi]]) { if (!el) continue; let t = el.querySelector(".cur-l");
     if (on && !t) { t = document.createElement("strong"); t.className = "cur-l"; t.textContent = "This galaxy: "; el.prepend(t); } else if (!on && t) t.remove(); }
