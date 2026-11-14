@@ -80,6 +80,16 @@ export const kindWord = e => (e.central === true ? "central" : e.central === fal
 /* the spectra source of an index entry or a catalogue's spectra_source block: "sbi" | "trident" | "" (unknown) */
 export const srcOf = x => { const v = String((x && (x.src ?? x.source)) || "").toLowerCase(); return v.startsWith("sbi") ? "sbi" : v === "trident" ? "trident" : ""; };
 export const SRC_WORD = {sbi: "THOR spectra", trident: "Trident spectra"};
+/* the compact properties of a galaxy (an index entry) for the chat's tools and page snapshot: log masses and SFR rounded,
+   the spectra source in words */
+export function galaxySummary(e) {
+  if (!e) return null;
+  const L = x => (Number.isFinite(+x) && +x > 0 ? +Math.log10(+x).toFixed(2) : null), s = srcOf(e);
+  return {id: +e.id, logMstar: L(e.Mstar), logM200c: L(e.M200c), R200c_kpc: Number.isFinite(+e.R200c) && +e.R200c > 0 ? Math.round(+e.R200c) : null,
+    SFR: e.SFR == null || !Number.isFinite(+e.SFR) ? null : +(+e.SFR).toPrecision(3), central: typeof e.central === "boolean" ? e.central : null,
+    gas_poor: !!e.gas_poor, spectra: s === "sbi" ? "THOR" : s === "trident" ? "Trident" : null, n_sightlines: Number.isFinite(+e.n) && e.n !== null ? +e.n : null,
+    has_3d: !!e.viz};
+}
 /* the full description (aria-label of a row) and the short tip (12 words at most, the page's tip budget) */
 export function galaxyAria(e) {
   if (!e) return "";

@@ -166,6 +166,7 @@ Space or VM secrets: `HF_TOKEN` (read access to the dataset; write access also m
 |---|---|---|
 | `ANTHROPIC_API_KEY` | secret | Anthropic API key; never commit or print it |
 | `CHAT_CLAUDE` | variable | `0` hides the Claude backend while keeping the key (default on) |
+| `CHAT_MODEL` | variable | `claude-haiku-5-5` (default) or `claude-sonnet-5-5`; any other value stops the server at start |
 | `CHAT_DAILY_BUDGET` | variable | upstream requests per UTC day, all clients (default 500) |
 | `CHAT_CLIENT_DAILY_BUDGET` | variable | upstream requests per UTC day for one client (default 50) |
 | `CHAT_DAILY_TOKENS` | variable | upstream tokens per UTC day, all clients (default 4000000; 0 = off) |

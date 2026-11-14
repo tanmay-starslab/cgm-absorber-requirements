@@ -31,6 +31,11 @@ VHW_MIN = 10
 SPECIES_GAS = ["nH", "T", "Z"]
 SPECIES_VEL = ["vlos", "vr", "vphi", "vmag", "sigmalos"]   # derived in the 3D shader from the stored (vx, vy, vz)
 
+N_GALAXIES = 198                 # the page's galaxy sample (docs/tng50 galaxies list; tests/js/chat_tools_sync.mjs checks it)
+N_SBI = 197                      # of them with THOR + CLOUDY FG11 spectra (SBI_CGM); the other is the default galaxy
+DEFAULT_GALAXY = 488530          # Trident HM2012 spectra
+TF_PRESETS = ["ramp", "thor", "iso", "clouds"]   # docs/tng50/js/tf.js PRESETS (viewer3d setTf)
+
 SET_INSTRUMENT_DESC = (
     "Set the spectrograph and view. R: resolving power per band (one value, or two for the two R cases). "
     "snr: S/N per resolution element (one value, or two for the two S/N cases). layout: 1 case, 2 cases "
@@ -52,7 +57,7 @@ def _one_or_two(item: dict) -> dict:
 
 
 def build_tools(ions=None, query_schema=None) -> list:
-    """The six tools, in the fixed order; registry-derived parts per design.md §4.3."""
+    """The ten tools, in the fixed order; registry-derived parts per design.md §4.3."""
     if ions is None:
         from tngsight import ions
     if query_schema is None:
@@ -105,12 +110,49 @@ def build_tools(ions=None, query_schema=None) -> list:
                               "p1_kpc": {"type": "array", "items": {"type": "number", "minimum": -395, "maximum": 395},
                                          "minItems": 3, "maxItems": 3}}}},
         {"name": "show_3d",
-         "description": "Open the 3D tab, optionally choosing the gas field and camera preset. Velocity views "
+         "description": "Open the 3D tab, optionally choosing the gas field, camera preset, render mode (integral: "
+                        "projected; volume: volume rendering) and volume colour preset tf (ramp default, thor gas "
+                        "phases on temperature, iso bands, clouds; tf implies volume mode). Velocity views "
                         "(km/s, galaxy rest frame): vlos line-of-sight velocity, vr radial, vphi rotational, "
                         "vmag speed, sigmalos line-of-sight dispersion; vlos and sigmalos follow the camera.",
          "input_schema": {"type": "object", "additionalProperties": False, "properties": {
              "species": {"type": "string", "enum": SPECIES_GAS + keys + SPECIES_VEL},
-             "preset": {"type": "string", "enum": ["face-on", "edge-on", "sightline"]}}}},
+             "preset": {"type": "string", "enum": ["face-on", "edge-on", "sightline"]},
+             "mode": {"type": "string", "enum": ["integral", "volume"]},
+             "tf": {"type": "string", "enum": list(TF_PRESETS)}}}},
+        {"name": "get_page_state",
+         "description": "The full page state: the open galaxy and its properties, the shown sightline, the tab, the 3D "
+                        "view and the instrument. The [page ...] snapshot before each user message is its short form.",
+         "input_schema": {"type": "object", "additionalProperties": False, "properties": {}}},
+        {"name": "list_galaxies",
+         "description": f"List galaxies of the sample ({N_GALAXIES} TNG50-1 Milky Way and M31 analogues at z = 0), "
+                        "filtered and sorted. Masses are log10 solar masses, SFR solar masses per year. Most massive: "
+                        "sort Mstar, order desc. query takes picker words: an id prefix, central, satellite, mw, m31, "
+                        "gas-poor, m*>10.8, sfr<1. Default sort Mstar desc, limit 10.",
+         "input_schema": {"type": "object", "additionalProperties": False, "properties": {
+             "sort": {"type": "string", "enum": ["Mstar", "M200c", "SFR", "id"]},
+             "order": {"type": "string", "enum": ["desc", "asc"]},
+             "central": {"type": "boolean"},
+             "gas_poor": {"type": "boolean"},
+             "spectra": {"type": "string", "enum": ["THOR", "Trident"]},
+             "logMstar_min": {"type": "number", "minimum": 8, "maximum": 13},
+             "logMstar_max": {"type": "number", "minimum": 8, "maximum": 13},
+             "logM200c_min": {"type": "number", "minimum": 9, "maximum": 15},
+             "logM200c_max": {"type": "number", "minimum": 9, "maximum": 15},
+             "sfr_min": {"type": "number", "minimum": 0, "maximum": 1000},
+             "sfr_max": {"type": "number", "minimum": 0, "maximum": 1000},
+             "query": {"type": "string", "maxLength": 80},
+             "limit": {"type": "integer", "minimum": 1, "maximum": 20}}}},
+        {"name": "select_galaxy",
+         "description": "Open another galaxy of the sample by subhalo id. Its sightline library replaces the current "
+                        "one, so search_sightlines and select_sightline then act on it. Returns its properties, how "
+                        "many sightlines it has and the sightline now shown.",
+         "input_schema": {"type": "object", "additionalProperties": False, "required": ["id"],
+                          "properties": {"id": {"type": "integer", "minimum": 1, "maximum": 999999999}}}},
+        {"name": "set_view",
+         "description": "Switch the main view to the spectra or the 3D tab.",
+         "input_schema": {"type": "object", "additionalProperties": False, "required": ["tab"],
+                          "properties": {"tab": {"type": "string", "enum": ["spectra", "3d"]}}}},
     ]
 
 
@@ -136,23 +178,38 @@ def build_prompt(ions=None) -> str:
     s = ions.SNR
     text = (
         "You are the assistant of the TNG50 sightline explorer, a web page showing mock quasar absorption "
-        f"spectra of {len(rows)} ions ({labels}) through the circumgalactic medium of one simulated "
-        "Milky-Way-mass galaxy (TNG50-1 subhalo 488530, z = 0). "
+        f"spectra of {len(rows)} ions ({labels}) through the circumgalactic medium of {N_GALAXIES} simulated "
+        "Milky Way and M31 analogues from TNG50-1 at z = 0. "
+        "Each user message starts with a [page ...] snapshot of the screen, which you can rely on: g is the open "
+        "galaxy (subhalo id, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, "
+        "number of sightlines), s the shown sightline (id, orientation, impact parameter b in kpc, azimuth), tab, "
+        "the 3D view and the instrument. "
         f"Tool arguments name the ions by key: {', '.join(ions.KEYS)}. "
         + "".join(notes) +
-        "You act only by calling the provided tools; the page executes them and returns JSON results. Every "
-        "number, id or property you state must come from a tool result in this conversation or from the user; "
-        "if the tools cannot answer, say so. Never invent sightline ids. Prefer search_sightlines to find "
-        "sightlines, select_sightline to show one, set_instrument to set the resolving power R per band "
+        "You act on the page only by calling the provided tools; the page executes them and returns JSON results. "
+        "search_sightlines and select_sightline work on the open galaxy: to act on another galaxy, call "
+        "select_galaxy first (list_galaxies finds galaxies by mass, SFR or type), then search or select. "
+        "Use set_instrument for the resolving power R per band "
         f"({bands}), the S/N per resolution element ({int(s['min'])} to {int(s['max'])}), the layout, the ions "
-        "shown and the velocity window, show_3d for the gas distribution, and request_sightline or "
-        "request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes "
-        "and the page opens it when ready). The show_3d velocity views are mass-weighted gas velocities in the "
+        "shown and the velocity window, show_3d for the gas distribution, set_view to switch tabs, and "
+        "request_sightline or request_custom_ray only when the user asks for a new sightline (generation takes "
+        "one to two minutes and the page opens it when ready). "
+        "Every number, id or property about this data (sightline and galaxy ids, galaxy properties, log N, "
+        "components, b) must come from a tool result, the page snapshot or the user; never invent ids. If the "
+        "data tools cannot answer, say what the page can do instead. "
+        "You may answer general questions about the field from your own knowledge: CGM physics, ionisation, "
+        "O VI and Ne VIII, Lyman-limit and damped systems, Voigt profiles, column densities, spectral resolution "
+        "and S/N, HST/COS, TNG50 and how these mock spectra were made. Mark such answers plainly, starting with "
+        "\"In general,\", and never invent citations. The mock spectra: for the "
+        f"{N_SBI} SBI_CGM galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions "
+        f"under the FG11 UV background; for subhalo {DEFAULT_GALAXY}, Trident with the HM2012 background. "
+        "The show_3d velocity views are mass-weighted gas velocities in the "
         "galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr "
-        "positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the galaxy's systemic velocity; "
-        "column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower "
-        "(saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it "
-        "as a measured column. Keep answers short.")
+        "positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the "
+        "galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component "
+        "given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, "
+        "never quote it as a measured column. Keep answers short and friendly, and when useful suggest one "
+        "concrete next step on the page.")
     bad = [c for c in FORBIDDEN if c in text]
     if bad:
         raise ValueError(f"system prompt contains forbidden separators {bad!r}")

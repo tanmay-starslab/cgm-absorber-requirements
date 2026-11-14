@@ -13,7 +13,7 @@ import * as FITM from "./fit.js";
 import {initTips, ION_TIPS} from "./tips.js";
 import {initFeatures} from "./features.js";   /* ux4 features: share, keys, random, undo, solo, CSV, loading */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
-  nearestSightline, defaultSightline, srcOf} from "./galaxies.js";
+  nearestSightline, defaultSightline, srcOf, galaxySummary} from "./galaxies.js";
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
 /* ---------------- config ---------------- */
@@ -967,6 +967,21 @@ const fail = message => ({status: "error", message});
 function getState() { return {id: S.id, ions: S.ions.slice(), layout: S.layout, R: Object.fromEntries(Object.entries(S.R).map(([b, r]) => [b, r.slice()])), sn: S.sn.slice(),
   vc: S.vc, vhw: S.vhw, seed: S.seed, intrinsic: S.intr, fit: S.fit, tab: S.tab, galaxy: GAL, api: API, warm: !!(HEALTH && HEALTH.warm),
   job: JOB ? {job_id: JOB.job_id, id: JOB.id, kind: JOB.kind} : null}; }
+/* the chat's page snapshot (chat.js get_page_state and the [page ...] prefix of every question): the open galaxy and its
+   properties, the shown sightline, the tab, the 3D view and the instrument */
+function pageState() {
+  const ge = GIX ? GIX.byId.get(GAL) || null : null, cg = CFG.galaxy || {}, e = S.id ? CAT.get(S.id) : null, v = V3 && V3.webgl2 ? V3 : null;
+  const g = galaxySummary({...(ge || {}), id: GAL ?? cg.subhalo_id, Mstar: ge?.Mstar ?? cg.Mstar_Msun, M200c: ge?.M200c ?? cg.M200c_Msun,
+    R200c: cg.R200c_kpc ?? ge?.R200c, SFR: ge?.SFR ?? cg.SFR_Msun_yr, central: ge?.central ?? cg.central, gas_poor: GFLAGS.gas_poor ?? ge?.gas_poor,
+    src: srcOf(SRC) || ge?.src, n: CAT.size, viz: !!CFG.viz});
+  let tf = null; try { tf = v ? (v.tfOn && v.tfOn() ? v.tfState()?.preset || "custom" : "ramp") : null; } catch { tf = null; }
+  return {n_galaxies: GIX ? GIX.list.length : 1, galaxy: g,
+    sightline: e ? {id: e.id, orientation: e.orientation || null, b_kpc: e.b_kpc ?? null, azimuth_deg: e.azimuth_deg ?? null} : null,
+    tab: S.tab, view3d: v ? {species: v.species || null, mode: v.mode || null, tf} : null,
+    instrument: {R: Object.fromEntries(Object.entries(S.R).map(([b, r]) => [b, r.slice()])), sn: S.sn.slice(), layout: S.layout, ions: S.ions.slice(),
+      vc: S.vc, vhw: S.vhw, fit: !!S.fit},
+    job: JOB ? {id: JOB.id, kind: JOB.kind} : null};
+}
 function applyPatch(P) {
   for (const k of ["R", "sn", "layout", "ions", "vhw", "vc"]) if (P[k] !== undefined) S[k] = P[k];
   clampView(S, vmax()); syncAll(); if (P.fit !== undefined) setFit(P.fit); draw(); writeHash(); emit("tng:instrument", {state: getState()}); return getState(); }
@@ -977,7 +992,7 @@ window.tngApp = {
   openCredits(opener) { const pop = $("#pop-licence"), b = opener || $("#credits-open"); if (!pop || !b) return false;
     if (!pop.hidden && lastOpener === b) { closePops(); return false; } openPop(b, pop); return true; },
   async selectGalaxy(id, {source = "chat"} = {}) { return switchGalaxy(+id, {source}); },
-  getState, entries: () => sorted().map(strip), entry: id => (CAT.has(id) ? strip(CAT.get(id)) : null),
+  getState, pageState, entries: () => sorted().map(strip), entry: id => (CAT.has(id) ? strip(CAT.get(id)) : null),
   async select(id, {source = "chat"} = {}) { if (!CAT.has(id)) return false; if (id !== S.id) await select(id, false, source); return true; },
   setInstrument(o = {}) { return applyPatch(instrumentPatch(o, reg, S, vmaxFor)); },
   setView(o = {}) { const P = instrumentPatch({...(o.vhw !== undefined ? {vhw: o.vhw} : {}), ...(o.vc !== undefined ? {vc: o.vc} : {})}, reg, S, vmaxFor); return applyPatch(P); },
@@ -1003,11 +1018,16 @@ window.tngApp = {
   async submitCustom({p0_kpc, p1_kpc} = {}) { const r = await submitJob("custom", {p0_kpc, p1_kpc}, true);
     return r.offline ? fail("generating a custom ray needs a sightline server (none is online)") : r; },
   components, componentsIndex, showTab: t => showTab(t),
-  async show3d({species, preset} = {}) { showTab("3d"); let v; try { v = await open3d(); } catch (x) { return {ok: false, webgl2: false, message: x.message}; }
+  /* mode: "integral" | "volume" (viewer.setMode); tf: a tf.js preset (viewer.setTf), drawn in volume mode only, so it implies it */
+  async show3d({species, preset, mode, tf} = {}) { showTab("3d"); let v; try { v = await open3d(); } catch (x) { return {ok: false, webgl2: false, message: x.message}; }
     if (!v.webgl2) return {ok: false, webgl2: false, species: null, preset: null, message: v.message};
     if (species && !(await v.setSpecies(species))) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: v.loadError && v.loadError.key === species ? `the ${species} volume could not be loaded: ${v.loadError.message}` : v.wanted !== species ? "superseded by a later 3D request" : `the ${species} volume is not available`};
+    const m = tf ? "volume" : mode;
+    if (m && !v.setMode(m)) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: `${v.species || "this field"} has no ${m} view`};
+    if (tf && !v.setTf(tf)) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: `the ${tf} colour preset is not available for ${v.species || "this field"}`};
     if (preset && !v.setPreset(preset)) return {ok: false, webgl2: true, species: v.species, preset, mode: v.mode, message: v.presetError || "select a sightline first"};
-    return {ok: true, webgl2: true, species: v.species, preset: preset || null, mode: v.mode}; },
+    let t = null; try { t = v.tfOn && v.tfOn() ? v.tfState()?.preset || "custom" : "ramp"; } catch { t = null; }
+    return {ok: true, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, tf: t}; },
   _debug: {figureBody, get dgBytes() { return dgBytes; }, get dgSize() { return DG.size; }, dgMax: DG_MAX_BYTES,
     quality(ion, ci, v) { const r = fitResult(ion, ci), d = S.id && SIGHT.has(S.id) ? dataFor(ion, ci) : null;
       return (r && r.comps || []).filter(c => v == null || Math.abs(c.v - v) < 1e-6).map(c => ({v: c.v, logN: c.logN, flag: c.flag, ...compQuality(c, ion, r, d)})); },
