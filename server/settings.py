@@ -37,9 +37,10 @@ def _default_dir(fn, env, fallback):
 
 
 def check_chat_model(m: str) -> str:
-    """`m` when it is one of CHAT_MODELS, else ValueError (a misconfigured chat model fails at start, never per request)."""
-    if m not in CHAT_MODELS:
-        raise ValueError(f"CHAT_MODEL must be one of {', '.join(CHAT_MODELS)} (got {str(m)[:60]!r})")
+    """`m` when it is "auto" or one of CHAT_MODELS, else ValueError (a misconfigured chat model fails at start, never per
+    request). "auto" routes each question by complexity (server/chat.py pick_model)."""
+    if m != "auto" and m not in CHAT_MODELS:
+        raise ValueError(f"CHAT_MODEL must be auto or one of {', '.join(CHAT_MODELS)} (got {str(m)[:60]!r})")
     return m
 
 
@@ -102,10 +103,11 @@ class Settings:
     # chat (POST /api/chat, server/chat.py): Claude proxy, off unless a key is configured
     anthropic_api_key: str | None = field(default=None, repr=False)
     chat_claude: bool = True
-    chat_model: str = CHAT_MODELS[0]        # CHAT_MODEL; one of CHAT_MODELS (anything else is rejected)
+    chat_model: str = "auto"        # CHAT_MODEL; one of CHAT_MODELS (anything else is rejected)
     chat_daily_budget: int = 500            # upstream requests per UTC day, all clients together
     chat_client_daily_budget: int = 50      # upstream requests per UTC day for one client (IPv6: its /64)
     chat_daily_tokens: int = 4_000_000      # upstream input+output tokens per UTC day, all clients (0: off)
+    chat_large_daily_budget: int = 150      # CHAT_MODEL=auto: requests per UTC day that may use the larger model (then the small one)
     rl_chat: tuple = (60, 12)               # (per hour, burst) per client (IPv4 address / IPv6 /64)
     chat_max_tokens: int = 1024
     chat_timeout_s: float = 30.0
@@ -139,6 +141,7 @@ class Settings:
                 chat_daily_budget=int(g("CHAT_DAILY_BUDGET") or cls.chat_daily_budget),
                 chat_client_daily_budget=int(g("CHAT_CLIENT_DAILY_BUDGET") or cls.chat_client_daily_budget),
                 chat_daily_tokens=int(g("CHAT_DAILY_TOKENS") or cls.chat_daily_tokens),
+                chat_large_daily_budget=int(g("CHAT_LARGE_DAILY_BUDGET") or cls.chat_large_daily_budget),
                 default_galaxy=(g("TNG_DEFAULT_GALAXY") or cls.default_galaxy).strip(),
                 galaxy_root=opt("TNG_GALAXY_ROOT") or opt("TNG_GAL_ROOT"), galaxies_index=opt("TNG_GALAXIES"),
                 gal_hf_dataset=(cls.gal_hf_dataset if g("GAL_HF_DATASET") is None else (g("GAL_HF_DATASET") or None)),

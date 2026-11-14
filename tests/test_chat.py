@@ -436,18 +436,40 @@ def test_health_true_with_key_and_env_parsing():
 
 
 def test_chat_model_setting():
-    """CHAT_MODEL picks the model among CHAT_MODELS only; the default stays claude-haiku-5-5."""
+    """CHAT_MODEL is auto (default) or one of CHAT_MODELS; anything else fails at start."""
     from server.settings import CHAT_MODELS
     assert CHAT_MODELS == ("claude-haiku-5-5", "claude-sonnet-5-5")
-    assert Settings.from_env(env={}).chat_model == "claude-haiku-5-5" == chat.MODEL
+    assert Settings.from_env(env={}).chat_model == "auto"
     assert Settings.from_env(env={"CHAT_MODEL": " claude-sonnet-5-5 "}).chat_model == "claude-sonnet-5-5"
     for bad in ("claude-opus-5-5", "gpt-4o", "claude-haiku-5-5x"):
-        with pytest.raises(ValueError, match="CHAT_MODEL must be one of"):
+        with pytest.raises(ValueError, match="CHAT_MODEL must be auto or one of"):
             Settings.from_env(env={"CHAT_MODEL": bad})
     c, up = client(chat_model="claude-sonnet-5-5")
     assert c.post("/api/chat", json=user()).status_code == 200 and up.last["model"] == "claude-sonnet-5-5"
     with pytest.raises(ValueError):
         client(chat_model="claude-opus-5-5")
+
+
+def test_auto_model_routing():
+    """auto: page control and lookups go to the small model, questions asking for understanding to the large one;
+    the whole tool loop of a turn keeps the turn's model; the large model's daily share falls back to the small."""
+    snap = "[page g=425719 logM*=11.09; s=edge_b080_a045; tab=spectra]\n"
+    small = ["Show the 3D view", "switch to galaxy 425719", "Find edge-on sightlines with two O VI components 50-150 km/s apart",
+             "set R to 50000", "can you find the same for this galaxy?", "I meant the one that is open (425719)"]
+    large = ["Why is O VI a tracer of warm-hot gas?", "Explain what a Lyman-limit system is",
+             "What is the difference between R = 15000 and 50000 for O VI?", "How does S/N change the fitted log N?"]
+    for q in small:
+        assert chat.pick_model([{"role": "user", "content": snap + q}]) == chat.SMALL, q
+    for q in large:
+        assert chat.pick_model([{"role": "user", "content": snap + q}]) == chat.LARGE, q
+    turn = [{"role": "user", "content": snap + "Why is this sightline's O VI broad?"},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "get_page_state", "input": {}}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "{}"}]}]
+    assert chat.pick_model(turn) == chat.LARGE
+    c, up = client(chat_model="auto", chat_large_daily_budget=1)
+    assert c.post("/api/chat", json=user("Explain why Ne VIII is rare")).status_code == 200 and up.last["model"] == chat.LARGE
+    assert c.post("/api/chat", json=user("Explain why O VII needs X-rays")).status_code == 200 and up.last["model"] == chat.SMALL
+    assert c.post("/api/chat", json=user("show the 3D view")).status_code == 200 and up.last["model"] == chat.SMALL
 
 
 def test_settings_repr_hides_key():

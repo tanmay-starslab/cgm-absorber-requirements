@@ -78,7 +78,7 @@ cd ~/tng50
 umask 077
 read -rs KEY && printf 'ANTHROPIC_API_KEY=%s\n' "$KEY" >> .env && unset KEY   # paste the key; not echoed
 chmod 600 .env
-# optional: CHAT_DAILY_BUDGET=500, CHAT_CLIENT_DAILY_BUDGET=50, CHAT_DAILY_TOKENS=4000000, CHAT_CLAUDE=0, CHAT_MODEL=claude-sonnet-5-5
+# optional: CHAT_DAILY_BUDGET=500, CHAT_CLIENT_DAILY_BUDGET=50, CHAT_DAILY_TOKENS=4000000, CHAT_CLAUDE=0, CHAT_MODEL=auto (or claude-haiku-5-5 / claude-sonnet-5-5), CHAT_LARGE_DAILY_BUDGET=150
 docker compose up -d
 curl -s https://<ip-dashes>.sslip.io/api/health      # "chat": {"claude": true}
 ```
