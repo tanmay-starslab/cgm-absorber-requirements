@@ -450,7 +450,7 @@ async function create(app, opts = {}) {
   const el = document.createElement("div"); el.className = "v3d";
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
-    <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the view about the disk axis (O)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
+    <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the view around the galaxy (O)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
     <button type="button" class="v3d-pv" id="v3-pivot" hidden aria-label="Re-centre on the galaxy" data-tip="Orbit centre moved; return to the galaxy (C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg><span>re-centre</span></button>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
@@ -489,6 +489,7 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
+      <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select><span></span></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="30" step="1" value="5" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">5°/s</output></div>
       <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
@@ -1510,6 +1511,7 @@ async function create(app, opts = {}) {
   /* ux4 pivot controls: stage chip, View card galaxy | ray, kpc form, double-click on the stage */
   q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
   q("#v3-orbit").addEventListener("click", () => setOrbit(!fullOrbit));
+  q("#v3-orbit-axis").addEventListener("change", ev => { orbitAxis = ["auto", "spin", "major", "minor"].includes(ev.target.value) ? ev.target.value : "auto"; });
   q("#v3-orbit-speed").addEventListener("input", ev => { orbitDeg = Math.max(1, Math.min(30, +ev.target.value || 5)); q("#v3-orbit-speed-o").textContent = orbitDeg + "°/s"; });
   /* owner 2026-11-14: zooming, panning or turning the view no longer stops the orbit; only the stop button (or O) does */
   q("#v3-pv-gal").addEventListener("click", recentre);
@@ -1595,7 +1597,20 @@ async function create(app, opts = {}) {
   let fullOrbit = false;   // the full stage's orbit button (O): the same slow turn as the thumbnail, started by the user
   const spinning = () => !!species && !document.hidden && !ctxLost && (docked === "thumb" ? thumbSpin && !reduced() && (io ? vis.thumb : true) : fullOrbit);
   const ORBIT_SVG = '<path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/>', STOP_SVG = '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/>';
-  let orbitDeg = 5;   // the full stage's turn rate (deg/s), set by the speed slider in the View card; the thumbnail keeps THUMB.degPerSec
+  let orbitDeg = 5, orbitAxis = "auto";
+  /* owner 2026-11-14: the orbit axis. spin = the disk's rotation axis (seen face-on this only spins the picture);
+     major = the disk's major axis as seen now (the line where the disk plane meets the screen plane): turning about it
+     tilts the disk between face-on and edge-on; minor = the in-plane axis across it. auto: major when the view is within
+     about 25° of face-on, else spin. Major and minor follow the current view, so they stay meaningful as it turns. */
+  function orbitAxisVec() {
+    const view = controls.target.clone().sub(camera.position).normalize(), faceOn = Math.abs(view.dot(Lv)) > 0.9;
+    const mode = orbitAxis === "auto" ? (faceOn ? "major" : "spin") : orbitAxis;
+    if (mode === "spin") return Lv;
+    let major = new T.Vector3().crossVectors(Lv, view);
+    if (major.lengthSq() < 0.02) { const right = new T.Vector3().crossVectors(view, camera.up); major = right.sub(Lv.clone().multiplyScalar(right.dot(Lv))); }
+    major.normalize();
+    return mode === "major" ? major : new T.Vector3().crossVectors(Lv, major).normalize();
+  }   // the full stage's turn rate (deg/s), set by the speed slider in the View card; the thumbnail keeps THUMB.degPerSec
   function setOrbit(on) { fullOrbit = !!on; const b = q("#v3-orbit"); if (b) { b.setAttribute("aria-pressed", String(fullOrbit)); b.querySelector("span").textContent = fullOrbit ? "stop" : "orbit";
       b.querySelector("svg").innerHTML = fullOrbit ? STOP_SVG : ORBIT_SVG; b.setAttribute("aria-label", fullOrbit ? "Stop orbit" : "Orbit"); }
     spinKick(); }
@@ -1607,8 +1622,10 @@ async function create(app, opts = {}) {
     if (!spinLast) spinLast = now - 1000 / THUMB.fps;
     const dt = now - spinLast;
     if (dt >= 1000 / THUMB.fps - 2) { spinLast = now;
-      const rate = docked === "thumb" ? THUMB.degPerSec : orbitDeg;
-      const off = camera.position.clone().sub(controls.target).applyAxisAngle(Lv, rate * Math.min(dt, 250) / 1000 * Math.PI / 180);
+      const rate = docked === "thumb" ? THUMB.degPerSec : orbitDeg, ang = rate * Math.min(dt, 250) / 1000 * Math.PI / 180;
+      const ax = docked === "thumb" ? Lv : orbitAxisVec();
+      const off = camera.position.clone().sub(controls.target).applyAxisAngle(ax, ang);
+      if (ax !== Lv) camera.up.applyAxisAngle(ax, ang).normalize();   // a tumble turns the whole view rigidly
       camera.position.copy(controls.target).add(off); camera.lookAt(controls.target);
       const t0 = performance.now(); accK = 0; draw(true); stats.thumbFrameMs = performance.now() - t0; }
     spinRaf = requestAnimationFrame(spinTick); }
