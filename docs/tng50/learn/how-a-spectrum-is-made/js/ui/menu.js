@@ -122,7 +122,7 @@ export function creditSections(galaxy) {
       `IllustrisTNG, TNG50-1 at z = 0 (snapshot 99), from the ${A("https://www.tng-project.org/data/", "TNG public data release")} (free, registration required). ` +
       `The simulation is described in Nelson et al. 2019a (${A("https://arxiv.org/abs/1812.05609", "Computational Astrophysics and Cosmology 6, 2")}), ` +
       `Nelson et al. 2019b (${A("https://arxiv.org/abs/1902.05554", "MNRAS 490, 3234")}) and Pillepich et al. 2019 (${A("https://arxiv.org/abs/1902.05553", "MNRAS 490, 3196")}).`,
-      "The TNG team makes these data free to use and asks that any work using them cites those three papers. This site follows that request; the TNG data stay under the TNG team's terms.",
+      "We thank the IllustrisTNG collaboration for making TNG50 public. Galaxy cutouts from the public release were processed into the spectra and 3D views shown here.",
       {cls: "cr-ack", t: "The IllustrisTNG simulations were undertaken with compute time awarded by the Gauss Centre for Supercomputing (GCS) under GCS " +
         "Large-Scale Projects GCS-ILLU and GCS-DWAR on the GCS share of the supercomputer Hazel Hen at the High Performance Computing Center " +
         "Stuttgart (HLRS), as well as on the machines of the Max Planck Computing and Data Facility (MPCDF) in Garching, Germany."}]},
