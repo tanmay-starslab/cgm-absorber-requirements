@@ -215,7 +215,7 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d-leg .ticks{position:relative;height:14px}.v3d-leg .ticks span{position:absolute;transform:translateX(-50%);top:1px}
 .v3d-leg .ttl{font:500 11.5px var(--sans,system-ui,sans-serif);color:var(--s-ink);margin-bottom:3px}
 .v3d-leg .st{margin-top:4px;font:11px var(--sans,system-ui,sans-serif)}.v3d-leg .st i{display:inline-block;width:46px;height:8px;border-radius:2px;vertical-align:middle;margin-right:6px;background:linear-gradient(90deg,#4d6fd0,#fff4e6,#ffb347)}
-.v3d-lines{right:10px;bottom:48px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;padding:4px 8px}
+.v3d-lines[hidden]{display:none}.v3d-lines{right:10px;bottom:48px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;padding:4px 8px}
 .v3d-lines i{display:inline-block;width:20px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
 .v3d-lines i.sel{border-top-width:5px;outline:1px dashed var(--s-ink);outline-offset:2px}
 .v3d-scale{left:50%;bottom:12px;transform:translateX(-50%);font:11px var(--mono,ui-monospace,monospace);text-align:center;padding:3px 8px}
@@ -485,6 +485,7 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
+      <div class="v3c-row"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="30" step="1" value="5" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">5°/s</output></div>
       <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
       <details id="v3-pv-more"><summary data-tip="Type an orbit centre in kpc, galaxy box axes">kpc</summary><form class="v3tf-g v3c-pvxyz" id="v3-pv-form"><input id="v3-pv-x" type="number" step="1" min="-400" max="400" aria-label="centre x, kpc" placeholder="x" data-tip="x in kpc from the galaxy centre"><input id="v3-pv-y" type="number" step="1" min="-400" max="400" aria-label="centre y, kpc" placeholder="y" data-tip="y in kpc from the galaxy centre"><input id="v3-pv-z" type="number" step="1" min="-400" max="400" aria-label="centre z, kpc" placeholder="z" data-tip="z in kpc from the galaxy centre"><button type="submit" class="v3c-btn" data-tip="Move the orbit centre there">go</button></form></details></section>
@@ -1505,7 +1506,8 @@ async function create(app, opts = {}) {
   /* ux4 pivot controls: stage chip, View card galaxy | ray, kpc form, double-click on the stage */
   q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
   q("#v3-orbit").addEventListener("click", () => setOrbit(!fullOrbit));
-  controls.addEventListener("start", () => { if (fullOrbit) setOrbit(false); });   // grabbing the view stops the orbit
+  q("#v3-orbit-speed").addEventListener("input", ev => { orbitDeg = Math.max(1, Math.min(30, +ev.target.value || 5)); q("#v3-orbit-speed-o").textContent = orbitDeg + "°/s"; });
+  /* owner 2026-11-14: zooming, panning or turning the view no longer stops the orbit; only the stop button (or O) does */
   q("#v3-pv-gal").addEventListener("click", recentre);
   q("#v3-pv-ray").addEventListener("click", pivotToRay);
   q("#v3-pv-form").addEventListener("submit", ev => { ev.preventDefault();
@@ -1515,7 +1517,9 @@ async function create(app, opts = {}) {
     const r = canvas.getBoundingClientRect(), p = pickPivot(ev.clientX - r.left, ev.clientY - r.top); if (p) pivotTo(p, "pick"); });
   controls.addEventListener("change", () => syncPivot());
   controls.addEventListener("end", () => syncPivot(true));
-  function setLines(m) { if (!["selected", "showcase", "all", "none"].includes(m)) return; linesMode = m; q("#v3-lines").value = m; refreshLines(); }
+  function setLines(m) { if (!["selected", "showcase", "all", "none"].includes(m)) return; linesMode = m; q("#v3-lines").value = m;
+    const key = el.querySelector(".v3d-lines"); if (key) key.hidden = m === "none";   // no lines drawn: no line key
+    refreshLines(); }
 
   const onSel = ev => { select(ev.detail?.id); syncPivot(); }, onCat = () => refreshLines();
   addEventListener("tng:select", onSel); addEventListener("tng:catalog", onCat);
@@ -1586,7 +1590,10 @@ async function create(app, opts = {}) {
   /* the thumbnail's slow turn about the disk normal: only while it is docked, on screen, the page visible, motion allowed */
   let fullOrbit = false;   // the full stage's orbit button (O): the same slow turn as the thumbnail, started by the user
   const spinning = () => !!species && !document.hidden && !ctxLost && (docked === "thumb" ? thumbSpin && !reduced() && (io ? vis.thumb : true) : fullOrbit);
-  function setOrbit(on) { fullOrbit = !!on; const b = q("#v3-orbit"); if (b) { b.setAttribute("aria-pressed", String(fullOrbit)); b.querySelector("span").textContent = fullOrbit ? "stop" : "orbit"; }
+  const ORBIT_SVG = '<path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/>', STOP_SVG = '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/>';
+  let orbitDeg = 5;   // the full stage's turn rate (deg/s), set by the speed slider in the View card; the thumbnail keeps THUMB.degPerSec
+  function setOrbit(on) { fullOrbit = !!on; const b = q("#v3-orbit"); if (b) { b.setAttribute("aria-pressed", String(fullOrbit)); b.querySelector("span").textContent = fullOrbit ? "stop" : "orbit";
+      b.querySelector("svg").innerHTML = fullOrbit ? STOP_SVG : ORBIT_SVG; b.setAttribute("aria-label", fullOrbit ? "Stop orbit" : "Orbit"); }
     spinKick(); }
   function spinKick() {
     if (spinning()) { if (!spinRaf) { spinLast = 0; spinRaf = requestAnimationFrame(spinTick); } }
@@ -1596,7 +1603,8 @@ async function create(app, opts = {}) {
     if (!spinLast) spinLast = now - 1000 / THUMB.fps;
     const dt = now - spinLast;
     if (dt >= 1000 / THUMB.fps - 2) { spinLast = now;
-      const off = camera.position.clone().sub(controls.target).applyAxisAngle(Lv, THUMB.degPerSec * Math.min(dt, 250) / 1000 * Math.PI / 180);
+      const rate = docked === "thumb" ? THUMB.degPerSec : orbitDeg;
+      const off = camera.position.clone().sub(controls.target).applyAxisAngle(Lv, rate * Math.min(dt, 250) / 1000 * Math.PI / 180);
       camera.position.copy(controls.target).add(off); camera.lookAt(controls.target);
       const t0 = performance.now(); accK = 0; draw(true); stats.thumbFrameMs = performance.now() - t0; }
     spinRaf = requestAnimationFrame(spinTick); }
