@@ -17,12 +17,15 @@ export const NAMES = ["tng_dusk", "tng_ice", "magma", "inferno", "viridis", "civ
 /* vel3d: the velocity views' maps (OKLab, same stop format; not in luts.json, so not in NAMES or the field-colour list).
    tng_vel is diverging: blue (approaching, inflow, counter-rotating) through a neutral grey at 0 to red (receding,
    outflow, co-rotating), lightness rising from 0.66 at 0 to 0.80 at both ends so neither sign fades into the dark stage.
-   tng_speed is sequential (violet to pale yellow, OKLab L 0.40 to 0.96) for |v| and σ_los. */
+   tng_vel_po (purple to orange) and tng_vel_teal (teal to rose) are colour-blind-safer alternatives with the same
+   lightness profile. tng_speed is sequential (violet to pale yellow, OKLab L 0.40 to 0.96) for |v| and σ_los. */
 export const VEL_STOPS = {
+  tng_vel_po: "00d3a1ff08cfa1ff10caa0ff18c69ffd20c29ff428be9eec30ba9de438b69cdc40b19bd348ad9acb50a999c358a598bb60a197b3689d96aa709a95a27896939a809292928799938f8fa0958c97a896899faf9885a7b69981afbd9a7eb7c59c7abfcc9d75c7d39e71cfda9f6cd7e1a067dfe8a162e7efa15ceff6a255f7fea34effffa446",
+  tng_vel_teal: "0054d4d4085cd0cf1062cccb1868c8c7206ec4c32872bfbf3077bbba387bb7b6407eb3b24881afae5084abaa5887a7a6608aa2a2688c9e9e708e9a9a7890969680939292879a92948fa3929797ab92999fb4929ca7bc929fafc492a1b7cc92a4bfd491a6c7dc91a9cfe490acd7ec90aedff38fb1e7fb8eb3efff8db6f7ff8cb9ffff8bbb",
   tng_vel: "006ec2ff0870c0ff1072bdff1875bbff2077b8ff2879b6fa307bb3f2387db1eb407faee34881abdb5083a8d25885a5ca6087a2c168899fb7708b9bad788e97a18094929287a1928f8fac938d97b6938c9fbf938aa7c79489afcf9488b7d69487bfde9486c7e59584cfec9583d7f29582dff99581e7ff9580efff957ff7ff957effff957d",
   tng_speed: "00503975085a3b7b10643c80186e3d8520793f892884408c308f418d389a428e40a5438e48b0458e50bb478c58c64a8960d04d8668d9508270e2557d78eb5a7980f2607387f9666f8fff6d6a97ff75659fff7e60a7ff875dafff915bb7ff9a5abfffa45bc7ffae5fcfffb864d7ffc26bdfffcc74e7ffd57fefffde8af7ffe796fffff0a3"
 };
-export const VEL_NAMES = {signed: ["tng_vel"], unsigned: ["tng_speed", "magma", "inferno", "viridis", "cividis", "grey"]};
+export const VEL_NAMES = {signed: ["tng_vel", "tng_vel_po", "tng_vel_teal"], unsigned: ["tng_speed", "magma", "inferno", "viridis", "cividis", "grey"]};
 export function lut(name, n = 256) {      // -> Uint8Array(n*4) RGBA
   const hex = STOPS[name] || VEL_STOPS[name] || STOPS.tng_dusk, m = hex.length / 8, out = new Uint8Array(n * 4);
   const c = (i, j) => parseInt(hex.substr(8 * i + 2 * j, 2), 16);     // j = 0: entry index, 1..3: R, G, B
