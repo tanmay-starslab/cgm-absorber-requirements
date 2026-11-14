@@ -7,6 +7,7 @@
    Pure helpers are exported for the node tests (tests/js/chat_*.mjs); mount() is the only DOM entry point.
    MIT licence (see the repository LICENSE). */
 import {isLowerLimit, limitLogN} from "./state.js";
+import {sortGalaxies, matchGalaxy, srcOf, galaxySummary} from "./galaxies.js";
 
 export const WEBLLM_VERSION = "0.2.85";
 /* Third-party code for the local model is pinned AND hash-checked (Subresource Integrity), in the page and in the worker:
@@ -42,23 +43,25 @@ export async function importVerified(url, integrity, {fetchImpl = (...a) => fetc
   const blob = new Blob([await r.arrayBuffer()], {type: "text/javascript"}), u = URL.createObjectURL(blob);
   try { return await importer(u); } finally { URL.revokeObjectURL(u); }
 }
-export const MAX_TOOL_CALLS = 6;
+export const MAX_TOOL_CALLS = 8;          // a galaxy switch, a search, a selection and the view fit easily
 export const LOCAL_CONTEXT = 10;          // messages after the system prompt
+export const LOCAL_CHARS = 10500;         // system prompt + context, chars (about 3k of the local model's 4k tokens; the rest answers)
 export const LOCAL_RESULT_MAX = 2000;     // chars of a TOOL_RESULT payload (local protocol)
 export const RESULT_MAX = 4000;           // chars of a serialised tool result (Claude tool_result)
 export const ANSWER_MAX = 2000;
+export const PAGE_MAX = 600;              // chars of the [page ...] snapshot before each question (the local model has 4k tokens)
 
 /* Generated from tngsight/ions.json by `python -m server.make_chat_tools` (identical to server/chat_tools.json;
    tests/js/chat_tools_sync.mjs enforces deep equality). Do not edit between the markers. */
 /*__GEN:TOOLS__*/
-export const TOOLS = [{"name":"set_instrument","description":"Set the spectrograph and view. R: resolving power per band (one value, or two for the two R cases). snr: S/N per resolution element (one value, or two for the two S/N cases). layout: 1 case, 2 cases varying R, 2 cases varying S/N, or the 2x2 grid. ions: the ions to plot. vhw: half-width of the velocity window (km/s). vc: window centre (km/s). fit: overplot on-the-fly component fits.","input_schema":{"type":"object","additionalProperties":false,"properties":{"R":{"type":"object","additionalProperties":false,"properties":{"uv":{"anyOf":[{"type":"integer","minimum":5000,"maximum":150000},{"type":"array","items":{"type":"integer","minimum":5000,"maximum":150000},"minItems":2,"maxItems":2}]},"euv":{"anyOf":[{"type":"integer","minimum":5000,"maximum":150000},{"type":"array","items":{"type":"integer","minimum":5000,"maximum":150000},"minItems":2,"maxItems":2}]},"xray":{"anyOf":[{"type":"integer","minimum":100,"maximum":5000},{"type":"array","items":{"type":"integer","minimum":100,"maximum":5000},"minItems":2,"maxItems":2}]}}},"snr":{"anyOf":[{"type":"integer","minimum":2,"maximum":100},{"type":"array","items":{"type":"integer","minimum":2,"maximum":100},"minItems":2,"maxItems":2}]},"layout":{"type":"string","enum":["1","2R","2SN","4"]},"ions":{"type":"array","items":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"minItems":1,"maxItems":12,"uniqueItems":true},"vhw":{"type":"integer","minimum":10,"maximum":1500},"vc":{"type":"number","minimum":-1500,"maximum":1500},"fit":{"type":"boolean"}}}},{"name":"select_sightline","description":"Show an existing sightline by id (as returned by search_sightlines or request_*).","input_schema":{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"type":"string","pattern":"^((face|edge|rand)_b\\d{3}_a\\d{3}(_s\\d+)?|cust_[0-9a-f]{10})$"}}}},{"name":"search_sightlines","description":"Find sightlines by their fitted Voigt components. Returns ranked ids with reasons. Saturated or degenerate components are lower limits on log N, never measurements: one meets logN_min when its lower limit does, and never meets a logN_max below the ion's ceiling (22.5 for HI, 19 otherwise). Reasons count them as lower limits.","input_schema":{"type":"object","additionalProperties":false,"required":["query"],"properties":{"query":{"type":"object","additionalProperties":false,"required":["ion"],"properties":{"ion":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"n_min":{"type":"integer","minimum":0,"maximum":30},"n_max":{"type":"integer","minimum":0,"maximum":30},"sep_kms":{"type":"array","items":{"type":"number","minimum":0,"maximum":3000},"minItems":2,"maxItems":2},"logN_min":{"type":"number","minimum":10,"maximum":22.5},"logN_max":{"type":"number","minimum":10,"maximum":22.5},"b_min":{"type":"number","minimum":0,"maximum":150},"b_max":{"type":"number","minimum":0,"maximum":150},"b_kpc":{"type":"array","items":{"type":"number","minimum":0,"maximum":400},"minItems":2,"maxItems":2},"orientation":{"type":"string","enum":["face-on","edge-on","random","custom"]},"sort":{"type":"string","enum":["score","b_kpc","n"]},"limit":{"type":"integer","minimum":1,"maximum":200}}}}}},{"name":"request_sightline","description":"Load or generate the sightline with this orientation, impact parameter b (kpc) and azimuth (deg from the projected major axis). seed is required for random orientation.","input_schema":{"type":"object","additionalProperties":false,"required":["orientation","b_kpc","azimuth_deg"],"properties":{"orientation":{"type":"string","enum":["face-on","edge-on","random"]},"b_kpc":{"type":"number","minimum":0,"maximum":300},"azimuth_deg":{"type":"number","minimum":0,"maximum":360},"seed":{"type":"integer","minimum":0,"maximum":4294967295}}}},{"name":"request_custom_ray","description":"Generate a straight ray between two points given in kpc relative to the galaxy centre (simulation box axes). |p| <= 395 kpc, length 20-800 kpc.","input_schema":{"type":"object","additionalProperties":false,"required":["p0_kpc","p1_kpc"],"properties":{"p0_kpc":{"type":"array","items":{"type":"number","minimum":-395,"maximum":395},"minItems":3,"maxItems":3},"p1_kpc":{"type":"array","items":{"type":"number","minimum":-395,"maximum":395},"minItems":3,"maxItems":3}}}},{"name":"show_3d","description":"Open the 3D tab, optionally choosing the gas field and camera preset. Velocity views (km/s, galaxy rest frame): vlos line-of-sight velocity, vr radial, vphi rotational, vmag speed, sigmalos line-of-sight dispersion; vlos and sigmalos follow the camera.","input_schema":{"type":"object","additionalProperties":false,"properties":{"species":{"type":"string","enum":["nH","T","Z","HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII","vlos","vr","vphi","vmag","sigmalos"]},"preset":{"type":"string","enum":["face-on","edge-on","sightline"]}}}}];
+export const TOOLS = [{"name":"set_instrument","description":"Set the spectrograph and view. R: resolving power per band (one value, or two for the two R cases). snr: S/N per resolution element (one value, or two for the two S/N cases). layout: 1 case, 2 cases varying R, 2 cases varying S/N, or the 2x2 grid. ions: the ions to plot. vhw: half-width of the velocity window (km/s). vc: window centre (km/s). fit: overplot on-the-fly component fits.","input_schema":{"type":"object","additionalProperties":false,"properties":{"R":{"type":"object","additionalProperties":false,"properties":{"uv":{"anyOf":[{"type":"integer","minimum":5000,"maximum":150000},{"type":"array","items":{"type":"integer","minimum":5000,"maximum":150000},"minItems":2,"maxItems":2}]},"euv":{"anyOf":[{"type":"integer","minimum":5000,"maximum":150000},{"type":"array","items":{"type":"integer","minimum":5000,"maximum":150000},"minItems":2,"maxItems":2}]},"xray":{"anyOf":[{"type":"integer","minimum":100,"maximum":5000},{"type":"array","items":{"type":"integer","minimum":100,"maximum":5000},"minItems":2,"maxItems":2}]}}},"snr":{"anyOf":[{"type":"integer","minimum":2,"maximum":100},{"type":"array","items":{"type":"integer","minimum":2,"maximum":100},"minItems":2,"maxItems":2}]},"layout":{"type":"string","enum":["1","2R","2SN","4"]},"ions":{"type":"array","items":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"minItems":1,"maxItems":12,"uniqueItems":true},"vhw":{"type":"integer","minimum":10,"maximum":1500},"vc":{"type":"number","minimum":-1500,"maximum":1500},"fit":{"type":"boolean"}}}},{"name":"select_sightline","description":"Show an existing sightline by id (as returned by search_sightlines or request_*).","input_schema":{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"type":"string","pattern":"^((face|edge|rand)_b\\d{3}_a\\d{3}(_s\\d+)?|cust_[0-9a-f]{10})$"}}}},{"name":"search_sightlines","description":"Find sightlines by their fitted Voigt components. Returns ranked ids with reasons. Saturated or degenerate components are lower limits on log N, never measurements: one meets logN_min when its lower limit does, and never meets a logN_max below the ion's ceiling (22.5 for HI, 19 otherwise). Reasons count them as lower limits.","input_schema":{"type":"object","additionalProperties":false,"required":["query"],"properties":{"query":{"type":"object","additionalProperties":false,"required":["ion"],"properties":{"ion":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"n_min":{"type":"integer","minimum":0,"maximum":30},"n_max":{"type":"integer","minimum":0,"maximum":30},"sep_kms":{"type":"array","items":{"type":"number","minimum":0,"maximum":3000},"minItems":2,"maxItems":2},"logN_min":{"type":"number","minimum":10,"maximum":22.5},"logN_max":{"type":"number","minimum":10,"maximum":22.5},"b_min":{"type":"number","minimum":0,"maximum":150},"b_max":{"type":"number","minimum":0,"maximum":150},"b_kpc":{"type":"array","items":{"type":"number","minimum":0,"maximum":400},"minItems":2,"maxItems":2},"orientation":{"type":"string","enum":["face-on","edge-on","random","custom"]},"sort":{"type":"string","enum":["score","b_kpc","n"]},"limit":{"type":"integer","minimum":1,"maximum":200}}}}}},{"name":"request_sightline","description":"Load or generate the sightline with this orientation, impact parameter b (kpc) and azimuth (deg from the projected major axis). seed is required for random orientation.","input_schema":{"type":"object","additionalProperties":false,"required":["orientation","b_kpc","azimuth_deg"],"properties":{"orientation":{"type":"string","enum":["face-on","edge-on","random"]},"b_kpc":{"type":"number","minimum":0,"maximum":300},"azimuth_deg":{"type":"number","minimum":0,"maximum":360},"seed":{"type":"integer","minimum":0,"maximum":4294967295}}}},{"name":"request_custom_ray","description":"Generate a straight ray between two points given in kpc relative to the galaxy centre (simulation box axes). |p| <= 395 kpc, length 20-800 kpc.","input_schema":{"type":"object","additionalProperties":false,"required":["p0_kpc","p1_kpc"],"properties":{"p0_kpc":{"type":"array","items":{"type":"number","minimum":-395,"maximum":395},"minItems":3,"maxItems":3},"p1_kpc":{"type":"array","items":{"type":"number","minimum":-395,"maximum":395},"minItems":3,"maxItems":3}}}},{"name":"show_3d","description":"Open the 3D tab, optionally choosing the gas field, camera preset, render mode (integral: projected; volume: volume rendering) and volume colour preset tf (ramp default, thor gas phases on temperature, iso bands, clouds; tf implies volume mode). Velocity views (km/s, galaxy rest frame): vlos line-of-sight velocity, vr radial, vphi rotational, vmag speed, sigmalos line-of-sight dispersion; vlos and sigmalos follow the camera.","input_schema":{"type":"object","additionalProperties":false,"properties":{"species":{"type":"string","enum":["nH","T","Z","HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII","vlos","vr","vphi","vmag","sigmalos"]},"preset":{"type":"string","enum":["face-on","edge-on","sightline"]},"mode":{"type":"string","enum":["integral","volume"]},"tf":{"type":"string","enum":["ramp","thor","iso","clouds"]}}}},{"name":"get_page_state","description":"The full page state: the open galaxy and its properties, the shown sightline, the tab, the 3D view and the instrument. The [page ...] snapshot before each user message is its short form.","input_schema":{"type":"object","additionalProperties":false,"properties":{}}},{"name":"list_galaxies","description":"List galaxies of the sample (198 TNG50-1 Milky Way and M31 analogues at z = 0), filtered and sorted. Masses are log10 solar masses, SFR solar masses per year. Most massive: sort Mstar, order desc. query takes picker words: an id prefix, central, satellite, mw, m31, gas-poor, m*>10.8, sfr<1. Default sort Mstar desc, limit 10.","input_schema":{"type":"object","additionalProperties":false,"properties":{"sort":{"type":"string","enum":["Mstar","M200c","SFR","id"]},"order":{"type":"string","enum":["desc","asc"]},"central":{"type":"boolean"},"gas_poor":{"type":"boolean"},"spectra":{"type":"string","enum":["THOR","Trident"]},"logMstar_min":{"type":"number","minimum":8,"maximum":13},"logMstar_max":{"type":"number","minimum":8,"maximum":13},"logM200c_min":{"type":"number","minimum":9,"maximum":15},"logM200c_max":{"type":"number","minimum":9,"maximum":15},"sfr_min":{"type":"number","minimum":0,"maximum":1000},"sfr_max":{"type":"number","minimum":0,"maximum":1000},"query":{"type":"string","maxLength":80},"limit":{"type":"integer","minimum":1,"maximum":20}}}},{"name":"select_galaxy","description":"Open another galaxy of the sample by subhalo id. Its sightline library replaces the current one, so search_sightlines and select_sightline then act on it. Returns its properties, how many sightlines it has and the sightline now shown.","input_schema":{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"type":"integer","minimum":1,"maximum":999999999}}}},{"name":"set_view","description":"Switch the main view to the spectra or the 3D tab.","input_schema":{"type":"object","additionalProperties":false,"required":["tab"],"properties":{"tab":{"type":"string","enum":["spectra","3d"]}}}}];
 /*__END__*/
 export const TOOL_NAMES = TOOLS.map(t => t.name);
 const TOOL_BY_NAME = new Map(TOOLS.map(t => [t.name, t]));
 
 /* Generated: the text of server/chat_system_prompt.txt (server/chat.py SYSTEM_PROMPT). */
 /*__GEN:PROMPT__*/
-export const SYSTEM_PROMPT = "You are the assistant of the TNG50 sightline explorer, a web page showing mock quasar absorption spectra of 12 ions (H I 1216, Mg II 2796, Si II 1260, C II 1335, Si III 1206, C III 977, Si IV 1403, C IV 1548, N V 1239, O VI 1032, Ne VIII 770, O VII 21.6) through the circumgalactic medium of one simulated Milky-Way-mass galaxy (TNG50-1 subhalo 488530, z = 0). Tool arguments name the ions by key: HI, MgII, SiII, CII, SiIII, CIII, SiIV, CIV, NV, OVI, NeVIII, OVII. Ne VIII 770 is in the EUV band (rest-frame EUV, observable only as a redshifted analogue). You act only by calling the provided tools; the page executes them and returns JSON results. Every number, id or property you state must come from a tool result in this conversation or from the user; if the tools cannot answer, say so. Never invent sightline ids. Prefer search_sightlines to find sightlines, select_sightline to show one, set_instrument to set the resolving power R per band (UV 5000 to 150000, EUV 5000 to 150000, X-ray 100 to 5000), the S/N per resolution element (2 to 100), the layout, the ions shown and the velocity window, show_3d for the gas distribution, and request_sightline or request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes and the page opens it when ready). The show_3d velocity views are mass-weighted gas velocities in the galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it as a measured column. Keep answers short.";
+export const SYSTEM_PROMPT = "You are the assistant of the TNG50 sightline explorer, a web page showing mock quasar absorption spectra of 12 ions (H I 1216, Mg II 2796, Si II 1260, C II 1335, Si III 1206, C III 977, Si IV 1403, C IV 1548, N V 1239, O VI 1032, Ne VIII 770, O VII 21.6) through the circumgalactic medium of 198 simulated Milky Way and M31 analogues from TNG50-1 at z = 0. Each user message starts with a [page ...] snapshot of the screen, which you can rely on: g is the open galaxy (subhalo id, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, number of sightlines), s the shown sightline (id, orientation, impact parameter b in kpc, azimuth), tab, the 3D view and the instrument. Tool arguments name the ions by key: HI, MgII, SiII, CII, SiIII, CIII, SiIV, CIV, NV, OVI, NeVIII, OVII. Ne VIII 770 is in the EUV band (rest-frame EUV, observable only as a redshifted analogue). You act on the page only by calling the provided tools; the page executes them and returns JSON results. search_sightlines and select_sightline work on the open galaxy: to act on another galaxy, call select_galaxy first (list_galaxies finds galaxies by mass, SFR or type), then search or select. Use set_instrument for the resolving power R per band (UV 5000 to 150000, EUV 5000 to 150000, X-ray 100 to 5000), the S/N per resolution element (2 to 100), the layout, the ions shown and the velocity window, show_3d for the gas distribution, set_view to switch tabs, and request_sightline or request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes and the page opens it when ready). Every number, id or property about this data (sightline and galaxy ids, galaxy properties, log N, components, b) must come from a tool result, the page snapshot or the user; never invent ids. If the data tools cannot answer, say what the page can do instead. You may answer general questions about the field from your own knowledge: CGM physics, ionisation, O VI and Ne VIII, Lyman-limit and damped systems, Voigt profiles, column densities, spectral resolution and S/N, HST/COS, TNG50 and how these mock spectra were made. Mark such answers plainly, starting with \"In general,\", and never invent citations. The mock spectra: for the 197 SBI_CGM galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions under the FG11 UV background; for subhalo 488530, Trident with the HM2012 background. The show_3d velocity views are mass-weighted gas velocities in the galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it as a measured column. Keep answers short and friendly, and when useful suggest one concrete next step on the page.";
 /*__END__*/
 
 const ID_SRC = "(?:face|edge|rand)_b\\d{3}_a\\d{3}(?:_s\\d+)?|cust_[0-9a-f]{10}";
@@ -71,7 +74,7 @@ export function fmt(x, d) {
 }
 
 /* ------------------------------------------------------------------ JSON-schema subset validator
-   Keywords: type, enum, minimum, maximum, multipleOf, pattern, required, additionalProperties:false, properties,
+   Keywords: type, enum, minimum, maximum, multipleOf, maxLength, pattern, required, additionalProperties:false, properties,
    items, minItems, maxItems, anyOf. Returns null when valid, else "<path>: <reason>". */
 const isObj = v => v !== null && typeof v === "object" && !Array.isArray(v);
 const RX = new Map();
@@ -96,6 +99,7 @@ export function validate(schema, v, path = "args") {
     if (schema.multipleOf != null && Math.abs(v / schema.multipleOf - Math.round(v / schema.multipleOf)) > 1e-9)
       return `${path}: must be a multiple of ${schema.multipleOf}`;
   }
+  if (typeof v === "string" && schema.maxLength != null && v.length > schema.maxLength) return `${path}: allows at most ${schema.maxLength} characters`;
   if (typeof v === "string" && schema.pattern) {
     let rx = RX.get(schema.pattern); if (!rx) RX.set(schema.pattern, rx = new RegExp(schema.pattern));
     if (!rx.test(v)) return `${path}: ${show(v)} does not match the required pattern`;
@@ -209,15 +213,84 @@ export function capJson(obj, max) {
 
 export function toolResultMessage(name, result) { return `TOOL_RESULT ${name}: ${capJson(result, LOCAL_RESULT_MAX)}`; }
 
+/* ------------------------------------------------------------------ page snapshot
+   Before every question the page's state goes to the model as one short bracketed line (both backends), e.g.
+   [page g=425719 logM*=11.09 logM200c=12.52 R200c=315kpc SFR=7.89 central THOR n=700; s=edge_b100_a090 edge-on b=100kpc az=90; ...]
+   It is trusted page data, so its numbers count as grounded. At most PAGE_MAX characters. */
+export const PAGE_RE = /^\[page [^\n]*\]\n/;
+const joinR = r => (Array.isArray(r) ? r.join("/") : String(r));
+export function pagePrefix(p) {
+  if (!p || typeof p !== "object") return "";
+  const parts = [], g = p.galaxy, s = p.sightline, v = p.view3d, ins = p.instrument;
+  if (g) parts.push([`g=${g.id}`, g.logMstar != null && `logM*=${g.logMstar}`, g.logM200c != null && `logM200c=${g.logM200c}`,
+    g.R200c_kpc != null && `R200c=${g.R200c_kpc}kpc`, g.SFR != null && `SFR=${g.SFR}`, g.central === true ? "central" : g.central === false ? "satellite" : "",
+    g.gas_poor && "gas-poor", g.spectra, g.n_sightlines != null && `n=${g.n_sightlines}`].filter(Boolean).join(" "));
+  if (s) parts.push([`s=${s.id}`, s.orientation, s.b_kpc != null && `b=${s.b_kpc}kpc`, s.azimuth_deg != null && `az=${s.azimuth_deg}`].filter(Boolean).join(" "));
+  else parts.push("s=none");
+  if (p.tab) parts.push(`tab=${p.tab}`);
+  if (v && v.species) parts.push(["3d=" + v.species, v.mode, v.mode === "volume" && v.tf].filter(Boolean).join(" "));
+  if (ins) parts.push(["R " + Object.entries(ins.R || {}).map(([b, r]) => `${b}=${joinR(r)}`).join(" "), `S/N=${joinR(ins.sn)}`, `layout=${ins.layout}`,
+    `ions=${(ins.ions || []).join(",")}`, `vc=${ins.vc} vhw=${ins.vhw}`, ins.fit ? "fit" : ""].filter(Boolean).join(" "));
+  if (p.job && p.job.id) parts.push(`generating=${p.job.id}`);
+  let out = `[page ${parts.join("; ")}]`;
+  if (out.length > PAGE_MAX) out = out.slice(0, PAGE_MAX - 2) + "…]";
+  return out;
+}
+/* the snapshot of `app` (window.tngApp): pageState() where the page has it, else what getState() knows */
+export function pageSnapshot(app) {
+  try {
+    if (app && typeof app.pageState === "function") return app.pageState();
+    const st = app && app.getState ? app.getState() : null; if (!st) return null;
+    const e = st.id && app.entry ? app.entry(st.id) : null;
+    return {galaxy: st.galaxy != null ? {id: st.galaxy} : null, sightline: e ? pick(e, ["id", "orientation", "b_kpc", "azimuth_deg"]) : null, tab: st.tab,
+      instrument: pick(st, ["R", "sn", "layout", "ions", "vc", "vhw", "fit"])};
+  } catch { return null; }
+}
+
 /* ------------------------------------------------------------------ grounding check
-   Every number with >= 2 significant digits in the answer must appear (as §2 fmt at 0-3 decimals, sign-insensitive)
-   in this turn's tool results, the user's message or FIXED_FACTS (line wavelengths and the subhalo id the system
-   prompt states). Sightline ids that the page does not know are reported too. Never blocks the answer; the UI shows an "unverified: …" badge. */
+   Numbers that look like data of this explorer must appear (as §2 fmt at 0-3 decimals, sign-insensitive) in the
+   conversation's sources: every user message (with its page snapshot) and every tool result so far, or FIXED_FACTS (line
+   wavelengths, the default subhalo id and the sample sizes the system prompt states). Data-like: a number followed by
+   km/s, kpc or cm^-2 (or ending such a range), one right after log N, log M, M*, M200c, R200c, SFR, subhalo or galaxy, a
+   decimal from 10 to 23 (a log column density or mass) or a 6 to 9 digit integer (a subhalo id). Sentences marked as
+   general knowledge ("In general", "Typically", ...) are not checked; resolving powers, S/N and other general numbers are
+   never checked. Sightline ids that the page does not know and no source names are reported too. Never blocks the
+   answer; the UI shows an "unverified: …" badge. */
 const ANS_NUM = /(?<![\w.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?![\w])/g;
 const SRC_NUM = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
 const ID_ANY = new RegExp(ID_SRC, "g");
-export const FIXED_FACTS = "1031.912 1032 1025.722 1026 977.020 977 488530";
-const norm = s => s.replace(/[−‒–]/g, "-").replace(/[  ]/g, " ");
+export const FIXED_FACTS = "1031.912 1032 1025.722 1026 977.020 977 488530 198 197";
+const norm = s => s.replace(/[−‒–—]/g, "-").replace(/[  ]/g, " ");
+const GENERAL = /\b(in general|generally|typically|usually|as a rule|in the literature|commonly|in real observations)\b/i;
+const UNIT_AFTER = /^\s*(?:(?:-|to|and|or)\s*[-+]?\d[\d,]*(?:\.\d+)?\s*)?(?:km\s*\/\s*s|km\s*s|kpc|cm\s*\^?\s*-\s*2|cm⁻²)/i;
+const CTX_BEFORE = /(?:log\s*N|logN|log\s*M|M\*|M_?200c?|R_?200c?|SFR|subhalo|galaxy)\b[^.;!?\n]{0,16}$/i;
+const CTX_STAR = /(?:log\s*M\*|M\*)[^.;!?\n]{0,16}$/i;
+
+/* true when the number `raw` at text[i] looks like data of this explorer (see above) */
+export function dataLike(text, i, raw) {
+  const t = raw.replace(/,/g, "").replace(/^[-+]/, "");
+  if (UNIT_AFTER.test(text.slice(i + raw.length, i + raw.length + 30))) return true;
+  const before = text.slice(Math.max(0, i - 40), i);
+  if (CTX_BEFORE.test(before) || CTX_STAR.test(before)) return true;
+  if (/^\d+\.\d{1,3}$/.test(t) && +t >= 10 && +t <= 23) return true;
+  return /^\d{6,9}$/.test(t);
+}
+
+/* every grounded source in a backend history (both message forms): user text (with its page snapshot), local TOOL_RESULT
+   messages and Claude tool_result blocks; the model's own text and the repair prompts are not sources */
+export function historySources(messages) {
+  const out = [];
+  for (const m of messages || []) {
+    if (!m || m.role !== "user") continue;
+    if (typeof m.content === "string") { if (!m.content.startsWith("Your last reply was invalid")) out.push(m.content); continue; }
+    if (Array.isArray(m.content)) for (const b of m.content) {
+      if (!b) continue;
+      if (b.type === "text") out.push(b.text);
+      else if (b.type === "tool_result") out.push(typeof b.content === "string" ? b.content : (b.content || []).map(x => x && x.text).join("\n"));
+    }
+  }
+  return out;
+}
 
 export function groundedSet(sources) {
   const set = new Set();
@@ -230,13 +303,16 @@ export function groundedSet(sources) {
 
 export function groundingCheck(answer, sources, knownId = null) {
   const out = [], text = norm(String(answer || "")), set = groundedSet([...sources, FIXED_FACTS]);
-  for (const id of text.match(ID_ANY) || []) if (knownId && !knownId(id) && !sources.some(s => String(s).includes(id))) out.push(id);
-  const stripped = text.replace(ID_ANY, " ");
-  for (const raw of stripped.match(ANS_NUM) || []) {
-    const t = raw.replace(/,/g, "").replace(/^\+/, ""), digits = t.replace(/^-/, "").replace(".", "").replace(/^0+/, "");
-    if (digits.length < 2) continue;
-    const abs = t.replace(/^-/, "");
-    if (!set.has(t) && !set.has(abs) && !out.includes(raw)) out.push(raw);
+  for (const id of text.match(ID_ANY) || []) if (knownId && !knownId(id) && !sources.some(s => String(s).includes(id)) && !out.includes(id)) out.push(id);
+  const stripped = text.replace(ID_ANY, m => " ".repeat(m.length));
+  for (const sent of stripped.split(/(?<=[.!?])\s+|\n+/)) {
+    if (GENERAL.test(sent)) continue;
+    for (const m of sent.matchAll(ANS_NUM)) {
+      const raw = m[0], t = raw.replace(/,/g, "").replace(/^\+/, ""), digits = t.replace(/^-/, "").replace(".", "").replace(/^0+/, "");
+      if (digits.length < 2 || !dataLike(sent, m.index, raw)) continue;
+      const abs = t.replace(/^-/, "");
+      if (!set.has(t) && !set.has(abs) && !out.includes(raw)) out.push(raw);
+    }
   }
   return out;
 }
@@ -306,9 +382,46 @@ export function createToolExecutor(app, opts = {}) {
       return submitResult(await app.submitCustom({p0_kpc: a.p0_kpc, p1_kpc: a.p1_kpc}), "custom");
     },
     async show_3d(a) {
-      const r = await app.show3d(pick(a, ["species", "preset"]));
+      const r = await app.show3d(pick(a, ["species", "preset", "mode", "tf"]));
       if (!r || !r.ok) return {ok: false, error: (r && r.message) || "the 3D view is not available"};
-      return {ok: true, species: r.species, preset: r.preset, webgl2: !!r.webgl2};
+      return {ok: true, species: r.species, preset: r.preset, ...pick(r, ["mode", "tf"]), webgl2: !!r.webgl2};
+    },
+    async get_page_state() {
+      const s = pageSnapshot(app);
+      return s ? {ok: true, ...s} : {ok: false, error: "the page state is not available"};
+    },
+    async list_galaxies(a) {
+      const all = app.galaxies ? app.galaxies() : [];
+      if (!all.length) return {ok: false, error: "this page shows one galaxy only"};
+      const lg = x => (Number.isFinite(+x) && +x > 0 ? Math.log10(+x) : NaN);
+      const inR = (x, lo, hi) => (lo === undefined || x >= lo) && (hi === undefined || x <= hi);
+      const want = a.spectra === "THOR" ? "sbi" : a.spectra === "Trident" ? "trident" : null;
+      const L = all.filter(e => (a.central === undefined || e.central === a.central) && (a.gas_poor === undefined || !!e.gas_poor === a.gas_poor)
+        && (!want || srcOf(e) === want) && inR(lg(e.Mstar), a.logMstar_min, a.logMstar_max) && inR(lg(e.M200c), a.logM200c_min, a.logM200c_max)
+        && ((a.sfr_min === undefined && a.sfr_max === undefined) || (e.SFR != null && inR(+e.SFR, a.sfr_min, a.sfr_max)))
+        && (!a.query || matchGalaxy(e, a.query)));
+      const open = app.galaxy ? app.galaxy() : null;
+      return {ok: true, n_total: L.length, n_sample: all.length, open,
+        results: sortGalaxies(L, a.sort || "Mstar", a.order === "asc" ? 1 : -1).slice(0, a.limit || 10).map(galaxySummary)};
+    },
+    async select_galaxy(a) {
+      const all = app.galaxies ? app.galaxies() : [], e = all.find(g => +g.id === a.id);
+      if (!e) return {ok: false, error: all.length ? `subhalo ${a.id} is not in this sample; list_galaxies shows the ${all.length} galaxies` : "this page shows one galaxy only"};
+      const st = app.getState ? app.getState() : {};
+      if (st.job && app.galaxy() !== a.id) return {ok: false, error: "a sightline is being generated; switch galaxies when it is done"};
+      const was = app.galaxy();
+      const okSw = await app.selectGalaxy(a.id, {source: "chat"});
+      if (!okSw || app.galaxy() !== a.id) return {ok: false, error: `could not open subhalo ${a.id}: its data did not load`};
+      const s = app.getState(), cur = s.id && app.entry ? app.entry(s.id) : null;
+      return {ok: true, ...(was === a.id ? {note: "already open"} : {}), galaxy: {...galaxySummary(e), n_sightlines: app.entries().length},
+        sightline: cur ? pick(cur, ["id", "orientation", "b_kpc", "azimuth_deg"]) : null};
+    },
+    async set_view(a) {
+      if (a.tab === "3d" && app.show3d) {
+        const r = await app.show3d({});
+        if (!r || !r.ok) return {ok: false, error: (r && r.message) || "the 3D view is not available"};
+      } else app.showTab(a.tab);
+      return {ok: true, tab: app.getState().tab};
     },
   };
   async function submitResult(r, kind) {
@@ -330,46 +443,58 @@ export function createToolExecutor(app, opts = {}) {
 
 /* ------------------------------------------------------------------ turn loops
    Both return {answer: string|null, calls: [{name, args, result}], unverified: string[], error?, note?}.
-   `state.messages` is the backend's history (append-only); `onEvent({type, ...})` drives the UI. */
-function finish(answer, calls, sources, knownId, extra = {}) {
-  return {answer, calls, unverified: answer ? groundingCheck(answer, sources, knownId) : [], ...extra};
+   `state.messages` is the backend's history (append-only); `onEvent({type, ...})` drives the UI. `page` is the
+   [page ...] snapshot line (pagePrefix) sent before the question. The grounding sources are the whole history. */
+function finish(answer, calls, state, knownId, extra = {}) {
+  return {answer, calls, unverified: answer ? groundingCheck(answer, historySources(state.messages), knownId) : [], ...extra};
+}
+const withPage = (page, userText) => (page ? `${page}\n${userText}` : userText);
+/* the local model's context: the last LOCAL_CONTEXT messages with only the newest page snapshot kept, then the oldest
+   dropped until the system prompt and the context fit LOCAL_CHARS (the newest message always stays) */
+export function localContext(messages, systemLen = 0) {
+  const ctx = messages.slice(-LOCAL_CONTEXT);
+  let last = -1; ctx.forEach((m, i) => { if (m.role === "user" && typeof m.content === "string" && PAGE_RE.test(m.content)) last = i; });
+  const out = ctx.map((m, i) => (i !== last && m.role === "user" && typeof m.content === "string" && PAGE_RE.test(m.content) ? {...m, content: m.content.replace(PAGE_RE, "")} : m));
+  let n = systemLen + out.reduce((s, m) => s + String(m.content).length, 0);
+  while (out.length > 1 && n > LOCAL_CHARS) n -= String(out.shift().content).length;
+  return out;
 }
 
-export async function runLocalTurn({generate, state, userText, exec, onEvent = () => {}, knownId = null}) {
-  const calls = [], sources = [userText];
-  state.messages.push({role: "user", content: userText});
+export async function runLocalTurn({generate, state, userText, exec, onEvent = () => {}, knownId = null, page = ""}) {
+  const calls = [];
+  state.messages.push({role: "user", content: withPage(page, userText)});
   let repaired = false;
   for (let step = 0; step < MAX_TOOL_CALLS + 2; step++) {
     let text;
-    try { text = await generate([{role: "system", content: localSystemPrompt()}, ...state.messages.slice(-LOCAL_CONTEXT)]); }
-    catch (e) { return finish(null, calls, sources, knownId, {error: `local model error: ${errMsg(e)}`}); }
+    const sys = localSystemPrompt();
+    try { text = await generate([{role: "system", content: sys}, ...localContext(state.messages, sys.length)]); }
+    catch (e) { return finish(null, calls, state, knownId, {error: `local model error: ${errMsg(e)}`}); }
     const p = parseReply(text);
     if (!p.ok) {
       state.messages.push({role: "assistant", content: String(text ?? "").slice(0, ANSWER_MAX)});
-      if (repaired) return finish(null, calls, sources, knownId, {error: `The local model replied in an invalid format twice (${p.error}). Try rephrasing, or use the Claude backend.`});
+      if (repaired) return finish(null, calls, state, knownId, {error: `The local model replied in an invalid format twice (${p.error}). Try rephrasing, or use the Claude backend.`});
       repaired = true; onEvent({type: "repair", error: p.error});
       state.messages.push({role: "user", content: repairMessage(p.error)});
       continue;
     }
     if (p.type === "answer") {
       state.messages.push({role: "assistant", content: JSON.stringify({answer: p.answer})});
-      return finish(p.answer, calls, sources, knownId);
+      return finish(p.answer, calls, state, knownId);
     }
     state.messages.push({role: "assistant", content: JSON.stringify({tool: p.tool, args: p.args})});
     if (calls.length >= MAX_TOOL_CALLS)
-      return finish(null, calls, sources, knownId, {error: `Stopped after ${MAX_TOOL_CALLS} tool calls without an answer.`});
+      return finish(null, calls, state, knownId, {error: `Stopped after ${MAX_TOOL_CALLS} tool calls without an answer.`});
     onEvent({type: "tool", name: p.tool, args: p.args});
     const result = await exec(p.tool, p.args);
     calls.push({name: p.tool, args: p.args, result}); onEvent({type: "result", name: p.tool, args: p.args, result});
-    const msg = toolResultMessage(p.tool, result); sources.push(msg);
-    state.messages.push({role: "user", content: msg});
+    state.messages.push({role: "user", content: toolResultMessage(p.tool, result)});
   }
-  return finish(null, calls, sources, knownId, {error: "Stopped: the local model did not produce an answer."});
+  return finish(null, calls, state, knownId, {error: "Stopped: the local model did not produce an answer."});
 }
 
-export async function runClaudeTurn({post, state, userText, exec, onEvent = () => {}, knownId = null}) {
-  const calls = [], sources = [userText], start = state.messages.length;
-  state.messages.push({role: "user", content: userText});
+export async function runClaudeTurn({post, state, userText, exec, onEvent = () => {}, knownId = null, page = ""}) {
+  const calls = [], start = state.messages.length;
+  state.messages.push({role: "user", content: withPage(page, userText)});
   const closeOpen = (uses, why) => { if (uses.length) state.messages.push({role: "user", content: uses.map(b => (
     {type: "tool_result", tool_use_id: b.id, content: JSON.stringify({ok: false, error: why}), is_error: true}))}); };
   for (let req = 0; req < MAX_TOOL_CALLS + 2; req++) {
@@ -377,15 +502,15 @@ export async function runClaudeTurn({post, state, userText, exec, onEvent = () =
     try { r = await post({messages: state.messages}); }
     catch (e) {
       if (req === 0) state.messages.length = start;      // nothing happened: let the user simply retry
-      return finish(null, calls, sources, knownId, {error: errMsg(e)});
+      return finish(null, calls, state, knownId, {error: errMsg(e)});
     }
     const content = Array.isArray(r && r.content) ? r.content : [];
     state.messages.push({role: "assistant", content: r.content});      // verbatim, never edited
     const uses = content.filter(b => b && b.type === "tool_use");
     const text = content.filter(b => b && b.type === "text").map(b => b.text).join("\n").trim() || null;
-    if (r.stop_reason === "refusal") { closeOpen(uses, "refused"); return finish(null, calls, sources, knownId, {error: "The model declined this request."}); }
-    if (r.stop_reason === "max_tokens") { closeOpen(uses, "reply was cut off"); return finish(text, calls, sources, knownId, {note: "The reply was cut off at the length limit."}); }
-    if (!uses.length) return finish(text, calls, sources, knownId);
+    if (r.stop_reason === "refusal") { closeOpen(uses, "refused"); return finish(null, calls, state, knownId, {error: "The model declined this request."}); }
+    if (r.stop_reason === "max_tokens") { closeOpen(uses, "reply was cut off"); return finish(text, calls, state, knownId, {note: "The reply was cut off at the length limit."}); }
+    if (!uses.length) return finish(text, calls, state, knownId);
     if (text) onEvent({type: "text", text});
     const results = [];
     for (const b of uses) {
@@ -396,12 +521,12 @@ export async function runClaudeTurn({post, state, userText, exec, onEvent = () =
         result = await exec(b.name, b.input);
         calls.push({name: b.name, args: b.input, result}); onEvent({type: "result", name: b.name, args: b.input, result});
       }
-      const s = capJson(result, RESULT_MAX); sources.push(s);
+      const s = capJson(result, RESULT_MAX);
       results.push({type: "tool_result", tool_use_id: b.id, content: s, ...(result.ok === false ? {is_error: true} : {})});
     }
     state.messages.push({role: "user", content: results});        // ALL results in ONE user message
   }
-  return finish(null, calls, sources, knownId, {error: "Stopped: too many model requests for one question."});
+  return finish(null, calls, state, knownId, {error: "Stopped: too many model requests for one question."});
 }
 
 /* ------------------------------------------------------------------ backends */
@@ -639,7 +764,7 @@ export async function mount(root, app, opts = {}) {
     el("div", {class: "chat-head"}, el("div", {class: "chat-logo"}, svg("chat")),
       el("div", {class: "chat-title"}, el("h2", {text: "Ask"}), el("p", {text: "Drive the explorer in plain language"})), clearBtn, closeBtn),
     modeBar, notice, load, log, form,
-    el("p", {class: "chat-disc", text: "Answers come from the page's own tools. Numbers not found in the tool results are marked unverified."}));
+    el("p", {class: "chat-disc", text: "Data numbers not found on the page or in the tool results are marked unverified."}));
   root.replaceChildren(drawer);
   log.append(empty);
 
@@ -710,12 +835,13 @@ export async function mount(root, app, opts = {}) {
     if (q.length > 2000) { add("chat-err", "Please keep questions under 2000 characters."); return; }
     ta.value = ""; grow(); add("chat-user", q); busy = true; refresh();
     let res;
+    const page = pagePrefix(pageSnapshot(app));
     try {
       if (backend === "claude") {
         const api = curApi();
         if (normApi(api) !== normApi(claudeApi)) { await checkClaude(); throw new Error("The sightline server changed; read the note above and send again."); }
-        res = await runClaudeTurn({post: createClaudePost(api, fetchImpl), state: hist, userText: q, exec, onEvent, knownId});
-      } else res = await runLocalTurn({generate, state: hist, userText: q, exec, onEvent, knownId});
+        res = await runClaudeTurn({post: createClaudePost(api, fetchImpl), state: hist, userText: q, exec, onEvent, knownId, page});
+      } else res = await runLocalTurn({generate, state: hist, userText: q, exec, onEvent, knownId, page});
     } catch (e) { res = {answer: null, error: errMsg(e), unverified: []}; }
     pending.length = 0;
     busy = false; refresh();

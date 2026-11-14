@@ -118,7 +118,8 @@ def test_max_tokens_below_cap_is_kept():
 
 def test_tools_file_matches_spec_shape():
     assert chat.TOOL_NAMES == ("set_instrument", "select_sightline", "search_sightlines", "request_sightline",
-                               "request_custom_ray", "show_3d")
+                               "request_custom_ray", "show_3d", "get_page_state", "list_galaxies", "select_galaxy",
+                               "set_view")
     for t in chat.TOOLS:
         assert set(t) == {"name", "description", "input_schema"}
         assert t["input_schema"]["type"] == "object" and t["input_schema"]["additionalProperties"] is False
@@ -434,6 +435,21 @@ def test_health_true_with_key_and_env_parsing():
     assert chat.health_fragment(s) == {"claude": False}
 
 
+def test_chat_model_setting():
+    """CHAT_MODEL picks the model among CHAT_MODELS only; the default stays claude-haiku-5-5."""
+    from server.settings import CHAT_MODELS
+    assert CHAT_MODELS == ("claude-haiku-5-5", "claude-sonnet-5-5")
+    assert Settings.from_env(env={}).chat_model == "claude-haiku-5-5" == chat.MODEL
+    assert Settings.from_env(env={"CHAT_MODEL": " claude-sonnet-5-5 "}).chat_model == "claude-sonnet-5-5"
+    for bad in ("claude-opus-5-5", "gpt-4o", "claude-haiku-5-5x"):
+        with pytest.raises(ValueError, match="CHAT_MODEL must be one of"):
+            Settings.from_env(env={"CHAT_MODEL": bad})
+    c, up = client(chat_model="claude-sonnet-5-5")
+    assert c.post("/api/chat", json=user()).status_code == 200 and up.last["model"] == "claude-sonnet-5-5"
+    with pytest.raises(ValueError):
+        client(chat_model="claude-opus-5-5")
+
+
 def test_settings_repr_hides_key():
     assert KEY not in repr(settings()) and "anthropic_api_key" not in repr(settings())
 
@@ -507,6 +523,27 @@ def test_tools_and_prompt_state_the_lower_limits():
     assert "lower limits on log N" in d and "logN_min" in d and "logN_max" in d and "22.5 for HI, 19 otherwise" in d
     assert "logN_lower" in chat.SYSTEM_PROMPT and "lower limit" in chat.SYSTEM_PROMPT and "log N >" in chat.SYSTEM_PROMPT
     assert not any(c in d for c in ("·", "•", " . "))
+
+
+def test_tools_and_prompt_cover_the_galaxy_sample():
+    """The model is told about the 198-galaxy sample, the page snapshot and the galaxy tools; it may answer general
+    science questions marked as such, and the old one-galaxy wording is gone."""
+    t = {x["name"]: x for x in chat.TOOLS}
+    assert t["get_page_state"]["input_schema"] == {"type": "object", "additionalProperties": False, "properties": {}}
+    lg = t["list_galaxies"]["input_schema"]
+    assert lg["additionalProperties"] is False and "required" not in lg
+    assert lg["properties"]["sort"]["enum"] == ["Mstar", "M200c", "SFR", "id"] and lg["properties"]["limit"]["maximum"] == 20
+    sg = t["select_galaxy"]["input_schema"]
+    assert sg["required"] == ["id"] and sg["properties"]["id"]["type"] == "integer"
+    assert t["set_view"]["input_schema"]["properties"]["tab"]["enum"] == ["spectra", "3d"]
+    s3 = t["show_3d"]["input_schema"]["properties"]
+    assert s3["mode"]["enum"] == ["integral", "volume"] and s3["tf"]["enum"] == ["ramp", "thor", "iso", "clouds"]
+    p = chat.SYSTEM_PROMPT
+    assert "198 simulated" in p and "[page ...] snapshot" in p and "select_galaxy first" in p and "list_galaxies" in p
+    assert '"In general,"' in p and "never invent citations" in p and "THOR" in p and "FG11" in p and "HM2012" in p
+    assert "say what the page can do instead" in p
+    assert "one simulated" not in p and "if the tools cannot answer, say so" not in p
+    assert len(p) < 3500                          # the local model's 4k context holds it with the tool list
 
 
 def test_make_chat_tools_check(monkeypatch, capsys):

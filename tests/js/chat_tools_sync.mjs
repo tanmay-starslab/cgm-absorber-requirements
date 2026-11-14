@@ -28,6 +28,16 @@ check(ions.length === 12 && deq(C.TOOLS.find(t => t.name === "show_3d").input_sc
   "set_instrument ions and show_3d species cover the 12 registry keys and the 5 velocity views");
 const q = C.TOOLS.find(t => t.name === "search_sightlines").input_schema.properties.query;
 check(deq(q.properties.ion.enum, ions), "search_sightlines ion enum == registry keys");
+check(deq(C.TOOLS.map(t => t.name), ["set_instrument", "select_sightline", "search_sightlines", "request_sightline", "request_custom_ray",
+  "show_3d", "get_page_state", "list_galaxies", "select_galaxy", "set_view"]), "the ten tools, in order");
+{ // the sample sizes the prompt states (make_chat_tools N_GALAXIES, N_SBI) match the page's galaxy list
+  const page = join(ROOT, "docs", "tng50", "index.html");
+  const m = existsSync(page) ? readFileSync(page, "utf8").match(/"galaxies":(\{"default".*?\]\})/) : null;
+  if (m) { const G = JSON.parse(m[1]), sbi = G.list.filter(e => String(e.src || "").startsWith("sbi")).length;
+    check(prompt.includes(`${G.list.length} simulated`) && prompt.includes(`${sbi} SBI_CGM galaxies`) && prompt.includes(`subhalo ${G.default}`),
+      `prompt states the page's sample: ${G.list.length} galaxies, ${sbi} SBI_CGM, default ${G.default}`); }
+  else console.log("skip sample size vs docs/tng50/index.html (no galaxies list)");
+}
 const fx = join(HERE, "fixtures", "query_schema.json");
 if (existsSync(fx)) check(deq(q, JSON.parse(readFileSync(fx, "utf8"))), "search_sightlines.query deep-equals tngsight.search.QUERY_SCHEMA");
 else console.log("skip query schema vs tngsight.search (tests/js/fixtures/query_schema.json absent)");

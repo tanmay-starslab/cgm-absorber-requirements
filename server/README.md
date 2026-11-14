@@ -54,6 +54,7 @@ The event loop stays responsive while a ray is being cast, because the cast runs
 | `PORT` | `8787` | read by the deploy scripts (uvicorn takes `--port`) |
 | `ANTHROPIC_API_KEY` | unset | enables the Claude chat proxy `POST /api/chat` (server/chat.py); never logged |
 | `CHAT_CLAUDE` | `1` | `0` disables the proxy while the key stays set |
+| `CHAT_MODEL` | `claude-haiku-5-5` | the chat model: `claude-haiku-5-5` or `claude-sonnet-5-5` (anything else stops the server at start) |
 | `CHAT_DAILY_BUDGET` | `500` | upstream chat requests per UTC day, all clients together |
 | `CHAT_CLIENT_DAILY_BUDGET` | `50` | upstream chat requests per UTC day for one client (IPv4 address / IPv6 /64) |
 | `CHAT_DAILY_TOKENS` | `4000000` | upstream input + output tokens per UTC day, all clients (`0` = no token budget) |
