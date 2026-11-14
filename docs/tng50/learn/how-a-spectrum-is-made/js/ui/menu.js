@@ -73,6 +73,7 @@ export const KEYMAP = Object.freeze([
   {keys: ["T"], what: "next colour preset"},
   {keys: ["R"], what: "resolution slider"},
   {keys: ["N"], what: "noise (S/N) slider"},
+  {keys: ["M"], what: "music on or off"},
   {keys: ["?"], what: "this help"},
 ]);
 const SHELL_KEYS = {"?": "help", f: "trail", t: "tf", r: "focusR", n: "focusSN", g: "grab", m: "music"};

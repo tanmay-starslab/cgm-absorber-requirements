@@ -235,8 +235,11 @@ html.reduced .kt-blur{display:none}
 /* Data and credits dialog: the key-help card, wider, with readable body text */
 .cr{width:min(520px,calc(100vw - 24px))}
 /* laptops and wider: Data and credits slides in as a side panel on the right, like the explorer's, leaving the story visible */
+/* laptops and wider: every sheet (Data and credits, Keys and help, Try another beam) is the same right-hand side panel,
+   full height, so the story stays visible on the left (owner 2026-11-13: consistent placement) */
 @media (min-width:900px){
-  .kh.cr{left:auto;right:16px;top:16px;bottom:16px;transform:none;width:min(460px,38vw);max-height:none;overflow:auto}
+  .kh,.pk{left:auto;right:16px;top:16px;bottom:16px;transform:none;width:min(460px,38vw);max-height:none;overflow:auto}
+  .pk{overflow:hidden}   /* the picker scrolls its own list (.pk-list), header and search stay put */
 }
 .cr h3{margin:14px 0 4px;font:500 14px/1.2 var(--sans);letter-spacing:.02em;color:var(--sky-ink)}
 .cr p{margin:0 0 8px;font:400 14px/1.55 var(--sans);color:var(--sky-muted)}
