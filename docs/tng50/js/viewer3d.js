@@ -293,9 +293,12 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-row output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right;color:var(--ink,#eef0f7)}
 /* orbit speed: the label gets its own width and the value sits in a small box, so "orbit speed" and "30°/s" are never cut */
 .v3c-row.v3c-speed{grid-template-columns:auto minmax(0,1fr) auto}
+.v3c-btns+.v3c-speed{margin-top:8px}   /* air between the preset buttons and the orbit rows */
+.v3c-speed select{grid-column:2/4}
 .v3c-speed label{font-size:11px;white-space:nowrap}
 .v3c-speed output{font-size:10.5px;padding:2px 6px;border-radius:6px;border:1px solid var(--cg-edge,rgba(255,255,255,.18));min-width:3.6em;text-align:center}
 .v3c-row input[type=range]{width:100%;min-width:0;margin:0}
+.v3c-row select:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:-2px}   /* focus ring inside the box: never over the row above */
 .v3c-row select{grid-column:2/4;min-width:0;width:100%;height:28px;border:1px solid var(--cg-edge);border-radius:8px;background-color:var(--cg-well);color:inherit;font:inherit;font-size:12px;padding:0 6px}
 .v3c-row input[type=checkbox]{margin:0 6px 0 0;vertical-align:middle}
 .v3c-btns{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
@@ -450,7 +453,7 @@ async function create(app, opts = {}) {
   const el = document.createElement("div"); el.className = "v3d";
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
-    <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the view around the galaxy (O)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
+    <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the galaxy: tilt it if face-on, else spin it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
     <button type="button" class="v3d-pv" id="v3-pivot" hidden aria-label="Re-centre on the galaxy" data-tip="Orbit centre moved; return to the galaxy (C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg><span>re-centre</span></button>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
@@ -489,7 +492,7 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
-      <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select><span></span></div>
+      <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="30" step="1" value="5" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">5°/s</output></div>
       <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
@@ -1511,7 +1514,7 @@ async function create(app, opts = {}) {
   /* ux4 pivot controls: stage chip, View card galaxy | ray, kpc form, double-click on the stage */
   q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
   q("#v3-orbit").addEventListener("click", () => setOrbit(!fullOrbit));
-  q("#v3-orbit-axis").addEventListener("change", ev => { orbitAxis = ["auto", "spin", "major", "minor"].includes(ev.target.value) ? ev.target.value : "auto"; });
+  q("#v3-orbit-axis").addEventListener("change", ev => { orbitAxis = ["auto", "spin", "major", "minor"].includes(ev.target.value) ? ev.target.value : "auto"; orbitAxisNow = null; orbitTip(); });
   q("#v3-orbit-speed").addEventListener("input", ev => { orbitDeg = Math.max(1, Math.min(30, +ev.target.value || 5)); q("#v3-orbit-speed-o").textContent = orbitDeg + "°/s"; });
   /* owner 2026-11-14: zooming, panning or turning the view no longer stops the orbit; only the stop button (or O) does */
   q("#v3-pv-gal").addEventListener("click", recentre);
@@ -1598,21 +1601,29 @@ async function create(app, opts = {}) {
   const spinning = () => !!species && !document.hidden && !ctxLost && (docked === "thumb" ? thumbSpin && !reduced() && (io ? vis.thumb : true) : fullOrbit);
   const ORBIT_SVG = '<path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/>', STOP_SVG = '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/>';
   let orbitDeg = 5, orbitAxis = "auto";
-  /* owner 2026-11-14: the orbit axis. spin = the disk's rotation axis (seen face-on this only spins the picture);
-     major = the disk's major axis as seen now (the line where the disk plane meets the screen plane): turning about it
-     tilts the disk between face-on and edge-on; minor = the in-plane axis across it. auto: major when the view is within
-     about 25° of face-on, else spin. Major and minor follow the current view, so they stay meaningful as it turns. */
-  function orbitAxisVec() {
+  /* owner 2026-11-14: the orbit axis, fixed when the orbit starts (or the axis changes) so the turn is one smooth rotation.
+     rotation axis = the disk's spin axis (seen face-on this only spins the picture); major axis = the disk's major axis as
+     seen at the start (the screen's horizontal, projected into the disk plane): turning about it tumbles the disk from
+     face-on through edge-on and round; minor axis = the in-plane axis across it. auto = major when the view starts within
+     about 25 degrees of face-on, else the rotation axis. */
+  let orbitAxisNow = null;
+  function pickOrbitAxis() {
     const view = controls.target.clone().sub(camera.position).normalize(), faceOn = Math.abs(view.dot(Lv)) > 0.9;
     const mode = orbitAxis === "auto" ? (faceOn ? "major" : "spin") : orbitAxis;
     if (mode === "spin") return Lv;
-    let major = new T.Vector3().crossVectors(Lv, view);
-    if (major.lengthSq() < 0.02) { const right = new T.Vector3().crossVectors(view, camera.up); major = right.sub(Lv.clone().multiplyScalar(right.dot(Lv))); }
+    const right = new T.Vector3().crossVectors(view, camera.up);
+    let major = right.addScaledVector(Lv, -right.dot(Lv));
+    if (major.lengthSq() < 1e-6) major = Xv.clone();
     major.normalize();
     return mode === "major" ? major : new T.Vector3().crossVectors(Lv, major).normalize();
-  }   // the full stage's turn rate (deg/s), set by the speed slider in the View card; the thumbnail keeps THUMB.degPerSec
-  function setOrbit(on) { fullOrbit = !!on; const b = q("#v3-orbit"); if (b) { b.setAttribute("aria-pressed", String(fullOrbit)); b.querySelector("span").textContent = fullOrbit ? "stop" : "orbit";
-      b.querySelector("svg").innerHTML = fullOrbit ? STOP_SVG : ORBIT_SVG; b.setAttribute("aria-label", fullOrbit ? "Stop orbit" : "Orbit"); }
+  }
+  const orbitAxisVec = () => (orbitAxisNow ||= pickOrbitAxis());
+  /* the orbit button's tooltip names what the orbit will do (no key letters in the text; the key list has O) */
+  const ORBIT_TIPS = {auto: "Slowly turn the galaxy: tilt it if face-on, else spin it", spin: "Slowly spin the galaxy around its rotation axis",
+    major: "Slowly tilt the galaxy around its major axis", minor: "Slowly rock the galaxy around its minor axis"};
+  function orbitTip() { const b = q("#v3-orbit"); if (b) b.dataset.tip = fullOrbit ? "Stop the orbit" : ORBIT_TIPS[orbitAxis] || ORBIT_TIPS.auto; }
+  function setOrbit(on) { fullOrbit = !!on; orbitAxisNow = null; const b = q("#v3-orbit"); if (b) { b.setAttribute("aria-pressed", String(fullOrbit)); b.querySelector("span").textContent = fullOrbit ? "stop" : "orbit";
+      b.querySelector("svg").innerHTML = fullOrbit ? STOP_SVG : ORBIT_SVG; b.setAttribute("aria-label", fullOrbit ? "Stop orbit" : "Orbit"); orbitTip(); }
     spinKick(); }
   function spinKick() {
     if (spinning()) { if (!spinRaf) { spinLast = 0; spinRaf = requestAnimationFrame(spinTick); } }
