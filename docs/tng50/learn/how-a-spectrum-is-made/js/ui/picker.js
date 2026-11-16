@@ -51,7 +51,7 @@ const sid = s => (typeof s === "string" && /^[a-z][a-z0-9_]*$/.test(s) ? s : nul
 export function casesModel(index, o = {}) {
   const list = index && index.picker === "cases" && Array.isArray(index.stories) ? index.stories : [];
   const listed = list.filter(s => s && sid(s.id) && s.gates && s.gates.all === true);
-  if (!listed.length || o.atEnd === false) return {on: false, cards: []};
+  if (!listed.length) return {on: false, cards: []};   // owner 2026-11-16: stories list whenever the picker opens, not only at B0/B14
   const cur = o.current || {};
   const here = sid(o.story) || (listed.find(s => s.case !== "full" && +s.galaxy === +cur.galaxy && String(s.ray) === String(cur.ray || "")) || {}).id ||
     sid(index.default_story) || "full";

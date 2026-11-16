@@ -229,11 +229,12 @@ if (check(!!PK && typeof PK.casesModel === "function" && typeof PK.caseHref === 
         "pickerModel: Tier A entries are never beam rows (same model as the hero-only index, with and without a query)");
   check(JSON.stringify(PK.pickerModel(IX1, cur, "")) === JSON.stringify(PK.pickerModel({...IX1, stories: IX1.stories.filter(e => !e.case || e.case === "full")}, cur, "")),
         "pickerModel on the shipped data/index.json is unchanged by the Tier A filter");
-  /* off unless "cases"; never in flight */
+  /* off unless "cases"; in flight too (owner 2026-11-16: the menu's "Try another" list always offers the stories) */
   const off = [["story-index/1", PK.casesModel({...IX1, picker: undefined}, {current: cur, atEnd: true})], ["picker off", PK.casesModel({...TIX, picker: "off"}, {current: cur, atEnd: true})],
-    ["in flight", PK.casesModel(TIX, {current: cur, atEnd: false})], ["no gates.all", PK.casesModel(tierIndex(IX1, {all: false}), {current: cur, atEnd: true})]];
+    ["no gates.all", PK.casesModel(tierIndex(IX1, {all: false}), {current: cur, atEnd: true})]];
+  check(PK.casesModel(TIX, {current: cur, atEnd: false}).cards.some(c => c.id !== "full"), "casesModel lists the stories in flight (menu)");
   const offBad = off.filter(([, m]) => m.on && m.cards.some(c => c.id !== "full"));
-  check(!offBad.length, `casesModel lists no Tier A story for the /1 index, picker "off", in flight or without gates.all${offBad.length ? ": " + offBad.map(x => x[0]).join(", ") : ""}`);
+  check(!offBad.length, `casesModel lists no Tier A story for the /1 index, picker "off" or without gates.all${offBad.length ? ": " + offBad.map(x => x[0]).join(", ") : ""}`);
   const on = PK.casesModel(TIX, {current: cur, atEnd: true});
   check(on.on && on.cards.length === ids.length && on.cards[0].id === "full" && on.cards[0].current && on.cards.filter(c => c.current).length === 1,
     `picker "cases" at an end: ${on.cards.length} cards, the full tour first and marked showing (${on.cards.map(c => c.id).join(" ")})`);
@@ -533,8 +534,7 @@ async function casesBrowser() {
     const bs = await P.eval(`__story.beats()`), mid = bs[Math.floor(bs.length / 2)];
     await jumpTo((mid.p0 + mid.p1) / 2);
     o = await openMenu();
-    check(o.open && !o.cards.length && !o.groups.includes("Stories"), `in flight (${mid.id}): the dialog shows no Stories group (G12)`);
-    if (offHTML !== null) check(o.listHTML === offHTML, "in flight with picker \"cases\" the dialog list is byte-identical to the picker-off dialog");
+    check(o.open && o.cards.length > 0 && o.groups.includes("Stories"), `in flight (${mid.id}): the dialog lists the Stories group (owner 2026-11-16)`);
     if (SHOTS) await P.shot(join(SHOTS, `pick_cases_flight_${mid.id}_1440.png`));
     await closePicker();
     /* keyboard pick at B0: Enter on the next story's card loads it */
