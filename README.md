@@ -327,8 +327,8 @@ constant continuum noise. Nominal instrument resolving powers are indicative.
 
 ## Credits
 
-IllustrisTNG, TNG50-1 at z = 0, snapshot 99 (Nelson et al. 2019a, ComAC 6, 2, arXiv:1812.05609;
-Nelson et al. 2019b, MNRAS 490, 3234, arXiv:1902.05554; Pillepich et al. 2019, MNRAS 490, 3196, arXiv:1902.05553;
+IllustrisTNG, TNG50-1 at z = 0, snapshot 99 (Nelson et al. 2019a, ComAC 6, 2, [doi:10.1186/s40668-019-0028-x](https://doi.org/10.1186/s40668-019-0028-x);
+Nelson et al. 2019b, MNRAS 490, 3234, [doi:10.1093/mnras/stz2306](https://doi.org/10.1093/mnras/stz2306); Pillepich et al. 2019, MNRAS 490, 3196, [doi:10.1093/mnras/stz2338](https://doi.org/10.1093/mnras/stz2338);
 data from https://www.tng-project.org/data/, used as the TNG Collaboration requests). Spectra of the 198 MW/M31
 galaxies: a fiducial ray library, rays through the TNG50 Voronoi mesh traced with THOR (Byrohl & Nelson
 2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background
