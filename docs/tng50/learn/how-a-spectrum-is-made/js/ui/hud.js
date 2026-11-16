@@ -405,7 +405,7 @@ export function createShell(els, opts = {}) {
   const menu = createMenu(els.menuButton, els.menuSheet, {watch: H.watch, explore: H.explore, physics: H.physics,
     picker: H.picker || (picker && (() => picker.open(opts.index, opts.current))), text: () => narrative.open(), share: H.share, keys: H.keys || (keyHelp && keyHelp.open),
     credits: openCredits ? () => openCredits(els.menuButton) : null, explorerHref: H.explorerHref,
-    watchHint: H.watchHint});
+    watchHint: H.watchHint, musicTrack: H.musicTrack, musicTrackLabel: H.musicTrackLabel});
   const narrative = createNarrative({list: els.narrativeList, live: els.live, overlay: els.textOverlay, canvas: els.canvas},
                                     {jump: H.jump, quiet: H.quiet});
   narrative.build(opts.beats, opts.copy, opts.lookup, opts.honesty || []);
