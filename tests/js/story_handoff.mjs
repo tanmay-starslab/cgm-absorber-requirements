@@ -204,7 +204,7 @@ let IX1 = null; try { IX1 = JSON.parse(readFileSync(join(SROOT, "data/index.json
    beats.<id>.json (meta.story, meta.case, refGalaxy, refRay, generator.data.file) */
 function tierIndex(ix, {picker = "cases", all = true} = {}) {
   if (!ix) return null;
-  if (ix.schema === "story-index/2") return {...ix, picker, stories: ix.stories.map(e => ({...e, gates: {...(e.gates || {}), all: e.case === "full" || (all ? true : !!(e.gates && e.gates.all))}}))};
+  if (ix.schema === "story-index/2") return {...ix, picker, stories: ix.stories.map(e => ({...e, gates: {...(e.gates || {}), all: e.case === "full" || all}}))};   // all: false = every Tier A entry ungated, as the /1 branch
   const hero = {...ix.stories[0], id: "full", case: "full", subcase: null, beats: "beats.json", shots: "shots.json", gates: {all: true}};
   const st = [hero];
   for (const id of CASE_IDS) {

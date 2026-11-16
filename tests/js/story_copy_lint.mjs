@@ -901,7 +901,9 @@ async function main() {
     const IX = join(ROOTD, "data/index.json");
     if (existsSync(IX)) {
       const idx = rd(IX);
-      const runs = [...(idx.stories || []).map(s => [s, true]), ...(idx.film_beams || []).map(s => [s, process.env.COPY_STRICT_BEAMS === "1"])];
+      // Tier A entries (case other than "full") never render the hero copy and beats: lintCaseStory below checks them
+      // with their own beats.<id>.json and copy.cases, as the page does (main.js loadTierA)
+      const runs = [...(idx.stories || []).filter(s => !s.case || s.case === "full").map(s => [s, true]), ...(idx.film_beams || []).map(s => [s, process.env.COPY_STRICT_BEAMS === "1"])];
       for (const [st, hard] of runs) {
         const f = join(ROOTD, "data", st.story); if (!existsSync(f)) { (hard ? check : (_, m) => note("beam: " + m))(false, `${st.story} present`); continue; }
         const d = rd(f), fl = {...copyFlags(copy, d), ...(d.flags || {})}, lk = lookupOf(copy, d), bad = [];
