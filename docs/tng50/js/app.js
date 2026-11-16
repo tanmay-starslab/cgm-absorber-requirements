@@ -13,6 +13,7 @@ import * as FITM from "./fit.js";
 import {initTips, ION_TIPS} from "./tips.js";
 import {initFeatures} from "./features.js";   /* ux4 features: share, keys, random, undo, solo, CSV, loading */
 import {initLiquidTabs} from "./liquidtabs.js";   /* CSS-only liquid drop behind the Spectra | 3D tabs */
+import {initLiquidBg} from "./liquidbg.js";   /* liquid metal shader background (3D tab; Spectra only with SPECTRA_BG) */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
   nearestSightline, defaultSightline, srcOf, galaxySummary} from "./galaxies.js";
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
@@ -710,6 +711,17 @@ for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", ()
   b.addEventListener("keydown", ev => { const i = TABS.indexOf(S.tab), n = {ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1}[ev.key];
     if (n == null) return; ev.preventDefault(); showTab(TABS[(n + TABS.length) % TABS.length], true); }); }
 initLiquidTabs($("#tabs"));
+/* liquid metal background (owner 2026-11-16): wanted mainly on the 3D tab, behind the stage and the control cards (it sits
+   under the page at z-index -1, so it never draws over the volume render). SPECTRA_BG is the single switch for the Spectra
+   tab (off: the spectra keep the static glow background); ?bg=on turns it on for one visit, ?bg=off removes it everywhere. */
+const SPECTRA_BG = false;
+const BG_SPECTRA = SPECTRA_BG || new URLSearchParams(location.search).get("bg") === "on";
+document.body.classList.toggle("lmbg-spectra", BG_SPECTRA);
+initLiquidBg({name: "explorer", showWhen: () => S.tab === "3d" || BG_SPECTRA,
+  calm: () => (S.tab === "spectra" ? $("#panel-spectra") : null), observe: [$("#panel-spectra"), $("#v3d-stage")],
+  /* never cost the 3D view: a static frame when viewer3d's calibration found its exact moving frame over 33 ms (it fell back to
+     the fast path: a weak GPU); liquidbg.js also freezes itself when the page's median frame interval passes 20 ms */
+  heavy: () => S.tab === "3d" && window.tngViewer3d?.stats?.calibration?.moving_path === "fast"});
 let V3P = null, V3 = null, THUMB = null;
 function vizCfg() {
   if (!CFG.viz) return null;

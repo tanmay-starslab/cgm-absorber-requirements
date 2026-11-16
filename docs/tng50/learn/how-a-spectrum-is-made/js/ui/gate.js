@@ -96,6 +96,7 @@ html.gate-open #hud,html.gate-open #rail,html.gate-open #kinetic,html.gate-open 
 .sg.live{background:transparent}
 @keyframes sg-drift{from{transform:scale(1.02) translate(0,0)}to{transform:scale(1.09) translate(-1.2%,.8%)}}
 .sg-scrim{position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(4,5,10,.86) 0%,rgba(4,5,10,.62) 34%,rgba(4,5,10,0) 62%)}
+.sg-metal{-webkit-mask-image:linear-gradient(90deg,#000 0%,rgba(0,0,0,.82) 30%,transparent 60%);mask-image:linear-gradient(90deg,#000 0%,rgba(0,0,0,.82) 30%,transparent 60%)}   /* liquid metal behind the title (js/liquidbg.js) */
 .sg-in{position:absolute;display:flex;flex-direction:column;align-items:flex-start;gap:clamp(12px,2.2vh,22px);
   left:calc(max(24px,6vw) + var(--sal,0px));top:50%;transform:translateY(-50%);width:min(36em,40vw);max-height:calc(100% - 48px)}
 .sg-t{margin:0;font:400 clamp(34px,min(5.4vw,9vh),84px)/1.02 var(--serif,Georgia,serif);letter-spacing:-.015em;text-wrap:balance;
@@ -135,6 +136,7 @@ html.gate-open #hud,html.gate-open #rail,html.gate-open #kinetic,html.gate-open 
 /* portrait and short screens: the column sits at the bottom, full width; the scrim runs from the bottom */
 @media (orientation:portrait),(max-aspect-ratio:6/5){
   .sg-scrim{background:linear-gradient(0deg,rgba(4,5,10,.9) 0%,rgba(4,5,10,.7) 42%,rgba(4,5,10,0) 72%)}
+  .sg-metal{-webkit-mask-image:linear-gradient(0deg,#000 0%,rgba(0,0,0,.8) 38%,transparent 70%);mask-image:linear-gradient(0deg,#000 0%,rgba(0,0,0,.8) 38%,transparent 70%)}
   .sg-in{left:calc(20px + var(--sal,0px));right:calc(20px + var(--sar,0px));width:auto;top:auto;bottom:calc(20px + var(--sab,0px));transform:none;max-height:calc(100% - 40px)}
   .sg-t{font-size:clamp(30px,min(9vw,6.2vh),56px)}
   .sg-s{font-size:clamp(15px,min(3.6vw,2.2vh),19px)}
