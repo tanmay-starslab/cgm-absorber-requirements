@@ -1,24 +1,149 @@
-# Galaxies: absorption spectra of simulated galaxies, and what it takes to observe them
+<p align="center">
+  <a href="https://galaxies.tanmaysingh.uk"><img src="docs/readme/hero.webp" width="100%" alt="A TNG50 galaxy glowing in gas density, crossed by a single beam of quasar light"></a>
+</p>
 
-**Live site: https://galaxies.tanmaysingh.uk**
+<h1 align="center">Galaxies</h1>
+
+<p align="center"><b>See the invisible gas around galaxies through the light it absorbs.</b></p>
+
+<p align="center">
+  <a href="https://galaxies.tanmaysingh.uk"><img alt="Live site" src="https://img.shields.io/badge/live-galaxies.tanmaysingh.uk-7c8cff?style=flat-square"></a>
+  <a href="LICENSE"><img alt="Code licence: MIT" src="https://img.shields.io/badge/code-MIT-3fb68b?style=flat-square"></a>
+  <a href="https://www.tng-project.org/data/"><img alt="Data: IllustrisTNG TNG50" src="https://img.shields.io/badge/data-IllustrisTNG%20TNG50-f08a4b?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <a href="https://galaxies.tanmaysingh.uk/"><b>Explorer</b></a> &nbsp;|&nbsp;
+  <a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><b>How a spectrum is made</b></a> &nbsp;|&nbsp;
+  <a href="https://galaxies.tanmaysingh.uk/requirements/"><b>Detect & Resolve</b></a> &nbsp;|&nbsp;
+  <a href="#for-researchers-and-developers"><b>For developers</b></a>
+</p>
+
+Every galaxy sits inside a vast halo of thin gas, the circumgalactic medium (CGM). It holds much of a galaxy's raw
+material, yet it is far too faint to photograph. We see it only when a distant quasar shines through it: each kind of
+atom takes its own small bite out of the light, and those dips, the absorption spectrum, tell us how much gas there
+is, how hot it is and how it moves.
+
+Galaxies lets you do that with simulated galaxies from TNG50. Point a beam through any of 198 Milky Way and Andromeda
+look-alikes, read the spectrum it makes, change the telescope, and see what a real instrument would be able to tell.
+
+## What you can do
+
+### Read the light from 198 simulated galaxies
+
+<p align="center"><a href="https://galaxies.tanmaysingh.uk/"><img src="docs/readme/spectra.webp" width="100%" alt="The explorer: five absorption spectra with fitted components and the instrument controls"></a></p>
+<p align="center"><sub>Twelve ions, from cool hydrogen to million-degree oxygen, along one sightline. Fits run in your browser.</sub></p>
+
+### Change the telescope
+
+<p align="center"><img src="docs/readme/compare.webp" width="100%" alt="The same sightline at two resolving powers and two signal-to-noise ratios"></p>
+<p align="center"><sub>Set the resolving power and the signal-to-noise, side by side, and watch the detail survive or vanish.</sub></p>
+
+### Fly through the gas in 3D
+
+<table>
+  <tr>
+    <td width="45%"><img src="docs/readme/gas-3d.webp" alt="The 3D view: gas density around galaxy 488530 with the sightline crossing it"></td>
+    <td>Turn the galaxy around and see the gas your beam passes through: density, temperature, metals, each of the
+    twelve ions, the gas velocities and the starlight, with the sightline drawn in place. Pick a point to cast a new
+    beam.</td>
+  </tr>
+</table>
+
+### Pick any galaxy, any sightline
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/readme/picker.webp" alt="The galaxy picker listing TNG50 Milky Way and M31 analogues by stellar mass, SFR and halo mass"></td>
+    <td width="50%"><img src="docs/readme/gallery.webp" alt="The sightline gallery: face-on, edge-on and random beams by impact parameter and azimuth"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Filter 198 galaxies by mass, star formation or type.</sub></td>
+    <td align="center"><sub>Choose a beam by orientation, distance and angle, or cast a new one.</sub></td>
+  </tr>
+</table>
+
+### Watch a spectrum being made
+
+<p align="center"><a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><img src="docs/readme/learn-gate.webp" width="100%" alt="The opening of How a spectrum is made: a beam of light crossing the galaxy"></a></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/readme/learn-heat.webp" alt="A story step: heat widens an absorption line"></td>
+    <td width="50%"><img src="docs/readme/learn-fit.webp" alt="A story step: fitting a few components to the noisy spectrum"></td>
+  </tr>
+</table>
+<p align="center"><sub>Follow one beam cell by cell, from the gas to a fitted spectrum. Scroll at your own pace or watch the film. Five more stories are coming soon.</sub></p>
+
+### Ask in plain language
+
+A chat panel answers questions about what is on screen and drives the page for you. It can only act through the
+page's own tools, and any number it did not get from a tool is marked as unverified.
+
+### Design an instrument
+
+<p align="center"><a href="https://galaxies.tanmaysingh.uk/requirements/"><img src="docs/readme/requirements.webp" width="100%" alt="Detect & Resolve: what it takes to detect an absorber and split it into components"></a></p>
+<p align="center"><sub>Detect & Resolve, where the project began: the signal-to-noise and resolving power needed to detect an absorber and split it into components.</sub></p>
+
+### Take it with you
+
+<table>
+  <tr>
+    <td width="34%" align="center"><img src="docs/readme/mobile.webp" width="260" alt="The explorer on a phone"></td>
+    <td>The explorer and the story work on a phone, with the same spectra and fits. Nothing to install: it all runs in the browser.</td>
+  </tr>
+</table>
+
+## The three pages
+
+| Page | Link | What it is |
+|---|---|---|
+| **Explorer** | [galaxies.tanmaysingh.uk](https://galaxies.tanmaysingh.uk/) | Sightlines, spectra, fits, 3D gas and chat for 198 TNG50 galaxies |
+| **How a spectrum is made** | [/learn/how-a-spectrum-is-made/](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A cinematic story from gas cells to a fitted spectrum |
+| **Detect & Resolve** | [/requirements/](https://galaxies.tanmaysingh.uk/requirements/) | The instrument study: what S/N and resolution it takes to detect and resolve an absorber |
+
+## How to cite
+
+If you use the site, the spectra or the code, please cite this repository (suggested form):
+
+> Singh, T. (2026). *Galaxies: absorption spectra of simulated galaxies, and what it takes to observe them.*
+> https://github.com/tanmay-starslab/cgm-absorber-requirements, https://galaxies.tanmaysingh.uk
+
+and the work it builds on: the TNG50 simulation (Nelson et al. 2019a, ComAC 6, 2; Nelson et al. 2019b, MNRAS 490,
+3234; Pillepich et al. 2019, MNRAS 490, 3196), Trident (Hummels, Smith & Silvia 2017, ApJ 847, 59) and yt (Turk et
+al. 2011, ApJS 192, 9). The full list is under [Credits](#credits).
+
+## Feedback and contributing
+
+Found a bug, spotted a number that looks wrong, or have an idea? We would love to hear it. Open an
+[issue](https://github.com/tanmay-starslab/cgm-absorber-requirements/issues), or read
+[CONTRIBUTING.md](CONTRIBUTING.md) to send a pull request. Questions from students and the curious are just as welcome
+as those from researchers.
+
+---
+
+## For researchers and developers
 
 What began as a requirements study for a NASA proposal (what S/N and resolving power it takes to **detect** a
 circumgalactic absorber and to **resolve** it into velocity components) has grown into a public website for exploring
-the circumgalactic medium (CGM) of simulated galaxies. It has three parts, all built from this repository:
+the circumgalactic medium (CGM) of simulated galaxies. The three pages map to these sources:
 
-| Page | URL | What it is | Source |
-|---|---|---|---|
-| **Explorer** | [/](https://galaxies.tanmaysingh.uk/) | Quasar sightlines through the CGM of 198 Milky Way and M31 analogues from TNG50: twelve ions from H I to O VII, any resolving power and S/N, in-browser Voigt fits, a 3D view of the gas, new rays on demand, and a chat assistant that drives the page | `docs/tng50/` ([below](#tng50-sightline-explorer)) |
-| **How a spectrum is made** | [/learn/how-a-spectrum-is-made/](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A guided story from gas cells to a fitted spectrum, to scroll or to watch | `docs/tng50/learn/` ([below](#learn-page-how-a-spectrum-is-made)) |
-| **Detect & Resolve** | [/requirements/](https://galaxies.tanmaysingh.uk/requirements/) | The original instrument study: minimum detectable column and smallest resolvable velocity separation for twelve CGM transitions, with figures and a technical note | `docs/index.html`, `absreq/`, `paper/` |
+| Page | Source |
+|---|---|
+| Explorer | `docs/tng50/` ([below](#tng50-sightline-explorer)) |
+| How a spectrum is made | `docs/tng50/learn/` ([below](#learn-page-how-a-spectrum-is-made)) |
+| Detect & Resolve | `docs/index.html`, `absreq/`, `paper/` |
 
 Old `tanmay-starslab.github.io/cgm-absorber-requirements/...` links redirect to the new site.
 
-## Detect & Resolve
+<details>
+<summary><b>Detect &amp; Resolve: method, transitions and figures</b></summary>
+
+### Detect & Resolve
 
 ![Requirement matrix](figures/requirements_matrix.png)
 
-## Transitions
+### Transitions
 
 | Ion | λ [Å] | f | b_fid [km/s] | log N(τ₀=1) | Source |
 |---|---|---|---|---|---|
@@ -40,7 +165,7 @@ Atomic data are read from the [Trident](https://github.com/trident-project/tride
 list and come from `absreq/data/supplement_lines.txt`, which records the source of each value.
 The fiducial b is the thermal width at a representative temperature plus 5 km/s turbulence.
 
-## Method in one paragraph
+### Method in one paragraph
 
 Doppler-core profiles are convolved with a Gaussian line-spread function of FWHM c/R. Detection uses the
 matched-filter significance S_det = (S/N)·[∫D² dv / FWHM]^½. Separation uses the expected Δχ² of the best
@@ -49,31 +174,13 @@ four-parameter problem is one precomputed 3-D cube. In the optically thin limit 
 is universal: Δv_min ≈ 1.98 FWHM_eff S_det^(−1/4) for equal pairs, with FWHM_eff² = (c/R)² + (1.665 b)².
 See `paper/detectability_note.pdf`.
 
-## Layout
 
-```
-absreq/        lines.py · profiles.py · detection.py · separation.py · theory.py · style.py
-scripts/       build_grids.py → grids/   make_figures.py → figures/   make_tables.py → paper/   export_web_data.py → docs/
-figures/       lsf_resolution, requirements_matrix, ions/<ion>_{instrument,absorber}_plane  (PDF + PNG)
-paper/         detectability_note.tex/.pdf
-docs/          Detect & Resolve page (index.html); docs/tng50/ explorer and the learn page
-tngsight/ server/ deploy/ tng50/   TNG50 explorer: library, API server, deployment, original app
-tests/         analytic limits and thin-line agreement
-```
+</details>
 
-## Reproduce
+<details>
+<summary><b>TNG50 sightline explorer: data, fitting, 3D, chat and deployment</b></summary>
 
-```bash
-pip install -r requirements.txt          # LaTeX with txfonts + dvipng needed for the figures
-python -m pytest tests
-PYTHON=$(which python) node tests/js/run_all.mjs   # JS tests (explorer page, 3D data decode, LUTs, LOD, picker, search, chat)
-python scripts/build_grids.py            # ~1-2 min per ion on 2 cores
-python scripts/make_figures.py
-python scripts/make_tables.py && (cd paper && pdflatex detectability_note.tex)
-python scripts/export_web_data.py
-```
-
-## TNG50 sightline explorer
+### TNG50 sightline explorer
 
 The explorer applies the same instrument question to simulated absorbers. It covers 198 TNG50-1 Milky Way and M31
 analogues at z = 0, with a galaxy picker (filter by stellar mass, halo mass, SFR, central or satellite). Subhalo 488530
@@ -155,7 +262,13 @@ The original app and its scripts are in `tng50/` (see
 velocity-frame and dλ fixes). Layout: `tngsight/` (registry, geometry, generator, npz and web formats, fitter, cubes),
 `server/` (FastAPI), `deploy/` (data builds, HF Space, VM and laptop scripts).
 
-### Learn page: How a spectrum is made
+
+</details>
+
+<details>
+<summary><b>How a spectrum is made: the story page and its build</b></summary>
+
+#### Learn page: How a spectrum is made
 
 `docs/tng50/learn/how-a-spectrum-is-made/` tells how one sightline's spectrum is built: the light behind the galaxy,
 the gas cells along the beam, which ions absorb, one cell's dip, Doppler shifts, the sum of many cells, saturation,
@@ -179,7 +292,48 @@ node tests/js/run_all.mjs story                   # story gates (TNG_BROWSER=1 f
 `scripts/export_tng50_web.py --out DIR` copies `learn/` along with the page, without `build/` and the film MP4s,
 which are hosted outside the repository.
 
-Credits: IllustrisTNG, TNG50-1 at z = 0, snapshot 99 (Nelson et al. 2019a, ComAC 6, 2, arXiv:1812.05609;
+
+</details>
+
+<details>
+<summary><b>Repository layout and how to reproduce</b></summary>
+
+### Layout
+
+```
+absreq/        lines.py · profiles.py · detection.py · separation.py · theory.py · style.py
+scripts/       build_grids.py → grids/   make_figures.py → figures/   make_tables.py → paper/   export_web_data.py → docs/
+figures/       lsf_resolution, requirements_matrix, ions/<ion>_{instrument,absorber}_plane  (PDF + PNG)
+paper/         detectability_note.tex/.pdf
+docs/          Detect & Resolve page (index.html); docs/tng50/ explorer and the learn page
+tngsight/ server/ deploy/ tng50/   TNG50 explorer: library, API server, deployment, original app
+tests/         analytic limits and thin-line agreement
+```
+
+### Reproduce
+
+```bash
+pip install -r requirements.txt          # LaTeX with txfonts + dvipng needed for the figures
+python -m pytest tests
+PYTHON=$(which python) node tests/js/run_all.mjs   # JS tests (explorer page, 3D data decode, LUTs, LOD, picker, search, chat)
+python scripts/build_grids.py            # ~1-2 min per ion on 2 cores
+python scripts/make_figures.py
+python scripts/make_tables.py && (cd paper && pdflatex detectability_note.tex)
+python scripts/export_web_data.py
+```
+
+
+</details>
+
+### Caveats
+
+Gaussian LSF (the HST/COS LSF has broad wings, so COS-like numbers are optimistic); Doppler cores only;
+equal components at the fiducial b; expected (median) significances; S/N per resolution element with
+constant continuum noise. Nominal instrument resolving powers are indicative.
+
+## Credits
+
+IllustrisTNG, TNG50-1 at z = 0, snapshot 99 (Nelson et al. 2019a, ComAC 6, 2, arXiv:1812.05609;
 Nelson et al. 2019b, MNRAS 490, 3234, arXiv:1902.05554; Pillepich et al. 2019, MNRAS 490, 3196, arXiv:1902.05553;
 data from https://www.tng-project.org/data/, used as the TNG Collaboration requests). Spectra of the 198 MW/M31
 galaxies: a fiducial ray library, rays through the TNG50 Voronoi mesh traced with THOR (Byrohl & Nelson
@@ -190,12 +344,6 @@ and every 3D ion cube: Trident (Hummels, Smith & Silvia 2017) on yt (Turk et al.
 column-integral rendering) was inspired by Scott Lucchini's TNG viewer. Explainer music (optional, two tracks): Hans Zimmer,
 Day One (Interstellar, 2014), and Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (orchestral recording);
 excerpted, faded and looped.
-
-## Caveats
-
-Gaussian LSF (the HST/COS LSF has broad wings, so COS-like numbers are optimistic); Doppler cores only;
-equal components at the fiducial b; expected (median) significances; S/N per resolution element with
-constant continuum noise. Nominal instrument resolving powers are indicative.
 
 ## Licence
 
