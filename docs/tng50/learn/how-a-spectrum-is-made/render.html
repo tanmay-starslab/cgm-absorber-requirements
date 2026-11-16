@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="../../img/icon/icon-180.png">
 <link rel="manifest" href="../../site.webmanifest">
 <meta name="robots" content="noindex" />
-<title>How a spectrum is made (film)</title>
+<title>How an absorption spectrum is made (film)</title>
 <!--
   The film of the v2 story (DESIGN §11, DESIGN_final §5.9; owner brief item 7). A HyperFrames composition and a CDP frame
   source (scripts/story_stills.mjs): both call window.__film.renderT(t). Nothing here draws its own physics or its own 3D:
@@ -222,7 +222,7 @@ async function boot() {
   const capHtml = id => { const s = captions[id] || ""; const i = s.indexOf(":"); return i > 0 ? `<b>${esc(s.slice(0, i))}</b>${esc(s.slice(i))}` : esc(s); };
   // end card: title, URL, the honest-simplification list (DESIGN_final §3.7 "film end card")
   { const url = (copy.film && copy.film.url) || "galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/";
-    card.querySelector(".t").textContent = (copy.film && copy.film.end_card_title) || "How a spectrum is made";
+    card.querySelector(".t").textContent = (copy.film && copy.film.end_card_title) || "How an absorption spectrum is made";
     card.querySelector(".u").textContent = url;
     card.querySelector(".hh").textContent = (copy.film && copy.film.honesty_heading) || "What we simplified";
     card.querySelector(".h").innerHTML = (copy.honesty || []).filter(s => !/\{\{/.test(s)).map(s => `<p>${esc(s)}</p>`).join(""); }
@@ -528,7 +528,7 @@ function filmDock({canvas, data, cells, plot, fitjs, copy, kAt}) {
     });
     if (axisH) { g.fillStyle = "rgba(244,241,234,0.62)"; g.textBaseline = "alphabetic"; g.font = font(14, 400, true);
       for (const t of [-300, -150, 0, 150, 300]) { const s = (t < 0 ? "−" : t > 0 ? "+" : "") + Math.abs(t); g.fillText(s, X(t) - g.measureText(s).width / 2, h - 8); }
-      g.font = font(14); g.fillText(D.axis_speed || "Speed along the beam (km/s)", 8, h - 8); }
+      g.font = font(14); g.fillText(D.axis_speed || "Speed along the sightline (km/s)", 8, h - 8); }
     if (obs) { g.font = font(16, 500); g.fillStyle = "rgba(244,241,234,0.88)"; g.textBaseline = "top";
       const a = `${D.sharpness || "Sharpness (R)"}  ${fmtI(fs.spec.R || 0)}`, b = `${D.exposure || "Exposure (S/N)"}  ${fs.spec.sn ? fmtI(fs.spec.sn) : "∞"}`;
       const wb = g.measureText(b).width; g.fillText(b, w - 12 - wb, 6); g.fillText(a, w - 12 - wb - 40 - g.measureText(a).width, 6); }

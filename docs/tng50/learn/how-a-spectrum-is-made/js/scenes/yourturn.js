@@ -36,7 +36,7 @@ function render(ctx, state, t, data) {
     const url = `galaxies.tanmaysingh.uk/${String(P.meta.galaxy) !== String(K.DEFAULT_GALAXY) ? `#g=${P.meta.galaxy}` : ""}`;
     const ua = K.seg(q, 0.45, 0.75);
     const y0 = b.y + b.h + Fr.fs * 1.7;
-    K.text(Fr, "Explore this beam, and all the galaxies:", Fr.W / 2, y0, {align: "center", size: 0.95, color: K.COL.muted, alpha: ua});
+    K.text(Fr, "Explore this sightline, and all the galaxies:", Fr.W / 2, y0, {align: "center", size: 0.95, color: K.COL.muted, alpha: ua});
     K.text(Fr, url, Fr.W / 2, y0 + Fr.fs * 1.5, {align: "center", size: 1.15, mono: true, color: K.COL.ink, alpha: ua});
   }
 }

@@ -225,7 +225,7 @@ export function frameItems(fs, env) {
       gap: 0, candidates: ["n"], fallback: "band", size: {w, h: 40, font: 14}});
   }
 
-  // the hand-off at rest (review SC-7): Try another beam / Open in Spectra / Replay under the B14 text
+  // the hand-off at rest (review SC-7): Try another story / Try another sightline / Open in Spectra under the B14 text
   if (env.end) {
     const it = endItem(env.end, bands, type);
     if (it) items.push(it);
@@ -254,7 +254,8 @@ export function endState(fs, beats, labels, short) {
   return op >= 0.02 ? {labels, short: short || labels, opacity: op} : null;
 }
 /* end actions (review SC-7): one row of pills (or a column when the band is narrow) in the equation band, else the world band */
-export const END_IDS = Object.freeze(["ride_another", "open_spectra", "replay"]);
+/* owner 2026-11-16: another story (the main choice, first), another sightline, this sightline in the explorer */
+export const END_IDS = Object.freeze(["another_story", "ride_another", "open_spectra"]);
 export function endSizes(labels, font = 14, short = labels) {
   const wOf = ls => ls.map(t => Math.ceil(textWidth(t, "sans5", font)) + 34), gap = 8, h = 44, ws = wOf(labels), ss = wOf(short);
   const row = a => a.reduce((x, y) => x + y, 0) + gap * (a.length - 1);
@@ -436,8 +437,8 @@ export function createShell(els, opts = {}) {
       const k = a.dataset.end;
       if (k === "open_spectra") { a.href = H.explorerHref ? H.explorerHref() : "../../index.html"; return; }
       e.preventDefault();
-      if (k === "ride_another") (H.picker || (picker && (() => picker.open(opts.index, opts.current))) || (() => {}))();
-      else if (k === "replay") (H.replay || (() => H.jump && H.jump(0)))();
+      const only = k === "another_story" ? "stories" : "rays";
+      (H.picker ? () => H.picker(only) : picker ? () => picker.open(opts.index, opts.current, only) : () => {})();
     });
     els.hud.appendChild(endEl);
   }

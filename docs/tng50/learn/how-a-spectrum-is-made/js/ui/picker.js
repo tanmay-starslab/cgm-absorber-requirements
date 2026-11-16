@@ -1,4 +1,4 @@
-// "Try another beam" (DESIGN_final §5.6; brief req. 5: pick another sightline or galaxy). A dialog on the modal layer.
+// "Try another sightline" (DESIGN_final §5.6; brief req. 5: pick another sightline or galaxy). A dialog on the modal layer.
 // The story needs per-ray story data (U_data's story-data/2, listed in data/index.json); only staged rays can be shown.
 // Every other galaxy and sightline of the sample lives in the explorer, so the picker ends with that hand-off instead of
 // pretending. Rays the data marks ineligible are listed, disabled, with the reason (U_data's rule, e.g. no visible O VI).
@@ -9,7 +9,8 @@
 //       casesModel(index, {current, story, atEnd, query}) -> {on, cards: [{id, title, blurb, current}]}
 //       storyHref(galaxy, ray, base)      -> "?g=<id>&ray=<id>" (store.js grammar; the fragment keeps the moment)
 //       caseHref(id, index)               -> "index.html?story=<id>" ("index.html" for the default story)
-// DOM:  createPicker(host, {onPick({galaxy, ray}), onStory(id)?, atEnd()?, explorerHref(galaxy) -> url, onClose}) -> {open(index, current), close, isOpen}
+//       gateCards(index, story)           -> [{id, title, blurb, img, href}]: the gate's story row (all but the one showing)
+// DOM:  createPicker(host, {onPick({galaxy, ray}), onStory(id)?, atEnd()?, explorerHref(galaxy) -> url, onClose}) -> {open(index, current, only), close, isOpen}
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"}[c]));
 /* a v1 entry or the hero tour ("full"); Tier A entries are cards, never beams */
@@ -25,7 +26,7 @@ export function pickerModel(index, current = {}, query = "") {
     const g = +s.galaxy, ray = String(s.ray || ""), label = s.label || `Subhalo ${g}`;
     if (q && !(`${g} ${label} ${ray}`.toLowerCase().includes(q))) continue;
     if (!byG.has(g)) byG.set(g, {galaxy: g, label, rays: []});
-    byG.get(g).rays.push({ray, label: rayLabel(ray), eligible: s.eligible !== false, reason: s.eligible === false ? (s.reason || "story not available for this beam") : null,
+    byG.get(g).rays.push({ray, label: rayLabel(ray), eligible: s.eligible !== false, reason: s.eligible === false ? (s.reason || "story not available for this sightline") : null,
                           current: g === +current.galaxy && ray === String(current.ray || "")});
     shown++;
   }
@@ -36,9 +37,9 @@ export function pickerModel(index, current = {}, query = "") {
 
 /* card text (§7.2); an index entry's own title/blurb wins; subcase "lls" has its own card */
 export const CARDS = {
-  full: ["The full tour", "Every lesson on one rich beam"],
+  full: ["The full tour", "Every lesson on one rich sightline"],
   clean: ["A single cloud", "One cloud, one dip in every line"],
-  multiphase: ["Cool gas and hot gas", "Two gases on one beam, moving apart"],
+  multiphase: ["Cool and hot gas", "Two gases on one sightline, moving apart"],
   damped: ["A damped system", "So much hydrogen the dip grows wings"],
   lls: ["A Lyman-limit system", "Enough hydrogen to turn the dip black"],
   empty: ["An empty halo", "Almost nothing in the way, and that still counts"],
@@ -58,13 +59,20 @@ export function casesModel(index, o = {}) {
   const cards = [];
   for (const s of listed) {
     const c = CARDS[s.subcase === "lls" ? "lls" : s.id] || [s.label || s.id, ""];
-    const card = {id: s.id, title: s.title || c[0], blurb: s.blurb || c[1], current: s.id === here};
+    const card = {id: s.id, title: s.title || c[0], blurb: s.blurb || c[1], current: s.id === here, img: `img/poster_${+s.galaxy}_${s.ray}_card.webp`};
     if (q && !(`${card.title} ${card.blurb} ${s.galaxy} ${s.ray}`.toLowerCase().includes(q))) continue;
     cards.push(card);
   }
   const rank = c => (c.current ? 0 : c.id === NEXT[here] ? 1 : 2);
   cards.sort((a, b) => rank(a) - rank(b));
   return {on: true, cards};
+}
+/* the gate's story row (owner 2026-11-16): every listed story but the one showing, in the owner's order */
+const ROW = ["full", "clean", "multiphase", "damped", "empty", "hot"];
+export function gateCards(index, story) {
+  const m = casesModel(index, {story: sid(story) || "full"});
+  return m.cards.filter(c => !c.current).sort((a, b) => (ROW.indexOf(a.id) + 1 || 99) - (ROW.indexOf(b.id) + 1 || 99))
+    .map(c => ({...c, href: caseHref(c.id, index)}));
 }
 export function caseHref(id, index) {
   const def = sid(index && index.default_story) || "full";
@@ -90,31 +98,31 @@ export function createPicker(host, hooks = {}) {
   const el = document.createElement("div");
   el.id = "picker"; el.className = "pk"; el.hidden = true; el.dataset.noscrub = "";
   el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-labelledby", "pk-h");
-  el.innerHTML = `<div class="pk-head"><h2 id="pk-h">Try another beam</h2>` +
+  el.innerHTML = `<div class="pk-head"><h2 id="pk-h">Try another sightline</h2>` +
     `<button type="button" class="hud-btn pk-x" aria-label="Close"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg></button></div>` +
-    `<label class="pk-s"><span class="vh">Find a galaxy or beam</span><input type="search" placeholder="Galaxy or beam" autocomplete="off" spellcheck="false"></label>` +
+    `<label class="pk-s"><span class="vh">Find a story, galaxy or sightline</span><input type="search" placeholder="Story, galaxy or sightline" autocomplete="off" spellcheck="false"></label>` +
     `<div class="pk-list" role="listbox" aria-labelledby="pk-h" tabindex="-1"></div>` +
     `<p class="pk-foot"></p>`;
   host.appendChild(el);
   const input = el.querySelector("input"), list = el.querySelector(".pk-list"), foot = el.querySelector(".pk-foot");
-  let index = null, current = {}, opener = null, atEnd = true;
+  let index = null, current = {}, opener = null, atEnd = true, only = null;
 
   function render() {
     const m = pickerModel(index, current, input.value);
     const story = typeof location !== "undefined" ? new URLSearchParams(location.search).get("story") : null;
-    const cm = casesModel(index, {current, story, atEnd, query: input.value});
+    const cm = only === "rays" ? {cards: []} : casesModel(index, {current, story, atEnd, query: input.value});
     const cases = cm.cards.length ? `<div class="pk-g pk-cs" role="group" aria-label="Stories"><div class="pk-gl" aria-hidden="true">Stories</div>` +
       cm.cards.map(c => `<div class="pk-o pk-c" role="option" tabindex="-1" data-story="${esc(c.id)}" aria-selected="${c.current}" aria-disabled="false">` +
-        `<span class="pk-ct"><span class="pk-l">${esc(c.title)}</span><span class="pk-b">${esc(c.blurb)}</span></span>` +
+        `<img class="pk-im" alt="" src="${esc(c.img)}" loading="lazy"><span class="pk-ct"><span class="pk-l">${esc(c.title)}</span><span class="pk-b">${esc(c.blurb)}</span></span>` +
         `${c.current ? `<span class="pk-t">showing now</span>` : ""}</div>`).join("") + "</div>" : "";
-    list.innerHTML = (cases + m.groups.map(g => `<div class="pk-g" role="group" aria-label="${esc(g.label)}"><div class="pk-gl" aria-hidden="true" data-key="galaxy">${esc(g.label)}</div>` +
+    list.innerHTML = (cases + (only === "stories" ? [] : m.groups).map(g => `<div class="pk-g" role="group" aria-label="${esc(g.label)}"><div class="pk-gl" aria-hidden="true" data-key="galaxy">${esc(g.label)}</div>` +
       g.rays.map(r => `<div class="pk-o" role="option" tabindex="-1" data-g="${g.galaxy}" data-ray="${esc(r.ray)}"` +
         ` aria-selected="${r.current}" aria-disabled="${!r.eligible}">` +
         `<span class="pk-l" data-key="ray">${esc(r.label)}</span>${r.current ? `<span class="pk-t">showing now</span>` : r.reason ? `<span class="pk-t">${esc(r.reason)}</span>` : ""}</div>`).join("") +
-      "</div>").join("")) || `<p class="pk-none">No staged beam matches.</p>`;
+      "</div>").join("")) || `<p class="pk-none">Nothing matches.</p>`;
     const g = current.galaxy;
     foot.innerHTML = hooks.explorerHref ? `Every galaxy and sightline of the sample is in the <a href="${esc(hooks.explorerHref(g))}">explorer</a>; ` +
-      `beams with a story are listed here.` : "";
+      `those with a story are listed here.` : "";
   }
   const options = () => [...list.querySelectorAll('.pk-o[aria-disabled="false"]')];
   function pick(o) {
@@ -129,9 +137,11 @@ export function createPicker(host, hooks = {}) {
     if (sel.galaxy === +current.galaxy && sel.ray === String(current.ray)) { close(); return; }
     close(); hooks.onPick && hooks.onPick(sel);
   }
-  function open(idx, cur = {}) {
-    index = idx; current = cur || {}; opener = document.activeElement; input.value = "";
-    atEnd = !(idx && idx.picker === "cases") || (hooks.atEnd ? !!hooks.atEnd() : atEnds());
+  /* only: "stories" (the end card's Try another story), "rays", or null for both */
+  function open(idx, cur = {}, o = null) {
+    index = idx; current = cur || {}; opener = document.activeElement; input.value = ""; only = o;
+    atEnd = !(idx && idx.picker === "cases") || o === "stories" || (hooks.atEnd ? !!hooks.atEnd() : atEnds());
+    el.querySelector("h2").textContent = o === "stories" ? "Try another story" : "Try another sightline";
     render();
     el.hidden = false; input.focus();
   }

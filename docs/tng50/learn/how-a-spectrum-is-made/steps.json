@@ -1,13 +1,13 @@
 {
  "schema": "story-steps/1",
  "meta": {
-  "title": "How a spectrum is made",
+  "title": "How an absorption spectrum is made",
   "galaxy": "tng50-1-99-488530",
   "subhalo": 488530,
   "ray": "rand_b062_a062",
   "n_galaxies": 198,
   "data": "data/story_488530_rand_b062_a062.json",
-  "note": "Display text: beam for the path, dip for the feature; numbers are {{key}} templates (see keys)."
+  "note": "Display text: sightline for the path, dip for the feature; numbers are {{key}} templates (see keys)."
  },
  "keys": {
   "galaxy": {
@@ -300,7 +300,7 @@
   },
   {
    "id": "pencil",
-   "title": "What does one beam see?"
+   "title": "What does one sightline see?"
   },
   {
    "id": "cells",
@@ -357,7 +357,7 @@
     "ms": 600
    },
    "text": "Galaxies sit inside gas too faint to see",
-   "sub": "A quasar far behind shines through it. We follow one beam through one of {{ngal}} simulated galaxies.",
+   "sub": "A quasar far behind shines through it. We follow one sightline through one of {{ngal}} simulated galaxies.",
    "physics": {
     "eq": null,
     "line": "Galaxy {{galaxy}} from TNG50-1 at z = 0, {{mw_compare}}; its halo reaches R200c = {{R200c}} kpc."
@@ -427,7 +427,7 @@
    },
    "caption": "A light behind reveals it",
    "voice": "A light behind reveals it",
-   "aria": "A warm white beam leaves the quasar and crosses the halo toward us. A thin strip appears along the bottom: the beam's spectrum, a flat line at 100 percent, because all the light gets through.",
+   "aria": "A warm white ray of light leaves the quasar and crosses the halo toward us. A thin strip appears along the bottom: the sightline's spectrum, a flat line at 100 percent, because all the light gets through.",
    "dur_s": 7,
    "scrub": false,
    "controls": [],
@@ -465,21 +465,21 @@
    "id": "pencil-1",
    "scene": "pencil",
    "chapter": "pencil",
-   "title": "What does one beam see?",
+   "title": "What does one sightline see?",
    "params": {},
    "tween": {
     "ease": "inOutCubic",
     "ms": 600
    },
-   "text": "One beam, {{b_ly}} light-years from the centre",
+   "text": "One sightline, {{b_ly}} light-years from the centre",
    "sub": "Seen from the side, the sightline passes {{b_kpc}} kpc from the galaxy's centre and crosses the whole halo.",
    "physics": {
     "eq": null,
     "line": "b = {{b_kpc}} kpc, azimuth {{azimuth_deg}}°, path from −R200c to +R200c = {{length_kpc}} kpc. Only gas within R200c is counted; real sightlines also cross gas beyond it, and our own Galaxy."
    },
-   "caption": "One beam, {{b_ly}} light-years from the centre",
-   "voice": "One beam, {{b_ly}} light-years from the centre",
-   "aria": "The halo seen from the side. The beam runs straight across it from the quasar on the right toward our telescope on the left. A dashed marker from the centre to the beam reads {{b_ly}} light-years.",
+   "caption": "One sightline, {{b_ly}} light-years from the centre",
+   "voice": "One sightline, {{b_ly}} light-years from the centre",
+   "aria": "The halo seen from the side. The sightline runs straight across it from the quasar on the right toward our telescope on the left. A dashed marker from the centre to the sightline reads {{b_ly}} light-years.",
    "dur_s": 6,
    "scrub": false,
    "controls": [],
@@ -522,15 +522,15 @@
     "ease": "inOutCubic",
     "ms": 600
    },
-   "text": "Every beam crosses different gas",
+   "text": "Every sightline crosses different gas",
    "sub": "Other catalogued sightlines of this galaxy flash by. Each meets different gas, so their spectra differ a lot. We follow one.",
    "physics": {
     "eq": null,
     "line": "The catalogue samples many impact distances and orientations; the explorer's gallery shows every one."
    },
-   "caption": "Every beam crosses different gas",
-   "voice": "Every beam crosses different gas",
-   "aria": "Faint lines flash one after another across the halo: other sightlines through the same galaxy. Our beam stays lit.",
+   "caption": "Every sightline crosses different gas",
+   "voice": "Every sightline crosses different gas",
+   "aria": "Faint lines flash one after another across the halo: other sightlines through the same galaxy. Our sightline stays lit.",
    "dur_s": 6,
    "scrub": false,
    "controls": [],
@@ -574,15 +574,15 @@
     "ease": "inOutCubic",
     "ms": 600
    },
-   "text": "The beam crosses {{n_cells}} gas cells",
-   "sub": "The simulation stores gas in cells. Along its path the beam passes through {{n_cells}} of them, lit as the light arrives.",
+   "text": "The sightline crosses {{n_cells}} gas cells",
+   "sub": "The simulation stores gas in cells. Along its path the sightline passes through {{n_cells}} of them, lit as the light arrives.",
    "physics": {
     "eq": null,
     "line": "Cells are soft, overlapping kernels, larger than real clouds; the path inside a cell has median {{dl_median_kpc}} kpc and maximum {{dl_max_kpc}} kpc."
    },
-   "caption": "The beam crosses {{n_cells}} gas cells",
-   "voice": "The beam crosses {{n_cells}} gas cells",
-   "aria": "A horizontal beam with a ruler of {{length_kpc}} kiloparsecs below it. Soft beads appear along it from right to left, one per gas cell, sized by the path inside the cell and coloured by temperature; a counter reaches {{n_cells}}.",
+   "caption": "The sightline crosses {{n_cells}} gas cells",
+   "voice": "The sightline crosses {{n_cells}} gas cells",
+   "aria": "A horizontal sightline with a ruler of {{length_kpc}} kiloparsecs below it. Soft beads appear along it from right to left, one per gas cell, sized by the path inside the cell and coloured by temperature; a counter reaches {{n_cells}}.",
    "dur_s": 5,
    "scrub": false,
    "controls": [],
@@ -626,14 +626,14 @@
     "ms": 600
    },
    "text": "Each has its own density, heat, speed",
-   "sub": "Scroll to move the probe along the beam. Every cell carries a density, a temperature, a metal content and a velocity.",
+   "sub": "Scroll to move the probe along the sightline. Every cell carries a density, a temperature, a metal content and a velocity.",
    "physics": {
     "eq": null,
     "line": "n_H = X_H ρ / m_H, with the hydrogen mass fraction X_H of each cell between {{XH_min}} and {{XH_max}}."
    },
    "caption": "Each has its own density, heat, speed",
    "voice": "Each has its own density, heat, speed",
-   "aria": "A probe ring glides along the beam and a small card reads the cell under it: density, heat in kelvin, metals compared with the Sun, and speed in kilometres per second.",
+   "aria": "A probe ring glides along the sightline and a small card reads the cell under it: density, heat in kelvin, metals compared with the Sun, and speed in kilometres per second.",
    "dur_s": 5,
    "scrub": true,
    "controls": [
@@ -754,7 +754,7 @@
    },
    "caption": "Cool clumps keep neutral hydrogen",
    "voice": "Cool clumps keep neutral hydrogen",
-   "aria": "One cell from the beam opens into a disc of hydrogen atoms. About {{s4a_xHI}} of them light up indigo: atoms that still hold their electron.",
+   "aria": "One cell from the sightline opens into a disc of hydrogen atoms. About {{s4a_xHI}} of them light up indigo: atoms that still hold their electron.",
    "dur_s": 9,
    "scrub": false,
    "controls": [],
@@ -924,14 +924,14 @@
     "ms": 600
    },
    "text": "Each gas cell leaves a shadow",
-   "sub": "The beam spreads into ultraviolet colours our eyes cannot see. Where oxygen ions sit, one colour goes dark.",
+   "sub": "The light spreads into ultraviolet colours our eyes cannot see. Where oxygen ions sit, one colour goes dark.",
    "physics": {
     "eq": "profile",
     "line": "Each cell removes light as e^(−τ); the dip's shape is a Gaussian in speed for O VI."
    },
    "caption": "Each gas cell leaves a shadow",
    "voice": "Each gas cell leaves a shadow",
-   "aria": "The beam fans out into a false-colour band labelled ultraviolet, colours our eyes cannot see. A dark stripe appears in the band. The band then folds down into a plot of light getting through, and the stripe becomes a dip.",
+   "aria": "The light fans out into a false-colour band labelled ultraviolet, colours our eyes cannot see. A dark stripe appears in the band. The band then folds down into a plot of light getting through, and the stripe becomes a dip.",
    "dur_s": 6,
    "scrub": false,
    "controls": [],
@@ -1033,7 +1033,7 @@
     "ms": 600
    },
    "text": "Amount sets how much light is taken",
-   "sub": "More oxygen ions along the beam take a bigger bite: the shaded area of the dip grows.",
+   "sub": "More oxygen ions along the sightline take a bigger bite: the shaded area of the dip grows.",
    "physics": {
     "eq": "tau0",
     "line": "Cell {{s5_cell}}: log N = {{c263_logN}}, b = {{c263_b}} km/s, f = {{ovi_f}}, λ = {{ovi_lam}} Å, so τ₀ = {{c263_tau0}} and {{c263_Fc}} % of the light gets through at the centre."
@@ -1189,14 +1189,14 @@
     "ms": 600
    },
    "text": "Where a dip sits tells its speed",
-   "sub": "Threads join each cell on the beam to its dip. Position in the spectrum is speed, not distance.",
+   "sub": "Threads join each cell on the sightline to its dip. Position in the spectrum is speed, not distance.",
    "physics": {
     "eq": "doppler",
     "line": "Speeds are the gas's own motions; the slow expansion of space across the halo (up to {{hubble_kms}} km/s here) is not added."
    },
    "caption": "Where a dip sits tells its speed",
    "voice": "Where a dip sits tells its speed",
-   "aria": "Top: the beam drawn as a ruler in kiloparsecs with its gas cells. Bottom: the spectrum against speed. Thin threads join each cell to the dip it makes.",
+   "aria": "Top: the sightline drawn as a ruler in kiloparsecs with its gas cells. Bottom: the spectrum against speed. Thin threads join each cell to the dip it makes.",
    "dur_s": 8,
    "scrub": false,
    "controls": [],
@@ -1242,7 +1242,7 @@
     "ms": 600
    },
    "text": "Far apart, same speed, same dip",
-   "sub": "Two cells {{pair_sep}} kpc apart on the beam move at about the same speed, so their shadows land together.",
+   "sub": "Two cells {{pair_sep}} kpc apart on the sightline move at about the same speed, so their shadows land together.",
    "physics": {
     "eq": "doppler",
     "line": "Cells {{s6_cell_a}} (l = {{pair_a_l}} kpc) and {{s6_cell_b}} (l = {{pair_b_l}} kpc) differ in speed by less than either dip's width."
@@ -1297,7 +1297,7 @@
     "ms": 600
    },
    "text": "Dozens of shadows merge into a few dips",
-   "sub": "The beam crosses {{ncross}} cells; {{nvis}} leave a visible shadow. Their shadows add, cell after cell, along the path.",
+   "sub": "The sightline crosses {{ncross}} cells; {{nvis}} leave a visible shadow. Their shadows add, cell after cell, along the path.",
    "physics": {
     "eq": "tausum",
     "line": "Peak τ = {{ovi_peaktau}}: O VI here {{ovi_sat}}."
@@ -1466,14 +1466,14 @@
     "ms": 600
    },
    "text": "Once black, only wider",
-   "sub": "On this beam, hydrogen's dip is black: adding more only widens it, so the amount is hard to read.",
+   "sub": "On this sightline, hydrogen's dip is black: adding more only widens it, so the amount is hard to read.",
    "physics": {
     "eq": "satwidth",
     "line": "H I total log N = {{hi_logN}} ({{hi_lls}}), peak τ = {{hi_peaktau}}. On this sightline every fit lands {{hi_fit_dlo}} to {{hi_fit_dhi}} dex off; in general a black dip gives only a rough amount, often just a lower limit."
    },
    "caption": "Once black, only wider",
    "voice": "Once black, only wider",
-   "aria": "The test dip is black at its centre. As the amount rises from ten to the 13.5 to ten to the 20, the depth meter reaches 100 percent and stays pinned while the width meter grows; faint wings appear near the end. Then the real hydrogen trough on this beam replaces it, black across its core.",
+   "aria": "The test dip is black at its centre. As the amount rises from ten to the 13.5 to ten to the 20, the depth meter reaches 100 percent and stays pinned while the width meter grows; faint wings appear near the end. Then the real hydrogen trough on this sightline replaces it, black across its core.",
    "dur_s": 14,
    "scrub": false,
    "controls": [],
@@ -1591,7 +1591,7 @@
    },
    "caption": "Blur turns black dips grey",
    "voice": "Blur turns black dips grey",
-   "aria": "The darkest dip on this beam, almost black at high sharpness, turns grey at its floor as the blur widens; a label reads how much light it now seems to let through.",
+   "aria": "The darkest dip on this sightline, almost black at high sharpness, turns grey at its floor as the blur widens; a label reads how much light it now seems to let through.",
    "dur_s": 7,
    "scrub": false,
    "controls": [
@@ -1942,11 +1942,11 @@
    "sub": "One fitted cloud gathers cells tens of kpc apart. A fit tells how much and how fast, not where, and not how hot.",
    "physics": {
     "eq": "bwidth",
-    "line": "A fitted width is not a thermometer: at R {{broad_R}}, S/N {{broad_sn}} one cloud has b = {{broad_b}} km/s. At R {{invented_R}}, S/N {{invented_sn}} the fit invents b = {{inv_b}} km/s, far narrower than the blur, so noise made it (total {{inv_logN}}); no O VI cell on this beam is that cool."
+    "line": "A fitted width is not a thermometer: at R {{broad_R}}, S/N {{broad_sn}} one cloud has b = {{broad_b}} km/s. At R {{invented_R}}, S/N {{invented_sn}} the fit invents b = {{inv_b}} km/s, far narrower than the blur, so noise made it (total {{inv_logN}}); no O VI cell on this sightline is that cool."
    },
    "caption": "The clouds are not the cells",
    "voice": "The clouds are not the cells",
-   "aria": "The threads from the speed map return: one fitted cloud connects to cells scattered tens of kiloparsecs apart along the beam. Then a very broad fitted cloud, and a very narrow invented one.",
+   "aria": "The threads from the speed map return: one fitted cloud connects to cells scattered tens of kiloparsecs apart along the sightline. Then a very broad fitted cloud, and a very narrow invented one.",
    "dur_s": 7,
    "scrub": false,
    "controls": [],
@@ -1991,14 +1991,14 @@
     "ease": "inOutCubic",
     "ms": 600
    },
-   "text": "Now it is yours. Same galaxy, same beam",
-   "sub": "Open this beam in the explorer, or pick another of the {{ngal}} galaxies and their sightlines.",
+   "text": "Now it is yours. Same galaxy, same sightline",
+   "sub": "Open this sightline in the explorer, or pick another of the {{ngal}} galaxies and their sightlines.",
    "physics": {
     "eq": null,
     "line": "Blur is R, noise is S/N, clouds are the fit: each scene maps to one control in Spectra."
    },
-   "caption": "Now it is yours. Same galaxy, same beam",
-   "voice": "Now it is yours. Same galaxy, same beam",
+   "caption": "Now it is yours. Same galaxy, same sightline",
+   "voice": "Now it is yours. Same galaxy, same sightline",
    "aria": "An end card showing the real O VI and hydrogen spectrum in the explorer's style, with buttons to open it in Spectra, see it in 3D, or replay the story.",
    "dur_s": 10,
    "scrub": false,

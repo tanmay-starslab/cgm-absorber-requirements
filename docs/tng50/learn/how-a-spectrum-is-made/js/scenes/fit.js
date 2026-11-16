@@ -52,7 +52,7 @@ function render(ctx, state, t, data) {
     if (!res) K.text(Fr, "fitting", Fr.box.x + 6, Fr.box.y - Fr.fs * 0.5, {size: 0.8, color: K.COL.muted});
     return;
   }
-  if (!seeds.length) { K.text(Fr, "no stored fits for this beam", Fr.box.x + Fr.box.w / 2, Fr.box.y + Fr.box.h / 2, {align: "center", color: K.COL.muted}); return; }
+  if (!seeds.length) { K.text(Fr, "no stored fits for this sightline", Fr.box.x + Fr.box.w / 2, Fr.box.y + Fr.box.h / 2, {align: "center", color: K.COL.muted}); return; }
   if (k === 0) {
     // three noise draws, each held then crossfaded (the fits differ; the total barely does)
     const n = seeds.length, u = K.clamp(q) * n, i = Math.min(n - 1, Math.floor(u)), f = i < n - 1 ? K.seg(u - i, 0.8, 1) : 0;

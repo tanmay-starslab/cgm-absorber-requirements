@@ -31,8 +31,8 @@
     ],
     "B2.1": [
       {
-        "display": "We follow this one beam through it.",
-        "display_short": "One beam through it."
+        "display": "We follow this one sightline through it.",
+        "display_short": "One sightline through it."
       }
     ],
     "B3": [
@@ -78,7 +78,7 @@
         "when": "ovi_strong",
         "display": "Amount sets how much light is taken.",
         "display_short": "Amount sets the bite.",
-        "sub": "This one cell holds {{c263_ovi_share_words}} of the O VI on the beam.",
+        "sub": "This one cell holds {{c263_ovi_share_words}} of the O VI on the sightline.",
         "sub_short": "One cell holds {{c263_ovi_share_words}} of the O VI."
       },
       {
@@ -206,7 +206,7 @@
       {
         "display": "Now it is yours.",
         "display_short": "Now it is yours.",
-        "sub": "Change sharpness and exposure, or open this beam in the explorer.",
+        "sub": "Change sharpness and exposure, or open this sightline in the explorer.",
         "sub_short": "Try the dials."
       }
     ]
@@ -308,7 +308,7 @@
           {
             "display": "Now it is yours.",
             "display_short": "Now it is yours.",
-            "sub": "Change sharpness and exposure, or open this beam in the explorer.",
+            "sub": "Change sharpness and exposure, or open this sightline in the explorer.",
             "sub_short": "Try the dials."
           }
         ],
@@ -396,7 +396,7 @@
               "cool_v",
               "warm_v"
             ],
-            "display": "Same beam, *different speeds.*",
+            "display": "Same sightline, *different speeds.*",
             "display_short": "Different speeds.",
             "sub": "Cool gas at {{cool_v}} km/s, hot gas at {{warm_v}} km/s. Some gas also sits between them.",
             "sub_short": "Cool and hot move apart."
@@ -408,7 +408,7 @@
               "warm_v",
               "nothing_between"
             ],
-            "display": "Same beam, *different speeds.*",
+            "display": "Same sightline, *different speeds.*",
             "display_short": "Different speeds.",
             "sub": "Cool gas at {{cool_v}} km/s, hot gas at {{warm_v}} km/s, and nothing between them.",
             "sub_short": "Cool and hot move apart."
@@ -662,7 +662,7 @@
           {
             "display": "Now it is yours.",
             "display_short": "Now it is yours.",
-            "sub": "Change sharpness and exposure, or open this beam in the explorer.",
+            "sub": "Change sharpness and exposure, or open this sightline in the explorer.",
             "sub_short": "Try the dials."
           }
         ],
@@ -749,8 +749,8 @@
             "claims": [
               "case_rule"
             ],
-            "display": "We follow this one beam through it.",
-            "display_short": "One beam through it.",
+            "display": "We follow this one sightline through it.",
+            "display_short": "One sightline through it.",
             "sub": "It meets almost nothing.",
             "sub_short": "Almost nothing here."
           }
@@ -858,7 +858,7 @@
               "case_rule",
               "hi_faint"
             ],
-            "display": "No cool clump on this beam.",
+            "display": "No cool clump on this sightline.",
             "display_short": "No cool clump here.",
             "sub": "Hydrogen stays faint: little gas here is cool enough to keep it neutral.",
             "sub_short": "Hydrogen stays faint."
@@ -945,15 +945,15 @@
   "beats": {
     "B7p": {
       "chip": "Both speeds",
-      "display": "One beam, *cool gas and hot.*",
+      "display": "One sightline, *cool gas and hot.*",
       "display_short": "Cool gas and hot.",
-      "narrative": "One beam passes cool gas and hot gas that move at different speeds."
+      "narrative": "One sightline passes cool gas and hot gas that move at different speeds."
     },
     "B10w": {
       "chip": "The wings",
       "display": "All of that, *from this.*",
       "display_short": "All from this.",
-      "narrative": "Pulling back: one beam made all of that."
+      "narrative": "Pulling back: one sightline made all of that."
     },
     "B12n": {
       "chip": "The limit",

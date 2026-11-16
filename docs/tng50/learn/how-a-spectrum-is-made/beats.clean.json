@@ -12,8 +12,8 @@
     "sha256": "b6eae5a56db9f511"
    },
    "templates": {
-    "template.beats.json": "663a4d01902d178a",
-    "template.shots.json": "1444cfafec762d1b",
+    "template.beats.json": "4ae3fc5fe1e5c4a1",
+    "template.shots.json": "edea1f6a3ea7754d",
     "cases.json": "41e050845be030bc",
     "overrides.json": "02cae8389cf73c82"
    },
@@ -163,7 +163,7 @@
      "u0": 0,
      "u1": 0.55,
      "fadeIn": 0,
-     "words": 5
+     "words": 6
     }
    ],
    "eqs": [],

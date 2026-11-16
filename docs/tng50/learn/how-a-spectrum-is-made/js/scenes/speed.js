@@ -24,7 +24,7 @@ function render(ctx, state, t, data) {
   const lit = j => (ex ? inL(j) || inV(j) : pairSet.has(j));
   const anyLit = ex ? !!(ex.brushL || ex.brushV) : pair > 0;
   // top: the beam with its cells
-  const S = K.rayStrip(top, data, K.LEAD, {alpha: appear, labels: appear, label: Fr.physics ? "l (kpc along the sightline)" : "position along the beam"});
+  const S = K.rayStrip(top, data, K.LEAD, {alpha: appear, labels: appear, label: Fr.physics ? "l (kpc along the sightline)" : "position along the sightline"});
   for (let j = 0; j < c.n; j++) {
     const vis = K.clamp(Math.log10(Math.max(c.tau0[j], 1e-4) / 0.01) / 2.3), r = K.clamp(1.4 + 2.4 * Math.sqrt(Math.max(c.dl[j], 0)), 1.4, 8);
     const dim = anyLit && !lit(j) ? 0.25 : 1;
