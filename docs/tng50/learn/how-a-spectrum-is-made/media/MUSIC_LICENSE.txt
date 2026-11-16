@@ -1,8 +1,16 @@
-music_loop.m4a (the page's optional music) and the soundtrack of story_1080p.mp4 / story_720p.mp4
+The page's optional music (two tracks, chosen in the menu; off by default). scripts/story_music.py builds both.
+
+music_dayone.m4a (the default track)
+
+Work:       Hans Zimmer, Day One (Interstellar, 2014)
+Recording:  commercial soundtrack recording supplied by the site owner
+Changes:    excerpted (10.75-110.75 s), crossfaded into a loop and loudness-levelled
+
+music_loop.m4a (the second track) and the soundtrack of story_1080p.mp4 / story_720p.mp4
 
 Work:       Ludwig van Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (public domain)
 Recording:  orchestral recording supplied by the site owner
-Changes:    excerpted, faded, looped and loudness-levelled (scripts/story_music.py)
+Changes:    excerpted, faded, looped and loudness-levelled
 
-The recording is not covered by this repository's MIT licence. Everything else in this repository keeps its own
+Neither recording is covered by this repository's MIT licence. Everything else in this repository keeps its own
 licence.
