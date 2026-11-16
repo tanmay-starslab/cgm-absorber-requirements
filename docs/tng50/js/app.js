@@ -86,16 +86,21 @@ const SIGHT = new Map();        // id -> decoded TNGS (fit.js decodeTNGS)
 let API = null, HEALTH = null, PROBES = [], pendingId = null;
 
 /* ---------------- theme ---------------- */
+/* owner 2026-11-16: every click must change what is on screen. The old 3-step cycle auto, light, dark had one step with
+   no visible change (auto already shows light or dark), so it needed a second click. Now "auto" (follow the system) is
+   only the starting state; a click always switches to the opposite of what is shown, and the choice is remembered. */
 const THEMES = ["auto", "light", "dark"];
 let theme = THEMES.includes(store.get("tngsight.theme")) ? store.get("tngsight.theme") : "auto";
+const shown = t => (t === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : t);
 function applyTheme(t) { if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
-  const b = $("#theme"), nx = THEMES[(THEMES.indexOf(t) + 1) % 3]; b.dataset.mode = t; b.setAttribute("aria-label", "Theme: " + t);
-  b.dataset.tip = `Theme ${t}: ${t === "auto" ? "follows your system" : "fixed"}; click for ${nx}`; }
+  const b = $("#theme"), cur = shown(t), nx = cur === "dark" ? "light" : "dark"; b.dataset.mode = t;
+  b.setAttribute("aria-label", `Theme: ${cur}${t === "auto" ? " (system)" : ""}. Switch to ${nx}`);
+  b.dataset.tip = `${cur === "dark" ? "Dark" : "Light"} theme${t === "auto" ? ", following your system" : ""}; click for ${nx}`; }
 applyTheme(theme);
-$("#theme").addEventListener("click", () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; store.set("tngsight.theme", theme); applyTheme(theme); });
+$("#theme").addEventListener("click", () => { theme = shown(theme) === "dark" ? "light" : "dark"; store.set("tngsight.theme", theme); applyTheme(theme); });
 function themeChanged() { buildIons(); build3dField(); spectra.schedule(); }
 new MutationObserver(() => themeChanged()).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => themeChanged());
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { applyTheme(theme); themeChanged(); });
 
 /* ---------------- notes and status ---------------- */
 let noteT = 0;
