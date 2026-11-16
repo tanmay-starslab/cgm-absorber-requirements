@@ -1,0 +1,124 @@
+{
+ "schema": "story-gate-poster/1",
+ "galaxy": 511920,
+ "ray": "edge_b106_a018_s29389",
+ "R200c_kpc": 245.695,
+ "tilt_deg": 35,
+ "roll_deg": -14,
+ "camera_sha256": "513907ce80b68c9f",
+ "convention": "observer at p0 (ray start), quasar at p1 (ray end); the drawn line is the full sightline",
+ "sources": {
+  "manifest": "tng50-viz/2",
+  "catalog": "v3/story_511920_edge_b106_a018_s29389.json",
+  "cubes": {
+   "S0": "c12479bd51c2",
+   "S1": "63ca5cd598fc",
+   "S2": "41ae6d94b5f5",
+   "nH_L0": "f8a3c2cf5fda",
+   "nH_L1": "112cd46afa29",
+   "nH_L2": "4920481b7543"
+  }
+ },
+ "variants": {
+  "landscape": {
+   "size": [
+    1920,
+    1080
+   ],
+   "half_w_kpc": 328.346,
+   "kpc_per_px": 0.34203,
+   "center_px": [
+    1344,
+    540
+   ],
+   "p0_px": [
+    869.4,
+    339.8
+   ],
+   "p1_px": [
+    1669,
+    140.4
+   ],
+   "impact_px": [
+    1269.2,
+    240.1
+   ],
+   "file": "poster_511920_edge_b106_a018_s29389.webp",
+   "bytes": 14336,
+   "quality": 88,
+   "sha256": "0ba6b80cab873abc"
+  },
+  "portrait": {
+   "size": [
+    1080,
+    1920
+   ],
+   "half_w_kpc": 185.334,
+   "kpc_per_px": 0.34321,
+   "center_px": [
+    540,
+    633.6
+   ],
+   "p0_px": [
+    67.1,
+    434.1
+   ],
+   "p1_px": [
+    863.9,
+    235.4
+   ],
+   "impact_px": [
+    465.5,
+    334.8
+   ],
+   "file": "poster_511920_edge_b106_a018_s29389_p.webp",
+   "bytes": 15224,
+   "quality": 88,
+   "sha256": "808a5d9cb1ec230e"
+  },
+  "card": {
+   "size": [
+    680,
+    383
+   ],
+   "half_w_kpc": 239.606,
+   "kpc_per_px": 0.70472,
+   "center_px": [
+    340,
+    191.5
+   ],
+   "p0_px": [
+    109.7,
+    94.3
+   ],
+   "p1_px": [
+    497.7,
+    -2.4
+   ],
+   "impact_px": [
+    303.7,
+    46
+   ],
+   "file": "poster_511920_edge_b106_a018_s29389_card.webp",
+   "bytes": 4428,
+   "quality": 84,
+   "sha256": "df95b73fcf983f7a"
+  }
+ },
+ "widened": {
+  "landscape": {
+   "from_kpc": 233.41,
+   "to_kpc": 328.346,
+   "hud_clear": true
+  },
+  "portrait": {
+   "from_kpc": 152.331,
+   "to_kpc": 185.334,
+   "hud_clear": true
+  },
+  "card": {
+   "from_kpc": 196.556,
+   "to_kpc": 239.606
+  }
+ }
+}

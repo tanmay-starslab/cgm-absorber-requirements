@@ -1,0 +1,108 @@
+{
+ "schema": "story-gate-poster/1",
+ "galaxy": 488530,
+ "ray": "rand_b050_a215",
+ "R200c_kpc": 246.352,
+ "tilt_deg": 35,
+ "roll_deg": -14,
+ "camera_sha256": "513907ce80b68c9f",
+ "convention": "observer at p0 (ray start), quasar at p1 (ray end); the drawn line is the full sightline",
+ "sources": {
+  "manifest": "tng50-viz/2",
+  "catalog": "v3/story_488530_rand_b050_a215.json",
+  "cubes": {
+   "S0": "d04b5b5f43a2",
+   "S1": "00642d12b238",
+   "S2": "f41547dcbfc6",
+   "nH_L0": "05c1067d737e",
+   "nH_L1": "5e7627d2d6bf",
+   "nH_L2": "1d708ae555a0"
+  }
+ },
+ "variants": {
+  "landscape": {
+   "size": [
+    1920,
+    1080
+   ],
+   "half_w_kpc": 234.035,
+   "kpc_per_px": 0.24379,
+   "center_px": [
+    1344,
+    540
+   ],
+   "p0_px": [
+    732,
+    481.2
+   ],
+   "p1_px": [
+    1856.8,
+    200.8
+   ],
+   "impact_px": [
+    1294.4,
+    341
+   ],
+   "file": "poster_488530_rand_b050_a215.webp",
+   "bytes": 44116,
+   "quality": 88,
+   "sha256": "586d2e6a384cd1d9"
+  },
+  "portrait": {
+   "size": [
+    1080,
+    1920
+   ],
+   "half_w_kpc": 152.738,
+   "kpc_per_px": 0.28285,
+   "center_px": [
+    540,
+    633.6
+   ],
+   "p0_px": [
+    12.5,
+    582.9
+   ],
+   "p1_px": [
+    982,
+    341.2
+   ],
+   "impact_px": [
+    497.2,
+    462.1
+   ],
+   "file": "poster_488530_rand_b050_a215_p.webp",
+   "bytes": 43406,
+   "quality": 88,
+   "sha256": "246ca7b0f04fd2bc"
+  },
+  "card": {
+   "size": [
+    680,
+    383
+   ],
+   "half_w_kpc": 197.082,
+   "kpc_per_px": 0.57965,
+   "center_px": [
+    340,
+    191.5
+   ],
+   "p0_px": [
+    82.6,
+    166.8
+   ],
+   "p1_px": [
+    555.7,
+    48.8
+   ],
+   "impact_px": [
+    319.1,
+    107.8
+   ],
+   "file": "poster_488530_rand_b050_a215_card.webp",
+   "bytes": 11678,
+   "quality": 84,
+   "sha256": "7443fcde9e965e7c"
+  }
+ }
+}

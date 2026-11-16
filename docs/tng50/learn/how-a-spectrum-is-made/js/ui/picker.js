@@ -2,16 +2,22 @@
 // The story needs per-ray story data (U_data's story-data/2, listed in data/index.json); only staged rays can be shown.
 // Every other galaxy and sightline of the sample lives in the explorer, so the picker ends with that hand-off instead of
 // pretending. Rays the data marks ineligible are listed, disabled, with the reason (U_data's rule, e.g. no visible O VI).
+// Tier A (DESIGN_tierA §7.2): index.picker "cases" adds a "Stories" group (gates.all entries, B0/B14 only, G12); a card
+// reloads on ?story=<id>. Picker "off" renders exactly the v2 dialog.
 //
 // Pure: pickerModel(index, current, query) -> {groups: [{galaxy, label, rays: [{ray, label, eligible, reason, current}]}], n, shown}
+//       casesModel(index, {current, story, atEnd, query}) -> {on, cards: [{id, title, blurb, current}]}
 //       storyHref(galaxy, ray, base)      -> "?g=<id>&ray=<id>" (store.js grammar; the fragment keeps the moment)
-// DOM:  createPicker(host, {onPick({galaxy, ray}), explorerHref(galaxy) -> url, onClose}) -> {open(index, current), close, isOpen}
+//       caseHref(id, index)               -> "index.html?story=<id>" ("index.html" for the default story)
+// DOM:  createPicker(host, {onPick({galaxy, ray}), onStory(id)?, atEnd()?, explorerHref(galaxy) -> url, onClose}) -> {open(index, current), close, isOpen}
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"}[c]));
+/* a v1 entry or the hero tour ("full"); Tier A entries are cards, never beams */
+const isBeam = s => !!s && (!s.case || s.case === "full");
 
-/* index = data/index.json (schema story-index/1); current = {galaxy, ray}; query filters by galaxy id, label or ray id */
+/* index = data/index.json (schema story-index/1 or /2); current = {galaxy, ray}; query filters by galaxy id, label or ray id */
 export function pickerModel(index, current = {}, query = "") {
-  const stories = (index && Array.isArray(index.stories)) ? index.stories : [];
+  const stories = (index && Array.isArray(index.stories)) ? index.stories.filter(isBeam) : [];
   const q = String(query || "").trim().toLowerCase();
   const byG = new Map();
   let shown = 0;
@@ -28,6 +34,43 @@ export function pickerModel(index, current = {}, query = "") {
   return {groups, n: stories.length, shown};
 }
 
+/* card text (§7.2); an index entry's own title/blurb wins; subcase "lls" has its own card */
+export const CARDS = {
+  full: ["The full tour", "Every lesson on one rich beam"],
+  clean: ["A single cloud", "One cloud, one dip in every line"],
+  multiphase: ["Cool gas and hot gas", "Two gases on one beam, moving apart"],
+  damped: ["A damped system", "So much hydrogen the dip grows wings"],
+  lls: ["A Lyman-limit system", "Enough hydrogen to turn the dip black"],
+  empty: ["An empty halo", "Almost nothing in the way, and that still counts"],
+  hot: ["Hot gas, faint hydrogen", "Gas too hot for much hydrogen to show"]};
+/* B14's next story (§5), listed after the one showing */
+export const NEXT = {full: "clean", clean: "damped", multiphase: "clean", damped: "clean", empty: "hot", hot: "empty"};
+const sid = s => (typeof s === "string" && /^[a-z][a-z0-9_]*$/.test(s) ? s : null);
+
+export function casesModel(index, o = {}) {
+  const list = index && index.picker === "cases" && Array.isArray(index.stories) ? index.stories : [];
+  const listed = list.filter(s => s && sid(s.id) && s.gates && s.gates.all === true);
+  if (!listed.length || o.atEnd === false) return {on: false, cards: []};
+  const cur = o.current || {};
+  const here = sid(o.story) || (listed.find(s => s.case !== "full" && +s.galaxy === +cur.galaxy && String(s.ray) === String(cur.ray || "")) || {}).id ||
+    sid(index.default_story) || "full";
+  const q = String(o.query || "").trim().toLowerCase();
+  const cards = [];
+  for (const s of listed) {
+    const c = CARDS[s.subcase === "lls" ? "lls" : s.id] || [s.label || s.id, ""];
+    const card = {id: s.id, title: s.title || c[0], blurb: s.blurb || c[1], current: s.id === here};
+    if (q && !(`${card.title} ${card.blurb} ${s.galaxy} ${s.ray}`.toLowerCase().includes(q))) continue;
+    cards.push(card);
+  }
+  const rank = c => (c.current ? 0 : c.id === NEXT[here] ? 1 : 2);
+  cards.sort((a, b) => rank(a) - rank(b));
+  return {on: true, cards};
+}
+export function caseHref(id, index) {
+  const def = sid(index && index.default_story) || "full";
+  return id === def && id === "full" ? "index.html" : `index.html?story=${encodeURIComponent(id)}`;
+}
+
 /* "rand_b062_a062" -> "impact 62 kpc, azimuth 62°" (the explorer's id grammar); anything else stays as the id */
 export function rayLabel(ray) {
   const m = /^(?:rand|ray)?_?b(\d+)_a(\d+)/.exec(String(ray));
@@ -35,6 +78,12 @@ export function rayLabel(ray) {
 }
 export function storyHref(galaxy, ray, base = "") {
   return `${base}?g=${encodeURIComponent(galaxy)}&ray=${encodeURIComponent(ray)}`;
+}
+
+/* first or last beat (window.__story); no story API counts as an end */
+function atEnds() {
+  const S = typeof window !== "undefined" && window.__story;
+  try { const b = S.beats(), id = S.state().beat.id; return id === b[0].id || id === b[b.length - 1].id; } catch (e) { return true; }
 }
 
 export function createPicker(host, hooks = {}) {
@@ -48,15 +97,21 @@ export function createPicker(host, hooks = {}) {
     `<p class="pk-foot"></p>`;
   host.appendChild(el);
   const input = el.querySelector("input"), list = el.querySelector(".pk-list"), foot = el.querySelector(".pk-foot");
-  let index = null, current = {}, opener = null;
+  let index = null, current = {}, opener = null, atEnd = true;
 
   function render() {
     const m = pickerModel(index, current, input.value);
-    list.innerHTML = m.groups.map(g => `<div class="pk-g" role="group" aria-label="${esc(g.label)}"><div class="pk-gl" aria-hidden="true" data-key="galaxy">${esc(g.label)}</div>` +
+    const story = typeof location !== "undefined" ? new URLSearchParams(location.search).get("story") : null;
+    const cm = casesModel(index, {current, story, atEnd, query: input.value});
+    const cases = cm.cards.length ? `<div class="pk-g pk-cs" role="group" aria-label="Stories"><div class="pk-gl" aria-hidden="true">Stories</div>` +
+      cm.cards.map(c => `<div class="pk-o pk-c" role="option" tabindex="-1" data-story="${esc(c.id)}" aria-selected="${c.current}" aria-disabled="false">` +
+        `<span class="pk-ct"><span class="pk-l">${esc(c.title)}</span><span class="pk-b">${esc(c.blurb)}</span></span>` +
+        `${c.current ? `<span class="pk-t">showing now</span>` : ""}</div>`).join("") + "</div>" : "";
+    list.innerHTML = (cases + m.groups.map(g => `<div class="pk-g" role="group" aria-label="${esc(g.label)}"><div class="pk-gl" aria-hidden="true" data-key="galaxy">${esc(g.label)}</div>` +
       g.rays.map(r => `<div class="pk-o" role="option" tabindex="-1" data-g="${g.galaxy}" data-ray="${esc(r.ray)}"` +
         ` aria-selected="${r.current}" aria-disabled="${!r.eligible}">` +
         `<span class="pk-l" data-key="ray">${esc(r.label)}</span>${r.current ? `<span class="pk-t">showing now</span>` : r.reason ? `<span class="pk-t">${esc(r.reason)}</span>` : ""}</div>`).join("") +
-      "</div>").join("") || `<p class="pk-none">No staged beam matches.</p>`;
+      "</div>").join("")) || `<p class="pk-none">No staged beam matches.</p>`;
     const g = current.galaxy;
     foot.innerHTML = hooks.explorerHref ? `Every galaxy and sightline of the sample is in the <a href="${esc(hooks.explorerHref(g))}">explorer</a>; ` +
       `beams with a story are listed here.` : "";
@@ -64,12 +119,20 @@ export function createPicker(host, hooks = {}) {
   const options = () => [...list.querySelectorAll('.pk-o[aria-disabled="false"]')];
   function pick(o) {
     if (!o || o.getAttribute("aria-disabled") === "true") return;
+    if (o.dataset.story) {
+      const id = o.dataset.story;
+      close(); if (o.getAttribute("aria-selected") === "true") return;
+      (hooks.onStory || (s => { location.href = caseHref(s, index); }))(id);
+      return;
+    }
     const sel = {galaxy: +o.dataset.g, ray: o.dataset.ray};
     if (sel.galaxy === +current.galaxy && sel.ray === String(current.ray)) { close(); return; }
     close(); hooks.onPick && hooks.onPick(sel);
   }
   function open(idx, cur = {}) {
-    index = idx; current = cur || {}; opener = document.activeElement; input.value = ""; render();
+    index = idx; current = cur || {}; opener = document.activeElement; input.value = "";
+    atEnd = !(idx && idx.picker === "cases") || (hooks.atEnd ? !!hooks.atEnd() : atEnds());
+    render();
     el.hidden = false; input.focus();
   }
   function close() {

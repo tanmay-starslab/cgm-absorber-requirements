@@ -75,4 +75,6 @@ export function blendTF(from, to = from, mix = 0, {darkSky = true} = {}) {
   }
   return mix < 0.5 ? one(from, A, 1 - 2 * mix) : one(to, B, 2 * mix - 1);
 }
+/* Tier A applyStoryTF etc. live in ./tfcase.js (case stories only); it retunes PRESETS and clears this cache */
+export {PRESETS as STORY_PRESETS, cache as TF_CACHE};
 export {TF_W, TF_H, THOR};

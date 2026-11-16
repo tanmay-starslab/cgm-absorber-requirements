@@ -1,0 +1,965 @@
+{
+  "schema": "story-copy-cases/1",
+  "about": "Tier A case-story copy (DESIGN_tierA §5, §7.1; unit R5b), split from copy.json so the full tour's copy stays byte-identical (H0) and this file loads only for a case story. A case story's shell sets copy.cases to this file. js/copy/derive.js resolveLine then tries stories[case].lines[id], then common[id], before the full tour's line; a case that lists an id owns it (no overlay applies: the line shows nothing, never a full-tour line). Overlays carry `when` (flags) and `claims` (story-data/3 claims[k].pass must be true; case_rule = the declared case passed G16) and inherit physics/hint from the shared line. chips name the acts (no cloud letters). beats holds the base lines of beats only case stories use. Checked by tests/js/story_copy_lint.mjs on every Tier A story.",
+  "lint": {
+    "allow": [
+      {
+        "re": "3σ",
+        "why": "the 3 sigma detection threshold of absreq/detection.py (a method constant), case physics text only",
+        "sections": [
+          "cases"
+        ]
+      }
+    ]
+  },
+  "common": {
+    "B1": [
+      {
+        "display": "This light left a quasar long ago.",
+        "display_short": "Light from a far quasar.",
+        "sub": "The strip below is its light. For now, all of it gets through.",
+        "sub_short": "For now, all of it gets through."
+      }
+    ],
+    "B2": [
+      {
+        "display": "Galaxies sit inside gas *too faint to see.*",
+        "display_short": "Gas too faint to see.",
+        "sub": "It shows only by the light it takes. The colours are ours.",
+        "sub_short": "It shows only by the light it takes."
+      }
+    ],
+    "B2.1": [
+      {
+        "display": "We follow this one beam through it.",
+        "display_short": "One beam through it."
+      }
+    ],
+    "B3": [
+      {
+        "display": "Every cell has a density, heat and speed.",
+        "display_short": "Each cell: density, heat, speed."
+      }
+    ],
+    "B3.1": [
+      {
+        "display": null
+      }
+    ],
+    "B4": [
+      {
+        "when": "has_first_ovi",
+        "display": "Each cell leaves a *shadow.*",
+        "display_short": "Each cell leaves a *shadow.*",
+        "sub": "Atoms take a sliver of one colour: the first cell's dip was {{b4_first_depth}} % deep.",
+        "sub_short": "Atoms take a sliver of one colour."
+      },
+      {
+        "display": null
+      }
+    ],
+    "B5": [
+      {
+        "display": null
+      }
+    ],
+    "B5.1": [
+      {
+        "display": null
+      }
+    ],
+    "B5.2": [
+      {
+        "display": null
+      }
+    ],
+    "B7b": [
+      {
+        "when": "ovi_strong",
+        "display": "Amount sets how much light is taken.",
+        "display_short": "Amount sets the bite.",
+        "sub": "This one cell holds {{c263_ovi_share_words}} of the O VI on the beam.",
+        "sub_short": "One cell holds {{c263_ovi_share_words}} of the O VI."
+      },
+      {
+        "display": null
+      }
+    ],
+    "B7b.1": [
+      {
+        "display": "*Heat spreads it out.*",
+        "display_short": "*Heat spreads it out.*",
+        "sub": "Hotter ions jiggle faster: wider, shallower dips.",
+        "sub_short": "Hotter means wider and shallower."
+      }
+    ],
+    "B7c": [
+      {
+        "display": "Change the heat, watch the dip.",
+        "display_short": "Drag the heat.",
+        "sub": "O VI lives only in a band of heat.",
+        "sub_short": "A band of heat."
+      }
+    ],
+    "B7c.hot": [
+      {
+        "display": "Too hot: the dip fades.",
+        "display_short": "Too hot: it fades.",
+        "sub": "Above {{ovi_T_hot_fade}} K.",
+        "sub_short": "Above {{ovi_T_hot_fade}} K."
+      }
+    ],
+    "B7c.cool": [
+      {
+        "display": "Too cool: the dip fades.",
+        "display_short": "Too cool: it fades.",
+        "sub": "Below {{ovi_T_cool_fade}} K.",
+        "sub_short": "Below {{ovi_T_cool_fade}} K."
+      }
+    ],
+    "B7d": [
+      {
+        "display": "One cloud, many speeds, a wide dip.",
+        "display_short": "Many speeds, one wide dip.",
+        "sub": "Each cell adds its own shadow at its own speed. The shadows stack.",
+        "sub_short": "Shadows stack."
+      }
+    ],
+    "B6.1": [
+      {
+        "display": "Where a dip sits *means speed.*",
+        "display_short": "A dip's place means speed.",
+        "sub": "Moving toward us shifts a shadow bluer, like a siren.",
+        "sub_short": "Toward us shifts bluer, like a siren."
+      }
+    ],
+    "B8": [
+      {
+        "display": "Past the galaxy's nearest point.",
+        "display_short": "Past the nearest point.",
+        "sub": "Its centre was {{b_ly}} light-years to the side.",
+        "sub_short": "Its centre was to the side."
+      }
+    ],
+    "B11": [
+      {
+        "display": "This is everything *the light carried out.*",
+        "display_short": "All the light carried out.",
+        "sub": "{{ovi_n_visible}} cells left a visible O VI shadow.",
+        "sub_short": "{{ovi_n_visible}} visible O VI shadows."
+      }
+    ],
+    "B12a": [
+      {
+        "display": "A blurry telescope *merges dips.*",
+        "display_short": "Blur merges dips.",
+        "sub": "Less sharpness blends neighbouring dips into one.",
+        "sub_short": "Less sharpness blends neighbouring dips."
+      }
+    ],
+    "B12a.1": [
+      {
+        "display": null
+      }
+    ],
+    "B12b": [
+      {
+        "display": "Longer exposures *beat noise.*",
+        "display_short": "Longer exposures beat noise.",
+        "sub": "Twice as clean needs four times as long.",
+        "sub_short": "Twice as clean takes four times longer."
+      }
+    ],
+    "B12b.1": [
+      {
+        "display": "Noise can hide dips, *and invent them.*",
+        "display_short": "Noise hides and invents dips.",
+        "sub": "Chance wiggles can look like dips. The white line is the truth.",
+        "sub_short": "The white line is the truth."
+      }
+    ],
+    "B13": [
+      {
+        "display": "We fit a few *components.*",
+        "display_short": "We fit *components.*",
+        "sub": "Each has an amount, a width and a speed.",
+        "sub_short": "Amount, width, speed."
+      }
+    ],
+    "B13.1": [
+      {
+        "display": "Components are not clouds.",
+        "display_short": "Components are not clouds.",
+        "sub": "One component can draw on gas in several places.",
+        "sub_short": "Many places, one component."
+      }
+    ],
+    "B13.3": [
+      {
+        "display": "A spectrum tells how much and how fast.",
+        "display_short": "How much, how fast.",
+        "sub": "But not where.",
+        "sub_short": "Not where."
+      }
+    ],
+    "B14": [
+      {
+        "display": "Now it is yours.",
+        "display_short": "Now it is yours.",
+        "sub": "Change sharpness and exposure, or open this beam in the explorer.",
+        "sub_short": "Try the dials."
+      }
+    ]
+  },
+  "stories": {
+    "clean_single": {
+      "story": "clean",
+      "title": "A single cloud",
+      "budget": 0.6,
+      "chips": {
+        "B0": "Start",
+        "B1": "The light",
+        "B2": "The halo",
+        "B5": "The cloud",
+        "B10": "Deeper",
+        "B8": "Past the galaxy",
+        "B11": "Look back",
+        "B12a": "The telescope",
+        "B13": "Reading it back",
+        "B14": "Yours"
+      },
+      "lines": {
+        "B5.1": [
+          {
+            "display": "Into *the cloud.*",
+            "display_short": "Into the cloud.",
+            "sub": "Watch both lines at once.",
+            "sub_short": "Watch both lines."
+          }
+        ],
+        "B11": [
+          {
+            "claims": [
+              "c1_v"
+            ],
+            "display": "One cloud, *one clean dip.*",
+            "display_short": "One cloud, one dip.",
+            "sub": "Every line dips at about {{c1_v}} km/s.",
+            "sub_short": "Every line dips at one speed.",
+            "physics": "Total log N = log₁₀ Σ N: {{ovi_logN}} for O VI, {{hi_logN}} for H I. Peak τ = {{ovi_peaktau}}: O VI here {{ovi_sat}}. The O VI dip spans {{trough_lo}} to +{{trough_hi}} km/s."
+          },
+          {
+            "display": "This is everything *the light carried out.*",
+            "display_short": "All the light carried out.",
+            "sub": "{{ovi_n_visible}} cells left a visible O VI shadow.",
+            "sub_short": "{{ovi_n_visible}} visible O VI shadows."
+          }
+        ],
+        "B13.1": [
+          {
+            "display": null
+          }
+        ],
+        "B5.2": [
+          {
+            "claims": [
+              "hi_black_single",
+              "ovi_grey"
+            ],
+            "display": "Hydrogen is already black. *O VI still counts.*",
+            "display_short": "O VI still counts.",
+            "sub": "Past black a dip stops counting atoms. The grey O VI dip still tracks how many there are.",
+            "sub_short": "Grey dips still count atoms."
+          },
+          {
+            "claims": [
+              "ovi_grey"
+            ],
+            "display": "The dip stays *grey.*",
+            "display_short": "The dip stays grey.",
+            "sub": "So its depth still tracks how many O VI atoms there are.",
+            "sub_short": "Grey dips still count atoms."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B10": [
+          {
+            "display": "More gas, deeper dip, *until black.*",
+            "display_short": "Deeper until black.",
+            "sub": "Add atoms and the centre darkens while the width barely changes, until it turns black.",
+            "sub_short": "More atoms, darker centre."
+          }
+        ],
+        "B10.1": [
+          {
+            "display": null
+          }
+        ],
+        "B14": [
+          {
+            "when": "same_galaxy_next",
+            "display": "Now it is yours.",
+            "display_short": "Now it is yours.",
+            "sub": "Next, the same galaxy with far more hydrogen.",
+            "sub_short": "Same galaxy, far more hydrogen."
+          },
+          {
+            "display": "Now it is yours.",
+            "display_short": "Now it is yours.",
+            "sub": "Change sharpness and exposure, or open this beam in the explorer.",
+            "sub_short": "Try the dials."
+          }
+        ],
+        "B13": [
+          {
+            "claims": [
+              "fit_dex"
+            ],
+            "display": "One component, *and it is right.*",
+            "display_short": "One component fits.",
+            "sub": "The fit lands within {{fit_dex}} dex of the cells.",
+            "sub_short": "Within {{fit_dex}} dex of the cells."
+          },
+          {
+            "claims": [
+              "c1_v"
+            ],
+            "display": "One component *draws it.*",
+            "display_short": "One component draws it.",
+            "sub": "One amount, one width, one speed.",
+            "sub_short": "Amount, width, speed."
+          },
+          {
+            "display": "We fit a few *components.*",
+            "display_short": "We fit *components.*",
+            "sub": "Each has an amount, a width and a speed.",
+            "sub_short": "Amount, width, speed."
+          }
+        ]
+      }
+    },
+    "multiphase": {
+      "story": "multiphase",
+      "title": "Cool gas and hot gas",
+      "budget": 0.75,
+      "chips": {
+        "B0": "Start",
+        "B1": "The light",
+        "B2": "The halo",
+        "B7a": "Hot gas",
+        "B5": "Cool gas",
+        "B7p": "Both speeds",
+        "B9": "New dips",
+        "B8": "Past the galaxy",
+        "B11": "Look back",
+        "B12a": "The telescope",
+        "B13": "Reading it back",
+        "B14": "Yours"
+      },
+      "lines": {
+        "B7a": [
+          {
+            "claims": [
+              "warm_v"
+            ],
+            "display": "First, *hot gas.*",
+            "display_short": "Hot gas.",
+            "sub": "O VI marks it, dipping at {{warm_v}} km/s.",
+            "sub_short": "O VI at {{warm_v}} km/s."
+          },
+          {
+            "display": "First, *hot gas.*",
+            "display_short": "Hot gas."
+          }
+        ],
+        "B5.1": [
+          {
+            "claims": [
+              "cool_v"
+            ],
+            "display": "Then *cool gas.*",
+            "display_short": "Cool gas.",
+            "sub": "Neutral hydrogen marks it, dipping at {{cool_v}} km/s.",
+            "sub_short": "Hydrogen at {{cool_v}} km/s."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B7p": [
+          {
+            "when": "bridge_ion",
+            "claims": [
+              "has_phase_offset",
+              "cool_v",
+              "warm_v"
+            ],
+            "display": "Same beam, *different speeds.*",
+            "display_short": "Different speeds.",
+            "sub": "Cool gas at {{cool_v}} km/s, hot gas at {{warm_v}} km/s. Some gas also sits between them.",
+            "sub_short": "Cool and hot move apart."
+          },
+          {
+            "claims": [
+              "has_phase_offset",
+              "cool_v",
+              "warm_v",
+              "nothing_between"
+            ],
+            "display": "Same beam, *different speeds.*",
+            "display_short": "Different speeds.",
+            "sub": "Cool gas at {{cool_v}} km/s, hot gas at {{warm_v}} km/s, and nothing between them.",
+            "sub_short": "Cool and hot move apart."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B9": [
+          {
+            "when": "has_b9_new_dips",
+            "display": "*New dips* still appear.",
+            "display_short": "*New dips* still appear.",
+            "sub": "New O VI dips at {{b9_new_minima}} km/s.",
+            "sub_short": "New O VI dips."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B9.1": [
+          {
+            "when": "has_pair",
+            "display": "Far apart, same speed, *same dip.*",
+            "display_short": "Far apart, *same dip.*",
+            "sub": "Gas {{pair_sep}} kpc apart moves at almost one speed.",
+            "sub_short": "{{pair_sep}} kpc apart, one dip."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B9.2": [
+          {
+            "display": "The spectrum keeps speed and loses place.",
+            "display_short": "Speed kept, place lost.",
+            "sub": "A dip records speed, not place.",
+            "sub_short": "Speed, not place."
+          }
+        ],
+        "B12a": [
+          {
+            "claims": [
+              "narrow"
+            ],
+            "display": "Blur greys the *narrow* dip first.",
+            "display_short": "Narrow dip greys first.",
+            "sub": "Every telescope smears the spectrum a little. The narrow cool dip loses depth before the hot one.",
+            "sub_short": "The narrow dip goes first."
+          },
+          {
+            "display": "A blurry telescope *merges dips.*",
+            "display_short": "Blur merges dips.",
+            "sub": "Less sharpness blends neighbouring dips into one.",
+            "sub_short": "Less sharpness blends neighbouring dips."
+          }
+        ],
+        "B13": [
+          {
+            "claims": [
+              "page_fit_2comp"
+            ],
+            "display": "One component *is not enough.*",
+            "display_short": "One is not enough.",
+            "sub": "One smooth component cannot draw both gases.",
+            "sub_short": "Both gases need components."
+          },
+          {
+            "display": "We fit a few *components.*",
+            "display_short": "We fit *components.*",
+            "sub": "Each has an amount, a width and a speed.",
+            "sub_short": "Amount, width, speed."
+          }
+        ],
+        "B13.1": [
+          {
+            "display": null
+          }
+        ]
+      }
+    },
+    "damped": {
+      "story": "damped",
+      "title": "A damped system",
+      "title_lls": "A Lyman-limit system",
+      "budget": 0.65,
+      "chips": {
+        "B0": "Start",
+        "B1": "The light",
+        "B2": "The halo",
+        "B5": "The wall",
+        "B7a": "Hot gas",
+        "B8": "Past the galaxy",
+        "B10": "The wings",
+        "B11": "Look back",
+        "B12a": "The telescope",
+        "B13": "Reading it back",
+        "B14": "Yours"
+      },
+      "lines": {
+        "B5": [
+          {
+            "claims": [
+              "hi_damped"
+            ],
+            "display": "So much hydrogen *the dip grows wings.*",
+            "display_short": "The dip grows *wings.*"
+          },
+          {
+            "when": "hi_lls",
+            "claims": [
+              "hi_black_core"
+            ],
+            "display": "Enough hydrogen to *turn the dip black.*",
+            "display_short": "A black dip."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B5.1": [
+          {
+            "claims": [
+              "hi_black_core"
+            ],
+            "display": "The core turns *black.*",
+            "display_short": "A black core.",
+            "sub": "Past black, the depth stops counting.",
+            "sub_short": "Past black, depth stops counting."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B5.2": [
+          {
+            "claims": [
+              "hi_damped",
+              "wing_frac",
+              "hi_black_core"
+            ],
+            "display": "The wings *carry the amount.*",
+            "display_short": "Wings carry the amount.",
+            "sub": "Past the black core, the far wings carry it.",
+            "sub_short": "The wings carry the amount."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B7a": [
+          {
+            "when": "ovi_strong",
+            "display": "Hot gas *beyond the wall.*",
+            "display_short": "Hot gas beyond.",
+            "sub": "O VI marks hotter gas just past the hydrogen.",
+            "sub_short": "O VI marks hotter gas."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B10": [
+          {
+            "claims": [
+              "hi_black_core",
+              "wing_frac"
+            ],
+            "display": "The core is black, *the wings weigh it.*",
+            "display_short": "Wings weigh the gas.",
+            "sub": "Add hydrogen: the black core cannot darken, so only the wings grow.",
+            "sub_short": "Only the wings grow."
+          },
+          {
+            "display": "More gas, deeper dip.",
+            "display_short": "More gas, deeper dip.",
+            "sub": "More atoms darken a dip's centre.",
+            "sub_short": "More atoms, darker centre."
+          }
+        ],
+        "B10.1": [
+          {
+            "claims": [
+              "hi_black_core"
+            ],
+            "display": "Once black, *only wider.*",
+            "display_short": "Once black, *only wider.*",
+            "sub": "More hydrogen cannot darken a black trough. It can only widen it.",
+            "sub_short": "Black dips can only widen."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B7b.1": [
+          {
+            "display": null
+          }
+        ],
+        "B7d": [
+          {
+            "display": null
+          }
+        ],
+        "B10w": [
+          {
+            "claims": [
+              "hi_damped"
+            ],
+            "display": "All of that, *from this.*",
+            "display_short": "All from this."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B11": [
+          {
+            "display": "This is everything *the light carried out.*",
+            "display_short": "All the light carried out.",
+            "sub": "{{hi_n_visible}} cells left a visible hydrogen shadow.",
+            "sub_short": "{{hi_n_visible}} hydrogen shadows."
+          }
+        ],
+        "B12a": [
+          {
+            "claims": [
+              "resolve_saturated",
+              "hi_black_core"
+            ],
+            "display": "No blur *greys this trough.*",
+            "display_short": "Still black.",
+            "sub": "Blur greys narrow black dips. This trough is wide enough to stay black.",
+            "sub_short": "Too wide to turn grey."
+          },
+          {
+            "display": "A blurry telescope *merges dips.*",
+            "display_short": "Blur merges dips.",
+            "sub": "Less sharpness blends neighbouring dips into one.",
+            "sub_short": "Less sharpness blends neighbouring dips."
+          }
+        ],
+        "B14": [
+          {
+            "when": "same_galaxy_next",
+            "display": "Now it is yours.",
+            "display_short": "Now it is yours.",
+            "sub": "Next, the same galaxy with one clean cloud.",
+            "sub_short": "Same galaxy, one clean cloud."
+          },
+          {
+            "display": "Now it is yours.",
+            "display_short": "Now it is yours.",
+            "sub": "Change sharpness and exposure, or open this beam in the explorer.",
+            "sub_short": "Try the dials."
+          }
+        ],
+        "B13.1": [
+          {
+            "display": null
+          }
+        ],
+        "B13": [
+          {
+            "claims": [
+              "hi_black_core",
+              "hi_damped"
+            ],
+            "display": "Black core, *wide wings.*",
+            "display_short": "Black core, wide wings.",
+            "sub": "Only a huge amount of hydrogen draws wings this wide. The fitted dip above is O VI.",
+            "sub_short": "Wings mean huge amounts.",
+            "physics": "log N(H I) = {{hi_logN}} summed over the cells (atoms per square cm). At a damped amount the wings, not the black core, carry it. The fit shown is O VI: log N {{ovi_logN}} in the cells."
+          },
+          {
+            "display": "We fit a few *components.*",
+            "display_short": "We fit *components.*",
+            "sub": "Each has an amount, a width and a speed.",
+            "sub_short": "Amount, width, speed."
+          }
+        ]
+      }
+    },
+    "empty": {
+      "story": "empty",
+      "title": "An empty halo",
+      "budget": 0.4,
+      "letters": "none",
+      "chips": {
+        "B0": "Start",
+        "B1": "The light",
+        "B2": "The halo",
+        "B8": "Halfway",
+        "B11": "Look back",
+        "B12n": "The limit",
+        "B12b": "The telescope",
+        "B12a": "The telescope",
+        "B13": "Reading it back",
+        "B14": "Yours"
+      },
+      "lines": {
+        "B1": [
+          {
+            "claims": [
+              "case_rule"
+            ],
+            "display": "Almost nothing stood in its way.",
+            "display_short": "Almost nothing in the way.",
+            "sub": "This light left a quasar long ago, and nearly all of it gets through.",
+            "sub_short": "Nearly all of it gets through."
+          }
+        ],
+        "B2": [
+          {
+            "when": "gas_poor",
+            "claims": [
+              "case_rule"
+            ],
+            "display": "A galaxy with *little gas.*",
+            "display_short": "A gas-poor galaxy.",
+            "sub": "Its halo is too faint to see, and there is little of it.",
+            "sub_short": "Little gas, too faint to see."
+          },
+          {
+            "display": "Galaxies sit inside gas *too faint to see.*",
+            "display_short": "Gas too faint to see.",
+            "sub": "It shows only by the light it takes. The colours are ours.",
+            "sub_short": "It shows only by the light it takes."
+          }
+        ],
+        "B1.1": [
+          {
+            "display": null
+          }
+        ],
+        "B2.1": [
+          {
+            "claims": [
+              "case_rule"
+            ],
+            "display": "We follow this one beam through it.",
+            "display_short": "One beam through it.",
+            "sub": "It meets almost nothing.",
+            "sub_short": "Almost nothing here."
+          }
+        ],
+        "B3.1": [
+          {
+            "display": null
+          }
+        ],
+        "B8": [
+          {
+            "display": "Halfway. The galaxy sits beside us.",
+            "display_short": "Halfway; galaxy beside us.",
+            "sub": "Its centre is {{b_ly}} light-years to the side.",
+            "sub_short": "Its centre is to the side."
+          }
+        ],
+        "B11": [
+          {
+            "claims": [
+              "case_rule"
+            ],
+            "display": "Almost *nothing taken.*",
+            "display_short": "Almost nothing taken.",
+            "sub": "An empty spectrum still caps how much gas can be here.",
+            "sub_short": "Empty still sets a cap."
+          }
+        ],
+        "B12n": [
+          {
+            "claims": [
+              "limits"
+            ],
+            "display": "Silence is *a measurement.*",
+            "display_short": "Silence still measures.",
+            "sub": "At this sharpness and exposure, a real dip above the limit would show.",
+            "sub_short": "A real dip would show."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B12b.1": [
+          {
+            "claims": [
+              "noise_dip"
+            ],
+            "display": "Noise alone *invents dips.*",
+            "display_short": "Noise invents dips.",
+            "sub": "Any small dip here is noise, not gas.",
+            "sub_short": "Small dips here are noise."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B13": [
+          {
+            "claims": [
+              "limits"
+            ],
+            "display": "We fit nothing, *and say how little.*",
+            "display_short": "How little gas.",
+            "sub": "At most {{ovi_logN_lim}} in O VI (log atoms per square cm), at S/N {{page_sn}}, R {{page_R}}, Doppler b {{lim_b_OVI}} km/s.",
+            "sub_short": "An upper limit, not a value.",
+            "physics": "3σ upper limits from the matched filter of absreq/detection.py at S/N {{page_sn}} per resolution element and R = {{page_R}}: log N(O VI) < {{ovi_logN_lim}} (b = {{lim_b_OVI}} km/s) and log N(H I) < {{hi_logN_lim}} (b = {{lim_b_HI}} km/s), N per square cm. b is the fiducial width for each ion."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B13.1": [
+          {
+            "display": null
+          }
+        ],
+        "B13.3": [
+          {
+            "display": null
+          }
+        ]
+      }
+    },
+    "hot_only": {
+      "story": "hot",
+      "title": "Hot gas, faint hydrogen",
+      "budget": 0.65,
+      "chips": {
+        "B0": "Start",
+        "B1": "The light",
+        "B2": "The halo",
+        "B5": "No cool clump",
+        "B7a": "Hot gas",
+        "B6": "The hot stretch",
+        "B8": "Halfway",
+        "B11": "Look back",
+        "B12a": "The telescope",
+        "B13": "Reading it back",
+        "B14": "Yours"
+      },
+      "lines": {
+        "B5.1": [
+          {
+            "claims": [
+              "case_rule",
+              "hi_faint"
+            ],
+            "display": "No cool clump on this beam.",
+            "display_short": "No cool clump here.",
+            "sub": "Hydrogen stays faint: little gas here is cool enough to keep it neutral.",
+            "sub_short": "Hydrogen stays faint."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B7a": [
+          {
+            "claims": [
+              "ovi_hot_share"
+            ],
+            "display": "Into *hot gas.*",
+            "display_short": "Into hot gas.",
+            "sub": "Most of the O VI ahead sits in hot gas.",
+            "sub_short": "Most O VI here is hot."
+          },
+          {
+            "display": "Into *hot gas.*",
+            "display_short": "Into hot gas."
+          }
+        ],
+        "B7c": [
+          {
+            "display": "O VI lives in a *band of heat.*",
+            "display_short": "A band of heat.",
+            "sub": "Drag the heat: outside the band, the dip fades.",
+            "sub_short": "Outside it, the dip fades."
+          }
+        ],
+        "B6": [
+          {
+            "when": "has_hot_stretch",
+            "claims": [
+              "hi_faint",
+              "ovi_hot_share"
+            ],
+            "display": "Too hot for *much* hydrogen.",
+            "display_short": "Too hot for *much* hydrogen",
+            "sub": "Right for O VI. Hydrogen keeps almost no electron here, so its dip stays faint.",
+            "sub_short": "Right for O VI."
+          },
+          {
+            "when": "has_hot_stretch",
+            "display": "Here the gas is *too hot to see.*",
+            "display_short": "*Too hot to see.*",
+            "sub": "So hot that oxygen loses even a sixth electron and hydrogen keeps almost none.",
+            "sub_short": "Hotter than O VI likes."
+          },
+          {
+            "display": null
+          }
+        ],
+        "B8": [
+          {
+            "display": "Halfway. The galaxy sits beside us.",
+            "display_short": "Halfway; galaxy beside us.",
+            "sub": "Its centre is {{b_ly}} light-years to the side.",
+            "sub_short": "Its centre is to the side."
+          }
+        ],
+        "B11": [
+          {
+            "claims": [
+              "case_rule",
+              "hi_faint"
+            ],
+            "display": "Only hot gas *left a mark.*",
+            "display_short": "Only hot gas.",
+            "sub": "Faint hydrogen is not missing gas: hot gas keeps little of it neutral.",
+            "sub_short": "Faint is not missing."
+          },
+          {
+            "display": "This is everything *the light carried out.*",
+            "display_short": "All the light carried out.",
+            "sub": "{{ovi_n_visible}} cells left a visible O VI shadow.",
+            "sub_short": "{{ovi_n_visible}} visible O VI shadows."
+          }
+        ]
+      }
+    }
+  },
+  "beats": {
+    "B7p": {
+      "chip": "Both speeds",
+      "display": "One beam, *cool gas and hot.*",
+      "display_short": "Cool gas and hot.",
+      "narrative": "One beam passes cool gas and hot gas that move at different speeds."
+    },
+    "B10w": {
+      "chip": "The wings",
+      "display": "All of that, *from this.*",
+      "display_short": "All from this.",
+      "narrative": "Pulling back: one beam made all of that."
+    },
+    "B12n": {
+      "chip": "The limit",
+      "display": "Silence is *a measurement.*",
+      "display_short": "Silence still measures.",
+      "narrative": "With no dip to fit, the sharpness and exposure still set how much gas could hide here."
+    }
+  }
+}

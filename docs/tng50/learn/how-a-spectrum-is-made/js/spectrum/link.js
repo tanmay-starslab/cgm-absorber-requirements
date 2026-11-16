@@ -4,6 +4,7 @@
 //                                       last tangent is vertical, ending on the dock's top edge at X(V_cell) of the lead
 //                                       ion's panel (never inside a label: the end box is "exempt" for the solver).
 //   tethers(fs, data, geom, project)    B11: each lettered shell -> the dock top edge at X(V_cloud);
+//                                       B7p (multiphase): the cool cloud -> its H I dip, the hot cloud -> its O VI dip, both ringed;
 //                                       B13: each cloud s -> component c, alpha ∝ M[s, c] share (CREST comps of the ion).
 //                                       Tethers END AT THE DOCK TOP EDGE; they never run over the dock.
 //   corridors(paths, r)                 the paths as solver corridors {a, b, r} (G3: no text box may cross them)
@@ -65,6 +66,7 @@ export function cellAnchor(fs, data, geom, project) {
 
 export function connector(fs, data, geom, project) {
   if (!fs || !fs.cell || !geom || !geom.panels || typeof project !== "function") return null;
+  if (fs.beat && fs.beat.id === "B7p" && pairEncounters(data)) return null;   // B7p: the two cloud tethers carry the link (fix1 F4)
   if (fs.spec && fs.spec.mode && fs.spec.mode !== "intrinsic") return null;   // the finale reads the detector, not a cell
   const ion = fs.spec && fs.spec.lead || "OVI", panel = geom.panels[ion] || Object.values(geom.panels)[0];
   if (!panel) return null;
@@ -93,6 +95,29 @@ function letterOf(data, id) {
   return null;
 }
 
+/* B7p pair: cool (claims.cool_v) and O VI-led (claims.warm_v) encounters, shell point and panel each (F4) */
+const pairMemo = new WeakMap();
+export function pairEncounters(data) {
+  if (!data || !data.plan || !Array.isArray(data.plan.encounters) || !data.claims) return null;
+  if (pairMemo.has(data) && data.clouds_full) return pairMemo.get(data);
+  const cv = data.claims.cool_v, wv = data.claims.warm_v;
+  if (!cv || !wv || cv.pass !== true || wv.pass !== true) return null;
+  const enc = data.plan.encounters, near = v => (e => Math.abs(+e.V - +v));
+  const cool = enc.filter(e => e && Math.abs(+e.V - +cv.value) <= 1).sort((a, b) => near(cv.value)(a) - near(cv.value)(b) || (b.share || 0) - (a.share || 0))[0];
+  const warm = enc.filter(e => e && e !== cool && Math.abs(+e.V - +wv.value) <= 1 && e.lead === "OVI")[0] || enc.filter(e => e && e !== cool && Math.abs(+e.V - +wv.value) <= 1)[0];
+  if (!cool || !warm) return null;
+  const centreOf = e => {
+    const ids = [...(e.clouds || [])].sort((a, b) => (/^OVI/.test(a) ? 1 : 0) - (/^OVI/.test(b) ? 1 : 0));
+    for (const id of ids) { const ion = String(id).replace(/_s\d+$/, ""), list = data.clouds_full && data.clouds_full.ions && data.clouds_full.ions[ion];
+      const c = list && Array.isArray(list.clouds) ? list.clouds.find(x => x && x.id === id) : null; if (c && c.centre) return {p: c.centre, cloud: id}; }
+    return {p: rayPoint(data, +e.lc), cloud: null};
+  };
+  const vOf = (e, ion) => (e.V_ion && Number.isFinite(+e.V_ion[ion]) ? +e.V_ion[ion] : +e.V);
+  const out = [{role: "cool", ions: ["HI", "MgII"], e: cool, ...centreOf(cool)}, {role: "hot", ions: ["OVI"], e: warm, ...centreOf(warm)}]
+    .map(x => ({...x, vOf: ion => vOf(x.e, ion)}));
+  if (data.clouds_full) pairMemo.set(data, out);
+  return out;
+}
 /* review M1 (three_d): a tether whose shell projects outside the viewport is not drawn (it would leave the frame) */
 const offScreen = (a, geom) => a.y < 0 || a.x < 0 || (geom.vw > 0 && a.x > geom.vw);
 /* review2 three_d S1/T10: a lettered shell that projects off screen or under the dock is not dropped any more; its tether
@@ -131,6 +156,19 @@ export function tethers(fs, data, geom, project) {
         const a = edgeAnchor(a0, geom);
         out.push({kind: "tether", id: `tether:pair:${idx}`, ion, pair: true, cell: idx, edge: a.edge, alpha: 0.95 * al,
           ...cubicDown({x: a.x, y: a.y}, {x: panelX(panel, V), y: geom.top})});
+      }
+    }
+  } else if (beat === "B7p") {
+    // both clouds ringed and tethered to their own dips, u 0.12 to the end (F4)
+    const pr = pairEncounters(data), u = fs.beat.u || 0;
+    if (pr && u > 0.12) {
+      const al = clamp((u - 0.12) / 0.08, 0, 1) * clamp((0.995 - u) / 0.03, 0, 1);
+      for (const x of pr) {
+        const ion = x.ions.find(k => geom.panels[k]), panel = ion && geom.panels[ion]; if (!panel || !x.p) continue;
+        const a0 = project(x.p); if (!a0 || a0.ok === false || !Number.isFinite(a0.x) || !Number.isFinite(a0.y)) continue;
+        const a = edgeAnchor(a0, geom);
+        out.push({kind: "tether", id: `tether:${x.role}`, ion, cloud: x.cloud, phase: x.role, ring: !a.edge, edge: a.edge, alpha: 0.95 * al,
+          ...cubicDown({x: a.x, y: a.y}, {x: panelX(panel, x.vOf(ion)), y: geom.top})});
       }
     }
   } else if (beat === "B13" && fs.spec && fs.spec.mode === "fit") {

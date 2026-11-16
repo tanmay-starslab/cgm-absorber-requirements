@@ -111,7 +111,8 @@ export function planEquations(fs, EQ, ctx = {}) {
       if (cc) { idx = cc.idx; if (cc.ion !== ion && def.variants[cc.ion]) ion = cc.ion; }
     }
     return {key: e.id, ids: [e.id], ion, variant: def.variants[ion] ? ion : "any", idx, anchor, totals: !!e.totals,
-      mode: phone || cls === "narrow" ? "chip" : "value", chain: false, enter: enterOf(e), hl: (e.hl || []).map(t => hlTerm(e.id, typeof t === "string" ? t : t.term)), ghost: e.ghost || null, ...extra};
+      mode: phone || cls === "narrow" ? "chip" : "value", chain: false, enter: enterOf(e), hl: (e.hl || []).map(t => hlTerm(e.id, typeof t === "string" ? t : t.term)), ghost: e.ghost || null,
+      ...(e.ghostKey ? {named: e.ghostKey} : {}), ...extra};   // v3: the override key a role ghost feeds (seek eqs[].ghostKey)
   };
   // B7b chain: whenever the beat lists all of E1, E2, E3 (or all three are on screen), the block holds all three rows from
   // the first one's entry, so its box never changes size mid-beat; rows not yet in their window sit at enter 0.
@@ -454,6 +455,7 @@ export function createOverlay({eq: EQ, data, fion = null, bus = null, root = nul
     }
     const prevNamed = namedOverride(ghost);
     ghost = s == null ? null : ghostCell(data, fion, {eq: px.eq, term: px.term, ion: part.ion, idx: part.idx, s});
+    if (ghost && part.named) ghost.named = part.named;     // v3 role ghost: feeds the key its beat declared (bind.GHOST_ALIAS)
     emit("override", {key: "ghost", value: ghost});
     const named = namedOverride(ghost);
     if (named) emit("override", named); else if (prevNamed) emit("override", {key: prevNamed.key, value: null});

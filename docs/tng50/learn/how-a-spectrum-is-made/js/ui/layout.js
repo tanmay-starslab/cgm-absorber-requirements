@@ -280,6 +280,14 @@ export function solve(items, ctx) {
         }
       }
     }
+    // fix2 (review2 ux M3): last resort for band text with nowhere else to go: its own band, over the beam corridor
+    if (!done && it.overBeam && !it.anchor && !parent) {
+      const it2 = {...it, avoid: false};
+      for (let vi = 0; vi < variants.length && !done; vi++) { const {w, h} = variants[vi];
+        for (const c of scanAll(it.band, ctx, band || view, w, h, it.align, it.vAlign)) {
+          const box = {x: c.x, y: c.y, w, h};
+          if ((!band || inside(box, band)) && fits(box, it2, pad, null)) { put(c.x, c.y, w, h, "beam", keep[vi]); done = true; break; } } }
+    }
     if (!done) hidden.push({id: it.id, reason: "no-room"});
   }
   return {placed, hidden, byId};

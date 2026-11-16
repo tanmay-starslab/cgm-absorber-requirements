@@ -25,6 +25,12 @@ import {locate as engineLocate, schemaErrors} from "../engine.js";
 const clamp01 = x => (x < 0 ? 0 : x > 1 ? 1 : x);
 const smooth = x => { const t = clamp01(x); return t * t * (3 - 2 * t); };
 
+/* beat registry (DESIGN_tierA §5): Tier A beats B7p, B10w, B12n are optional (default off: need a cond; hint = suggested flag) */
+export const BEAT_REGISTRY = Object.freeze(Object.fromEntries([
+  ..."B0 B1 B2 B3 B4 B5 B6 B7a B7b B7c B7d B7e B8 B9 B10 B11 B12a B12b B13 B14".split(" ").map(id => [id, {optional: false}]),
+  ["B7p", {optional: true, hint: "has_phase_offset"}], ["B10w", {optional: true, hint: "hi_damped"}], ["B12n", {optional: true, hint: "empty_faint"}]]));
+const ROLE_CELL = /^@[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)?$/;
+
 export function createTimeline(doc, opts = {}) {
   const beats = Object.freeze((doc && doc.beats || []).map((b, i) => Object.freeze({...b, i})));
   const meta = (doc && doc.meta) || {};
@@ -162,6 +168,11 @@ export function createTimeline(doc, opts = {}) {
       if (!(b.p1 > b.p0)) errs.push(`${b.id}: p1 must exceed p0`);
       if (i > 0 && Math.abs(beats[i - 1].p1 - b.p0) > 1e-12) errs.push(`${b.id}: not contiguous with ${beats[i - 1].id}`);
       if (opts.shots && !(opts.shots.shots || {})[b.shot]) errs.push(`${b.id}: unknown shot ${b.shot}`);
+      const reg = BEAT_REGISTRY[b.id];
+      if (!reg) errs.push(`${b.id}: not in the beat registry`);
+      else if (reg.optional && !b.cond) errs.push(`${b.id}: optional beat needs a cond (default off)`);
+      if (b.cell != null && !(Number.isInteger(b.cell) && b.cell >= 0) && !(typeof b.cell === "string" && ROLE_CELL.test(b.cell)))
+        errs.push(`${b.id}: cell must be a cell index or an @role`);
       const tfu = b.tf.map(k => k.u); if (tfu.some((u, j) => j && u < tfu[j - 1])) errs.push(`${b.id}: tf keys not sorted`);
       if (b.tf[0].u !== 0) errs.push(`${b.id}: first tf key must be at u = 0`);
       if (Array.isArray(b.dock) && b.dock[0].u !== 0) errs.push(`${b.id}: first dock key must be at u = 0`);

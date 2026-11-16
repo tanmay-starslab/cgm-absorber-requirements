@@ -22,6 +22,7 @@
 //   options: --ray <id>  --gal-root <dir>  --viz <dir|url>  --catalog <file|url>  --camera <json>  --workers <n>
 //            --shots <name,...|gate>  --gate-out <dir> (default ROOT/img)  --max-kb <n> (gate size cap, default 150)
 //            --quick (quarter-size, for checks)  --check (geometry only, no images)
+//            --story-data <file> (Tier A: beam p0/p1 from a story-data/3 file's geometry.ray, disk frame; one galaxy and --ray)
 //
 // Inputs per galaxy g: viz = <gal-root>/<g>/viz (or --viz; an http(s) base such as the hosted <viz_base> works too),
 // catalog = --catalog, else <gal-root>/<g>/library_trident/catalog.json, else <gal-root>/<g>/catalog.json, else the
@@ -151,7 +152,7 @@ function args(argv) {
   const o = {g: null, ray: null, galRoot: path.join(process.env.TNG_WORK || process.env.CGM_WORK || ".", "data", "gal"),   // <work>/data/gal (tngenv.sh sets TNG_WORK)
     viz: null, catalog: null,
     camera: path.join(HERE, "story_posters.camera.json"), out: path.join(ROOT, "img/posters"), workers: Math.min(16, os.cpus().length),
-    quick: false, check: false, shots: null, gateOut: path.join(ROOT, "img"), maxKb: 150};
+    quick: false, check: false, shots: null, gateOut: path.join(ROOT, "img"), maxKb: 150, storyData: null};
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i], v = () => argv[++i];
     if (k === "--g") o.g = v(); else if (k === "--ray") o.ray = v(); else if (k === "--gal-root") o.galRoot = v();
@@ -160,6 +161,7 @@ function args(argv) {
     else if (k === "--quick") o.quick = true; else if (k === "--check") o.check = true;
     else if (k === "--shots") o.shots = v().split(",").map(x => x.trim()).filter(Boolean);
     else if (k === "--gate-out") o.gateOut = v(); else if (k === "--max-kb") o.maxKb = +v();
+    else if (k === "--story-data") o.storyData = v();
     else throw new Error(`unknown option ${k}`);
   }
   if (!o.g) throw new Error("--g <id[,id...]|all> is required");
@@ -259,8 +261,13 @@ async function one(o, cam, g) {
   const vizBase = o.viz ? o.viz.replace(/\{id\}/g, String(g)) : path.join(o.galRoot, String(g), "viz");
   const man = await getJson(join(vizBase, "manifest_v2.json"));
   const rows = man.frame.rows, R200c = +man.galaxy.R200c_kpc;
-  const cat = await findEntry(o, g, ray);
-  const p0 = toDisk(rows, cat.entry.p0), p1 = toDisk(rows, cat.entry.p1), B = beamFrame(p0, p1);
+  // Tier A (R7): --story-data <story-data/3 file> takes the beam from the story file's geometry.ray, which is already in the
+  // disk frame of the cubes (the SBI hosts 424288/511920 have no Trident catalog with p0/p1)
+  const sd = o.storyData ? await getJson(o.storyData) : null;
+  if (sd && !(sd.geometry && sd.geometry.ray && Array.isArray(sd.geometry.ray.p0))) throw new Error(`${o.storyData}: no geometry.ray.p0/p1`);
+  const cat = sd ? {entry: {b_kpc: sd.meta && sd.meta.b_kpc != null ? +sd.meta.b_kpc : null}, entries: [], galaxy: {}, path: o.storyData}
+    : await findEntry(o, g, ray);
+  const p0 = sd ? sd.geometry.ray.p0.map(Number) : toDisk(rows, cat.entry.p0), p1 = sd ? sd.geometry.ray.p1.map(Number) : toDisk(rows, cat.entry.p1), B = beamFrame(p0, p1);
   const [W0, H0] = cam.size, div = o.quick ? 4 : 1, W = Math.round(W0 / div), H = Math.round(H0 / div);
   const dir = path.join(o.out, `${g}_${ray}`);
   const rec = {schema: "story-posters/1", galaxy: g, ray, R200c_kpc: +R200c.toFixed(3), quick: o.quick || undefined,
@@ -394,6 +401,16 @@ async function encodeCapped(rgb, W, H, file, q0, maxBytes) {
   await writeFile(file, buf);
   return {bytes: buf.length, quality: q, sha256: createHash("sha256").update(buf).digest("hex").slice(0, 16)};
 }
+/* Liang-Barsky: the part of segment a-b inside rect {x0, x1, y0, y1} as [a', b'], or null */
+function clipSeg(a, b, r) {
+  let t0 = 0, t1 = 1; const dx = b[0] - a[0], dy = b[1] - a[1];
+  for (const [p, q] of [[-dx, a[0] - r.x0], [dx, r.x1 - a[0]], [-dy, a[1] - r.y0], [dy, r.y1 - a[1]]]) {
+    if (p === 0) { if (q < 0) return null; continue; }
+    const t = q / p;
+    if (p < 0) { if (t > t1) return null; if (t > t0) t0 = t; } else { if (t < t0) return null; if (t < t1) t1 = t; }
+  }
+  return [[a[0] + t0 * dx, a[1] + t0 * dy], [a[0] + t1 * dx, a[1] + t1 * dy]];
+}
 async function gatePosters(o, cam, ctx) {
   const G = cam.gate, {g, ray, B, p0, p1, R200c, loaded} = ctx, C = camera(B, G.tilt_deg, G.roll_deg);
   const meta = {schema: "story-gate-poster/1", galaxy: g, ray, R200c_kpc: +R200c.toFixed(3), tilt_deg: G.tilt_deg, roll_deg: G.roll_deg,
@@ -402,7 +419,28 @@ async function gatePosters(o, cam, ctx) {
   if (!o.check) await mkdir(o.gateOut, {recursive: true});
   for (const [vname, V] of Object.entries(G.variants)) {
     const [W0, H0] = V.size, div = o.quick ? 4 : 1, W = Math.round(W0 / div), H = Math.round(H0 / div);
-    const hw = halfWidth(V.half_w, R200c), hh = hw * H0 / W0, kpx = 2 * hw / W0, [cx, cy] = V.center_frac || [0.5, 0.5];
+    const [cx, cy] = V.center_frac || [0.5, 0.5];
+    // Tier A (R7_gpu): a wide impact (b of 100-270 kpc) put the drawn beam above the frame at the hero's R200c framing. Widen
+    // the frame just enough that the beam's closest point lands inside a margin band (G.beam_margin_frac, default 0.12 of the
+    // height); a beam that is already inside (the hero's, b 62 kpc) keeps the framing, so existing posters stay byte-identical
+    let hw = halfWidth(V.half_w, R200c);
+    { const m = G.beam_margin_frac ?? 0.12, dy = dot(scl(B.u, B.b), C.e2), dx = dot(scl(B.u, B.b), C.e1);
+      const roomY = (dy > 0 ? cy - m : 1 - m - cy) * H0, roomX = (dx > 0 ? 1 - m - cx : cx - m) * W0;
+      const need = Math.max(roomY > 0 ? Math.abs(dy) / roomY : 0, roomX > 0 ? Math.abs(dx) / roomX : 0) * W0 / 2;
+      if (need > hw) { meta.widened = {...(meta.widened || {}), [vname]: {from_kpc: +hw.toFixed(3), to_kpc: +need.toFixed(3)}}; hw = need; } }
+    // fix1 (review M1): the page's top-right HUD (badge, music pill, menu) sits over the poster on the gate and on the
+    // software-GL stage. A beam whose drawn part (clipped to the frame) crosses that corner is widened further, 4 % at a
+    // time (at most 4x), until it clears it. A beam already clear (the hero's) keeps its framing: posters stay identical.
+    if (!/card/.test(vname)) {
+      const hud = G.hud_safe || {x0: 0.70, y1: 0.12}, R = {x0: hud.x0 * W0, x1: W0, y0: 0, y1: hud.y1 * H0};
+      const Pk = (q, h) => { const k = 2 * h / W0; return [W0 * cx + dot(q, C.e1) / k, H0 * cy - dot(q, C.e2) / k]; };
+      const inFrame = (a, b) => clipSeg(a, b, {x0: 0, x1: W0, y0: 0, y1: H0});
+      const hits = h => { const c = inFrame(Pk(p0, h), Pk(p1, h)); return !!(c && clipSeg(c[0], c[1], R)); };
+      const h0 = hw; let n = 0;
+      while (hits(hw) && hw < 4 * h0) { hw *= 1.04; n++; }
+      if (n) meta.widened = {...(meta.widened || {}), [vname]: {...((meta.widened || {})[vname] || {from_kpc: +h0.toFixed(3)}), to_kpc: +hw.toFixed(3), hud_clear: !hits(hw)}};
+    }
+    const hh = hw * H0 / W0, kpx = 2 * hw / W0;
     const off = [(cx - 0.5) * 2 * hw, (0.5 - cy) * 2 * hh];
     const P = q => [+(W0 * cx + dot(q, C.e1) / kpx).toFixed(1), +(H0 * cy - dot(q, C.e2) / kpx).toFixed(1)];
     const rec = {size: [W0, H0], half_w_kpc: +hw.toFixed(3), kpc_per_px: +kpx.toFixed(5), center_px: [W0 * cx, H0 * cy], p0_px: P(p0), p1_px: P(p1),

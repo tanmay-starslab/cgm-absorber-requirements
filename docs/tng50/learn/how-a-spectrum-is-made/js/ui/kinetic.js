@@ -12,6 +12,7 @@
 // the solver's breaks, so a real box never exceeds its solver box.
 
 import {resolveTemplate} from "../engine.js";
+import {resolveLine} from "../copy/derive.js";
 
 /* advance widths in 1/1000 em, index = position in `chars`; fonts: Newsreader display 400 (serif) and italic (serifI),
    Space Grotesk 400 / 500 (sans, sans5), JetBrains Mono 400 (mono). Unknown characters use the width of "M". */
@@ -93,28 +94,11 @@ function layoutGroup(disp, sub, dpx, spx, maxW, rules) {
           (s.n ? `<span class="kt-s">${linesHtml(s.lines, "kt-l", rules.keyOf)}</span>` : "")};
 }
 
-/* copy.json id -> entry: "B5" or "B5.0" (top level), "B5.1" (an item of B5.then), "B7c.hot" (B7c.states.hot or B7c.hot).
-   flags (story JSON `flags`, U_data): an entry's `extra: {when, sub}` is appended to its sub when flags[when] holds; a
-   missing flag counts as false (copy.flags rule), so the conservative line shows. Short variants never take the extra.
-   Unknown ids -> null (the caller skips them; the copy lint reports). */
-export function copyEntry(copy, id, flags = null) {
+/* copy.json id -> resolved entry via the copy resolver (derive.js resolveLine): variants/when/else by flags, extras
+   appended to the long sub; flags == null = primary view; opt = {caseId, lookup, onDrop}. Unknown or dropped -> null. */
+export function copyEntry(copy, id, flags = null, opt = null) {
   if (!copy || !id) return null;
-  const e = rawEntry(copy, String(id));
-  if (!e || !e.extra || !e.extra.sub || !(flags && flags[e.extra.when] === true)) return e;
-  return {...e, sub: e.sub ? `${e.sub} ${e.extra.sub}` : e.extra.sub};
-}
-function rawEntry(copy, id) {
-  if (copy[id] && typeof copy[id] === "object") return copy[id];
-  const dot = id.indexOf(".");
-  if (dot < 0) return null;
-  const base = copy[id.slice(0, dot)], suf = id.slice(dot + 1);
-  if (!base || typeof base !== "object") return null;
-  if (suf === "0") return base;
-  const inThen = Array.isArray(base.then) ? base.then.find(x => x && x.id === id) : null;
-  if (inThen) return inThen;
-  if (base.states && base.states[suf]) return base.states[suf];
-  if (base[suf] && typeof base[suf] === "object" && (base[suf].display || base[suf].sub)) return base[suf];
-  return null;
+  return resolveLine(copy, String(id), {...(opt || {}), flags});
 }
 
 /* Text model for one copy entry in one layout: variants in preference order (full copy at the level size, then smaller
@@ -209,6 +193,8 @@ export function kineticItems(textEntries, modelFor, opts = {}) {
     // full-width stages (tablet, phones): when the beam crosses the top text band, the line drops into the world band
     // (the solver's fallbackBand) instead of being hidden (G9: a jump must land on narration)
     if (!act && !column && band === "text" && bands.world) { it.fallbackBand = "world"; it.vAlign = "top"; }
+    // fix2 (review2 ux M3): with no world band (narrow phone at 150 %) the line may cross the beam rather than vanish
+    else if (!act && !column && band === "text") it.overBeam = true;
     if (act && t.screen && isFinite(t.screen.x) && isFinite(t.screen.y)) { it.anchor = t.screen; it.gap = 16; it.fallback = "band"; it.candidates = ["ne", "e", "nw", "w", "n", "s"]; }
     items.push(it);
   }

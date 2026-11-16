@@ -4,20 +4,31 @@
 // says nothing until it rests. The canvas label follows the beat. "Read as text" shows the same list as an overlay that
 // scrolls internally (the page itself never scrolls), followed by the honest-simplification list.
 //
-// Pure: narrativeItems(beats, copy, lookup). DOM: createNarrative({list, live, overlay, canvas}, hooks).
+// Pure: narrativeItems(beats, copy, lookup, flags?, {caseId}?). DOM: createNarrative({list, live, overlay, canvas}, hooks).
 
 import {resolveTemplate} from "../engine.js";
+import {resolveLine, beatSkip, activeText} from "../copy/derive.js";
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"}[c]));
 const plain = s => String(s || "").replace(/\*([^*]+)\*/g, "$1");
 
-/* -> [{id, p0, title, text}] ; title = display line (accent marks removed), text = narrative template or display + sub */
-export function narrativeItems(beats, copy, lookup = null) {
+/* -> [{id, p0, title, text}]: title = display line, text = narrative or display + sub. Lines come from the copy resolver;
+   with flags, cond-skipped beats are left out (flags == null: every beat, primary view). */
+export function narrativeItems(beats, copy, lookup = null, flags = null, opt = null) {
   const R = s => (s ? (lookup ? resolveTemplate(s, lookup).text : s) : "");
-  return (beats || []).map(b => {
-    const c = (copy && copy[b.copyRef || b.id]) || {};
-    const title = plain(R(c.display));
-    const text = plain(R(c.narrative || [c.display, c.sub].filter(Boolean).join(" ")));
+  const skip = flags == null ? () => false : beatSkip(flags);
+  return (beats || []).filter(b => !skip(b)).map(b => {
+    const ctx = {caseId: opt && opt.caseId, lookup: flags == null ? null : lookup, flags};
+    const c = (copy && resolveLine(copy, b.copyRef || b.id, ctx)) || {};
+    let title = plain(R(c.display));
+    let text = plain(R(c.narrative || [c.display, c.sub].filter(Boolean).join(" ")));
+    // an empty main line with visible sub-lines reads the sub-lines (N1)
+    if (!title && !text && copy && flags != null) {
+      const main = b.copyRef || b.id, subs = activeText(b.text || [], flags).filter(t => t && t.id !== main)
+        .map(t => resolveLine(copy, t.id, ctx)).filter(Boolean);
+      title = plain(R((subs.find(e => e.display) || {}).display));
+      text = plain(subs.map(e => R(e.narrative || [e.display, e.sub].filter(Boolean).join(" "))).filter(Boolean).join(" "));
+    }
     return {id: b.id, p0: b.p0, title, text};
   }).filter(x => x.title || x.text);
 }
@@ -25,13 +36,15 @@ export function narrativeItems(beats, copy, lookup = null) {
 export function createNarrative(els, hooks = {}) {
   const {list, live, overlay, canvas} = els;
   let items = [], cur = null, timer = 0;
-  function build(beats, copy, lookup, honesty = []) {
-    items = narrativeItems(beats, copy, lookup);
+  function build(beats, copy, lookup, honesty = [], flags = null, opt = null) {
+    items = narrativeItems(beats, copy, lookup, flags, opt);
     list.innerHTML = items.map(it => `<li data-beat="${esc(it.id)}"><p>${esc(it.text)}</p>` +
       (hooks.jump ? `<button type="button" class="nv-go" data-p="${it.p0}" aria-label="${esc("Go to: " + (it.title || it.text).slice(0, 80))}">Go to this moment</button>` : "") + "</li>").join("") +
       (honesty.length ? `<li class="nv-honest"><p>What we simplified:</p><ul>${honesty.map(h => `<li>${esc(plain(R0(h, lookup)))}</li>`).join("")}</ul></li>` : "");
     list.querySelectorAll(".nv-go").forEach(b => b.addEventListener("click", () => { hooks.jump(+b.dataset.p); close(); }));
     tabbable(isOpen());
+    // a rebuild re-reads the current beat (H1)
+    if (cur != null) { const id = cur; cur = null; update({id}); }
   }
   const R0 = (s, lookup) => (lookup ? resolveTemplate(s, lookup).text : s);
   function update(beat) {

@@ -30,6 +30,7 @@
 import {createTimeline} from "./timeline.js";
 import {buildWarp} from "./timewarp.js";
 import {rayFrame, evalCamera, smoothstep, smootherstep, lval} from "./shots.js";
+import {ghostKey, ghostTermOf} from "../eq/bind.js";
 
 export const SEEK_VERSION = 2;
 export const CAPSULE = Object.freeze({half: 45, rMin: 20, edge: 0.3});   // edge: soft-edge fraction (stage capF)
@@ -117,6 +118,29 @@ function cloudsOf(data) {
     open: !!(x.open || x.warmHot || x.warm_hot), r: +x.r_shell || +x.r || 0}));
 }
 
+/* ---------------- v3 roles (DESIGN_tierA §4.1, §6.2 step 9) ----------------
+   "@S5", "@cloudA.core" ... name story-data/3 roles ({cell, ok, why} | {cells} | {l}; cells: {"<idx>": {c, h, l}}).
+   The page drops an unresolved key (recorded in ctx.drops, logged by main.js); the director and tests throw. */
+export const ROLE_RE = /^@[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)?$/;
+export const isRole = x => typeof x === "string" && x[0] === "@";
+export function resolveRole(data, ref) {
+  const R = data && data.roles, name = isRole(ref) && ROLE_RE.test(ref) ? ref.slice(1) : "cells";
+  const r = R && name !== "cells" && Object.prototype.hasOwnProperty.call(R, name) ? R[name] : null;
+  if (!r || typeof r !== "object") return null;
+  const C = R.cells || {}, at = id => (C[id] && Array.isArray(C[id].c) ? C[id] : null), ok = r.ok !== false, why = r.why || "";
+  if (Number.isInteger(r.cell)) { const c = at(r.cell); return {name, cell: r.cell, c: c && c.c.slice(0, 3), l: c && Number.isFinite(+c.l) ? +c.l : null, ok, why}; }
+  const cs = Array.isArray(r.cells) ? r.cells.map(at).filter(Boolean) : [];
+  if (cs.length) { const m = f => cs.reduce((s, x) => s + f(x), 0) / cs.length; return {name, cell: null, cells: r.cells.slice(), c: [0, 1, 2].map(a => m(x => x.c[a])), l: m(x => +x.l), ok, why}; }
+  if (Number.isFinite(r.l)) return {name, cell: null, c: null, l: +r.l, ok, why};
+  return {name, cell: null, c: null, l: null, ok: false, why: why || "no cell, cells or l"};
+}
+/* {enc: k}: plan encounter centre ℓ, k = plan.slots key or encounter id */
+function encounterL(data, k) {
+  const P = data && data.plan; if (!P) return null;
+  const s = P.slots && P.slots[k], id = s && s.encounter != null ? s.encounter : k, e = (P.encounters || []).find(x => x && String(x.id) === String(id));
+  return e && Number.isFinite(+e.lc) ? +e.lc : s && Number.isFinite(s.l0 + s.l1) ? (s.l0 + s.l1) / 2 : null;
+}
+
 /* ---------------- memoised context ---------------- */
 const MEMO = new WeakMap();
 export function prepare(data, beatsDoc, shotsDoc) {
@@ -136,14 +160,23 @@ export function prepare(data, beatsDoc, shotsDoc) {
     s_in: cells[ion].s_in, s_out: cells[ion].s_out}, {lmin: -half - 10, lmax: half + 10})));
   const base = cells.OVI.n ? cells.OVI : cells.HI;
   const posOf = new Map(); base.idx.forEach((id, j) => posOf.set(+id, j));
-  const cellPos = id => { const j = posOf.has(+id) ? posOf.get(+id) : -1;
+  const drops = new Map(), drop = (ref, why) => { if (!drops.has(ref)) drops.set(ref, why); }, RM = new Map();   // v3 roles
+  const roleOf = ref => { if (!RM.has(ref)) RM.set(ref, resolveRole(data, ref)); const r = RM.get(ref); if (!r) drop(ref, "unknown role"); return r; };
+  const cellPosN = id => { const j = posOf.has(+id) ? posOf.get(+id) : -1;
     if (j < 0) return frame.P(0);
     return base.centre ? base.centre[j].slice(0, 3) : frame.P(base.l[j]); };
-  const cellL = id => { const j = posOf.get(+id); return j === undefined ? 0 : base.l[j]; };
+  const cellLN = id => { const j = posOf.get(+id); return j === undefined ? 0 : base.l[j]; };
+  // a role: its cell if the ray holds it, else its own centre or ℓ; null = drop the key
+  const roleAt = (id, f, g) => { const r = roleOf(id); if (!r) return null; if (r.cell != null && posOf.has(r.cell)) return f(r.cell);
+    const v = g(r); if (v == null) drop(id, r.why || "no position"); return v; };
+  const cellPos = id => (isRole(id) ? roleAt(id, cellPosN, r => (r.c ? r.c.slice(0, 3) : Number.isFinite(r.l) ? frame.P(r.l) : null)) : cellPosN(id));
+  const cellL = id => (isRole(id) ? roleAt(id, cellLN, r => (Number.isFinite(r.l) ? r.l : null)) : cellLN(id));
+  const encL = k => { const v = encounterL(data, k); if (v == null) drop(`{enc:${k}}`, "unknown encounter"); return v; };
   const cdf = kernelCdf(data), ktab = kernelTable(data);
   const clouds = cloudsOf(data);
   const capR = Math.max(CAPSULE.rMin, ...clouds.filter(c => c.letter === "A" || c.letter === "D").map(c => c.r || 0));
   ctx = {tl, shotsDoc, beatsDoc, lscale, half, frame, rayFallback: fallback, cells, base, warp, cellPos, cellL, cdf, ktab, clouds, capR, posOf};
+  Object.assign(ctx, {roleOf, drop, drops, encL});
   ctx.cellStops = computeCellStops(ctx);
   tl.setCellStops(ctx.cellStops);
   per.set(k2, ctx);
@@ -152,7 +185,7 @@ export function prepare(data, beatsDoc, shotsDoc) {
 
 /* ℓ of beat b at fraction u */
 function lOfBeat(ctx, b, u) {
-  if (b.kind === "stop" && b.cell != null) return ctx.cellL(b.cell);
+  if (b.kind === "stop" && b.cell != null) { const lc = ctx.cellL(b.cell); if (lc != null) return lc; }   // v3: unresolved role -> l0
   const l0 = lval(b.l0, 0, ctx.lscale), l1 = lval(b.l1, 0, ctx.lscale);
   if (b.kind !== "flight") return l0;
   const lu = b.lu || [0, 1], v = clamp01((u - lu[0]) / Math.max(1e-9, lu[1] - lu[0]));
@@ -238,6 +271,15 @@ function dockAt(b, u) {
   const t = smootherstep((u - K[i].u) / Math.max(1e-9, K[i + 1].u - K[i].u));
   return {dock: K[i + 1].state, dockFrom: K[i].state, dockMix: t};
 }
+/* generated stories only (shots with a director style): the carve-out fades as the camera pulls back (F7) */
+export const CAPSULE_FADE = Object.freeze({near: 40, far: 100});
+function capFade(ctx, b, l, cam) {
+  const sh = ctx.shotsDoc && ctx.shotsDoc.shots && ctx.shotsDoc.shots[b.shot];
+  if (!sh || !sh.style || !cam || !cam.pos) return 1;
+  const P = ctx.frame.P(l), d = Math.hypot(cam.pos[0] - P[0], cam.pos[1] - P[1], cam.pos[2] - P[2]);
+  const k = 1 - smoothstep(clamp01((d - CAPSULE_FADE.near) / (CAPSULE_FADE.far - CAPSULE_FADE.near)));
+  return k < 0.01 ? 0 : k;
+}
 function shellsAt(ctx, b, l) {
   if (b.shells === "none" || !ctx.clouds.length) return [];
   return ctx.clouds.map(c => {
@@ -283,6 +325,14 @@ function fadeT(data, k) {
   return +m[1] * 10 ** (m[2] ? -e : e);
 }
 const GHOST_TERM = {T125: "T", T263: "T", N492: "N"};
+/* v3: text anchor on a role -> on its cell (or ℓ); null = drop */
+function roleAnchor(ctx, a) {
+  if (!a || !isRole(a.ref)) return a;
+  const r = ctx.roleOf(a.ref); if (!r) return null;
+  if (r.cell != null) return {...a, ref: r.cell};
+  if (Number.isFinite(r.l)) return {kind: "l", ref: r.l};
+  ctx.drop(a.ref, r.why || "no position"); return null;
+}
 
 /* ---------------- comfort (review S1 / F7) ----------------
    The view direction and the up vector are Gaussian-averaged over p (sigma COMFORT.sigma, COMFORT.n samples each side), so
@@ -297,7 +347,7 @@ export const COMFORT = Object.freeze({sigma: 0.008, n: 6, sigmaD: 0.014, nD: 7, 
 function rawCamAt(ctx, mods, q) {
   const tl = ctx.tl, L = tl.locate(q), b = L.beat, shots = ctx.shotsDoc.shots, prevB = L.i > 0 ? tl.beats[L.i - 1] : null;
   const l = lOfBeat(ctx, b, L.u);
-  return evalCamera(shots[b.shot], prevB ? shots[prevB.shot] : null, L.u, {frame: ctx.frame, l, lAt: uu => lOfBeat(ctx, b, uu), lscale: ctx.lscale, cellPos: ctx.cellPos, mods});
+  return evalCamera(shots[b.shot], prevB ? shots[prevB.shot] : null, L.u, {frame: ctx.frame, l, lAt: uu => lOfBeat(ctx, b, uu), lscale: ctx.lscale, cellPos: ctx.cellPos, encL: ctx.encL, mods});
 }
 function comfortCam(cam, p, ctx, mods) {
   const {sigma, n} = COMFORT; if (!(sigma > 0)) return cam;
@@ -357,7 +407,7 @@ export function makeSeek(docs) {
     const shots = shotsDoc.shots, shot = shots[b.shot], prevB = L.i > 0 ? tl.beats[L.i - 1] : null;
     const prevShot = prevB ? shots[prevB.shot] : null;
     const mods = ov.cls && shotsDoc.classMods ? shotsDoc.classMods[ov.cls] || null : null;
-    const cctx = {frame: ctx.frame, l, lAt: uu => lOfBeat(ctx, b, uu), lscale: ctx.lscale, cellPos: ctx.cellPos, mods};
+    const cctx = {frame: ctx.frame, l, lAt: uu => lOfBeat(ctx, b, uu), lscale: ctx.lscale, cellPos: ctx.cellPos, encL: ctx.encL, mods};
     const cam = comfortCam(evalCamera(shot, prevShot, u, cctx), pp, ctx, mods);
     const side = shot.textSide || "left", sideFrom = prevShot ? prevShot.textSide || "left" : side;
     const bl = shot.cut ? 0 : (shot.blendIn ?? 0.3);
@@ -384,7 +434,7 @@ export function makeSeek(docs) {
       const ph = tl.phase(u, t, b);
       if (Math.abs(ph) >= 1) continue;
       const it = {id: t.id, band: t.band, phase: ph, part: t.part};
-      if (t.anchor) it.anchor = t.anchor;
+      if (t.anchor) { const a = roleAnchor(ctx, t.anchor); if (a) it.anchor = a; }   // v3: an unresolved role drops the anchor
       if (t.cond) it.cond = t.cond;            // copy.json flag: the shell shows the slot only when it holds
       if (t.alt) it.alt = true;                // alternative to the previous slot (same window)
       text.push(it);
@@ -396,10 +446,16 @@ export function makeSeek(docs) {
       const ph = tl.phase(u, e, b);
       if (Math.abs(ph) >= 1) continue;
       const anchor = {kind: e.anchor.kind, ref: e.anchor.ref ?? null};
+      if (isRole(anchor.ref)) {                 // v3: role -> its cell; unknown, ok:false or cell-less drops the equation (G13r)
+        const r = ctx.roleOf(anchor.ref);
+        if (!r || !r.ok || r.cell == null) { if (r) ctx.drop(anchor.ref, r.ok ? "no cell" : "ok:false " + r.why); continue; }
+        anchor.ref = r.cell;
+      }
       if (anchor.kind === "cell" && anchor.ref === "probe") { anchor.ref = cell ? cell.idx : null; anchor.probe = true; }   // probe: follows the plaque cell
       const hl = e.hl.filter(h => u >= h.u0 && u <= h.u1).map(h => h.term);
-      const gk = e.ghost, gv = gk && Number.isFinite(ov[gk]) ? ov[gk] : null;
-      eqs.push({id: e.id, anchor, hl, ghost: gv == null ? null : {term: GHOST_TERM[gk], value: gv}, phase: ph, ...(e.totals ? {totals: true} : {}), ...(e.noPhone ? {noPhone: true} : {}), ...(e.phoneU ? {phoneU: e.phoneU} : {})});
+      // v3 role ghosts (T@S5) read the override key they alias (bind.js GHOST_ALIAS) and name it
+      const gk = ghostKey(e.ghost), gv = gk && Number.isFinite(ov[gk]) ? ov[gk] : null, roleGhost = typeof e.ghost === "string" && e.ghost.includes("@");
+      eqs.push({id: e.id, anchor, hl, ghost: gv == null ? null : {term: GHOST_TERM[gk] || ghostTermOf(gk), value: gv}, ...(roleGhost ? {ghostKey: gk} : {}), phase: ph, ...(e.totals ? {totals: true} : {}), ...(e.noPhone ? {noPhone: true} : {}), ...(e.phoneU ? {phoneU: e.phoneU} : {})});
     }
 
     // spectrum dock
@@ -420,7 +476,7 @@ export function makeSeek(docs) {
       p: pp,
       beat: {id: b.id, i: L.i, u, kind: b.kind, stop, ...(b.cond ? {cond: b.cond} : {})},
       l, cell, cloud: cloudAt(ctx, l), cam,
-      capsule: {l0: l - CAPSULE.half, l1: l + CAPSULE.half, r: ctx.capR, edge: CAPSULE.edge},
+      capsule: {l0: l - CAPSULE.half, l1: l + CAPSULE.half, r: ctx.capR * capFade(ctx, b, l, cam), edge: CAPSULE.edge},
       quality: b.quality || (b.kind === "stop" ? "stop" : "flight"),
       tf, fields, shells: shellsAt(ctx, b, l), text, eqs, spec, ui,
     };
