@@ -1,0 +1,213 @@
+{
+ "$id": "story-data/3",
+ "title": "Story data v3 (additive to story-data/2; DESIGN_tierA section 4.1, frozen at R0)",
+ "description": "Written by scripts/export_story_data.py (R1). JSON Schema subset of js/engine.js schemaErrors (type, required, properties, additionalProperties, enum, const, items, min/maxItems, minimum, maximum, exclusiveMinimum, pattern, $ref). The root validates every story-data/2 file (the hero file story_488530_rand_b062_a062.json stays /2 and byte-equal, never overwritten). A file with meta.schema 'story-data/3' must ALSO validate against #/$defs/v3 (validate {$ref: '#/$defs/v3'} with this document as root). /2 keys keep their /2 meaning; /3 keys are new and optional at the root. Numbers in /3 keys are Trident (galaxy.source 'trident'), never SBI.",
+ "type": "object",
+ "required": ["meta", "keys", "ions", "geometry", "flags", "cloud_names", "worked"],
+ "properties": {
+  "meta": {"$ref": "#/$defs/meta"},
+  "keys": {"type": "object", "description": "display strings for copy.json {{key}} templates (v2); new /3 keys: c1_v, cool_v, warm_v, fit_dex, ovi_logN_lim, hi_logN_lim, case_title"},
+  "ions": {"type": "object"},
+  "geometry": {"type": "object"},
+  "flags": {"type": "object", "additionalProperties": {"type": "boolean"}, "description": "copy flags; /3 adds gas_poor, has_phase_offset, hi_faint, near_disk, empty_faint, same_galaxy_next, resolve_saturated, has_gap_AB, has_gap_BC, has_stop_cell (DESIGN_tierA 4.2 step 7, 7.1). bridge_ion lives in plan.bridge_ion (not boolean)."},
+  "cloud_names": {"type": "object", "description": "v2: rule + windows by letter; /3: derived from plan.encounters"},
+  "clouds": {"type": "object"},
+  "facts2": {"type": "object", "description": "v2; the hero keeps facts2.beat_windows_source = 'hero'; generated stories use 'plan'"},
+  "select": {"type": "object"},
+  "story": {"type": "object"},
+  "tube": {"type": "object"},
+  "worked": {"type": "object"},
+  "case": {"$ref": "#/$defs/case"},
+  "claims": {"type": "object", "additionalProperties": {"$ref": "#/$defs/claim"}},
+  "roles": {"$ref": "#/$defs/roles"},
+  "plan": {"$ref": "#/$defs/plan"},
+  "tf_windows": {"$ref": "#/$defs/tf_windows"},
+  "limits": {"type": "object", "additionalProperties": {"$ref": "#/$defs/limit"}},
+  "noise": {"$ref": "#/$defs/noise"},
+  "cube_cover": {"$ref": "#/$defs/cube_cover"},
+  "lod": {"$ref": "#/$defs/lod"},
+  "galaxy": {"$ref": "#/$defs/galaxy"},
+  "ions_extra": {"type": "array", "maxItems": 1, "items": {"$ref": "#/$defs/extraIon"}, "description": "at most one extra ion per story: CIV (clean), MgII (multiphase), NeVIII (hot)"},
+  "eligible_case": {"type": "boolean"},
+  "gates_case": {"type": "object", "additionalProperties": {"type": ["boolean", "object"]}}
+ },
+ "$defs": {
+  "v3": {
+   "type": "object",
+   "required": ["meta", "case", "claims", "roles", "plan", "cloud_names", "tf_windows", "limits", "cube_cover", "lod", "galaxy", "ions_extra", "flags", "eligible_case", "gates_case"],
+   "properties": {
+    "meta": {"type": "object", "required": ["schema"], "properties": {"schema": {"const": "story-data/3"}}},
+    "plan": {"type": "object", "required": ["version", "rule", "half", "encounters", "slots", "bounds", "vwin", "resolve", "bridge_ion"]},
+    "galaxy": {"type": "object", "required": ["id", "viz_base", "gas_poor", "vsys", "R200c", "disk", "source"]},
+    "case": {"type": "object", "required": ["id", "declared", "subcase", "rule_version", "scores", "fails", "verdict"]},
+    "roles": {"type": "object", "required": ["S5", "cells"]},
+    "limits": {"type": "object", "required": ["HI", "OVI"]}
+   }
+  },
+  "meta": {
+   "type": "object",
+   "required": ["schema", "galaxy", "ray"],
+   "properties": {
+    "schema": {"type": "string", "enum": ["story-data/2", "story-data/3"]},
+    "galaxy": {"type": "integer", "minimum": 0},
+    "ray": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
+    "story_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "/3: the story id this file serves (clean, multiphase, damped, empty, hot); absent on /2"}
+   }
+  },
+  "caseId": {"type": "string", "enum": ["clean_single", "multiphase", "damped", "empty", "hot_only", "generic"]},
+  "case": {
+   "type": "object",
+   "required": ["id", "rule_version"],
+   "properties": {
+    "id": {"$ref": "#/$defs/caseId"},
+    "declared": {"type": ["string", "null"], "description": "the --case the build declared (G16 checks this one); null for pool labels"},
+    "subcase": {"type": ["string", "null"], "enum": ["dla", "lls", null]},
+    "rule_version": {"const": "case/1"},
+    "scores": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "fails": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+    "verdict": {"type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}, "metrics": {"type": "object"}, "margin": {"type": ["number", "null"]}}}
+   }
+  },
+  "claim": {"type": "object", "required": ["pass"], "properties": {"value": {"type": ["number", "boolean", "string", "null"]}, "pass": {"type": "boolean"}, "why": {"type": "string"}}},
+  "roleName": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)?$"},
+  "role": {
+   "type": "object",
+   "description": "cell roles carry {cell, ok, why}; derived roles may carry only {cells} (pair) or {l} (pairMid)",
+   "properties": {
+    "cell": {"type": ["integer", "null"], "minimum": 0},
+    "cells": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+    "l": {"type": "number"},
+    "ok": {"type": "boolean"},
+    "why": {"type": "string"}
+   }
+  },
+  "roles": {
+   "type": "object",
+   "description": "role name -> {cell, ok, why} (S5, S4a, cloudA.core, hiPeak, oviPeak, neviiiPeak, pair {cells}, pairMid {l}); 'cells' carries the geometry of every referenced cell so the director needs no lookup. Role sanity (DESIGN_tierA section 3): S5 needs N_OVI(cell) >= 10^12.5; S4a needs x_HI >= 1e-4 and N_HI >= 10^13; a role with ok:false has its equation anchors dropped by the director.",
+   "required": ["cells"],
+   "properties": {
+    "cells": {"type": "object", "additionalProperties": {"$ref": "#/$defs/roleCell"}}
+   },
+   "additionalProperties": {"$ref": "#/$defs/role"}
+  },
+  "roleCell": {"type": "object", "required": ["c", "h", "l"], "properties": {"c": {"$ref": "#/$defs/vec3"}, "h": {"type": "number", "exclusiveMinimum": 0}, "l": {"type": "number"}}},
+  "vec3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+  "ionKey": {"type": "string", "enum": ["HI", "OVI", "CIV", "MgII", "NeVIII", "SiII", "SiIII", "SiIV", "CII", "CIII", "NV", "OVII"]},
+  "extraIon": {"type": "string", "enum": ["CIV", "MgII", "NeVIII"]},
+  "letter": {"type": "string", "enum": ["A", "B", "C", "D"]},
+  "encounter": {
+   "type": "object",
+   "required": ["id", "l0", "l1", "lc", "r90", "V", "lead", "share", "ions_at"],
+   "properties": {
+    "id": {"type": "string"},
+    "l0": {"type": "number"}, "l1": {"type": "number"}, "lc": {"type": "number"},
+    "r90": {"type": "number", "minimum": 0},
+    "V": {"type": "number", "description": "km/s in the galaxy frame (checks galaxy.vsys; G15 within 10 km/s of the catalogue)"},
+    "lead": {"$ref": "#/$defs/ionKey"},
+    "share": {"type": "number", "minimum": 0, "maximum": 1},
+    "ions_at": {"type": "array", "items": {"$ref": "#/$defs/ionKey"}},
+    "letter": {"type": ["string", "null"], "enum": ["A", "B", "C", "D", null]},
+    "synthetic": {"type": "boolean"}
+   }
+  },
+  "slot": {
+   "type": "object",
+   "required": ["on", "l0", "l1"],
+   "properties": {
+    "on": {"type": "boolean"},
+    "l0": {"type": "number"}, "l1": {"type": "number"},
+    "encounter": {"type": ["string", "null"]},
+    "lead": {"$ref": "#/$defs/ionKey"},
+    "kind": {"type": "string", "enum": ["letter", "flight", "gap", "pair", "stop"]}
+   }
+  },
+  "plan": {
+   "type": "object",
+   "required": ["version", "rule", "half", "encounters", "slots"],
+   "properties": {
+    "version": {"const": "plan/1"},
+    "rule": {"const": "letters/2"},
+    "half": {"type": "number", "exclusiveMinimum": 0},
+    "encounters": {"type": "array", "items": {"$ref": "#/$defs/encounter"}},
+    "slots": {"type": "object", "additionalProperties": {"$ref": "#/$defs/slot"}, "description": "A, B, C, D plus flight/gap slots; windows ordered and covering [-half, +half] exactly (off slots zero length, on:false)"},
+    "cut_l": {"type": "array", "items": {"type": "number"}, "description": "CUT_L = {A centre, S5, D centre}; 25/50/75 % path points for missing letters"},
+    "bounds": {"type": "object", "required": ["c", "r"], "properties": {"c": {"$ref": "#/$defs/vec3"}, "r": {"type": "number", "minimum": 0}}},
+    "vwin": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+    "resolve": {
+     "type": "object",
+     "required": ["ion", "r_contrast", "mode"],
+     "properties": {
+      "ion": {"$ref": "#/$defs/ionKey"},
+      "F15": {"type": "number"}, "F50": {"type": "number"},
+      "r_contrast": {"type": "number"},
+      "mode": {"type": "string", "enum": ["resolve", "resolve_saturated"]}
+     }
+    },
+    "bridge_ion": {"type": ["string", "null"]},
+    "flags": {"type": "object", "additionalProperties": {"type": "boolean"}}
+   }
+  },
+  "window": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+  "tf_windows": {
+   "type": "object",
+   "required": ["pctl", "source"],
+   "properties": {
+    "density": {"$ref": "#/$defs/window"},
+    "halo": {"$ref": "#/$defs/window"},
+    "ion:HI": {"$ref": "#/$defs/window"},
+    "ion:OVI": {"$ref": "#/$defs/window"},
+    "ion:CIV": {"$ref": "#/$defs/window"},
+    "ion:MgII": {"$ref": "#/$defs/window"},
+    "ion:NeVIII": {"$ref": "#/$defs/window"},
+    "speed": {"$ref": "#/$defs/window"},
+    "pctl": {"$ref": "#/$defs/window"},
+    "bands": {"type": "array", "items": {"type": "number"}},
+    "source": {"type": "string", "enum": ["tube", "manifest"]}
+   }
+  },
+  "limit": {
+   "type": "object",
+   "required": ["logN_3sig", "sn", "R", "b"],
+   "properties": {
+    "logN_3sig": {"type": "number"},
+    "sn": {"type": "number", "exclusiveMinimum": 0},
+    "R": {"type": "number", "exclusiveMinimum": 0},
+    "b": {"type": "number", "exclusiveMinimum": 0},
+    "method": {"type": "string", "description": "matched-filter K as absreq/detection.py (3 sigma, b = b_fid)"}
+   }
+  },
+  "noise": {"type": "object", "required": ["seed"], "properties": {"seed": {"type": "integer", "minimum": 0, "maximum": 999}, "excursion_sigma": {"type": "number"}}},
+  "cube_cover": {
+   "type": "object",
+   "required": ["end_r_kpc", "frac_in_L0", "frac_in_L1", "frac_in_L2"],
+   "properties": {
+    "end_r_kpc": {"type": "number", "minimum": 0},
+    "frac_in_L0": {"type": "number", "minimum": 0, "maximum": 1},
+    "frac_in_L1": {"type": "number", "minimum": 0, "maximum": 1},
+    "frac_in_L2": {"type": "number", "minimum": 0, "maximum": 1}
+   }
+  },
+  "lodLevel": {"type": "string", "enum": ["L0", "L1", "L2"]},
+  "lod": {
+   "type": "object",
+   "required": ["finest", "voxel_kpc"],
+   "properties": {
+    "finest": {"type": "object", "additionalProperties": {"$ref": "#/$defs/lodLevel"}},
+    "voxel_kpc": {"type": "object", "additionalProperties": {"type": "number", "exclusiveMinimum": 0}}
+   }
+  },
+  "galaxy": {
+   "type": "object",
+   "required": ["id", "source"],
+   "properties": {
+    "id": {"type": "integer", "minimum": 0},
+    "viz_base": {"type": "string"},
+    "gas_poor": {"type": "boolean"},
+    "vsys": {"type": "number"},
+    "R200c": {"type": "number", "exclusiveMinimum": 0},
+    "disk": {"type": "object", "required": ["c", "n", "r_kpc"], "properties": {"c": {"$ref": "#/$defs/vec3"}, "n": {"$ref": "#/$defs/vec3"}, "r_kpc": {"type": "number", "exclusiveMinimum": 0}}},
+    "source": {"const": "trident"}
+   }
+  }
+ }
+}

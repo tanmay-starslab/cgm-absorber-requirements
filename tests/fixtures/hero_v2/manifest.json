@@ -1,0 +1,47 @@
+{
+ "schema": "hero-identity/1",
+ "base_commit": "8557cac",
+ "hero": {
+  "galaxy": 488530,
+  "ray": "rand_b062_a062",
+  "data": "data/story_488530_rand_b062_a062.json"
+ },
+ "node": "v24.21.0",
+ "parts": {
+  "seek": "6a0031d7719ab42fd25b3098acc8a14c4f43cea298893a9d7463646b25553083",
+  "layout": "f01f9f18cbae23e6044140e9df7d42c5879e288c10a715c28d148176b2ee095a",
+  "lines": "6e92ea54169bfad4e269cd53abf9a2da9b00b74e6e5ea6492c74e5bf2e67bdf9",
+  "eq": "4ddf1585463119cdbea5e1c87b2eab7a021e2dee7107ba8545ae90cd09e365ce",
+  "vtt": "a05a9cdd89a9abc8ff4b9fc15048aee857fd31e5e9cbbac53156fd424b8c1783",
+  "index": "a0fdc0fe6ee7c8ec09dd2ac32c78dba61c55318bd2096ab67447fbe7b43566b8",
+  "dom": "3fb1dd00ca229ccecbb27e5683ea85a13d3c1c441a3933cc74ac1e50a32d7e78"
+ },
+ "notes": [
+  {
+   "note": "initial snapshot of the v2 hero at 8557cac (R0, Tier A S0); beats.schema.json v3 edits are additive and not an H0 input",
+   "head": "8557cac",
+   "worktree_dirty": [
+    "M docs/tng50/learn/how-a-spectrum-is-made/beats.schema.json"
+   ],
+   "parts_changed": [
+    "seek",
+    "layout",
+    "lines",
+    "eq",
+    "vtt",
+    "index",
+    "dom"
+   ]
+  },
+  {
+   "note": "dom part: aria-live region children excluded (transient announcements made the p0 outline timing-dependent); hero unchanged",
+   "head": "8557cac",
+   "worktree_dirty": [
+    "M docs/tng50/learn/how-a-spectrum-is-made/beats.schema.json"
+   ],
+   "parts_changed": [
+    "dom"
+   ]
+  }
+ ]
+}
