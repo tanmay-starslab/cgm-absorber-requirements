@@ -243,7 +243,7 @@ export function caseOverlays(copy) {
 const NEG = /\b(not|never|no|nor|cannot|n't|neither)\b/i;
 const VOCAB = [
   // v1 (story_static) rules kept
-  {re: /\bline\b/i, why: 'bare "line" (say beam or dip)', on: "display"},
+  {re: /\bline\b/i, why: 'bare "line" (say sightline or dip)', on: "display"},
   {re: /\bcolumn densit/i, why: '"column density" (say amount)', on: "display"},
   {re: /\bLSF\b/, why: '"LSF" (say blur)', on: "display"},
   {re: /(^|[^\d.])4\s*km\/s/, why: '"4 km/s" on screen', on: "display+sub"},

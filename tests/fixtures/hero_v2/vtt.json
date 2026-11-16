@@ -159,7 +159,7 @@
    {
     "t0": 11.819789339291415,
     "t1": 13.549999999999999,
-    "text": "We follow this one beam through it. Every beam meets different gas, so every spectrum differs. Pick another beam at any time.",
+    "text": "We follow this one sightline through it. Every sightline meets different gas, so every spectrum differs. Pick another sightline at any time.",
     "chunk": "open",
     "beat": "B2"
    },
@@ -173,7 +173,7 @@
    {
     "t0": 18.991912139850072,
     "t1": 21.360122697466235,
-    "text": "Every cell has a density, heat and speed. The beam touches hundreds of gas cells. Each one lights up as the light reaches it.",
+    "text": "Every cell has a density, heat and speed. The sightline touches hundreds of gas cells. Each one lights up as the light reaches it.",
     "chunk": "outskirts",
     "beat": "B3"
    },
@@ -257,7 +257,7 @@
    {
     "t0": 62.00621728935249,
     "t1": 66.49930251532035,
-    "text": "Amount sets how much light is taken. This one cell holds a quarter of all the O VI on the beam. Its dip grows term by term: amount, width, place.",
+    "text": "Amount sets how much light is taken. This one cell holds a quarter of all the O VI on the sightline. Its dip grows term by term: amount, width, place.",
     "chunk": "cell263",
     "beat": "B7b"
    },
@@ -306,7 +306,7 @@
    {
     "t0": 95.75381007431874,
     "t1": 98.55,
-    "text": "The spectrum keeps speed and loses place. A dip records how fast gas moves along the beam, not where it sits.",
+    "text": "The spectrum keeps speed and loses place. A dip records how fast gas moves along the sightline, not where it sits.",
     "chunk": "thread",
     "beat": "B9"
    },
@@ -425,7 +425,7 @@
    {
     "t0": 168,
     "t1": 176,
-    "text": "How a spectrum is made",
+    "text": "How an absorption spectrum is made",
     "chunk": "end",
     "kind": "card"
    }
@@ -439,7 +439,7 @@
  "check_before_stamp": {
   "rc": 1,
   "out": "",
-  "err": "build/film_copy.json is stale against copy.json + data: run --stamp (then rerender the film, U_film)"
+  "err": "build/film_copy.json is stale against copy.json + data: run --stamp (then rerender the film, U_film)\nmedia/story.en.vtt is stale against copy.json + beats.json: run --stamp (then rerender the film, U_film)"
  },
  "stamp": {
   "rc": 0,
@@ -447,8 +447,8 @@
  },
  "generated": {
   "media/story.en.vtt": {
-   "sha256": "33fe21184e3f6dbb5132e62cb3b15d2b5f09680b97ffc053c72f01af693a30f7",
-   "equals_tracked": true
+   "sha256": "0edb635ca8c707667cc7f45a6817f3965412cf7f40ba72b6a9a28ce39b19d7b9",
+   "equals_tracked": false
   },
   "media/story.chapters.vtt": {
    "sha256": "a1555a5910301f1263ed34403bb831427c1d568f7cd6f7ee14d78dfe89ec6a98",
@@ -459,7 +459,7 @@
    "equals_tracked": true
   }
  },
- "film_copy_sha256": "ab957e22efcd3fd1637e67605710e11017871653e897805704598a78e80b0842",
+ "film_copy_sha256": "d1f7e4868e474b19f2f1e2b61e46950146ca4b133b25c85a66d7d6a419281369",
  "render_html_unchanged_by_stamp": true,
  "check_after_stamp": {
   "rc": 0,

@@ -194,7 +194,7 @@ check(!galBad.length, `galaxy part of the hand-off reads back for the default an
    hero-index output); casesModel lists nothing unless index.picker === "cases", only gates.all entries, never in flight;
    the one showing comes first, then the story B14 offers next (§5); card text obeys §7.2 (title <= 5 words, blurb <= 12,
    no digits, no trailing full stop, no dot separators, never "ride"); caseHref; every built story (beats.<id>.json) has
-   a card; the shipped index keeps the picker "off" (OWNER_DECISIONS 10) and lists only stories whose files exist.
+   a card; the shipped index has picker "cases" (owner 2026-11-16) and lists only stories whose files exist.
    browser (TNG_BROWSER=1; --cases runs only this part): casesBrowser() below. */
 const PK_F = join(SROOT, "js/ui/picker.js");
 const PK = existsSync(PK_F) ? await import(pathToFileURL(PK_F).href) : null;
@@ -230,7 +230,7 @@ if (check(!!PK && typeof PK.casesModel === "function" && typeof PK.caseHref === 
   check(JSON.stringify(PK.pickerModel(IX1, cur, "")) === JSON.stringify(PK.pickerModel({...IX1, stories: IX1.stories.filter(e => !e.case || e.case === "full")}, cur, "")),
         "pickerModel on the shipped data/index.json is unchanged by the Tier A filter");
   /* off unless "cases"; never in flight */
-  const off = [["story-index/1", PK.casesModel(IX1, {current: cur, atEnd: true})], ["picker off", PK.casesModel({...TIX, picker: "off"}, {current: cur, atEnd: true})],
+  const off = [["story-index/1", PK.casesModel({...IX1, picker: undefined}, {current: cur, atEnd: true})], ["picker off", PK.casesModel({...TIX, picker: "off"}, {current: cur, atEnd: true})],
     ["in flight", PK.casesModel(TIX, {current: cur, atEnd: false})], ["no gates.all", PK.casesModel(tierIndex(IX1, {all: false}), {current: cur, atEnd: true})]];
   const offBad = off.filter(([, m]) => m.on && m.cards.some(c => c.id !== "full"));
   check(!offBad.length, `casesModel lists no Tier A story for the /1 index, picker "off", in flight or without gates.all${offBad.length ? ": " + offBad.map(x => x[0]).join(", ") : ""}`);
@@ -273,7 +273,7 @@ if (check(!!PK && typeof PK.casesModel === "function" && typeof PK.caseHref === 
   check(!noCard.length && Object.values(PK.NEXT).every(n => PK.CARDS[n]), `every built story (beats.<id>.json) has a card and every B14 "next" is a known story${noCard.length ? ": " + noCard.join(", ") : ""}`);
   /* the shipped index */
   if (IX1.schema === "story-index/2") {
-    check(IX1.picker === "off" || process.env.STORY_PICKER_ON === "1", `shipped data/index.json keeps picker "off" until the owner flips it (OWNER_DECISIONS 10; now "${IX1.picker}")`);
+    check(IX1.picker === "cases", `shipped data/index.json has picker "cases" (owner flipped it 2026-11-16; OWNER_DECISIONS 10; now "${IX1.picker}")`);
     const miss = [];
     for (const e of IX1.stories.filter(x => x.gates && x.gates.all)) for (const k of ["beats", "shots"]) if (!existsSync(join(SROOT, e[k]))) miss.push(`${e.id}.${k}`);
     for (const e of IX1.stories.filter(x => x.gates && x.gates.all)) if (!existsSync(join(SROOT, "data", e.story))) miss.push(`${e.id}.story`);
@@ -469,8 +469,8 @@ async function casesBrowser() {
     await P.eval(`document.querySelector('#menu-sheet .mn-i[data-id="picker"]').click()`); await P.waitFor(`document.getElementById("picker") && !document.getElementById("picker").hidden`, 4000, 50); await sleep(250); return P.eval(PROBE); };
   const closePicker = async () => { await P.eval(`(() => { const p = document.getElementById("picker"); if (p && !p.hidden) p.querySelector(".pk-x").click(); })()`); await sleep(150); };
   const jumpTo = async p => { await P.eval(`__story.setTarget(${p}, true)`); await P.waitFor(`Math.abs(__story.state().p - ${p}) < 2e-4`, 8000, 50); await sleep(400); };
-  const openEnd = async () => { await jumpTo(1); await P.waitFor(`(() => { const e = document.getElementById("end-actions"); return e && !e.hidden && e.getClientRects().length; })()`, 8000, 100);
-    await P.eval(`document.querySelector('#end-actions [data-end="ride_another"]').click()`); await P.waitFor(`document.getElementById("picker") && !document.getElementById("picker").hidden`, 4000, 50); await sleep(250); return P.eval(PROBE); };
+  const openEnd = async (k = "another_story") => { await jumpTo(1); await P.waitFor(`(() => { const e = document.getElementById("end-actions"); return e && !e.hidden && e.getClientRects().length; })()`, 8000, 100);
+    await P.eval(`document.querySelector('#end-actions [data-end="${k}"]').click()`); await P.waitFor(`document.getElementById("picker") && !document.getElementById("picker").hidden`, 4000, 50); await sleep(250); return P.eval(PROBE); };
   const fetched = async () => P.eval(`performance.getEntriesByType("resource").map(e => e.name.split("/how-a-spectrum-is-made/").pop())`);
   const beatIds = id => JSON.parse(readFileSync(join(SROOT, byId[id].beats), "utf8")).beats.map(b => b.id);
   try {
@@ -480,7 +480,7 @@ async function casesBrowser() {
     let r = await boot(PAGE_OFF + "?nogate=1");
     let offHTML = null;
     if (check(r.ok, `picker off: shipped page boots (${r.ok ? r.ms + " ms" : r.err})`)) {
-      const o = await openEnd(); offHTML = o.listHTML;
+      const o = await openEnd("ride_another"); offHTML = o.listHTML;
       check(o.open && !o.cards.length && !o.groups.includes("Stories"), `picker off: the end action opens the v2 dialog with no Stories group (${o.groups.join(", ")})`);
       if (SHOTS) await P.shot(join(SHOTS, "pick_off_b14_1440.png"));
       if (existsSync(AXE)) { await P.eval(readFileSync(AXE, "utf8") + ";0");

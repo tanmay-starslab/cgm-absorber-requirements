@@ -62,7 +62,7 @@ function render(ctx, state, t, data) {
   if (real > 0 && H.line) {
     const L = H.line, vs = K.prep(data).meta.vSys, v = new Float64Array(L.n); for (let i = 0; i < L.n; i++) v[i] = L.u0 + i * L.du + vs;
     K.curve(A, v, L.flux, {color: H.color, width: 2.4, glow: 6, alpha: real});
-    K.text(Fr, Fr.physics ? `this beam: H I, log₁₀ ΣN = ${K.fmt(H.totals.logN, 2)}` : "this beam's hydrogen", A.box.x + 6, A.box.y - Fr.fs * 0.5, {size: 0.82, color: H.color, alpha: real});
+    K.text(Fr, Fr.physics ? `this sightline: H I, log₁₀ ΣN = ${K.fmt(H.totals.logN, 2)}` : "this sightline's hydrogen", A.box.x + 6, A.box.y - Fr.fs * 0.5, {size: 0.82, color: H.color, alpha: real});
   }
   // meters: depth and the real width (FWHM) of the test dip; once the real trough is in, they read that trough
   const mw = M.box.w, mx = M.box.x, my = M.box.y + Fr.fs * 1.4, gap = Fr.fs * 3.2;

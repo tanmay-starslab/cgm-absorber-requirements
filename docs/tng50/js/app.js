@@ -905,7 +905,7 @@ addEventListener("keydown", ev => { if (ev.target.closest && ev.target.closest("
   if (ev.key === "j") step(1); else if (ev.key === "k") step(-1); });
 $("#prev").addEventListener("click", () => step(-1)); $("#next").addEventListener("click", () => step(1));
 
-/* ---------------- story entry: hand-off hook into "How a spectrum is made" (explainer v2, U_entry) ----------------
+/* ---------------- story entry: hand-off hook into "How an absorption spectrum is made" (explainer v2, U_entry) ----------------
    Every a[data-story] (the CTA in the plot bar, the hint row, the first-visit card, How to read) opens the story on what
    is on screen: #g=<subhalo>&ray=<sightline>&ion=<lead ion>&R=<int>&sn=<int>&from=explorer (grammar: the story's
    js/ui/gate.js parseEntry; story_handoff.mjs checks both ends). The lead ion is the first selected story ion (O VI,

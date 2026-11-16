@@ -22,12 +22,12 @@
    "u0": 0,
    "u1": 0.55,
    "entry": {
-    "chip": "How a spectrum is made",
-    "display": "How a spectrum is made",
-    "display_short": "How a spectrum is made",
-    "sub": "Follow one beam of quasar light through the gas around galaxy 488530.",
-    "sub_short": "Follow one beam of quasar light.",
-    "narrative": "How a spectrum is made. You will follow one beam of quasar light through the gas around galaxy 488530, and watch its spectrum build up cell by cell. Hold Space or the hold button to start, or choose Watch.",
+    "chip": "How an absorption spectrum is made",
+    "display": "How an absorption spectrum is made",
+    "display_short": "Making an absorption spectrum",
+    "sub": "Follow a quasar's light along one sightline through the gas around galaxy 488530.",
+    "sub_short": "Follow quasar light along one sightline.",
+    "narrative": "How an absorption spectrum is made. You will follow a quasar's light along one sightline through the gas around galaxy 488530, and watch its spectrum build up cell by cell. Hold Space or the hold button to start, or choose Watch.",
     "physics": null
    }
   },
@@ -46,7 +46,7 @@
     "sub": "The strip below is this quasar's light, as a perfect telescope travelling with it would record it. For now, all of it gets through.",
     "sub_short": "For now, all the light gets through.",
     "narrative": "A quasar far behind the galaxy sends its light toward us. The spectrum below is what a perfect telescope travelling with the light would record. So far nothing is taken: all the light gets through.",
-    "physics": "The spectrum shows the fraction of light left at each speed along the beam. It is the light that has crossed every cell behind the packet, before any telescope blur.",
+    "physics": "The spectrum shows the fraction of light left at each speed along the sightline. It is the light that has crossed every cell behind the packet, before any telescope blur.",
     "then": [
      {
       "id": "B1.1",
@@ -78,7 +78,7 @@
     "sub": "The strip below is this quasar's light, as a perfect telescope travelling with it would record it. For now, all of it gets through.",
     "sub_short": "For now, all the light gets through.",
     "narrative": "A quasar far behind the galaxy sends its light toward us. The spectrum below is what a perfect telescope travelling with the light would record. So far nothing is taken: all the light gets through.",
-    "physics": "The spectrum shows the fraction of light left at each speed along the beam. It is the light that has crossed every cell behind the packet, before any telescope blur.",
+    "physics": "The spectrum shows the fraction of light left at each speed along the sightline. It is the light that has crossed every cell behind the packet, before any telescope blur.",
     "then": [
      {
       "id": "B1.1",
@@ -132,7 +132,7 @@
     "sub": "The gas shows itself only by the light it takes from things behind it. These colours are our choice, not its light.",
     "sub_short": "It shows only by the light it takes.",
     "narrative": "From outside, galaxy 488530 sits in a halo of thin gas reaching 246 kpc from its centre. The gas is too faint to see directly; it shows itself by the light it takes from things behind it. The colours drawn here are our choice, not light the gas gives off.",
-    "physics": "Galaxy 488530, TNG50-1 at z = 0, somewhat bigger than the Milky Way. R200c = 246 kpc, M200c = 1.60×10¹² M☉. The beam passes 61.9 kpc from the centre; the path from −R200c to +R200c is 493 kpc. Only gas within R200c is counted; real light also crosses gas beyond it, including our own Galaxy's.",
+    "physics": "Galaxy 488530, TNG50-1 at z = 0, somewhat bigger than the Milky Way. R200c = 246 kpc, M200c = 1.60×10¹² M☉. The sightline passes 61.9 kpc from the centre; the path from −R200c to +R200c is 493 kpc. Only gas within R200c is counted; real light also crosses gas beyond it, including our own Galaxy's.",
     "hint": "Drag to turn the halo.",
     "then": [
      {
@@ -141,10 +141,10 @@
        0.55,
        1
       ],
-      "display": "We follow this one beam through it.",
-      "display_short": "We follow this beam.",
-      "sub": "Every beam meets different gas, so every spectrum differs. Pick another beam at any time.",
-      "sub_short": "Every beam meets different gas.",
+      "display": "We follow this one sightline through it.",
+      "display_short": "We follow this sightline.",
+      "sub": "Every sightline meets different gas, so every spectrum differs. Pick another sightline at any time.",
+      "sub_short": "Every sightline meets different gas.",
       "narrative": null
      }
     ]
@@ -166,7 +166,7 @@
     "sub": "The gas shows itself only by the light it takes from things behind it. These colours are our choice, not its light.",
     "sub_short": "It shows only by the light it takes.",
     "narrative": "From outside, galaxy 488530 sits in a halo of thin gas reaching 246 kpc from its centre. The gas is too faint to see directly; it shows itself by the light it takes from things behind it. The colours drawn here are our choice, not light the gas gives off.",
-    "physics": "Galaxy 488530, TNG50-1 at z = 0, somewhat bigger than the Milky Way. R200c = 246 kpc, M200c = 1.60×10¹² M☉. The beam passes 61.9 kpc from the centre; the path from −R200c to +R200c is 493 kpc. Only gas within R200c is counted; real light also crosses gas beyond it, including our own Galaxy's.",
+    "physics": "Galaxy 488530, TNG50-1 at z = 0, somewhat bigger than the Milky Way. R200c = 246 kpc, M200c = 1.60×10¹² M☉. The sightline passes 61.9 kpc from the centre; the path from −R200c to +R200c is 493 kpc. Only gas within R200c is counted; real light also crosses gas beyond it, including our own Galaxy's.",
     "hint": "Drag to turn the halo.",
     "then": [
      {
@@ -175,10 +175,10 @@
        0.55,
        1
       ],
-      "display": "We follow this one beam through it.",
-      "display_short": "We follow this beam.",
-      "sub": "Every beam meets different gas, so every spectrum differs. Pick another beam at any time.",
-      "sub_short": "Every beam meets different gas.",
+      "display": "We follow this one sightline through it.",
+      "display_short": "We follow this sightline.",
+      "sub": "Every sightline meets different gas, so every spectrum differs. Pick another sightline at any time.",
+      "sub_short": "Every sightline meets different gas.",
       "narrative": null
      }
     ]
@@ -198,10 +198,10 @@
      0.55,
      1
     ],
-    "display": "We follow this one beam through it.",
-    "display_short": "We follow this beam.",
-    "sub": "Every beam meets different gas, so every spectrum differs. Pick another beam at any time.",
-    "sub_short": "Every beam meets different gas.",
+    "display": "We follow this one sightline through it.",
+    "display_short": "We follow this sightline.",
+    "sub": "Every sightline meets different gas, so every spectrum differs. Pick another sightline at any time.",
+    "sub_short": "Every sightline meets different gas.",
     "narrative": null
    }
   },
@@ -217,10 +217,10 @@
     "chip": "The halo",
     "display": "Every cell has a density, heat and speed.",
     "display_short": "Each cell: density, heat, speed.",
-    "sub": "The beam touches hundreds of gas cells. Each one lights up as the light reaches it.",
+    "sub": "The sightline touches hundreds of gas cells. Each one lights up as the light reaches it.",
     "sub_short": "Each cell lights up as the light arrives.",
-    "narrative": "We drop onto the beam at the edge of the halo. The beam touches hundreds of gas cells; each lights up as the light reaches it, and its density, heat and speed float beside it. These outskirts are thin, so almost nothing is taken.",
-    "physics": "672 smoothing kernels touch the beam; about 190 cells are actually crossed. The path inside a kernel has median 0.16 kpc and maximum 6.5 kpc. n_H = X_H ρ / m_H, with X_H between 0.724 and 0.760.",
+    "narrative": "We drop onto the sightline at the edge of the halo. The sightline touches hundreds of gas cells; each lights up as the light reaches it, and its density, heat and speed float beside it. These outskirts are thin, so almost nothing is taken.",
+    "physics": "672 smoothing kernels touch the sightline; about 190 cells are actually crossed. The path inside a kernel has median 0.16 kpc and maximum 6.5 kpc. n_H = X_H ρ / m_H, with X_H between 0.724 and 0.760.",
     "hint": "Click a bead to pin its numbers.",
     "then": [
      {
@@ -274,14 +274,14 @@
     "display_short": "Each cell leaves a *shadow.*",
     "sub": "Atoms take a sliver of one colour out of the light: the first cell's dip was 5.6 % deep. The rest goes on.",
     "sub_short": "Atoms take a sliver of one colour.",
-    "narrative": "The first warm-hot cells light up on the beam, and the O VI row of the spectrum gets its first dip, 5.6 % deep. Atoms take a sliver of one colour out of the light; the rest of the light goes on.",
+    "narrative": "The first warm-hot cells light up on the sightline, and the O VI row of the spectrum gets its first dip, 5.6 % deep. Atoms take a sliver of one colour out of the light; the rest of the light goes on.",
     "physics": "Shadow, not glow: absorption makes a dark notch, not a bright one. τ₀ ∝ N f λ / b, and the dip's shape is τ(v) = τ₀ H(a, x), a Voigt profile whose core is a Gaussian in speed.",
     "else": {
-     "display": "This beam is almost clear in O VI.",
+     "display": "This sightline is almost clear in O VI.",
      "display_short": "Almost clear in O VI.",
      "sub": "So the next steps use a made-up cell, marked as an example, to show how one cell leaves a shadow.",
      "sub_short": "The next cell is a marked example.",
-     "narrative": "This beam is almost clear in O VI, so the next steps use a made-up cell, marked as an example, to show how one cell leaves a shadow."
+     "narrative": "This sightline is almost clear in O VI, so the next steps use a made-up cell, marked as an example, to show how one cell leaves a shadow."
     }
    }
   },
@@ -337,9 +337,9 @@
     "else": {
      "display": "Here even hydrogen stays grey.",
      "display_short": "Hydrogen stays grey.",
-     "sub": "Little cool gas lies on this beam, so no dip turns black.",
-     "sub_short": "Little cool gas on this beam.",
-     "narrative": "Here even hydrogen stays grey: little cool gas lies on this beam, so no dip turns black."
+     "sub": "Little cool gas lies on this sightline, so no dip turns black.",
+     "sub_short": "Little cool gas on this sightline.",
+     "narrative": "Here even hydrogen stays grey: little cool gas lies on this sightline, so no dip turns black."
     }
    }
   },
@@ -477,9 +477,9 @@
     "when": "ovi_strong",
     "display": "Amount sets how much light is taken.",
     "display_short": "Amount sets the bite.",
-    "sub": "This one cell holds a quarter of all the O VI on the beam. Its dip grows term by term: amount, width, place.",
+    "sub": "This one cell holds a quarter of all the O VI on the sightline. Its dip grows term by term: amount, width, place.",
     "sub_short": "One cell holds a quarter of the O VI.",
-    "narrative": "We stop inside cell 263, which holds a quarter of all the O VI on the beam. Its dip is drawn term by term: the amount sets its area, the heat sets its width, the speed sets its place. At the centre 18 % of the light gets through.",
+    "narrative": "We stop inside cell 263, which holds a quarter of all the O VI on the sightline. Its dip is drawn term by term: the amount sets its area, the heat sets its width, the speed sets its place. At the centre 18 % of the light gets through.",
     "physics": "Cell 263: log N = 14.16, b = 17.3 km/s, f = 0.133, λ = 1031.912 Å, so τ₀ = 1.73 and 18 % of the light gets through at the centre. Widths come from heat only, with no turbulence, so each cell's dip is as narrow as it can be. Hydrogen at that T would have b = 69 km/s, 4 times wider.",
     "hint": "Hover a term to find it in the dip.",
     "then": [
@@ -499,9 +499,9 @@
     "else": {
      "display": "One cell, one small dip.",
      "display_short": "One cell, one dip.",
-     "sub": "O VI is faint on this beam; the strongest cell still shows how amount, heat and speed shape a dip.",
+     "sub": "O VI is faint on this sightline; the strongest cell still shows how amount, heat and speed shape a dip.",
      "sub_short": "Amount, heat and speed shape it.",
-     "narrative": "O VI is faint on this beam. We stop at its strongest cell, cell 263, to see how amount, heat and speed shape one dip."
+     "narrative": "O VI is faint on this sightline. We stop at its strongest cell, cell 263, to see how amount, heat and speed shape one dip."
     }
    }
   },
@@ -651,7 +651,7 @@
      "narrative": "Being closest does not mean the most gas: 69.5 % of the O VI and 66.7 % of the hydrogen are already behind us."
     },
     "sub_short": "Its centre: 202 000 light-years to the side.",
-    "narrative": "Halfway along the beam the galaxy swings into view. Its centre is 202 000 light-years to the side, the closest the beam comes.",
+    "narrative": "Halfway along the sightline the galaxy swings into view. Its centre is 202 000 light-years to the side, the closest the sightline comes.",
     "physics": "The midpoint of the path is the closest approach, b = 61.9 kpc. By here 69.5 % of the O VI and 66.7 % of the H I have been collected.",
     "hint": "Drag to look around."
    }
@@ -672,14 +672,14 @@
     "display_short": "*New dips* still appear.",
     "sub": "New O VI dips appear at +61, +98 km/s. The order of dips is not the order of clouds.",
     "sub_short": "Dip order is not cloud order.",
-    "narrative": "Past halfway, new O VI dips appear at +61, +98 km/s. The order of dips in the spectrum is not the order of clouds on the beam.",
+    "narrative": "Past halfway, new O VI dips appear at +61, +98 km/s. The order of dips in the spectrum is not the order of clouds on the sightline.",
     "physics": "O VI traces a medium; at a higher density level it breaks into pieces. Every O VI cloud shown here exists only above the level we chose.",
     "else": {
      "display": "Past halfway, *the light goes on.*",
      "display_short": "*The light goes on.*",
      "sub": "No new O VI dip appears in this stretch.",
      "sub_short": "No new O VI dip here.",
-     "narrative": "Past halfway, the light goes on, and no new O VI dip appears in this stretch of the beam.",
+     "narrative": "Past halfway, the light goes on, and no new O VI dip appears in this stretch of the sightline.",
      "physics": "O VI traces a medium; at a higher density level it breaks into pieces. Every O VI cloud shown here exists only above the level we chose."
     },
     "then": [
@@ -694,7 +694,7 @@
       "display_short": "Far apart, *same dip.*",
       "sub": "Gas 84 kpc apart moves at almost the same speed, so the spectrum cannot tell them apart: the clearest of 2 such pairs.",
       "sub_short": "84 kpc apart, one dip.",
-      "narrative": "Cell 438 drops its shadow into a dip that cell 296 made 84 kpc behind us: they move at almost the same speed, so the spectrum cannot tell them apart. This is the clearest of 2 such pairs on the beam.",
+      "narrative": "Cell 438 drops its shadow into a dip that cell 296 made 84 kpc behind us: they move at almost the same speed, so the spectrum cannot tell them apart. This is the clearest of 2 such pairs on the sightline.",
       "physics": "Cells 296 (ℓ = -18.2 kpc) and 438 (ℓ = +65.7 kpc) differ in speed by less than either dip's width.",
       "else": null
      },
@@ -706,7 +706,7 @@
       ],
       "display": "The spectrum keeps speed and loses place.",
       "display_short": "Speed kept, place lost.",
-      "sub": "A dip records how fast gas moves along the beam, not where it sits.",
+      "sub": "A dip records how fast gas moves along the sightline, not where it sits.",
       "sub_short": "Speed, not place.",
       "narrative": "The spectrum keeps speed and loses place."
      }
@@ -729,14 +729,14 @@
     "display_short": "*New dips* still appear.",
     "sub": "New O VI dips appear at +61, +98 km/s. The order of dips is not the order of clouds.",
     "sub_short": "Dip order is not cloud order.",
-    "narrative": "Past halfway, new O VI dips appear at +61, +98 km/s. The order of dips in the spectrum is not the order of clouds on the beam.",
+    "narrative": "Past halfway, new O VI dips appear at +61, +98 km/s. The order of dips in the spectrum is not the order of clouds on the sightline.",
     "physics": "O VI traces a medium; at a higher density level it breaks into pieces. Every O VI cloud shown here exists only above the level we chose.",
     "else": {
      "display": "Past halfway, *the light goes on.*",
      "display_short": "*The light goes on.*",
      "sub": "No new O VI dip appears in this stretch.",
      "sub_short": "No new O VI dip here.",
-     "narrative": "Past halfway, the light goes on, and no new O VI dip appears in this stretch of the beam.",
+     "narrative": "Past halfway, the light goes on, and no new O VI dip appears in this stretch of the sightline.",
      "physics": "O VI traces a medium; at a higher density level it breaks into pieces. Every O VI cloud shown here exists only above the level we chose."
     },
     "then": [
@@ -751,7 +751,7 @@
       "display_short": "Far apart, *same dip.*",
       "sub": "Gas 84 kpc apart moves at almost the same speed, so the spectrum cannot tell them apart: the clearest of 2 such pairs.",
       "sub_short": "84 kpc apart, one dip.",
-      "narrative": "Cell 438 drops its shadow into a dip that cell 296 made 84 kpc behind us: they move at almost the same speed, so the spectrum cannot tell them apart. This is the clearest of 2 such pairs on the beam.",
+      "narrative": "Cell 438 drops its shadow into a dip that cell 296 made 84 kpc behind us: they move at almost the same speed, so the spectrum cannot tell them apart. This is the clearest of 2 such pairs on the sightline.",
       "physics": "Cells 296 (ℓ = -18.2 kpc) and 438 (ℓ = +65.7 kpc) differ in speed by less than either dip's width.",
       "else": null
      },
@@ -763,7 +763,7 @@
       ],
       "display": "The spectrum keeps speed and loses place.",
       "display_short": "Speed kept, place lost.",
-      "sub": "A dip records how fast gas moves along the beam, not where it sits.",
+      "sub": "A dip records how fast gas moves along the sightline, not where it sits.",
       "sub_short": "Speed, not place.",
       "narrative": "The spectrum keeps speed and loses place."
      }
@@ -789,7 +789,7 @@
     "display_short": "Far apart, *same dip.*",
     "sub": "Gas 84 kpc apart moves at almost the same speed, so the spectrum cannot tell them apart: the clearest of 2 such pairs.",
     "sub_short": "84 kpc apart, one dip.",
-    "narrative": "Cell 438 drops its shadow into a dip that cell 296 made 84 kpc behind us: they move at almost the same speed, so the spectrum cannot tell them apart. This is the clearest of 2 such pairs on the beam.",
+    "narrative": "Cell 438 drops its shadow into a dip that cell 296 made 84 kpc behind us: they move at almost the same speed, so the spectrum cannot tell them apart. This is the clearest of 2 such pairs on the sightline.",
     "physics": "Cells 296 (ℓ = -18.2 kpc) and 438 (ℓ = +65.7 kpc) differ in speed by less than either dip's width.",
     "else": null
    }
@@ -810,7 +810,7 @@
     ],
     "display": "The spectrum keeps speed and loses place.",
     "display_short": "Speed kept, place lost.",
-    "sub": "A dip records how fast gas moves along the beam, not where it sits.",
+    "sub": "A dip records how fast gas moves along the sightline, not where it sits.",
     "sub_short": "Speed, not place.",
     "narrative": "The spectrum keeps speed and loses place."
    }
@@ -830,7 +830,7 @@
     "sub": "More atoms darken a dip's centre while its width hardly changes, until the centre is black.",
     "sub_short": "More atoms, darker centre.",
     "narrative": "Cloud D is another cool clump. More atoms darken a dip's centre while its width hardly changes, until the centre is black.",
-    "physics": "τ₀ grows in proportion to N; the centre lets through e^(−τ₀). H I total log N = 18.04 (above 17.2: a Lyman-limit system), peak τ = 22 723. Near the top of the slider the widening comes from the damping wings, not the core. On this beam the fits land +0.10 to +0.34 dex from the true amount: a black dip gives only a rough amount, and a fit can err either way.",
+    "physics": "τ₀ grows in proportion to N; the centre lets through e^(−τ₀). H I total log N = 18.04 (above 17.2: a Lyman-limit system), peak τ = 22 723. Near the top of the slider the widening comes from the damping wings, not the core. On this sightline the fits land +0.10 to +0.34 dex from the true amount: a black dip gives only a rough amount, and a fit can err either way.",
     "hint": "Drag N on the ghost dip.",
     "then": [
      {
@@ -888,7 +888,7 @@
     "display_short": "All the light carried out.",
     "sub": "49 cells left a visible O VI shadow. Their shadows merged into a few broad dips.",
     "sub_short": "49 shadows, a few dips.",
-    "narrative": "Leaving the halo, the camera turns to look back along the whole beam. 49 cells left a visible O VI shadow, and they merged into a few broad dips. Each cloud is tied by a ribbon to the dips it made.",
+    "narrative": "Leaving the halo, the camera turns to look back along the whole sightline. 49 cells left a visible O VI shadow, and they merged into a few broad dips. Each cloud is tied by a ribbon to the dips it made.",
     "physics": "Total log N = log₁₀ Σ N: 14.77 for O VI, 18.04 for H I. Peak τ = 3.06: O VI here is mostly unsaturated, and its deepest core is just starting to saturate. Single cells have b = 5.5 to 27.6 km/s, yet the trough spans -199 to +190 km/s: motion, not heat, sets its extent.",
     "hint": "Click a ribbon to see one cloud's share."
    }
@@ -908,7 +908,7 @@
     "display_short": "All the light carried out.",
     "sub": "49 cells left a visible O VI shadow. Their shadows merged into a few broad dips.",
     "sub_short": "49 shadows, a few dips.",
-    "narrative": "Leaving the halo, the camera turns to look back along the whole beam. 49 cells left a visible O VI shadow, and they merged into a few broad dips. Each cloud is tied by a ribbon to the dips it made.",
+    "narrative": "Leaving the halo, the camera turns to look back along the whole sightline. 49 cells left a visible O VI shadow, and they merged into a few broad dips. Each cloud is tied by a ribbon to the dips it made.",
     "physics": "Total log N = log₁₀ Σ N: 14.77 for O VI, 18.04 for H I. Peak τ = 3.06: O VI here is mostly unsaturated, and its deepest core is just starting to saturate. Single cells have b = 5.5 to 27.6 km/s, yet the trough spans -199 to +190 km/s: motion, not heat, sets its extent.",
     "hint": "Click a ribbon to see one cloud's share."
    }
@@ -1050,7 +1050,7 @@
     "sub": "A fit explains the noisy spectrum with a few smooth components, each with an amount, a width and a speed.",
     "sub_short": "Each has an amount, width and speed.",
     "narrative": "A fit explains the noisy spectrum with a few smooth components, each with an amount, a width and a speed.",
-    "physics": "Voigt fit at R = 30000, S/N = 10; three precomputed noise draws cycle (first: seed 986299851); live fits run only in Explore. Fitted total log N = 14.72, against 14.77 from every cell on the beam. A fitted width is not a thermometer: at R = 15000, S/N = 5 one component has b = 141 km/s.",
+    "physics": "Voigt fit at R = 30000, S/N = 10; three precomputed noise draws cycle (first: seed 986299851); live fits run only in Explore. Fitted total log N = 14.72, against 14.77 from every cell on the sightline. A fitted width is not a thermometer: at R = 15000, S/N = 5 one component has b = 141 km/s.",
     "then": [
      {
       "id": "B13.1",
@@ -1145,11 +1145,11 @@
    "u1": 1,
    "entry": {
     "chip": "Yours",
-    "display": "Now it is yours. Same galaxy, same beam.",
+    "display": "Now it is yours. Same galaxy, same sightline.",
     "display_short": "Now it is yours.",
-    "sub": "Change sharpness and exposure, pick another of 198 galaxies, or open this beam in the explorer.",
-    "sub_short": "Try another beam.",
-    "narrative": "Now it is yours: the same galaxy and the same beam. Change the sharpness and the exposure, try another beam from any of 198 galaxies, or open this beam in the explorer.",
+    "sub": "Change sharpness and exposure, pick another of 198 galaxies, or open this sightline in the explorer.",
+    "sub_short": "Try another story or sightline.",
+    "narrative": "Now it is yours: the same galaxy and the same sightline. Change the sharpness and the exposure, try another sightline from any of 198 galaxies, or open this sightline in the explorer.",
     "physics": "Sharpness is R, exposure is S/N, the components are the fit: each maps to one control in Spectra.",
     "then": [
      {
@@ -1161,10 +1161,10 @@
       "when": "lite",
       "display": null,
       "display_short": null,
-      "sub": "This beam has no cell-by-cell flight yet: you see its library spectrum, and the cells drawn did not make it.",
+      "sub": "This sightline has no cell-by-cell flight yet: you see its library spectrum, and the cells drawn did not make it.",
       "sub_short": "Library spectrum; drawn cells are not its cells.",
       "else": null,
-      "narrative": "This beam has no cell-by-cell flight yet: you see its library spectrum, and the cells drawn did not make it."
+      "narrative": "This sightline has no cell-by-cell flight yet: you see its library spectrum, and the cells drawn did not make it."
      }
     ]
    }
@@ -1174,8 +1174,8 @@
   {
    "id": "B0",
    "p0": 0,
-   "title": "How a spectrum is made",
-   "text": "How a spectrum is made. You will follow one beam of quasar light through the gas around galaxy 488530, and watch its spectrum build up cell by cell. Hold Space or the hold button to start, or choose Watch."
+   "title": "How an absorption spectrum is made",
+   "text": "How an absorption spectrum is made. You will follow a quasar's light along one sightline through the gas around galaxy 488530, and watch its spectrum build up cell by cell. Hold Space or the hold button to start, or choose Watch."
   },
   {
    "id": "B1",
@@ -1193,13 +1193,13 @@
    "id": "B3",
    "p0": 0.125,
    "title": "Every cell has a density, heat and speed.",
-   "text": "We drop onto the beam at the edge of the halo. The beam touches hundreds of gas cells; each lights up as the light reaches it, and its density, heat and speed float beside it. These outskirts are thin, so almost nothing is taken."
+   "text": "We drop onto the sightline at the edge of the halo. The sightline touches hundreds of gas cells; each lights up as the light reaches it, and its density, heat and speed float beside it. These outskirts are thin, so almost nothing is taken."
   },
   {
    "id": "B4",
    "p0": 0.184,
    "title": "Each cell leaves a shadow.",
-   "text": "The first warm-hot cells light up on the beam, and the O VI row of the spectrum gets its first dip, 5.6 % deep. Atoms take a sliver of one colour out of the light; the rest of the light goes on."
+   "text": "The first warm-hot cells light up on the sightline, and the O VI row of the spectrum gets its first dip, 5.6 % deep. Atoms take a sliver of one colour out of the light; the rest of the light goes on."
   },
   {
    "id": "B5",
@@ -1223,7 +1223,7 @@
    "id": "B7b",
    "p0": 0.407,
    "title": "Amount sets how much light is taken.",
-   "text": "We stop inside cell 263, which holds a quarter of all the O VI on the beam. Its dip is drawn term by term: the amount sets its area, the heat sets its width, the speed sets its place. At the centre 18 % of the light gets through."
+   "text": "We stop inside cell 263, which holds a quarter of all the O VI on the sightline. Its dip is drawn term by term: the amount sets its area, the heat sets its width, the speed sets its place. At the centre 18 % of the light gets through."
   },
   {
    "id": "B7c",
@@ -1247,13 +1247,13 @@
    "id": "B8",
    "p0": 0.545,
    "title": "Halfway. The galaxy sits beside us.",
-   "text": "Halfway along the beam the galaxy swings into view. Its centre is 202 000 light-years to the side, the closest the beam comes."
+   "text": "Halfway along the sightline the galaxy swings into view. Its centre is 202 000 light-years to the side, the closest the sightline comes."
   },
   {
    "id": "B9",
    "p0": 0.58,
    "title": "Past halfway, new dips still appear.",
-   "text": "Past halfway, new O VI dips appear at +61, +98 km/s. The order of dips in the spectrum is not the order of clouds on the beam."
+   "text": "Past halfway, new O VI dips appear at +61, +98 km/s. The order of dips in the spectrum is not the order of clouds on the sightline."
   },
   {
    "id": "B10",
@@ -1265,7 +1265,7 @@
    "id": "B11",
    "p0": 0.72,
    "title": "This is everything the light carried out.",
-   "text": "Leaving the halo, the camera turns to look back along the whole beam. 49 cells left a visible O VI shadow, and they merged into a few broad dips. Each cloud is tied by a ribbon to the dips it made."
+   "text": "Leaving the halo, the camera turns to look back along the whole sightline. 49 cells left a visible O VI shadow, and they merged into a few broad dips. Each cloud is tied by a ribbon to the dips it made."
   },
   {
    "id": "B12a",
@@ -1288,8 +1288,8 @@
   {
    "id": "B14",
    "p0": 0.965,
-   "title": "Now it is yours. Same galaxy, same beam.",
-   "text": "Now it is yours: the same galaxy and the same beam. Change the sharpness and the exposure, try another beam from any of 198 galaxies, or open this beam in the explorer."
+   "title": "Now it is yours. Same galaxy, same sightline.",
+   "text": "Now it is yours: the same galaxy and the same sightline. Change the sharpness and the exposure, try another sightline from any of 198 galaxies, or open this sightline in the explorer."
   }
  ]
 }

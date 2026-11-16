@@ -26,6 +26,7 @@ import {createSound, nextTrack} from "./ui/sound.js";
 import {focusStyle} from "./ui/kinetic.js";
 import {computeBands, layoutClass, isPhone} from "./ui/layoutclass.js";
 import {createGate, parseEntry, entryFragment} from "./ui/gate.js";
+import {gateCards} from "./ui/picker.js";
 import {copyLookup, copyFlags, attachCases} from "./copy/derive.js";
 import {loadStoryData, loadEntryData} from "./engine.js";
 import {cellCentre} from "./spectrum/link.js";
@@ -331,7 +332,7 @@ async function boot() {
   // review2 scrolly F3: the gate's first gesture lands where B1's first line is fully readable, not on B1's empty start
   const B1read = timeline.readPoint ? timeline.readPoint(B1) : B1.p0;
   if (deep == null && !Q.has("nogate") && !Q.has("still")) {
-    gate = createGate($("stage"), {copy, music, vars: {galaxy: data.meta.galaxy}, g: data.meta.galaxy, ray: data.meta.ray, watchSeconds: timeline.watch.total,
+    gate = createGate($("stage"), {copy, music, vars: {galaxy: data.meta.galaxy}, g: data.meta.galaxy, ray: data.meta.ray, stories: gateCards(index, story && story.id), watchSeconds: timeline.watch.total,
       onRide: ({holding} = {}) => { closeGate(); if (holding) { input.holdStart("gate"); const end = () => { input.holdEnd("gate"); removeEventListener("pointerup", end, true); removeEventListener("keyup", end, true); };
         addEventListener("pointerup", end, true); addEventListener("keyup", end, true); } else clock.setTarget(Math.max(clock.state.target, B1read)); },
       onWatch: () => { closeGate(); watch.play(clock.state.p); },

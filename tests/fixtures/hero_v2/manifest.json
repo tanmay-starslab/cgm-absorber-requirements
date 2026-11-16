@@ -9,12 +9,12 @@
  "node": "v24.21.0",
  "parts": {
   "seek": "6a0031d7719ab42fd25b3098acc8a14c4f43cea298893a9d7463646b25553083",
-  "layout": "f01f9f18cbae23e6044140e9df7d42c5879e288c10a715c28d148176b2ee095a",
-  "lines": "6e92ea54169bfad4e269cd53abf9a2da9b00b74e6e5ea6492c74e5bf2e67bdf9",
+  "layout": "2d0ec2a860850fe5ea7641f76750c416e446613a8a6d94e1e8175ef8050553ad",
+  "lines": "c1f83efe2ecfa56993fc78107f9355fa10168e1373ae892a435db38f9e2a1670",
   "eq": "4ddf1585463119cdbea5e1c87b2eab7a021e2dee7107ba8545ae90cd09e365ce",
-  "vtt": "a05a9cdd89a9abc8ff4b9fc15048aee857fd31e5e9cbbac53156fd424b8c1783",
+  "vtt": "61a8631960b7eb6098418f0199c148a688fda72df3545ccedbcaf316d787239e",
   "index": "a0fdc0fe6ee7c8ec09dd2ac32c78dba61c55318bd2096ab67447fbe7b43566b8",
-  "dom": "3fb1dd00ca229ccecbb27e5683ea85a13d3c1c441a3933cc74ac1e50a32d7e78"
+  "dom": "fe00845a94386731ad33588b01468720f97499b9e725e9f7f13cacabe7e771fe"
  },
  "notes": [
   {
@@ -40,6 +40,35 @@
     "M docs/tng50/learn/how-a-spectrum-is-made/beats.schema.json"
    ],
    "parts_changed": [
+    "dom"
+   ]
+  },
+  {
+   "note": "owner 2026-11-16: beam -> sightline wording, absorption title, gate story row",
+   "head": "e9ed5d9",
+   "worktree_dirty": [
+    "M docs/tng50/learn/how-a-spectrum-is-made/copy.cases.json",
+    " M docs/tng50/learn/how-a-spectrum-is-made/copy.json",
+    " M docs/tng50/learn/how-a-spectrum-is-made/css/story2.css",
+    " M docs/tng50/learn/how-a-spectrum-is-made/data/index.json",
+    " M docs/tng50/learn/how-a-spectrum-is-made/index.html",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/main.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/plot.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/scenes/fit.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/scenes/saturation.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/scenes/speed.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/scenes/yourturn.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/ui/gate.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/ui/hud.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/ui/menu.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/ui/picker.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/render.html",
+    " M docs/tng50/learn/how-a-spectrum-is-made/steps.json"
+   ],
+   "parts_changed": [
+    "layout",
+    "lines",
+    "vtt",
     "dom"
    ]
   }

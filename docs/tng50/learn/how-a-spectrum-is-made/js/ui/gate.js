@@ -1,4 +1,4 @@
-// The B0 gate of "How a spectrum is made" v2 (DESIGN §3 B0, DESIGN_final §3.2 "B0 gate", §5.8 U_entry) and the entry
+// The B0 gate of "How an absorption spectrum is made" v2 (DESIGN §3 B0, DESIGN_final §3.2 "B0 gate", §5.8 U_entry) and the entry
 // grammar the explorer's call to action writes (docs/tng50/js/app.js storyEntry).
 //
 // The gate is the first screen: a still of this galaxy's gas and starlight (img/poster_<g>_<ray>.webp, landscape, and
@@ -153,7 +153,21 @@ html.gate-open #hud,html.gate-open #rail,html.gate-open #kinetic,html.gate-open 
 @media (max-width:320px){.sg-t{font-size:max(26px,9.4vw)}.sg-c{flex-direction:column}.sg-b{width:100%;flex:none;min-height:44px}.sg-cr{display:none}
   .sg-in{gap:10px}.sg-k{gap:0 16px}.sg-b{padding:6px 12px;gap:8px}.sg-l{white-space:normal;text-align:left}}
 @media (max-width:320px) and (max-height:460px){.sg-s{display:none}}
-@media (prefers-reduced-motion:reduce){.sg-art img{animation:none}.sg,.sg-art,.sg-b{transition:none}}
+/* the story row (owner 2026-11-16): one quiet row of glass cards under the start buttons; a swipe strip on phones */
+.sg-st{display:flex;flex-direction:column;gap:6px;max-width:100%}
+.sg-sl{margin:0;font:500 11px/1 var(--sans,system-ui,sans-serif);letter-spacing:.08em;text-transform:uppercase;color:var(--sky-muted,#b9b6c8)}
+.sg-sr{display:flex;gap:8px;margin:0;padding:2px;list-style:none;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain}
+.sg-sr::-webkit-scrollbar{display:none}
+.sg-sr li{flex:none;scroll-snap-align:start}
+.sg-sc{display:flex;flex-direction:column;width:100px;padding:4px;border-radius:12px;border:1px solid rgba(236,240,255,.16);background:#0b0f1cd9;
+  color:var(--sky-ink,#f4f1ea);text-decoration:none;transition:border-color .25s,background .25s}
+.sg-sc img{width:100%;height:52px;border-radius:8px;object-fit:cover;display:block;background:#121a33}
+.sg-sc span{display:block;padding:6px 3px 3px;font:400 12.5px/1.25 var(--sans,system-ui,sans-serif);min-height:2.5em}
+.sg-sc:hover,.sg-sc:focus-visible{border-color:var(--beam,#fff4df);background:rgba(26,23,18,.8)}
+.sg-sc:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:2px}
+@media (orientation:portrait),(max-aspect-ratio:6/5){.sg-sr{margin:0 calc(-20px - var(--sar,0px)) 0 -2px;padding-right:20px}}
+@media (max-height:560px){.sg-st{display:none}}
+@media (prefers-reduced-motion:reduce){.sg-art img{animation:none}.sg,.sg-art,.sg-b,.sg-sc{transition:none}}
 html.reduced .sg-art img{animation:none}
 [data-gate-focus]:focus{outline:none}
 `;
@@ -166,7 +180,7 @@ function injectCss(doc) {
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 
 /* host: the stage element. opts = {copy, vars: {galaxy, ...}, g, ray, posterBase ("img/"), watchSeconds, reduced,
-     credit (string; default from vars), onRide({via, holding}), onWatch(), onSkip(), onText(), autofocus (default true),
+     credit (string; default from vars), stories ([{id, title, blurb, img, href}], picker.js gateCards), onRide({via, holding}), onWatch(), onSkip(), onText(), autofocus (default true),
      focusAfter (element or () => element; default host: where focus goes on close)}
    -> {el, open(), close({instant}), isOpen(), liveReady(), rects(), setWatch(seconds), destroy()} */
 export function createGate(host, opts = {}) {
@@ -176,13 +190,13 @@ export function createGate(host, opts = {}) {
   const reduced = () => (opts.reduced != null ? !!opts.reduced : win.matchMedia ? win.matchMedia("(prefers-reduced-motion: reduce)").matches : false);
   vars.watch_len = watchLabel(opts.watchSeconds) || vars.watch_len;
   const phone = () => Math.min(win.innerWidth, win.innerHeight) <= 480;
-  const title = fill(B0.display || "How a spectrum is made", vars);
-  const sub = fill(phone() && B0.sub_short ? B0.sub_short : B0.sub || "Follow one beam of quasar light through the gas around a galaxy.", vars);
+  const title = fill(B0.display || "How an absorption spectrum is made", vars);
+  const sub = fill(phone() && B0.sub_short ? B0.sub_short : B0.sub || "Follow a quasar's light along one sightline through the gas around a galaxy.", vars);
   const holdL = fill(ui.gate_hold || "Hold to fly", vars);
   const watchL = () => (vars.watch_len ? fill(ui.gate_watch || "Watch ({{$watch_len}})", vars) : "Watch");
   const credit = opts.credit != null ? opts.credit : vars.galaxy != null
-    ? `TNG50 galaxy ${vars.galaxy}: gas and starlight from the simulation; the line is the beam.` : "";
-  const P = posterSources(opts.g, opts.ray, opts.posterBase || "img/");
+    ? `TNG50 galaxy ${vars.galaxy}: gas and starlight from the simulation; the line is the sightline.` : "";
+  const P = posterSources(opts.g, opts.ray, opts.posterBase || "img/"), stories = opts.stories || [];
 
   const el = doc.createElement("section");
   el.className = "sg"; el.id = "gate"; el.dataset.noscrub = ""; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "false");
@@ -209,6 +223,9 @@ export function createGate(host, opts = {}) {
           `<svg viewBox="0 0 20 20" aria-hidden="true"><path class="snd-spk" d="M3.5 7.6h2.6L10 4.5v11L6.1 12.4H3.5z"/><path class="snd-w" d="M12.6 7.4a3.6 3.6 0 0 1 0 5.2M14.8 5.4a6.4 6.4 0 0 1 0 9.2"/><path class="snd-x" d="M12.8 8l4 4M16.8 8l-4 4"/></svg>` +
           `<span class="snd-l">${esc(ui.music_off || "Music off")}</span></button>` : "") +
       `</div>` +
+      (stories.length ? `<nav class="sg-st" aria-labelledby="sg-sl" data-g1="gate.stories"><p class="sg-sl" id="sg-sl">${esc(ui.gate_stories || "Or pick a story")}</p><ul class="sg-sr">` +
+        stories.map(c => `<li><a class="sg-sc" href="${esc(c.href)}" data-story="${esc(c.id)}" aria-label="${esc(c.title)}: ${esc(c.blurb)}">` +
+          `<img alt="" src="${esc(c.img)}" decoding="async"><span>${esc(c.title)}</span></a></li>`).join("") + `</ul></nav>` : "") +
       (credit ? `<p class="sg-cr" data-g1="gate.credit">${esc(credit)}</p>` : "") +
     `</div>`;
   host.appendChild(el);
@@ -255,7 +272,7 @@ export function createGate(host, opts = {}) {
      activates them, as a button should) */
   const onKey = e => {
     if (!isOpen || e.key !== " " && e.code !== "Space") return;
-    const tgt = e.target, other = tgt && tgt.closest && tgt.closest(".sg-b.watch, .sg-a");
+    const tgt = e.target, other = tgt && tgt.closest && tgt.closest(".sg-b.watch, .sg-a, .sg-sc");
     if (other) return;
     e.preventDefault(); e.stopImmediatePropagation();
     if (e.type === "keydown" && !e.repeat) start("space");

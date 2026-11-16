@@ -5,7 +5,7 @@
   "ray": "rand_b062_a062"
  },
  "default_story": "full",
- "picker": "off",
+ "picker": "cases",
  "fion": "fion_OVI_slice.json",
  "film_beams": [
   {

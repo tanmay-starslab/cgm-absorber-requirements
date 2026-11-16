@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://galaxies.tanmaysingh.uk/"><b>Explorer</b></a> &nbsp;|&nbsp;
-  <a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><b>How a spectrum is made</b></a> &nbsp;|&nbsp;
+  <a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><b>How an absorption spectrum is made</b></a> &nbsp;|&nbsp;
   <a href="https://galaxies.tanmaysingh.uk/requirements/"><b>Detect & Resolve</b></a> &nbsp;|&nbsp;
   <a href="#technical-details"><b>Technical details</b></a>
 </p>
@@ -65,7 +65,7 @@ look-alikes, read the spectrum it makes, change the telescope, and see what a re
 
 ### Watch a spectrum being made
 
-<p align="center"><a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><img src="docs/readme/learn-gate.webp" width="100%" alt="The opening of How a spectrum is made: a beam of light crossing the galaxy"></a></p>
+<p align="center"><a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><img src="docs/readme/learn-gate.webp" width="100%" alt="The opening of How an absorption spectrum is made: a beam of light crossing the galaxy"></a></p>
 
 <table>
   <tr>
@@ -73,7 +73,7 @@ look-alikes, read the spectrum it makes, change the telescope, and see what a re
     <td width="50%"><img src="docs/readme/learn-fit.webp" alt="A story step: fitting a few components to the noisy spectrum"></td>
   </tr>
 </table>
-<p align="center"><sub>Follow one beam cell by cell, from the gas to a fitted spectrum. Scroll at your own pace or watch the film. Five more stories are coming soon.</sub></p>
+<p align="center"><sub>Follow one sightline cell by cell, from the gas to a fitted spectrum. Scroll at your own pace or watch the film. Five shorter stories start from the same welcome screen.</sub></p>
 
 ### Ask in plain language
 
@@ -99,7 +99,7 @@ page's own tools, and any number it did not get from a tool is marked as unverif
 | Page | Link | What it is |
 |---|---|---|
 | **Explorer** | [galaxies.tanmaysingh.uk](https://galaxies.tanmaysingh.uk/) | Sightlines, spectra, fits, 3D gas and chat for 198 TNG50 galaxies |
-| **How a spectrum is made** | [/learn/how-a-spectrum-is-made/](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A cinematic story from gas cells to a fitted spectrum |
+| **How an absorption spectrum is made** | [/learn/how-a-spectrum-is-made/](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A cinematic story from gas cells to a fitted spectrum |
 | **Detect & Resolve** | [/requirements/](https://galaxies.tanmaysingh.uk/requirements/) | The instrument study: what S/N and resolution it takes to detect and resolve an absorber |
 
 ## Credit
@@ -125,7 +125,7 @@ the circumgalactic medium (CGM) of simulated galaxies. The three pages map to th
 | Page | Source |
 |---|---|
 | Explorer | `docs/tng50/` ([below](#tng50-sightline-explorer)) |
-| How a spectrum is made | `docs/tng50/learn/` ([below](#learn-page-how-a-spectrum-is-made)) |
+| How an absorption spectrum is made | `docs/tng50/learn/` ([below](#learn-page-how-an-absorption-spectrum-is-made)) |
 | Detect & Resolve | `docs/index.html`, `absreq/`, `paper/` |
 
 Old `tanmay-starslab.github.io/cgm-absorber-requirements/...` links redirect to the new site.
@@ -260,9 +260,9 @@ velocity-frame and dλ fixes). Layout: `tngsight/` (registry, geometry, generato
 </details>
 
 <details>
-<summary><b>How a spectrum is made: the story page and its build</b></summary>
+<summary><b>How an absorption spectrum is made: the story page and its build</b></summary>
 
-#### Learn page: How a spectrum is made
+#### Learn page: How an absorption spectrum is made
 
 `docs/tng50/learn/how-a-spectrum-is-made/` tells how one sightline's spectrum is built: the light behind the galaxy,
 the gas cells along the beam, which ions absorb, one cell's dip, Doppler shifts, the sum of many cells, saturation,

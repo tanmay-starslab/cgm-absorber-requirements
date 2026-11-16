@@ -491,7 +491,7 @@ export function rayStrip(Fr, data, k, o = {}) {
     const a = o.labels ?? 1;
     text(Fr, `−${fmt(half, 0)} kpc`, b.x, y + Fr.fs * 1.6, {size: 0.7, color: COL.muted, mono: true, alpha: a});
     text(Fr, `+${fmt(half, 0)} kpc`, b.x + b.w, y + Fr.fs * 1.6, {size: 0.7, color: COL.muted, mono: true, align: "right", alpha: a});
-    text(Fr, o.label || "position along the beam", b.x + b.w / 2, y + Fr.fs * 1.6, {size: 0.72, color: COL.muted, align: "center", alpha: a});
+    text(Fr, o.label || "position along the sightline", b.x + b.w / 2, y + Fr.fs * 1.6, {size: 0.72, color: COL.muted, align: "center", alpha: a});
   }
   return {X, y, half};
 }

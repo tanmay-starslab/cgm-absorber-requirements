@@ -1,4 +1,4 @@
-// The one menu (DESIGN_final §1.3 P1-3): Explore, Physics, Read as text, Try another beam, Watch, Share, Music track, Keys.
+// The one menu (DESIGN_final §1.3 P1-3): Explore, Physics, Read as text, Try another sightline, Watch, Share, Music track, Keys, Source code.
 // A 44 px icon button in the HUD (in the rail in phone landscape) opening a sheet on the modal layer (z 60). Esc or a click
 // outside closes it and returns focus to the button. Each entry calls a hook; entries without a hook are not shown. An entry
 // with "stay" keeps the menu open and takes its label and hint from hooks[id + "Label"]() -> {label, hint} (the music track:
@@ -13,26 +13,27 @@
 
 export const ENTRIES = Object.freeze([
   {id: "watch", label: "Watch the flight", hint: null},          // length comes from hooks.watchHint() (the beats' Watch schedule)
-  {id: "explore", label: "Explore this beam", hint: "your controls, same galaxy"},
-  {id: "picker", label: "Try another beam", hint: "any galaxy of the sample"},
+  {id: "explore", label: "Explore this sightline", hint: "your controls, same galaxy"},
+  {id: "picker", label: "Try another sightline", hint: "another story or galaxy"},
   {id: "physics", label: "Science details", hint: "numbers, equations and caveats", toggle: true},
   {id: "text", label: "Read as text", hint: "the whole story, no motion"},
   {id: "share", label: "Copy link to this moment"},
   {id: "musicTrack", label: "Music", stay: true},                // label and hint from hooks.musicTrackLabel()
   {id: "keys", label: "Keys and help"},
   {id: "credits", label: "Data and credits"},
+  {id: "source", label: "Source code", href: "https://github.com/tanmay-starslab/cgm-absorber-requirements"},
   {id: "explorer", label: "Back to the explorer", href: true},
 ]);
 
 export function createMenu(button, sheet, hooks = {}) {
   button.setAttribute("aria-haspopup", "true"); button.setAttribute("aria-expanded", "false");
   sheet.setAttribute("role", "menu"); sheet.hidden = true; sheet.dataset.noscrub = "";
-  const list = ENTRIES.filter(e => hooks[e.id] || (e.href && hooks.explorerHref));
+  const list = ENTRIES.filter(e => hooks[e.id] || (e.href === true ? hooks.explorerHref : e.href));
   const dyn = e => (e.stay && hooks[e.id + "Label"] ? hooks[e.id + "Label"]() : null);
   const labelOf = e => (dyn(e) || e).label;
   const hintOf = e => (e.id === "watch" && hooks.watchHint ? hooks.watchHint() : (dyn(e) || e).hint);
   sheet.innerHTML = list.map(e => e.href
-    ? `<a class="mn-i" role="menuitem" href="${hooks.explorerHref()}" data-id="${e.id}"><span class="mn-l">${e.label}</span></a>`
+    ? `<a class="mn-i" role="menuitem" href="${e.href === true ? hooks.explorerHref() : `${e.href}" target="_blank" rel="noopener`}" data-id="${e.id}"><span class="mn-l">${e.label}</span></a>`
     : `<button class="mn-i" role="${e.toggle ? "menuitemcheckbox" : "menuitem"}" type="button" data-id="${e.id}"${e.toggle ? ' aria-checked="false"' : ""}>` +
       `<span class="mn-l">${labelOf(e)}</span>${hintOf(e) ? `<span class="mn-h" data-num>${hintOf(e)}</span>` : ""}</button>`).join("");
   const items = () => [...sheet.querySelectorAll(".mn-i")];
@@ -74,7 +75,7 @@ export function createMenu(button, sheet, hooks = {}) {
 /* the key help rows (all keys of the story, whichever module handles them) */
 export const KEYMAP = Object.freeze([
   {keys: ["Space"], what: "hold to fly; in Watch, play or pause"},
-  {keys: ["←", "→"], what: "move along the beam"},
+  {keys: ["←", "→"], what: "move along the sightline"},
   {keys: ["Shift", "←", "→"], what: "previous or next cell stop"},
   {keys: ["Page Up", "Page Down"], what: "previous or next moment"},
   {keys: ["Home", "End"], what: "start or end"},
@@ -127,7 +128,7 @@ export function createKeyHelp(host, opts = {}) {
 const A = (href, t) => `<a href="${href}" target="_blank" rel="noopener">${t}</a>`;
 /* sections: [{h, p: [html | {cls, t}]}]; the story's spectra are always cast with Trident (export_story_data.py, any host) */
 export function creditSections(galaxy) {
-  const beam = galaxy != null ? `This story's beam through subhalo ${galaxy}` : "This story's beam";
+  const beam = galaxy != null ? `This story's sightline through subhalo ${galaxy}` : "This story's sightline";
   return [
     {h: "Simulation", p: [
       `IllustrisTNG, TNG50-1 at z = 0 (snapshot 99), from the ${A("https://www.tng-project.org/data/", "TNG public data release")} (free, registration required). ` +
