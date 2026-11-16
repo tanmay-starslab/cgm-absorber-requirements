@@ -1,0 +1,215 @@
+{
+ "default": {
+  "galaxy": 488530,
+  "ray": "rand_b062_a062"
+ },
+ "resolved": [
+  {
+   "q": [
+    null,
+    null
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    488530,
+    null
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    488530,
+    "rand_b062_a062"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    488530,
+    "rand_b050_a215"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    488530,
+    "rand_b143_a150"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    488530,
+    "rand_b045_a300_s459727623"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    488530,
+    "rand_b092_a287_s119206912"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    488530,
+    "rand_b139_a096"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    424288,
+    null
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    424288,
+    "edge_b033_a270_s13959"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    424288,
+    "edge_b136_a066_s45545"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    511920,
+    null
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    511920,
+    "edge_b106_a018_s29389"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  },
+  {
+   "q": [
+    1,
+    "x"
+   ],
+   "e": {
+    "galaxy": 488530,
+    "ray": "rand_b062_a062",
+    "story": "story_488530_rand_b062_a062.json",
+    "page_fits": "page_fits_488530_rand_b062_a062.json"
+   }
+  }
+ ],
+ "line": "../../data/s/rand_b062_a062.bin",
+ "picker": {
+  "groups": [
+   {
+    "galaxy": 488530,
+    "label": "Subhalo 488530",
+    "rays": [
+     {
+      "ray": "rand_b062_a062",
+      "label": "impact 62 kpc, azimuth 62°",
+      "eligible": true,
+      "reason": null,
+      "current": true
+     }
+    ]
+   }
+  ],
+  "n": 1,
+  "shown": 1
+ },
+ "picker_q": {
+  "groups": [
+   {
+    "galaxy": 488530,
+    "label": "Subhalo 488530",
+    "rays": [
+     {
+      "ray": "rand_b062_a062",
+      "label": "impact 62 kpc, azimuth 62°",
+      "eligible": true,
+      "reason": null,
+      "current": true
+     }
+    ]
+   }
+  ],
+  "n": 1,
+  "shown": 1
+ }
+}

@@ -26,8 +26,8 @@ import {createSound, nextTrack} from "./ui/sound.js";
 import {focusStyle} from "./ui/kinetic.js";
 import {computeBands, layoutClass, isPhone} from "./ui/layoutclass.js";
 import {createGate, parseEntry, entryFragment} from "./ui/gate.js";
-import {copyLookup, copyFlags} from "./copy/derive.js";
-import {loadStoryData} from "./engine.js";
+import {copyLookup, copyFlags, attachCases} from "./copy/derive.js";
+import {loadStoryData, loadEntryData} from "./engine.js";
 import {cellCentre} from "./spectrum/link.js";
 
 const Q = new URLSearchParams(location.search);
@@ -47,6 +47,34 @@ const groupSig3 = x => { if (!(x > 0)) return "0"; if (x >= 1e6) return `${(x / 
   const p = 10 ** Math.max(0, Math.floor(Math.log10(x)) - 2); return grp(Math.round(x / p) * p); };
 const oneIn = f => { if (!(f > 0)) return "none of the"; const n = 1 / f, p = 10 ** Math.floor(Math.log10(n)); return `1 in ${grp(Math.round(n / p) * p)}`; };
 const SOFTWARE_RE = /swiftshader|llvmpipe|softpipe|basic render|software rasterizer|software adapter|lavapipe/i;
+
+/* ---------------- v3 story selection (DESIGN_tierA §7.2; R2) ---------------- */
+const STORY_DATA = new Set(["story-data/2", "story-data/3"]);
+const storyParam = s => (typeof s === "string" && /^[a-z][a-z0-9_]*$/.test(s) ? s : null);
+function storyEntry(index, id) {
+  const list = index && Array.isArray(index.stories) ? index.stories : [];
+  return (id && list.find(e => e && e.id === id)) || null;
+}
+/* hero view of the index: v1 entries and "full" only (the cases picker gets the whole index) */
+function heroIndex(index) {
+  if (!index || !Array.isArray(index.stories)) return index;
+  return {...index, stories: index.stories.filter(e => e && (!e.case || e.case === "full"))};
+}
+const shellIndex = index => (index && index.picker === "cases" ? index : heroIndex(index));
+const heroGet = async u => { const j = await getJSON(u); return /\/data\/index\.json(\?|$)/.test(new URL(u, location.href).pathname) ? heroIndex(j) : j; };
+/* a Tier A story: its entry's beats/shots/story files (copy.json shared) */
+async function loadTierA(id) {
+  const index = await getJSON("data/index.json");
+  const story = storyEntry(index, id);
+  if (!story) throw Object.assign(new Error(`story: no story "${id}" in data/index.json`), {noStory: true});
+  // one parallel batch; case copy attached before the first frame (M1, H1)
+  const {rawP, dataP} = loadEntryData(document.baseURI, index, story);
+  const cloudsP = rawP.then(d => (d && d.clouds && d.clouds.path ? getJSON("data/" + d.clouds.path) : null)).catch(e => { console.warn("story: no clouds", e); return null; });
+  const casesP = getJSON("copy.cases.json").catch(e => { console.warn("story: no case copy", e); return null; });
+  const [copy, cases, beatsDoc, shotsDoc, data] = await Promise.all([getJSON("copy.json"), casesP, getJSON(story.beats), getJSON(story.shots), dataP]);
+  if (cases) attachCases(copy, cases);
+  return {copy, beatsDoc, shotsDoc, index, data, story, cloudsP};
+}
 
 /* the film page (render.html) imports this module only to look for createScene; never boot there */
 const isFilm = !!document.querySelector("[data-composition-id]");
@@ -70,19 +98,39 @@ async function boot() {
   // everything the first live frame needs, fetched in parallel (G6: first live frame <= 1.5 s at 20 Mbps); the 3D stage
   // attaches after that frame (first 3D frame <= 4 s at 50 Mbps)
   const EQP = import("./eq/equations.js"), DOCKP = import("./spectrum/dock.js"), GLP = import("./stage/glcheck.js");
-  const docsP = Promise.all([getJSON("copy.json"), getJSON("beats.json"), getJSON("shots.json"), getJSON("data/index.json")]);
-  const dataP = loadStoryData(document.baseURI, entry.g, entry.ray);   // engine.resolveStory: unknown/ineligible -> the default story
+  // ?story=<id> (DESIGN_tierA §7.2): a Tier A story from its index entry. Else the hero as before (Tier A entries hidden
+  // from the (g, ray) resolver and the v2 picker); a non-"full" index.default_story is honoured after load.
+  const storyQ = storyParam(Q.get("story"));
   const EQM = await EQP;
-  const [[copy, beatsDoc, shotsDoc, index], {data}, eq] = await Promise.all([docsP, dataP, EQM.loadEq()]);
-  if (!data.meta || data.meta.schema !== "story-data/2") throw new Error("story data is not story-data/2: " + (data.meta && data.meta.schema));
+  let copy, beatsDoc, shotsDoc, index, data, eqDoc, story = null, tierClouds = null;
+  // unknown ?story= opens the hero (F1)
+  const tierA = storyQ && storyQ !== "full"
+    ? await loadTierA(storyQ).catch(err => { if (err && err.noStory) { console.warn(`${err.message}; showing the full tour`); return null; } throw err; })
+    : null;
+  if (tierA) {
+    ({copy, beatsDoc, shotsDoc, index, data, story, cloudsP: tierClouds} = tierA);
+    eqDoc = await EQM.loadEq();
+  } else {
+    const docsP = Promise.all([getJSON("copy.json"), getJSON("beats.json"), getJSON("shots.json"), getJSON("data/index.json")]);
+    const dataP = loadStoryData(document.baseURI, entry.g, entry.ray, undefined, heroGet);   // engine.resolveStory: unknown/ineligible -> the default story
+    let d;
+    [[copy, beatsDoc, shotsDoc, index], {data: d}, eqDoc] = await Promise.all([docsP, dataP, EQM.loadEq()]);
+    data = d;
+    const ds = !storyQ && index && index.default_story;
+    if (ds && ds !== "full" && storyEntry(index, ds)) ({copy, beatsDoc, shotsDoc, index, data, story, cloudsP: tierClouds} = await loadTierA(ds));
+  }
+  const eq = eqDoc;
+  if (!data.meta || !STORY_DATA.has(data.meta.schema)) throw new Error("story data is not story-data/2 or /3: " + (data.meta && data.meta.schema));
   const G = data.geometry;
   // CREST shells (B11 tethers, B13 landing, the stage's isosurfaces): not needed for the first frame
-  const cloudsP = !data.clouds_full && data.clouds && data.clouds.path
+  const cloudsP = tierClouds ? tierClouds.then(c => { if (c) data.clouds_full = c; return c; })
+    : !data.clouds_full && data.clouds && data.clouds.path
     ? getJSON("data/" + data.clouds.path).then(c => { data.clouds_full = c; return c; }, e => { console.warn("story: no clouds", e); return null; }) : Promise.resolve(data.clouds_full || null);
   const lookup = copyLookup(copy, data), flags = {...copyFlags(copy, data), ...(data.flags || {})};
   const beats = beatsDoc.beats;
   const seek = makeSeek({beats: beatsDoc, shots: shotsDoc});
   const prep = prepare(data, beatsDoc, shotsDoc);
+  let dropsN = 0;
   const timeline = createTimeline(beatsDoc, {shots: shotsDoc});
   const lineSkip = beatSkip(flags);
   timeline.setSkip && timeline.setSkip(lineSkip);
@@ -217,7 +265,7 @@ async function boot() {
     setScrims: rs => { scrims = rs; if (stage) stage.setScrims(rs); },
     onLayout: () => kick(), onFonts: () => kick(), kick: () => kick(),
   };
-  const shell = createShell(els, {beats, copy, data, lookup, flags, honesty: (copy.honesty && copy.honesty.items) || copy.honesty || [], index,
+  const shell = createShell(els, {beats, copy, data, lookup, flags, honesty: (copy.honesty && copy.honesty.items) || copy.honesty || [], index: shellIndex(index),
     current: {galaxy: data.meta.galaxy, ray: data.meta.ray}, clouds, lToP, hooks, follow: !Q.has("nofollow")});   // ?nofollow: A/B for the SC2-1 jump gate
   // review perf M3: the "Read the story as text" skip link opens the text overlay (the bare hash did nothing visible)
   { const sk = $("skip-text"); if (sk) sk.addEventListener("click", e => { e.preventDefault(); shell.narrative.open(); }); }
@@ -237,12 +285,17 @@ async function boot() {
   async function attachStage() {
     try {
       const [T, ST, {loadManifestV2}] = await Promise.all([import("three"), import("./stage/stage.js"), import("../../../js/vizdata.js")]);
-      const inp = ST.storyInputs(data), viz = vizConfig(index);
+      const inp = ST.storyInputs(data), viz = vizConfig(index, story);
       const [tube, manifest] = await Promise.all([
         ST.loadStoryTube(data, getJSON, getBin, "data/").catch(e => { console.warn("story: no tube", e); return null; }),
         loadManifestV2(viz.manifest).catch(e => { console.warn("story: no cube manifest", e); return null; })]);
       // review perf H2/H3: phones and ?lite get the mobile tier's GPU budget (192 MB), L0-only prefetch and no velocity cubes
       const mobile = lite || isPhone(shell.layout().cls);
+      // a case story retunes the TF presets to its ray before the stage warms up; never the hero (F9)
+      if (story && beatsDoc.meta && beatsDoc.meta.tf) {
+        const TFS = await import("./stage/tfcase.js"), r = TFS.applyStoryTF(beatsDoc.meta.tf);
+        if (!r.ok) console.warn("story: meta.tf refused, hero presets kept", r.errs);
+      }
       const st = await ST.createStage({canvas: $("gl"), T, manifest, base: viz.base, fallbackBase: viz.fallback, ray: inp.ray, cells: inp.cells, tube,
         opts: {scale: lite ? 0.35 : 0.5, governor: !lite && !Q.has("bench"), dpr: Math.min(2, devicePixelRatio || 1), mobile, onQueued: () => kick()}});
       // review perf H3: a lost WebGL context drops to the stills tier instead of leaving a black stage
@@ -322,6 +375,7 @@ async function boot() {
     // any input that takes the target past the cold open (keys, rail, Watch, __story.setTarget) closes the gate
     if (gate && gate.isOpen() && clock.state.target > B0.p1 + 1e-6) closeGate();
     const fs = seek(clock.state.p, data, ov);
+    if (prep.drops && prep.drops.size > dropsN) { dropsN = prep.drops.size; console.warn("story: dropped role keys", [...prep.drops]); }   // v3
     fs.cam = orbitCam(fs.cam);   // fix3 R1
     fs.lit = litFor(fs);         // fix3 R2
     if (orb.yaw || orb.pitch) kick();
@@ -587,14 +641,15 @@ async function boot() {
   return api;
 }
 
-/* cubes: ?viz=<dir or manifest URL> (local server, tests, cluster) else the explorer's manifest and hosted cubes */
-function vizConfig(index) {
+/* cubes: ?viz=<dir or manifest URL> (local server, tests, cluster), else the story entry's viz, else the index's viz
+   (hero: the explorer's manifest and hosted cubes) */
+function vizConfig(index, entry = null) {
   const q = Q.get("viz");
   if (q) {
     const u = new URL(q, location.href), man = /\.json$/.test(u.pathname) ? u.href : u.href.replace(/\/?$/, "/") + "manifest_v2.json";
     return {manifest: man, base: new URL(".", man).href, fallback: null};
   }
-  const v = (index && index.viz) || {};
+  const v = (entry && entry.viz && entry.viz.manifest_url ? entry.viz : index && index.viz) || {};
   return {manifest: new URL(v.manifest_url || "../../data/viz/manifest_v2.json", document.baseURI).href,
           base: v.base || "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/", fallback: v.fallback_base || null};
 }

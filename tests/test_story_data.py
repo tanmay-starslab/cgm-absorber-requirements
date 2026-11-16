@@ -81,7 +81,7 @@ def _grid(d):
 
 def test_index_default():
     ix = _index()
-    assert ix["schema"] == "story-index/1"
+    assert ix["schema"] in ("story-index/1", "story-index/2")     # /2 is strictly additive (DESIGN_tierA §7.2)
     assert ix["default"] == {"galaxy": 488530, "ray": "rand_b062_a062"}
     assert (DATA / ix["fion"]).exists()
     assert any((e["galaxy"], e["ray"]) == (488530, "rand_b062_a062") for e in ix["stories"])
@@ -904,3 +904,205 @@ def test_v2_minima_claims():
     a, b = f["beat_windows"]["B5"]; j = int(np.argmin(np.abs(v - f["b5_ovi_V"])))
     assert abs((F(a)[j] - F(b)[j]) - f["b5_ovi_drop"]) < 1e-6 and abs(1 - F(b)[j] - f["b5_ovi_depth_after"]) < 1e-6
     assert (k["b5_ovi_drop"], k["b5_ovi_depth_after"]) == ("32", "44")
+
+
+# ---------------------------------------------------------------------------------------------- Tier A (story-data/3)
+# DESIGN_tierA §4.4 (unit R1). The frozen picks (U_freezeA) plus the clean pick of the one wider search
+# (OWNER_DECISIONS 13, unit R1). Tier A files live under data/v3/ so the staged v2 files (the damped ray is also a v2
+# film beam) are never overwritten.
+V3 = DATA / "v3"
+TIER_A_PICKS = {"damped": (488530, "rand_b050_a215", "damped", None),
+                "empty": (511920, "edge_b106_a018_s29389", "empty", None),
+                "multiphase": (488530, "rand_b139_a096", "multiphase", "MgII"),
+                "hot": (488530, "rand_b103_a094_s0", "hot_only", "NeVIII"),
+                "clean": (424288, "edge_b266_a178_s33492", "clean_single", "CIV")}
+HERO_BASE = "8557cac"
+
+
+def _v3(sid):
+    gid, ray, _, _ = TIER_A_PICKS[sid]
+    p = V3 / f"story_{gid}_{ray}.json"
+    if not p.exists():
+        pytest.skip(f"Tier A story {sid} not installed ({p})")
+    return json.loads(p.read_text(encoding="utf-8")), p
+
+
+@pytest.mark.parametrize("sid", sorted(TIER_A_PICKS))
+def test_case_rules_accept_picks(sid):
+    """G16: the declared case's case/1 rule passes on the Trident story with margin >= 0.1 (never loosened)"""
+    d, _ = _v3(sid)
+    gid, ray, cid, extra = TIER_A_PICKS[sid]
+    assert d["meta"]["schema"] == "story-data/3" and d["meta"]["story_id"] == sid
+    assert (d["meta"]["galaxy"], d["meta"]["ray"]) == (gid, ray)
+    c = d["case"]
+    assert c["declared"] == cid and c["rule_version"] == "case/1"
+    assert c["verdict"]["ok"] and c["verdict"]["margin"] >= 0.1, c["verdict"]
+    assert c["id"] == cid or c["scores"].get(cid) is not None
+    assert d["gates_case"]["G16"]["pass"] and d["eligible_case"] is True
+    assert d["galaxy"]["source"] == "trident" and d["ions_extra"] == ([extra] if extra else [])
+    if sid == "damped":
+        assert c["subcase"] == "dla"
+    for k, v in d["claims"].items():
+        assert isinstance(v["pass"], bool) and (v.get("value") is None or isinstance(v["value"], (int, float, str, bool))), k
+
+
+@pytest.mark.parametrize("sid", sorted(TIER_A_PICKS))
+def test_tier_a_schema(sid):
+    """story-data/3: root + $defs.v3 of tests/schemas/story-data/3.schema.json, with the page's own validator"""
+    import shutil
+    import subprocess
+    _, p = _v3(sid)
+    if not shutil.which("node"):
+        pytest.skip("node not available")
+    js = ("import {readFileSync} from 'node:fs';"
+          f"const E = await import('{(ROOT / 'js' / 'engine.js').as_posix()}');"
+          f"const sd = JSON.parse(readFileSync('{(REPO / 'tests/schemas/story-data/3.schema.json').as_posix()}', 'utf8'));"
+          f"const d = JSON.parse(readFileSync('{p.as_posix()}', 'utf8'));"
+          "const e = E.schemaErrors(sd, d).concat(E.schemaErrors({$ref: '#/$defs/v3'}, d, sd));"
+          "console.log(JSON.stringify(e)); process.exit(e.length ? 1 : 0);")
+    r = subprocess.run(["node", "--input-type=module", "-e", js], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("sid", sorted(TIER_A_PICKS))
+def test_tier_a_plan_windows(sid):
+    """letters/2: slots ordered and covering [-half, +half] exactly; the /2 facts use the plan's beat windows"""
+    d, _ = _v3(sid)
+    pl = d["plan"]; half = pl["half"]
+    sl = list(pl["slots"].values())
+    assert list(pl["slots"]) == ["F0", "A", "FAB", "B", "FBC", "C", "FCD", "D", "Fend"]
+    assert sl[0]["l0"] == pytest.approx(-half, abs=2e-3) and sl[-1]["l1"] == pytest.approx(half, abs=2e-3)
+    for a, b in zip(sl, sl[1:]):
+        assert a["l1"] == pytest.approx(b["l0"], abs=2e-3) and a["l0"] <= a["l1"] + 1e-9
+    assert pl["slots"]["B"]["on"]
+    assert d["facts2"]["beat_windows_source"].startswith("plan")
+    for k, (a, b) in pl["beat_l"].items():
+        assert d["facts2"]["beat_windows"][k] == [pytest.approx(a, abs=2e-3), pytest.approx(b, abs=2e-3)]
+    lettered = [e for e in pl["encounters"] if e.get("letter")]
+    assert sorted(e["letter"] for e in lettered) == sorted(k for k in "ABCD" if pl["slots"][k]["on"])
+    if sid == "empty":
+        assert [e["letter"] for e in lettered] == ["B"] and lettered[0]["synthetic"] and pl["flags"]["B12n"]
+    assert d["gates_case"]["G15_data"]["pass"], d["gates_case"]["G15_data"]
+    assert d["gates_case"]["G13r_data"]["pass"]
+
+
+@pytest.mark.parametrize("sid", sorted(TIER_A_PICKS))
+def test_tier_a_cell_sum_and_budget(sid):
+    """per-cell Voigt sum reproduces the stored Trident spectrum for every exported ion; gz <= 140 kB + 45 kB/extra"""
+    d, p = _v3(sid)
+    v = _grid(d)
+    for key in ["HI", "OVI"] + d["ions_extra"]:
+        F = np.exp(-_cellsum(d, key, v))
+        assert np.max(np.abs(F - np.asarray(d["ions"][key]["F_intrinsic"]))) < 5e-3, key
+    gz = len(gzip.compress(p.read_bytes(), 9))
+    assert gz <= 140 * 1024 + 45 * 1024 * len(d["ions_extra"])
+    assert d["gates_case"]["budget"]["pass"]
+    assert d["cube_cover"]["end_r_kpc"] <= 390 or d["cube_cover"]["director_note"]
+    for k in ("tube", "clouds"):
+        if d[k].get("path"):
+            assert d[k]["path"].startswith("v3/") and (DATA / d[k]["path"]).exists(), d[k]["path"]
+    assert (V3 / f"page_fits_{d['meta']['galaxy']}_{d['meta']['ray']}.json").exists()
+
+
+@pytest.mark.parametrize("sid", sorted(TIER_A_PICKS))
+def test_tier_a_limits_roles_flags(sid):
+    import select_cases as S
+    d, _ = _v3(sid)
+    for k in ("HI", "OVI"):
+        lim = d["limits"][k]
+        assert (lim["sn"], lim["R"]) == (10, 15000) and lim["b"] > 0
+        if S.ABSREQ.exists():
+            assert lim["logN_3sig"] == S.limit_3sig(k)["logN_3sig"]
+    r = d["roles"]
+    for name, v in r.items():
+        if name != "cells" and "cell" in v:
+            assert str(v["cell"]) in r["cells"], name
+    f = d["flags"]
+    assert all(isinstance(x, bool) for x in f.values())
+    assert f["hi_damped"] == (d["ions"]["HI"]["totals"]["logN"] >= 20.3)
+    assert not (f["richest_not_closest"] and not f["ovi_detected"])           # §4.4 item 5
+    assert d["keys"]["page_R"] == "15 000" and " " in d["keys"]["s11_R"]      # R digit grouping
+    if sid == "empty":
+        assert 0 <= d["noise"]["seed"] <= 999 and 2 <= d["noise"]["excursion_sigma"] < 3
+        assert d["claims"]["noise_dip"]["pass"] and d["galaxy"]["gas_poor"] and f["gas_poor"]
+        assert all(not v["ok"] for k, v in r.items() if k in ("S5", "S4a"))   # no absurd 'one in N' equation
+    if sid == "damped":
+        assert d["claims"]["resolve_saturated"]["pass"] and d["plan"]["resolve"]["mode"] == "resolve_saturated"
+        assert d["keys"]["hi_lls"].startswith("above 20.3")
+    if sid == "multiphase":
+        assert d["plan"]["flags"]["B7p"] and d["claims"]["nothing_between"]["pass"] is False   # bridge ion present
+
+
+def test_tier_a_leaves_hero_and_index_untouched():
+    """H0 data side: the hero story file and data/index.json are byte-identical to the frozen base"""
+    import subprocess
+    for rel in ("story_488530_rand_b062_a062.json", "index.json", "story_488530_rand_b050_a215.json"):
+        path = f"docs/tng50/learn/how-a-spectrum-is-made/data/{rel}"
+        r = subprocess.run(["git", "-C", str(REPO), "show", f"{HERO_BASE}:{path}"], capture_output=True)
+        if r.returncode != 0:
+            pytest.skip(f"git base {HERO_BASE} not available")
+        assert (DATA / rel).read_bytes() == r.stdout, rel
+
+
+
+@pytest.mark.parametrize("sid", sorted(TIER_A_PICKS))
+def test_tier_a_stored_line_resolves(sid):
+    """fix1 H1/F1/S1: every Tier A story ships its stored TNGS line same-origin under data/v3/lines/ (the observed, fit
+    and explore docks of B12-B14 draw from it; the explorer library holds only some Tier A rays). The line decodes, its
+    v_sys is the story's and it reproduces F_intrinsic of O VI and H I (same Trident cast)."""
+    from tngsight import library as LIB
+    d, _ = _v3(sid)
+    gid, ray = d["meta"]["galaxy"], d["meta"]["ray"]
+    p = V3 / "lines" / f"{gid}_{ray}.bin"
+    assert p.exists(), f"{sid}: no stored line {p}"
+    dec = LIB.decode_web(p.read_bytes())
+    assert abs(dec["vSys"] - d["meta"]["v_sys_kms"]) < 0.01
+    v = _grid(d)
+    for k in ("OVI", "HI"):
+        ln = dec["lines"][k]
+        F = np.interp(v - dec["vSys"], ln["u"], ln["flux"])
+        assert np.max(np.abs(F - np.asarray(d["ions"][k]["F_intrinsic"]))) < 5e-3, k
+
+
+def test_tier_a_index_entries_name_their_line():
+    """fix1 H1: every Tier A entry of a story-index/2 (the shipped index once it is /2, else R1's draft) carries
+    `line` = v3/lines/<g>_<ray>.bin and that file exists, so engine.lineUrl never falls back to the explorer library"""
+    cands = [DATA / "index.json", Path(os.environ.get("TNG_WORK") or "/Volumes/cgm_work") / ("scratch/story3_w/R1/index_v2_draft.json")]
+    idx = next((json.loads(c.read_text()) for c in cands if c.exists() and json.loads(c.read_text()).get("schema") == "story-index/2"), None)
+    if idx is None:
+        pytest.skip("no story-index/2 available")
+    tier = [e for e in idx["stories"] if e.get("case") not in (None, "full")]
+    assert tier, "no Tier A entries"
+    for e in tier:
+        assert e.get("line") == f"v3/lines/{e['galaxy']}_{e['ray']}.bin", e["id"]
+        assert (DATA / e["line"]).exists(), e["line"]
+
+
+@pytest.mark.parametrize("sid", sorted(TIER_A_PICKS))
+def test_tier_a_dock_window_holds_the_absorption(sid):
+    """fix1 H2/F2/F4/S8: the dock panel of each detected ion (log N >= 13) holds >= 90 % of its equivalent width (stored
+    line, whole window); a damped H I trough (log N >= 19), whose wings reach past any panel, shows at least its
+    half-depth extent (F < 0.5) and stays on a live tau grid that covers the panel (plan.grid_ion). dock.js reads
+    plan.vwin_ion (dockWindow)."""
+    from tngsight import library as LIB
+    d, _ = _v3(sid)
+    pl = d["plan"]
+    dec = LIB.decode_web((V3 / "lines" / f"{d['meta']['galaxy']}_{d['meta']['ray']}.bin").read_bytes())
+    g = d["meta"]["grid"]
+    for k in ("OVI", "HI"):
+        lo, hi = pl["vwin_ion"][k]
+        ln = dec["lines"][k]
+        v = np.asarray(ln["u"]) + dec["vSys"]
+        D = 1 - np.asarray(ln["flux"])
+        logN = d["ions"][k]["totals"]["logN"]
+        if logN < 13.0:
+            continue
+        if k == "HI" and logN >= 19.0:
+            half = v[np.asarray(ln["flux"]) < 0.5]
+            assert lo <= half.min() and half.max() <= hi, (k, lo, hi, half.min(), half.max())
+        else:
+            share = D[(v >= lo) & (v <= hi)].sum() / D.sum()
+            assert share >= 0.90, (k, lo, hi, share)
+        if lo < g["V0"] or hi > g["V1"]:
+            gi = pl["grid_ion"][k]
+            assert gi["V0"] <= lo and gi["V1"] >= hi and gi["dV"] == 1.0, (k, gi)

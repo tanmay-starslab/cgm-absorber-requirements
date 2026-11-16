@@ -20,14 +20,17 @@
     "fields": ["nH", "T", "OVI", "HI", "Z", "vel"]
   },
   "presets": {
-    "about": "Film-tuned looks, registered at render time on top of js/stage/tfstory.js PRESETS (base preset + overrides; tfstory.js is not edited). 'state' merges over the base preset's tf.js state.",
+    "about": "Film-tuned looks, registered at render time on top of js/stage/tfstory.js PRESETS (base preset + overrides; tfstory.js is not edited). 'state' merges over the base preset's tf.js state. film:wings, film:hot and film:empty (Tier A) carry looks only, so they keep a story's meta.tf windows (register them after tfstory.applyStoryTF).",
     "film:outskirts": {"base": "phases", "gamma": 0.6, "look": {"gain": 0.8}},
     "film:hi": {"base": "ion:HI", "look": {"gain": 0.7, "opacity": 0.42},
       "state": {"bands": [{"c": -7.5, "w": 0.8, "a": 0.12, "rgb": [146, 147, 248]}, {"c": -5.0, "w": 0.9, "a": 0.45, "rgb": [146, 147, 248]}, {"c": -2.5, "w": 1.0, "a": 0.8, "rgb": [176, 180, 255]}]}},
     "film:ovi": {"base": "ion:OVI", "look": {"gain": 0.75, "opacity": 0.4},
       "state": {"bands": [{"c": -8.6, "w": 0.35, "a": 0.12, "rgb": [251, 122, 60]}, {"c": -7.6, "w": 0.3, "a": 0.55, "rgb": [251, 122, 60]}, {"c": -6.7, "w": 0.35, "a": 0.9, "rgb": [255, 214, 170]}]}},
     "film:metals": {"base": "metals", "gamma": 0.7, "look": {"gain": 1.4},
-      "state": {"win": [-1.2, 0.3], "ramp": {"lo": -1.0, "hi": 0.3, "a": 0.8}}}
+      "state": {"win": [-1.2, 0.3], "ramp": {"lo": -1.0, "hi": 0.3, "a": 0.8}}},
+    "film:wings": {"base": "ion:HI", "look": {"gain": 0.8, "opacity": 0.5}},
+    "film:hot": {"base": "ion:OVI", "look": {"gain": 0.9, "opacity": 0.45}},
+    "film:empty": {"base": "halo", "look": {"gain": 3.0, "opacity": 0.65}}
   },
   "chunks": [
     {"id": "open",      "s": 16, "beats": ["B1", "B2"],          "tf": "density"},

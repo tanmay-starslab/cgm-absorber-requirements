@@ -37,6 +37,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+NO_LEVEL_RC = 3                  # exit code: no non-percolating iso level (no cloud on a gas-free ray)
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent))
@@ -47,7 +48,7 @@ KB, AMU, C_KMS, KPC_CM = E.KB, E.AMU, E.C, E.KPC_CM
 IONS = {"HI": ("H_p0_number_density", 1.00794), "MgII": ("Mg_p1_number_density", 24.305),
         "SiII": ("Si_p1_number_density", 28.0855), "CII": ("C_p1_number_density", 12.0107),
         "SiIII": ("Si_p2_number_density", 28.0855), "CIV": ("C_p3_number_density", 12.0107),
-        "OVI": ("O_p5_number_density", 15.9994)}
+        "OVI": ("O_p5_number_density", 15.9994), "NeVIII": ("Ne_p7_number_density", 20.1797)}   # Ne VIII: Tier A hot
 P2 = dict(col_frac=0.99, iso_dex=0.5, dv_link_floor=8.0, R_max=40.0, tube_kpc=55.0, edge_fac=1.5, grid_max=32,
           min_cells_vol=8, vox_min_kpc=0.25, dv3_frac=0.5, dv3_min=30.0, min_ray_frac=0.01, min_comp_frac=0.05,
           perc_frac=0.5, perc_kpc=60.0, ladder_dex=0.25, ladder_n=4, ladder_mesh_frac=0.05, ladder_grid=16)
@@ -337,7 +338,11 @@ def build(gid, ray_id, work: Path, out: Path, ions=("HI", "OVI")):
                 break
             n_iso *= 10 ** 0.25
         else:
-            raise SystemExit(f"{key}: no non-percolating level in 24 steps")
+            # exit code 3 (not 1): the iso-surface percolates at every level, which on a gas-free ray (the Tier A empty
+            # case) means "no cloud", a valid result (DESIGN_tierA §2 empty); scripts/story_data.sbatch accepts rc 3
+            # only for an empty-case build, and export_story_data.py build then plans with no encounters
+            print(f"{key}: no non-percolating level in 24 steps", file=sys.stderr, flush=True)
+            raise SystemExit(NO_LEVEL_RC)
         log(key, "iso steps", steps)
 
         def clouds_at(lab, keep):
@@ -354,7 +359,8 @@ def build(gid, ray_id, work: Path, out: Path, ions=("HI", "OVI")):
 
         allc = clouds_at(lab, keep)
         sig = [(cl["Nray"] >= P2["min_ray_frac"] * N_i.sum()) or
-               (np.max(cl["M"] / np.maximum(Ncrest, 1e-300)) >= P2["min_comp_frac"]) for cl in allc]
+               (np.size(cl["M"]) > 0 and np.max(cl["M"] / np.maximum(Ncrest, 1e-300)) >= P2["min_comp_frac"])
+            for cl in allc]                     # no fitted component (a gas-free ray): the column criterion alone
         minor = [cl for cl, k in zip(allc, sig) if not k]
         clouds = sorted([cl for cl, k in zip(allc, sig) if k], key=lambda cl: float(s_in[cl["on"]].min()))
         M = np.array([cl["M"] for cl in clouds]) if clouds else np.zeros((0, len(comps)))

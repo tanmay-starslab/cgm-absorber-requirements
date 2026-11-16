@@ -1,0 +1,469 @@
+{
+ "json": {
+  "cut": "film",
+  "duration": 176,
+  "frames": 5280,
+  "chunks": [
+   {
+    "id": "open",
+    "beats": [
+     "B1",
+     "B2"
+    ],
+    "p0": 0.02,
+    "p1": 0.125,
+    "f0": 0,
+    "f1": 480
+   },
+   {
+    "id": "outskirts",
+    "beats": [
+     "B3",
+     "B4"
+    ],
+    "p0": 0.125,
+    "p1": 0.224,
+    "f0": 480,
+    "f1": 900
+   },
+   {
+    "id": "cloudA",
+    "beats": [
+     "B5"
+    ],
+    "p0": 0.224,
+    "p1": 0.312,
+    "f0": 900,
+    "f1": 1350
+   },
+   {
+    "id": "too_hot",
+    "beats": [
+     "B6"
+    ],
+    "p0": 0.312,
+    "p1": 0.382,
+    "f0": 1350,
+    "f1": 1740
+   },
+   {
+    "id": "cell263",
+    "beats": [
+     "B7a",
+     "B7b",
+     "B7c"
+    ],
+    "p0": 0.382,
+    "p1": 0.485,
+    "f0": 1740,
+    "f1": 2490
+   },
+   {
+    "id": "thread",
+    "beats": [
+     "B9"
+    ],
+    "p0": 0.58,
+    "p1": 0.665,
+    "f0": 2490,
+    "f1": 3030
+   },
+   {
+    "id": "cloudD",
+    "beats": [
+     "B10"
+    ],
+    "p0": 0.665,
+    "p1": 0.72,
+    "f0": 3030,
+    "f1": 3330
+   },
+   {
+    "id": "lookback",
+    "beats": [
+     "B11"
+    ],
+    "p0": 0.72,
+    "p1": 0.78,
+    "f0": 3330,
+    "f1": 3630
+   },
+   {
+    "id": "telescope",
+    "beats": [
+     "B12a",
+     "B12b"
+    ],
+    "p0": 0.78,
+    "p1": 0.88,
+    "f0": 3630,
+    "f1": 4380
+   },
+   {
+    "id": "fit",
+    "beats": [
+     "B13"
+    ],
+    "p0": 0.88,
+    "p1": 0.965,
+    "f0": 4380,
+    "f1": 5040
+   },
+   {
+    "id": "end",
+    "beats": [
+     "B14"
+    ],
+    "p0": 0.965,
+    "p1": 1,
+    "f0": 5040,
+    "f1": 5280
+   }
+  ],
+  "cues": [
+   {
+    "t0": 1.0043130748863114,
+    "t1": 3.0297277059223955,
+    "text": "This light left a quasar long ago.",
+    "chunk": "open",
+    "beat": "B1"
+   },
+   {
+    "t0": 3.0797277059223953,
+    "t1": 4.696167460857727,
+    "text": "The strip below is this quasar's light, as a perfect telescope travelling with it would record it. For now, all of it gets through.",
+    "chunk": "open",
+    "beat": "B1"
+   },
+   {
+    "t0": 4.746167460857727,
+    "t1": 5.987727417810405,
+    "text": "Something stood in its way.",
+    "chunk": "open",
+    "beat": "B1"
+   },
+   {
+    "t0": 6.037727417810405,
+    "t1": 9.538218959463771,
+    "text": "Galaxies sit inside gas too faint to see.",
+    "chunk": "open",
+    "beat": "B2"
+   },
+   {
+    "t0": 10.007034790935204,
+    "t1": 11.769789339291414,
+    "text": "The gas shows itself only by the light it takes from things behind it. These colours are our choice, not its light.",
+    "chunk": "open",
+    "beat": "B2"
+   },
+   {
+    "t0": 11.819789339291415,
+    "t1": 13.549999999999999,
+    "text": "We follow this one beam through it. Every beam meets different gas, so every spectrum differs. Pick another beam at any time.",
+    "chunk": "open",
+    "beat": "B2"
+   },
+   {
+    "t0": 13.6,
+    "t1": 15.6,
+    "text": "density: where the gas is",
+    "chunk": "open",
+    "kind": "caption"
+   },
+   {
+    "t0": 18.991912139850072,
+    "t1": 21.360122697466235,
+    "text": "Every cell has a density, heat and speed. The beam touches hundreds of gas cells. Each one lights up as the light reaches it.",
+    "chunk": "outskirts",
+    "beat": "B3"
+   },
+   {
+    "t0": 21.410122697466235,
+    "t1": 23.553025676021495,
+    "text": "So far, almost nothing is taken. By now O VI has taken 1.1 % of the light at its deepest colour.",
+    "chunk": "outskirts",
+    "beat": "B3"
+   },
+   {
+    "t0": 23.603025676021495,
+    "t1": 27.55,
+    "text": "Each cell leaves a shadow. Atoms take a sliver of one colour out of the light: the first cell's dip was 5.6 % deep. The rest goes on.",
+    "chunk": "outskirts",
+    "beat": "B4"
+   },
+   {
+    "t0": 27.6,
+    "t1": 29.6,
+    "text": "heat: which gas is warm",
+    "chunk": "outskirts",
+    "kind": "caption"
+   },
+   {
+    "t0": 31.227939838873795,
+    "t1": 35.7795135711042,
+    "text": "A cool clump.",
+    "chunk": "cloudA",
+    "beat": "B5"
+   },
+   {
+    "t0": 36.137602088937015,
+    "t1": 39.110267055576905,
+    "text": "One hydrogen atom in ten keeps its electron. That is at its core. In warm-hot gas only one in 200 000 does: about 20 000 times fewer. Neutral hydrogen takes the colour we follow.",
+    "chunk": "cloudA",
+    "beat": "B5"
+   },
+   {
+    "t0": 39.1602670555769,
+    "t1": 42.550000000000004,
+    "text": "One clump, and the dip is black. Hydrogen's dip goes black within a few cells.",
+    "chunk": "cloudA",
+    "beat": "B5"
+   },
+   {
+    "t0": 42.6,
+    "t1": 44.6,
+    "text": "amount: one clump goes black",
+    "chunk": "cloudA",
+    "kind": "caption"
+   },
+   {
+    "t0": 47.65299604156358,
+    "t1": 50.872951509153886,
+    "text": "Here the gas is too hot to see. So hot that oxygen loses even a sixth electron and hydrogen keeps almost none. O VI and H I take almost no light here.",
+    "chunk": "too_hot",
+    "beat": "B6"
+   },
+   {
+    "t0": 50.92295150915388,
+    "t1": 54.92295150915388,
+    "text": "Where a dip sits means speed. Moving toward us shifts a shadow bluer, like a siren. Cloud A's dip sits left for its speed, not its order.",
+    "chunk": "too_hot",
+    "beat": "B6"
+   },
+   {
+    "t0": 55.6,
+    "t1": 57.6,
+    "text": "speed: where a dip sits",
+    "chunk": "too_hot",
+    "kind": "caption"
+   },
+   {
+    "t0": 59.39065053524764,
+    "t1": 60.74831313195504,
+    "text": "Cloud B",
+    "chunk": "cell263",
+    "beat": "B7a"
+   },
+   {
+    "t0": 62.00621728935249,
+    "t1": 66.49930251532035,
+    "text": "Amount sets how much light is taken. This one cell holds a quarter of all the O VI on the beam. Its dip grows term by term: amount, width, place.",
+    "chunk": "cell263",
+    "beat": "B7b"
+   },
+   {
+    "t0": 67.63739922400976,
+    "t1": 72.13048444997763,
+    "text": "Heat spreads it out. Hotter ions jiggle faster, so the same amount spreads over more speeds: wider and shallower.",
+    "chunk": "cell263",
+    "beat": "B7b"
+   },
+   {
+    "t0": 73.39385714285714,
+    "t1": 79.05832928697143,
+    "text": "Change the heat, watch the dip. Warmer gas spreads the dip wider. But O VI lives only in a band of heat: outside it, the dip fades.",
+    "chunk": "cell263",
+    "beat": "B7c"
+   },
+   {
+    "t0": 80.6,
+    "t1": 82.82,
+    "text": "ion share: heat decides the ion",
+    "chunk": "cell263",
+    "kind": "caption"
+   },
+   {
+    "t0": 84.4341280269828,
+    "t1": 89.1797935590421,
+    "text": "Past halfway, new dips still appear.",
+    "chunk": "thread",
+    "beat": "B9"
+   },
+   {
+    "t0": 89.7553509496284,
+    "t1": 92.87436994219652,
+    "text": "New O VI dips appear at +61, +98 km/s. The order of dips is not the order of clouds.",
+    "chunk": "thread",
+    "beat": "B9"
+   },
+   {
+    "t0": 92.92436994219652,
+    "t1": 95.70381007431874,
+    "text": "Far apart, same speed, same dip. Gas 84 kpc apart moves at almost the same speed, so the spectrum cannot tell them apart: the clearest of 2 such pairs.",
+    "chunk": "thread",
+    "beat": "B9"
+   },
+   {
+    "t0": 95.75381007431874,
+    "t1": 98.55,
+    "text": "The spectrum keeps speed and loses place. A dip records how fast gas moves along the beam, not where it sits.",
+    "chunk": "thread",
+    "beat": "B9"
+   },
+   {
+    "t0": 98.6,
+    "t1": 100.82,
+    "text": "place is lost, speed is kept",
+    "chunk": "thread",
+    "kind": "caption"
+   },
+   {
+    "t0": 101.93566069731017,
+    "t1": 105.46262673683414,
+    "text": "More gas, deeper dip. More atoms darken a dip's centre while its width hardly changes, until the centre is black.",
+    "chunk": "cloudD",
+    "beat": "B10"
+   },
+   {
+    "t0": 105.51262673683414,
+    "t1": 108.55,
+    "text": "Once black, only wider. Cloud D's hydrogen lands on a dip that is already black: the trough widens, but cannot get darker.",
+    "chunk": "cloudD",
+    "beat": "B10"
+   },
+   {
+    "t0": 108.6,
+    "t1": 110.6,
+    "text": "amount: deeper, then only wider",
+    "chunk": "cloudD",
+    "kind": "caption"
+   },
+   {
+    "t0": 111.83811649771265,
+    "t1": 115.34243370654094,
+    "text": "This is everything the light carried out.",
+    "chunk": "lookback",
+    "beat": "B11"
+   },
+   {
+    "t0": 115.76317619328226,
+    "t1": 118.55,
+    "text": "49 cells left a visible O VI shadow. Their shadows merged into a few broad dips.",
+    "chunk": "lookback",
+    "beat": "B11"
+   },
+   {
+    "t0": 118.6,
+    "t1": 120.82,
+    "text": "metals: an ingredient, not the switch",
+    "chunk": "lookback",
+    "kind": "caption"
+   },
+   {
+    "t0": 124.50629224267992,
+    "t1": 128.50629224267993,
+    "text": "A blurry telescope merges dips. Every telescope smears the spectrum a little. Less sharpness means neighbouring dips blend into one.",
+    "chunk": "telescope",
+    "beat": "B12a"
+   },
+   {
+    "t0": 128.56778915178592,
+    "t1": 132.4800312216412,
+    "text": "Blur turns narrow black dips grey. A narrow black dip comes out grey, as if light got through. The wide hydrogen trough stays black.",
+    "chunk": "telescope",
+    "beat": "B12a"
+   },
+   {
+    "t0": 132.53003122164122,
+    "t1": 136.82072220301626,
+    "text": "Longer exposures beat noise. Twice as clean needs four times as long. The noise pattern stays the same; only its size shrinks.",
+    "chunk": "telescope",
+    "beat": "B12b"
+   },
+   {
+    "t0": 137.84311341342206,
+    "t1": 142.32441134930264,
+    "text": "Noise can hide dips, and invent them. At low exposure the smaller dip at +96 km/s drowns, and chance wiggles look like dips. The white line is the truth.",
+    "chunk": "telescope",
+    "beat": "B12b"
+   },
+   {
+    "t0": 143.6,
+    "t1": 145.6,
+    "text": "sharpness and noise",
+    "chunk": "telescope",
+    "kind": "caption"
+   },
+   {
+    "t0": 149.4469849246231,
+    "t1": 153.4469849246231,
+    "text": "We fit a few components. A fit explains the noisy spectrum with a few smooth components, each with an amount, a width and a speed.",
+    "chunk": "fit",
+    "beat": "B13"
+   },
+   {
+    "t0": 154.1958793969849,
+    "t1": 158.1958793969849,
+    "text": "Components are not clouds. One component can draw on gas in several places, and clouds are not cells: one clump, many cells across, can feed several components.",
+    "chunk": "fit",
+    "beat": "B13"
+   },
+   {
+    "t0": 159.38045226130652,
+    "t1": 163.56412310536916,
+    "text": "A spectrum tells how much and how fast. …but not where, and one width alone is not a thermometer.",
+    "chunk": "fit",
+    "beat": "B13"
+   },
+   {
+    "t0": 165.6,
+    "t1": 167.95,
+    "text": "how much and how fast, not where",
+    "chunk": "fit",
+    "kind": "caption"
+   },
+   {
+    "t0": 168,
+    "t1": 176,
+    "text": "How a spectrum is made",
+    "chunk": "end",
+    "kind": "card"
+   }
+  ],
+  "missing": [
+   "key",
+   "name",
+   "template"
+  ]
+ },
+ "check_before_stamp": {
+  "rc": 1,
+  "out": "",
+  "err": "build/film_copy.json is stale against copy.json + data: run --stamp (then rerender the film, U_film)"
+ },
+ "stamp": {
+  "rc": 0,
+  "out": "stamped render.html: 176 s (5280 frames); build/film_copy.json (3 keys still pending: key, name, template)\nwrote media/story.{en.vtt,chapters.vtt,ffmeta}: 44 cues, 11 chapters, 176 s"
+ },
+ "generated": {
+  "media/story.en.vtt": {
+   "sha256": "33fe21184e3f6dbb5132e62cb3b15d2b5f09680b97ffc053c72f01af693a30f7",
+   "equals_tracked": true
+  },
+  "media/story.chapters.vtt": {
+   "sha256": "a1555a5910301f1263ed34403bb831427c1d568f7cd6f7ee14d78dfe89ec6a98",
+   "equals_tracked": true
+  },
+  "media/story.ffmeta": {
+   "sha256": "b100c951e035b3b14e930b346c93f633791e50dfd3be0bc163d557884c127624",
+   "equals_tracked": true
+  }
+ },
+ "film_copy_sha256": "ab957e22efcd3fd1637e67605710e11017871653e897805704598a78e80b0842",
+ "render_html_unchanged_by_stamp": true,
+ "check_after_stamp": {
+  "rc": 0,
+  "out": "ok: film 176 s, 11 chunks, captions free of literal numbers",
+  "err": ""
+ }
+}

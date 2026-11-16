@@ -15,9 +15,10 @@ function drawFit(A, Fr, data, fit, o = {}) {
   if (o.panel) drawData(A, obs, o.panel, I.color, a); else K.stairs(A, obs.v, obs.flux, {color: rgbaIon(I), width: 1.2, alpha: a * 0.9});
   const comps = fit.comps || [];
   if (!comps.length) return obs;
-  comps.forEach((c, i) => { const m = K.cloudModel(data, K.LEAD, comps, fit.R, VW, i);
+  const vw = o.vw || VW;   // fix2 (verify2 H1/R2-B5): the dock passes its panel's half window (hot ±400); the hero keeps ±300
+  comps.forEach((c, i) => { const m = K.cloudModel(data, K.LEAD, comps, fit.R, vw, i);
     K.curve(A, m.v, m.model, {color: i === o.hi ? K.COL.accent : I.color, width: i === o.hi ? 2 : 1.2, dash: [4, 4], alpha: a * (o.hi == null || i === o.hi ? 0.8 : 0.35)}); });
-  const m = K.cloudModel(data, K.LEAD, comps, fit.R, VW);
+  const m = K.cloudModel(data, K.LEAD, comps, fit.R, vw);
   K.curve(A, m.v, m.model, {color: K.COL.ink, width: 2.2, alpha: a});
   const len = Fr.fs * 0.9;
   comps.forEach((c, i) => K.tick(A, c.v, {alpha: a, color: i === o.hi ? K.COL.accent : K.COL.ink, hollow: !!((+c.flag || 0) & FLAG_HOLLOW), y: tickY(A, len), len}));
@@ -58,7 +59,7 @@ function render(ctx, state, t, data) {
     drawFit(A, Fr, data, seeds[i], {alpha: 1 - f});
     if (f > 0) drawFit(A, Fr, data, seeds[i + 1], {alpha: f});
     const cur = f > 0.5 ? i + 1 : i;
-    K.text(Fr, `noisy try ${cur + 1} of ${n}   ${seeds[cur].comps.length} components`, Fr.box.x + Fr.box.w, Fr.box.y - Fr.fs * 0.5, {align: "right", size: 0.84, mono: true, color: K.COL.muted});
+    K.text(Fr, `noisy try ${cur + 1} of ${n}   ${seeds[cur].comps.length} component${seeds[cur].comps.length === 1 ? "" : "s"}`, Fr.box.x + Fr.box.w, Fr.box.y - Fr.fs * 0.5, {align: "right", size: 0.84, mono: true, color: K.COL.muted});
     K.text(Fr, Fr.physics ? "R 30 000   S/N 10   Voigt fit" : "data, and the fit", Fr.box.x + 6, Fr.box.y - Fr.fs * 0.5, {size: 0.8, color: K.COL.muted});
     return;
   }
@@ -114,8 +115,10 @@ export function fitPhase(u) { return u >= FIT_PHASES.cases ? "cases" : u >= FIT_
 /* CREST components of an ion (clouds.json when loaded as data.clouds_full, else the library fit) */
 export function crestComps(data, k) {
   const full = data.clouds_full && data.clouds_full.ions && data.clouds_full.ions[k];
-  if (full && Array.isArray(full.comps)) return full.comps.map(c => ({v: c.v, logN: c.logN, b: c.b}));
-  return K.ion(data, k).lib || [];
+  // fix2 (review2 R2-B11): a component under tau0 0.05 (a < 5 % dip, clean's -70 km/s) gets no tick and no count (hero min 0.066)
+  const kt = (K.ion(data, k).atom || {}).k_tau, seen = c => !(kt > 0) || kt * 10 ** c.logN / c.b >= 0.05;
+  if (full && Array.isArray(full.comps)) return full.comps.map(c => ({v: c.v, logN: c.logN, b: c.b})).filter(seen);
+  return (K.ion(data, k).lib || []).filter(seen);
 }
 export function dockFit(A, pe) {
   const data = pe.data, u = pe.u || 0, ph = fitPhase(u), pk = K.picks(data), seeds = pk.seeds || [];
@@ -134,22 +137,23 @@ export function dockFit(A, pe) {
     return;
   }
   if (!seeds.length) return;
+  const vw = Math.max(-A.v0, A.v1);   // fix2: the model spans the panel (dockWindow), not a fixed ±300
   if (ph === "draws") {
     const n = seeds.length, x = K.clamp(u / FIT_PHASES.totals) * n, i = Math.min(n - 1, Math.floor(x)), f = i < n - 1 ? K.seg(x - i, 0.8, 1) : 0;
-    drawFit(A, A, data, seeds[i], {alpha: 1 - f, panel: pe.panel});
-    if (f > 0) drawFit(A, A, data, seeds[i + 1], {alpha: f, panel: pe.panel});
+    drawFit(A, A, data, seeds[i], {alpha: 1 - f, panel: pe.panel, vw});
+    if (f > 0) drawFit(A, A, data, seeds[i + 1], {alpha: f, panel: pe.panel, vw});
   } else if (ph === "totals") {
-    drawFit(A, A, data, seeds[0], {panel: pe.panel});
+    drawFit(A, A, data, seeds[0], {panel: pe.panel, vw});
   } else if (ph === "landing") {
-    drawFit(A, A, data, seeds[0], {alpha: 0.45, panel: pe.panel});
+    drawFit(A, A, data, seeds[0], {alpha: 0.45, panel: pe.panel, vw});
     const comps = crestComps(data, pe.ion);
     comps.forEach(c => { if (c.v > A.v0 && c.v < A.v1) { const L = Math.max(8, A.box.h * 0.12); K.tick(A, c.v, {color: K.COL.beam, y: tickY(A, L), len: L, width: 2.2}); }; });
   } else {
     const caseB = pk.broad ? pk.broad.fit : null, caseC = pk.invented ? pk.invented.fit : null;
     const w = caseC ? K.seg((u - FIT_PHASES.cases) / (1 - FIT_PHASES.cases), 0.45, 0.6) : 0;
-    if (caseB && w < 1) drawFit(A, A, data, caseB, {alpha: 1 - w, hi: caseB.comps.indexOf(pk.broad.comp), panel: pe.panel});
-    if (caseC && w > 0) drawFit(A, A, data, caseC, {alpha: w, hi: caseC.comps.indexOf(pk.invented.comp), panel: pe.panel});
-    if (!caseB && !caseC) drawFit(A, A, data, seeds[0], {panel: pe.panel});
+    if (caseB && w < 1) drawFit(A, A, data, caseB, {alpha: 1 - w, hi: caseB.comps.indexOf(pk.broad.comp), panel: pe.panel, vw});
+    if (caseC && w > 0) drawFit(A, A, data, caseC, {alpha: w, hi: caseC.comps.indexOf(pk.invented.comp), panel: pe.panel, vw});
+    if (!caseB && !caseC) drawFit(A, A, data, seeds[0], {panel: pe.panel, vw});
   }
 }
 const scene = {id: "fit", chapter: "fit", steps: STEPS, defaults: {}, controls, exploreStart, announce, ready, render, fitRequest: K.fitRequest,

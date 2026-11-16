@@ -1,0 +1,64 @@
+{
+ "schema": "story-film-plan/1",
+ "story": "hot",
+ "galaxy": 488530,
+ "ray": "rand_b103_a094_s0",
+ "beats": "beats.hot.json",
+ "shots": "shots.hot.json",
+ "fps": 30,
+ "target_s": 100,
+ "duration_s": 100,
+ "chunks": [
+  {
+   "id": "open",
+   "s": 22,
+   "beats": [
+    "B1",
+    "B2"
+   ],
+   "tf": "density"
+  },
+  {
+   "id": "cell",
+   "s": 23,
+   "beats": [
+    "B7b",
+    "B7c"
+   ],
+   "tf": "film:ovi"
+  },
+  {
+   "id": "hot_stretch",
+   "s": 12,
+   "beats": [
+    "B6"
+   ],
+   "tf": "film:hot"
+  },
+  {
+   "id": "band",
+   "s": 8,
+   "beats": [
+    "B11"
+   ],
+   "tf": "film:metals"
+  },
+  {
+   "id": "telescope",
+   "s": 22,
+   "beats": [
+    "B12a",
+    "B12b"
+   ],
+   "tf": null
+  },
+  {
+   "id": "readback",
+   "s": 13,
+   "beats": [
+    "B13"
+   ],
+   "tf": "phases"
+  }
+ ]
+}

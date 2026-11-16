@@ -46,6 +46,18 @@ export const DOCK_VERSION = 1;
 export const STORY_IONS = Object.freeze(["OVI", "HI"]);
 export const VW = 300;                 // displayed half window (km/s); the ghost axis widens to GHOST_VW
 export const GHOST_VW = 600, WINGS_LOGN = 18.5;
+/* one ion's window: plan.vwin_ion, else plan.vwin, else the hero's ±VW (story-data/2 has no plan) */
+export function dockWindow(data, ion) {
+  const p = data && data.plan, w = p && ((p.vwin_ion && p.vwin_ion[ion]) || p.vwin);
+  return Array.isArray(w) && w.length === 2 && +w[1] > +w[0] ? [+w[0], +w[1]] : [-VW, VW];
+}
+export const dockWindows = data => ({OVI: dockWindow(data, "OVI"), HI: dockWindow(data, "HI")});
+/* tick step of a panel span (hero spans keep the v2 rule: 200 under 360 px, else 100) */
+export function tickStep(span, w) {
+  if (span <= 2 * VW + 1e-9) return w < 360 ? 200 : 100;
+  const target = span / (w < 360 ? 4 : 8);
+  return [100, 200, 250, 500, 1000, 2000].find(s => s >= target) || 5000;
+}
 export const GLOW_KPC = 3;             // burn shine: depth gained over the last GLOW_KPC of path
 const FONT = {label: '500 13px "Space Grotesk", system-ui, sans-serif', read: '400 12px "JetBrains Mono", ui-monospace, monospace',
   tick: '400 12px "JetBrains Mono", ui-monospace, monospace'};
@@ -93,6 +105,7 @@ export function dockKidsInside(kids, tgt) {
 /* panels: {<ion>: {x, y, w, h, v0, v1, role}}; kids: [{id, kind, rect, text?, font?, align?}] (CSS px, page frame) */
 export function dockLayout(rect, state, o = {}) {
   const lead = o.lead || "OVI", other = lead === "OVI" ? "HI" : "OVI", m = o.measure || measurer(null);
+  const wv = k => (o.win && o.win[k]) || [-VW, VW];
   const ionName = k => `${K.ionName(k)} ${o.lam ? Math.round(o.lam[k]) : ""}`.trim();
   const panels = {}, kids = [], readouts = o.readouts || {}, hidden = [];
   if (!rect || rect.w < 60 || rect.h < 24) return {rect, state, top: rect ? rect.y : 0, panels, kids, header: null, hidden: (o.dials || []).length ? [{id: "dock:dials", reason: "no-room"}] : []};
@@ -115,11 +128,11 @@ export function dockLayout(rect, state, o = {}) {
   }
   let y = rect.y + 4, bottom = rect.y + rect.h - (ticksOn ? TICK_ROW + 2 : 4);
   let header = null;
-  const row = (ion, yy, wAvail) => {
+  const row = (ion, yy, wAvail, extra = []) => {
     // label left, readout right (dropped when it would collide with the label)
     const lt = ionName(ion), lw = m(lt, FONT.label);
     kids.push({id: `label:${ion}`, kind: "dockLabel", rect: {x, y: yy, w: Math.min(lw, wAvail), h: ROW}, text: lt, font: FONT.label, ion, lead: ion === lead});
-    let rt = readouts[ion]; if (!rt) return;
+    let rt = [...extra, ...(readouts[ion] || [])]; if (!rt.length) return;   // extra (the axis note) leftmost: dropped first
     // review2 ux H3: when the full readouts do not fit beside the label, use their short forms before dropping any (at 390 px
     // "fit: log N" used to vanish, losing the fit-vs-truth comparison B13 exists to make)
     const fitsAll = a => a.reduce((sum, t) => sum + m(t.text, FONT.read) + 14, -14) <= wAvail - lw - 12;
@@ -159,18 +172,20 @@ export function dockLayout(rect, state, o = {}) {
   }
   if (state === "strip") {
     row(lead, y, w); y += ROW + 2;
-    panels[lead] = {x, y: y + 4, w, h: Math.max(8, bottom - y - 4), v0: -VW, v1: VW, role: "lead"};
-    panels[other] = {x, y, w, h: 3, v0: -VW, v1: VW, role: "spark"};
+    panels[lead] = {x, y: y + 4, w, h: Math.max(8, bottom - y - 4), v0: wv(lead)[0], v1: wv(lead)[1], role: "lead"};
+    panels[other] = {x, y, w, h: 3, v0: wv(other)[0], v1: wv(other)[1], role: "spark"};
   } else {
     // review SC-8: a fixed panel order (O VI on top, H I below) and a fixed split, so a lead change at a beat boundary never
     // swaps the panels; the lead is marked by emphasis (label weight, the other panel dimmed), not by position or size
     const avail = bottom - y - 2 * (ROW + 2) - 6;
     const top = STORY_IONS.includes(lead) && STORY_IONS.includes(other) ? STORY_IONS[0] : lead, bot = top === lead ? other : lead;
     const ht = Math.max(10, avail * (state === "hero" ? 0.6 : 0.5)), hb = Math.max(8, avail - ht);
-    row(top, y, w); y += ROW + 2;
-    panels[top] = {x, y, w, h: ht, v0: -VW, v1: VW, role: top === lead ? "lead" : "other"}; y += ht + 6;
+    // fix2 (review2 M2/R2-B6/R2-S3): the tick row labels the bottom panel; a top panel on another span names it in its row
+    const wt = wv(top), wb = wv(bot), span = Math.max(-wt[0], wt[1]);
+    row(top, y, w, wt[0] !== wb[0] || wt[1] !== wb[1] ? [{id: "axis", text: `axis ±${groupInt(span)} km/s`, short: `±${groupInt(span)} km/s`, color: K.ionColor(top)}] : []); y += ROW + 2;
+    panels[top] = {x, y, w, h: ht, v0: wv(top)[0], v1: wv(top)[1], role: top === lead ? "lead" : "other"}; y += ht + 6;
     row(bot, y, w); y += ROW + 2;
-    panels[bot] = {x, y, w, h: hb, v0: -VW, v1: VW, role: bot === lead ? "lead" : "other"};
+    panels[bot] = {x, y, w, h: hb, v0: wv(bot)[0], v1: wv(bot)[1], role: bot === lead ? "lead" : "other"};
   }
   if (ticksOn) kids.push({id: "ticks", kind: "dockTicks", rect: {x: x - 14, y: rect.y + rect.h - TICK_ROW - 1, w: w + 14 + Math.min(PAD - 2, 8), h: TICK_ROW}, font: FONT.tick});
   if (state !== "strip" && gut >= 34) {
@@ -235,6 +250,10 @@ export function ghostOf(fs, data) {
 export function frameModel(fs, data, T, o = {}) {
   const sp = fs.spec || {mode: "intrinsic", dock: "strip"}, lead = sp.lead || "OVI", other = lead === "OVI" ? "HI" : "OVI";
   const mode = sp.mode || "intrinsic", out = {mode, lead, other, readouts: {}, headerReadouts: [], ghostLabels: [], ions: {}, ghost: null};
+  const win = dockWindows(data);
+  out.win = win;
+  // fix1 H1: a story whose stored line failed to load says so in its observed/fit/explore panels instead of drawing nothing
+  if (mode !== "intrinsic" && data && data.lines == null && data.lines_error) out.linesMissing = true;
   if (mode === "intrinsic") {
     for (const k of [lead, other]) {
       const S = T[k]; if (!S) continue;
@@ -242,7 +261,7 @@ export function frameModel(fs, data, T, o = {}) {
       const prev = S.tauAt(fs.l - GLOW_KPC, o.buf2 && o.buf2[k]);
       let cell = null;
       if (fs.cell && Number.isFinite(fs.cell.idx)) { const w = S.weight(fs.cell.idx, fs.l); if (w > 0) cell = {idx: fs.cell.idx, w}; }
-      let mn = Infinity, jm = 0; const lo = Math.round(-VW - S.grid0), hi = Math.round(VW - S.grid0);
+      let mn = Infinity, jm = 0; const lo = Math.round(win[k][0] - S.grid0), hi = Math.round(win[k][1] - S.grid0);
       for (let j = Math.max(0, lo); j <= Math.min(S.N - 1, hi); j++) if (tau[j] > -Infinity && Math.exp(-tau[j]) < mn) { mn = Math.exp(-tau[j]); jm = j; }
       const frac = S.fracAt(fs.l);
       out.ions[k] = {tau, prev, cell, minF: mn, minV: S.grid0 + jm, frac};
@@ -266,9 +285,10 @@ export function frameModel(fs, data, T, o = {}) {
     if (noisy) out.headerReadouts.push({id: "sn", text: `S/N ${sn >= 10 ? Math.round(sn) : sn.toFixed(1)}`}, {id: "pix", text: `pixel ${dvPix.toFixed(1)} km/s`});
     for (const k of [lead, other]) {
       const seed = K.caseSeed(Number.isFinite(sp.seed) ? sp.seed : 0, k, 0);
-      const ob = noisy ? observedSN(data, k, R, sn, seed) : observedR(data, k, R);
+      const vwk = Math.max(-win[k][0], win[k][1]);
+      const ob = noisy ? observedSN(data, k, R, sn, seed) : vwk === VW ? observedR(data, k, R) : observedR(data, k, R, vwk + 30);
       if (!ob) continue;
-      let m = 0; for (let i = 1; i < ob.v.length; i++) if (Math.abs(ob.v[i]) < VW && ob.model[i] < ob.model[m]) m = i;
+      let m = 0; for (let i = 1; i < ob.v.length; i++) if (ob.v[i] > win[k][0] && ob.v[i] < win[k][1] && ob.model[i] < ob.model[m]) m = i;
       out.ions[k] = {obs: ob, noisy, darkest: ob.model[m], darkV: ob.v[m], R, sn, dvPix};
       out.readouts[k] = [{id: "dark", text: `darkest point lets ${pct(ob.model[m])} through`, short: `darkest ${pct(ob.model[m])} light`}];
       if (noisy && k === lead) out.readouts[k].unshift({id: "sigma", text: `noise per pixel ${ob.sigma.toFixed(2)}`});
@@ -293,9 +313,9 @@ export function frameModel(fs, data, T, o = {}) {
           {id: "trueN", text: `all cells: log N ${I.totals.logN.toFixed(2)}`, short: `cells ${I.totals.logN.toFixed(2)}`, color: K.ionColor(lead)}];
       } else if (ph === "draws" && pk.seeds.length) {
         const n = pk.seeds.length, i = Math.min(n - 1, Math.floor(clamp(((fs.beat && fs.beat.u) || 0) / FIT_PHASES.totals) * n));
-        out.readouts[lead] = [{id: "draw", text: `noisy try ${i + 1} of ${n}`, short: `try ${i + 1}/${n}`}, {id: "ncomp", text: `${pk.seeds[i].comps.length} components`, short: `${pk.seeds[i].comps.length} comp.`}];
+        out.readouts[lead] = [{id: "draw", text: `noisy try ${i + 1} of ${n}`, short: `try ${i + 1}/${n}`}, {id: "ncomp", text: `${pk.seeds[i].comps.length} component${pk.seeds[i].comps.length === 1 ? "" : "s"}`, short: `${pk.seeds[i].comps.length} comp.`}];
       } else if (ph === "landing") {
-        out.readouts[lead] = [{id: "crest", text: `${crestComps(data, lead).length} noiseless components`}];
+        out.readouts[lead] = [{id: "crest", text: (n => `${n} noiseless component${n === 1 ? "" : "s"}`)(crestComps(data, lead).length)}];
       } else if (ph === "cases") {
         const u = (fs.beat && fs.beat.u) || 0, inv = pk.invented && u >= FIT_PHASES.cases + 0.5 * (1 - FIT_PHASES.cases);
         if (inv) out.readouts[lead] = [{id: "inv", text: `width ${pk.invented.comp.b.toFixed(1)} km/s, narrower than the blur`, color: K.COL.accent}];
@@ -359,11 +379,12 @@ export function createSpectrum(o = {}) {
   function warmIdle() {
     const d = data, ions = STORY_IONS.filter(k => d && d.ions && d.ions[k]);
     const idle = typeof requestIdleCallback === "function" ? f => requestIdleCallback(f, {timeout: 200}) : f => setTimeout(f, 16);
-    const step = () => { if (data !== d) return; if (!warmObservedR(d, ions, 4, () => performance.now())) idle(step); else api.warmed = true; };
+    const W = dockWindows(d), vwOf = k => { const v = Math.max(-W[k][0], W[k][1]); return v === VW ? undefined : v + 30; };
+    const step = () => { if (data !== d) return; if (!warmObservedR(d, ions, 4, () => performance.now(), vwOf)) idle(step); else api.warmed = true; };
     idle(step);
   }
   function buildSync() { for (const k of STORY_IONS) if (data.ions && data.ions[k]) T[k] = decorate(tauSumFromData(data, k), data); }
-  function decorate(S, d) { const g = (d.meta && d.meta.grid) || {V0: -400}; S.grid0 = +g.V0; return S; }
+  function decorate(S, d) { const g = (d.plan && d.plan.grid_ion && d.plan.grid_ion[S.ion]) || (d.meta && d.meta.grid) || {V0: -400}; S.grid0 = +g.V0; return S; }
 
   const api = {
     get data() { return data; },
@@ -376,7 +397,8 @@ export function createSpectrum(o = {}) {
         const w = o.worker;
         if (!w) { buildSync(); return api; }
         const reqId = "tau" + (++reqN);
-        const ions = STORY_IONS.filter(k => data.ions && data.ions[k]).map(k => ionInputs(data, k));
+        const gi = (data.plan && data.plan.grid_ion) || {};
+        const ions = STORY_IONS.filter(k => data.ions && data.ions[k]).map(k => (gi[k] ? {...ionInputs(data, k), grid: gi[k]} : ionInputs(data, k)));
         const msg = {type: "build", reqId, geometry: {cells: data.geometry.cells, kernel_cdf: data.geometry.kernel_cdf}, grid: data.meta.grid, ions};
         await new Promise((res, rej) => {
           let left = ions.length;
@@ -406,7 +428,7 @@ export function createSpectrum(o = {}) {
       const model = frameModel(fs, data, T, {buf: bufs, buf2: bufs2});
       const lam = {OVI: data.ions.OVI ? data.ions.OVI.atom.lam0_A : 1032, HI: data.ions.HI ? data.ions.HI.atom.lam0_A : 1216};
       const meas = measurer(ctx);
-      const base = {lead: model.lead, lam, measure: meas, readouts: model.readouts, headerReadouts: model.headerShown || model.headerReadouts, dials: model.dials, ghostLabels: model.ghostLabels};
+      const base = {lead: model.lead, lam, measure: meas, readouts: model.readouts, headerReadouts: model.headerShown || model.headerReadouts, dials: model.dials, ghostLabels: model.ghostLabels, win: model.win};
       const layout = dockLayout(R.drawn, R.kidsState === (fs.spec && fs.spec.dock) ? fs.spec.dock : R.kidsState, base);
       // review H1: panels, labels and readouts all follow ONE geometry (the drawn rect), so text never lags the plot during
       // a dock morph. The children registered with the solver are exactly the drawn ones; while the box morphs, a child that
@@ -504,6 +526,10 @@ export function createSpectrum(o = {}) {
         if (model.ions[ion]) (model.ions[ion].noisy ? dockNoise : dockLSF)(A, {...pe, obs: model.ions[ion]});
       } else if (model.mode === "fit") dockFit(A, {...pe, u: fs.beat.u});
       else if (model.mode === "explore") dockExplore(A, pe);
+      if (model.linesMissing && P.role !== "spark" && P.h >= 16) {             // fix1 H1: never a silent empty panel
+        c.save(); c.font = FONT.read; c.fillStyle = K.COL.muted; c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillText("stored spectrum did not load", P.x + P.w / 2, P.y + P.h / 2); c.restore();
+      }
       if (brush && brush.ion === ion && P.role !== "spark") { c.save(); c.fillStyle = "rgba(143,168,255,0.14)"; c.fillRect(A.X(brush.v0), P.y, Math.max(1, A.X(brush.v1) - A.X(brush.v0)), P.h); c.restore(); }
     }
     for (const k of kids) drawKid(k, layout);
@@ -535,15 +561,17 @@ export function createSpectrum(o = {}) {
     c.fillText(k.text, k.rect.x, k.rect.y + k.rect.h / 2 + 1); c.restore();
   }
   function drawTicks(k, layout) {
-    const c = ctx, lead = layout.panels[last.model.lead] || Object.values(layout.panels)[0]; if (!lead) return;
+    // fix2: the row under the dock labels the panel just above it (equal windows in the hero: same labels)
+    const ps = Object.values(layout.panels).filter(P => P.role !== "spark"), c = ctx;
+    const lead = ps.sort((a, b) => b.y + b.h - (a.y + a.h))[0] || layout.panels[last.model.lead]; if (!lead) return;
     c.save(); c.font = k.font; c.fillStyle = K.COL.muted; c.textBaseline = "middle";
     if (k.id === "ticks") {
-      const step = lead.w < 360 ? 200 : 100, y = k.rect.y + k.rect.h / 2 + 1;
+      const step = tickStep(lead.v1 - lead.v0, lead.w), y = k.rect.y + k.rect.h / 2 + 1;
       c.textAlign = "center";
       const unit = "km/s", uw = c.measureText(unit).width, xu = k.rect.x + k.rect.w - 2;
       for (let v = Math.ceil(lead.v0 / step) * step; v <= lead.v1; v += step) {
         if (Math.abs(v) >= Math.max(Math.abs(lead.v0), Math.abs(lead.v1))) continue;      // no labels at the panel ends
-        const x = panelX(lead, v), s = v === 0 ? "0" : (v < 0 ? "−" : "+") + Math.abs(v);
+        const x = panelX(lead, v), s = v === 0 ? "0" : (v < 0 ? "−" : "+") + groupInt(Math.abs(v));
         const tw = c.measureText(s).width;
         if (x - tw / 2 < k.rect.x + 16 || x + tw / 2 > xu - uw - 10) continue;
         c.fillText(s, x, y);
@@ -566,7 +594,7 @@ export function createSpectrum(o = {}) {
     c.beginPath(); c.moveTo(L.a.x, L.a.y); c.bezierCurveTo(L.c1.x, L.c1.y, L.c2.x, L.c2.y, L.b.x, L.b.y); c.stroke();
     c.fillStyle = col; c.beginPath(); c.arc(L.b.x, L.b.y, 2.5, 0, 2 * Math.PI); c.fill();
     // review2 three_d T2: the B9 pair cells get a ring where they sit in 3D (both tethers end on the one shared dip)
-    if (L.pair) { c.globalAlpha = clamp(L.alpha); c.lineWidth = 1.6; c.beginPath(); c.arc(L.a.x, L.a.y, 7, 0, 2 * Math.PI); c.stroke(); }
+    if (L.pair || L.ring) { c.globalAlpha = clamp(L.alpha); c.lineWidth = 1.6; c.beginPath(); c.arc(L.a.x, L.a.y, 7, 0, 2 * Math.PI); c.stroke(); }
     c.restore();
   }
   return api;
@@ -574,8 +602,8 @@ export function createSpectrum(o = {}) {
 
 /* the τ sums of the story ions, synchronously (node, tests, pages without workers) */
 export function tauSet(data) {
-  const T = {}, g = (data.meta && data.meta.grid) || {V0: -400};
-  for (const k of STORY_IONS) if (data.ions && data.ions[k]) { T[k] = tauSumFromData(data, k); T[k].grid0 = +g.V0; }
+  const T = {}, g = (data.meta && data.meta.grid) || {V0: -400}, gi = (data.plan && data.plan.grid_ion) || {};
+  for (const k of STORY_IONS) if (data.ions && data.ions[k]) { T[k] = tauSumFromData(data, k); T[k].grid0 = +(gi[k] || g).V0; }
   return T;
 }
 

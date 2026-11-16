@@ -206,6 +206,18 @@ export function termValues(eqDef, ctx) {
 }
 
 /* ------------------------------------------------------------------ sliders (draggable terms) */
+/** log N slider range from data (DESIGN_tierA §6.4): eq.json's range, top raised to the cell's and the ray total's log N
+ *  (half dex, cap 10^21); ctx.range[ion] wins. The hero (H I total 10^18.0) keeps [12, 19]. */
+export const LOGN_CAP = 21;
+export function logNRange(base, cur, ctx = {}) {
+  const ion = ctx.ion, given = ctx.range && ctx.range[ion];
+  if (Array.isArray(given) && given.length === 2 && given.every(Number.isFinite) && given[1] > given[0]) return [given[0], Math.min(LOGN_CAP, given[1])];
+  if (!Array.isArray(base)) return base;
+  const tot = dig(ctx.data, `ions.${ion}.totals.logN`);
+  const top = Math.max(Number.isFinite(cur) ? cur : -Infinity, Number.isFinite(+tot) ? +tot : -Infinity);
+  if (!(top > base[1])) return base;
+  return [base[0], Math.min(LOGN_CAP, Math.ceil((top + 0.5) * 2) / 2)];
+}
 /** Slider range of a draggable term for this cell: {scale, min, max, step, big, now} in the slider's own units
  *  (log10 of the value for log scales, the value itself for lin). null when the term is not draggable here. */
 export function sliderSpec(eqDef, termId, ctx) {
@@ -215,11 +227,12 @@ export function sliderSpec(eqDef, termId, ctx) {
   if (cur == null) return null;
   let min, max, now;
   if (d.scale === "log10value") {           // the value is already log10 (column density)
-    [min, max] = d.ion[ctx.ion] || [cur - 3, cur + 3]; now = cur;
+    [min, max] = logNRange(d.ion[ctx.ion] || [cur - 3, cur + 3], cur, ctx); now = cur;
   } else if (d.scale === "log") {
     now = Math.log10(cur);
     if (d.via === "N") {                     // tau0 term: dragging tau0 moves N
-      const N = eqDef.terms.N.drag.ion[ctx.ion]; const off = now - cellField({...ctx, ghost: null}, "logN");
+      const N = logNRange(eqDef.terms.N.drag.ion[ctx.ion], cellField({...ctx, ghost: null}, "logN"), ctx);
+      const off = now - cellField({...ctx, ghost: null}, "logN");
       [min, max] = [N[0] + off, N[1] + off];
     } else if (d.rel) [min, max] = [now + Math.log10(d.rel[0]), now + Math.log10(d.rel[1])];
     else [min, max] = [Math.log10(d.abs[0]), Math.log10(d.abs[1])];
@@ -278,9 +291,20 @@ export function ghostCell(data, fion, {eq, term, ion, idx, s, spec}) {
   return {eq, term, ion, idx, s, display, cell, wings: Number.isFinite(cell.logN) && cell.logN > 18.5, regime, fades, notes,
     marker: eq === "E4" ? {V: cell.V} : null};
 }
-/** Named overrides of the frozen interface (DESIGN_final §5.11) a ghost maps to, if any: T125, T263, N492. */
-export function namedOverride(g) {
+/* v3 role ghosts: T@cloudA.core, T@S5, N@S4a feed the frozen override keys they alias (explore clamps, seek's T263 variants) */
+export const GHOST_ALIAS = Object.freeze({"T@cloudA.core": "T125", "T@S5": "T263", "N@S4a": "N492"});
+export const ghostKey = k => (typeof k === "string" && k ? GHOST_ALIAS[k] || k : null);
+export const ghostTermOf = k => { const g = ghostKey(k); return g == null ? null : g[0] === "N" ? "N" : "T"; };
+/** Named overrides of the frozen interface (DESIGN_final §5.11) a ghost maps to, if any: T125, T263, N492.
+ *  named (or g.named): the key a role story's beat declared (seek eqs[].ghostKey); wins over the hero cell rule. */
+export function namedOverride(g, named = null) {
   if (!g) return null;
+  named = named || g.named || null;
+  if (named) {
+    if (g.eq === "E2" && g.term === "T" && named[0] === "T") return {key: named, value: g.cell.T};
+    if (g.eq === "E3" && (g.term === "N" || g.term === "tau0") && named[0] === "N") return {key: named, value: g.cell.logN};
+    return null;
+  }
   if (g.eq === "E2" && g.term === "T" && (g.idx === 125 || g.idx === 263)) return {key: `T${g.idx}`, value: g.cell.T};
   if (g.eq === "E3" && (g.term === "N" || g.term === "tau0") && g.idx === 492) return {key: "N492", value: g.cell.logN};
   return null;

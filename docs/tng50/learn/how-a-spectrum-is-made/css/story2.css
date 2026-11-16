@@ -144,7 +144,13 @@ html:not(.no-gl-scrim) #stage>.scrim-top,html:not(.no-gl-scrim) #stage>.scrim-bo
 .pk-o[aria-disabled="true"]{cursor:default;color:var(--sky-muted)}
 .pk-l{font:400 15px/1.25 var(--sans)}.pk-t{font:400 12px/1.2 var(--sans);color:var(--sky-muted);text-align:right}
 .pk-foot,.pk-none{margin:12px 0 0;font:400 13px/1.45 var(--sans);color:var(--sky-muted)}
-.pk-foot a{color:var(--accent)}
+.pk-foot a{color:#a9bbff}
+.pk-c{align-items:flex-start}.pk-ct{display:flex;flex-direction:column;gap:3px;min-width:0}
+.pk-b{font:400 13px/1.35 var(--sans);color:var(--sky-muted)}.pk-c .pk-t{padding-top:2px;white-space:nowrap}
+/* short or narrow screens (260 px at 150 %): the whole dialog scrolls instead of the list; narrow rows stack their tag */
+@media (max-width:340px),(max-height:420px){.pk{overflow:auto}.pk-list{flex:none;overflow:visible;min-height:0}}
+@media (max-width:340px){.pk{padding:12px 14px 14px}.pk-o{flex-direction:column;align-items:flex-start;gap:2px;padding:8px}
+  .pk-t,.pk-c .pk-t{text-align:left;padding-top:0}}
 /* key help (DESIGN §9.3) */
 .kh{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,calc(100vw - 24px));max-height:calc(100dvh - 24px);
   overflow:auto;padding:16px 20px 20px;border-radius:16px;background:var(--glass-solid);border:1px solid var(--glass-edge);color:var(--sky-ink);

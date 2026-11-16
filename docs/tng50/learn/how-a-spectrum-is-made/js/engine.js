@@ -475,14 +475,32 @@ export async function loadStoryData(base, g, ray, tpl = DATA_URL, get = fetchJso
   await attachExtras(u, index, entry, data, get, getBin);
   return {data, entry: {...entry, galaxy: +entry.galaxy}};
 }
-async function attachExtras(u, index, entry, data, get, getBin) {
-  if (entry.page_fits && data.page_fits == null) { try { data.page_fits = await get(u("data/" + entry.page_fits)); } catch { /* S11 numbers fall back */ } }
-  if (index && index.fion && data.fion == null) { try { data.fion = await get(u("data/" + index.fion)); } catch { /* S4 only */ } }
-  if (data.lines == null) {
-    try { const dec = decodeTNGS(await getBin(u(lineUrl(index, entry)))); data.lines = {vSys: dec.vSys, ...dec.lines}; }
-    catch (err) { data.lines_error = String((err && err.message) || err); }
+/* extras fetched in parallel, assigned in the old key order; skips what `data` (may be null) carries (M1) */
+function fetchExtras(u, index, entry, data, get, getBin) {
+  const soft = p => p.then(v => ({v}), err => ({err}));
+  return Promise.all([
+    entry.page_fits && (!data || data.page_fits == null) ? soft(get(u("data/" + entry.page_fits))) : null,
+    index && index.fion && (!data || data.fion == null) ? soft(get(u("data/" + index.fion))) : null,
+    !data || data.lines == null ? soft(Promise.resolve().then(() => getBin(u(lineUrl(index, entry)))).then(b => decodeTNGS(b))) : null]);
+}
+function mergeExtras(data, [pf, fi, ln]) {
+  if (pf && !pf.err && data.page_fits == null) data.page_fits = pf.v;          // S11 numbers fall back
+  if (fi && !fi.err && data.fion == null) data.fion = fi.v;                    // S4 only
+  if (ln && data.lines == null) {
+    if (ln.err) data.lines_error = String((ln.err && ln.err.message) || ln.err);
+    else data.lines = {vSys: ln.v.vSys, ...ln.v.lines};
   }
   return data;
+}
+async function attachExtras(u, index, entry, data, get, getBin) {
+  return mergeExtras(data, await fetchExtras(u, index, entry, data, get, getBin));
+}
+/* a listed story (a Tier A ?story= entry, index already in hand): the story file and its extras in one parallel batch.
+   -> {data, rawP} (rawP: the bare story file, for callers that chain on it, e.g. the CREST shells) */
+export function loadEntryData(base, index, entry, get = fetchJson, getBin = fetchBin) {
+  const u = p => new URL(p, base).href;
+  const rawP = get(u("data/" + entry.story)), exP = fetchExtras(u, index, entry, null, get, getBin);
+  return {rawP, dataP: Promise.all([rawP, exP]).then(([d, x]) => (d && d.meta ? mergeExtras(d, x) : d))};
 }
 /* a page that fetched the story JSON itself (index.html, for its {{key}} text before the engine loads) hands it to
    createEngine({data}); ready() completes it here with what loadStoryData would have attached (page fits, f_ion

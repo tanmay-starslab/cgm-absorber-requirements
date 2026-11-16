@@ -54,8 +54,9 @@ export function dockExplore(A, pe) {
   drawNoisy(A, d.v, d.y, {color: K.ionColor(pe.ion), alpha: 0.5});   // beauty H2 (fix3)
   const res = pe.role === "lead" ? pe.fitResult : null, comps = res && Array.isArray(res.comps) ? res.comps : [];
   if (!comps.length) { if (o.model) K.curve(A, o.v, o.model, {color: K.COL.beam, width: 1.6, alpha: 0.85}); return; }
-  comps.forEach((c, i) => { const mm = K.cloudModel(data, pe.ion, comps, R, 300, i); K.curve(A, mm.v, mm.model, {color: K.ionColor(pe.ion), width: 1.1, dash: [4, 4], alpha: 0.7}); });
-  const mm = K.cloudModel(data, pe.ion, comps, R, 300);
+  const vw = Math.max(-A.v0, A.v1);   // fix2 (verify2 H1): the panel's half window (hero ±300, hot ±400)
+  comps.forEach((c, i) => { const mm = K.cloudModel(data, pe.ion, comps, R, vw, i); K.curve(A, mm.v, mm.model, {color: K.ionColor(pe.ion), width: 1.1, dash: [4, 4], alpha: 0.7}); });
+  const mm = K.cloudModel(data, pe.ion, comps, R, vw);
   K.curve(A, mm.v, mm.model, {color: K.COL.ink, width: 2});
   comps.forEach(c => { if (c.v > A.v0 && c.v < A.v1) K.tick(A, c.v, {color: K.COL.ink, y: A.Y(1.2), len: Math.max(8, A.box.h * 0.1)}); });
 }

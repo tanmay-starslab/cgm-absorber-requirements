@@ -20,7 +20,8 @@ export function handle(m, post) {
     const grid = {v0: +g.V0, dv: +g.dV, n: Math.round((+g.V1 - +g.V0) / +g.dV) + 1};
     for (const inp of m.ions || []) {
       const t0 = now();
-      const csr = buildCellTau(inp, grid), prefix = buildPrefix(G, csr);
+      const gi = inp.grid ? {v0: +inp.grid.V0, dv: +inp.grid.dV, n: Math.round((+inp.grid.V1 - +inp.grid.V0) / +inp.grid.dV) + 1} : grid;   // fix1 F2: per-ion grid
+      const csr = buildCellTau(inp, gi), prefix = buildPrefix(G, csr);
       post({type: "built", reqId: m.reqId, ion: inp.ion, csr, prefix, ms: now() - t0},
         [csr.start.buffer, csr.len.buffer, csr.ptr.buffer, csr.vals.buffer, prefix.order.buffer, prefix.sOutSorted.buffer, prefix.ckpt.buffer]);
     }

@@ -60,8 +60,10 @@ export function weights(G, s, out) {
 }
 
 /* ---------------- per-cell optical depth (frame-independent; the worker's job) ---------------- */
-export function gridOf(data) {
-  const g = (data && data.meta && data.meta.grid) || {V0: -400, V1: 400, dV: 1};
+export function gridOf(data, ion) {
+  // plan.grid_ion may widen one ion's grid (damped H I wings); else meta.grid (F2)
+  const gi = ion && data && data.plan && data.plan.grid_ion && data.plan.grid_ion[ion];
+  const g = gi || (data && data.meta && data.meta.grid) || {V0: -400, V1: 400, dV: 1};
   const v0 = +g.V0, dv = +g.dV, n = Math.round((+g.V1 - v0) / dv) + 1;
   return {v0, dv, n};
 }
@@ -177,7 +179,7 @@ export function createTauSum(G, csr, prefix = null, extra = {}) {
 
 /* convenience: everything synchronously from the data (node, tests, pages without workers) */
 export function tauSumFromData(data, ion) {
-  const G = geometryOf(data), grid = gridOf(data), inp = ionInputs(data, ion), csr = buildCellTau(inp, grid);
+  const G = geometryOf(data), grid = gridOf(data, ion), inp = ionInputs(data, ion), csr = buildCellTau(inp, grid);
   const Ncol = Float64Array.from(inp.logN, x => (Number.isFinite(x) ? 10 ** x : 0));
   return createTauSum(G, csr, null, {Ncol, grid});
 }

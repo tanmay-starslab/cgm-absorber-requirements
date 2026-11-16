@@ -12,13 +12,18 @@
 // applied to viewer_browser, which checks the 3D thumbnail's turn and only notes a browser that forces reduced motion).
 // The in-browser fitter tests (fit_voigt, fit_degrade, fit_parity, fit_unit, fit_bench, fit_worker) read the committed
 // tests/js/fixtures/fit_cases.json + fit_bins/ and need no Python; rebuild those with tests/js/make_fit_fixture.py.
+// story_hero_identity.mjs (H0, Explainer v3 Tier A, tests/gates.json) runs first: the hand-tuned hero story must stay
+// byte-identical to tests/fixtures/hero_v2/. Its browser part (picker-off DOM, software WebGL) needs a Chromium (TNG_EDGE or
+// one on PATH); H0_NO_DOM=1 skips that part explicitly and H0 then reports PARTIAL instead of passed.
 import {readdirSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import {fileURLToPath} from "node:url";
 import path from "node:path";
 
 const dir = path.dirname(fileURLToPath(import.meta.url)), root = path.resolve(dir, "../.."), filt = process.argv[2] || "";
-const files = readdirSync(dir).filter(f => f.endsWith(".mjs") && f !== "run_all.mjs" && f.includes(filt)).sort();
+const FIRST = ["story_hero_identity.mjs"];   // H0 before everything else
+const files = readdirSync(dir).filter(f => f.endsWith(".mjs") && f !== "run_all.mjs" && f.includes(filt)).sort()
+  .sort((a, b) => (FIRST.includes(b) - FIRST.includes(a)));
 const ARGS = {"page_smoke.mjs": ["docs/tng50", ...(process.env.TNG_SMOKE_API ? [process.env.TNG_SMOKE_API] : [])],   // TNG_SMOKE_API: optional backend URL
   "ui_static.mjs": ["docs/tng50"], "ui_budget.mjs": ["docs/tng50"],
   ...(process.env.TNG_VIZ ? {"viewer_browser.mjs": ["--viz", process.env.TNG_VIZ]} : {})};   // TNG_VIZ: viz dir with manifest_v2.json

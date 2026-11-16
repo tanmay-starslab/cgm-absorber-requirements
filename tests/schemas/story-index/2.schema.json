@@ -1,0 +1,64 @@
+{
+ "$id": "story-index/2",
+ "title": "Story index v2 (ROOT/data/index.json; DESIGN_tierA section 7.2, frozen at R0)",
+ "description": "Strictly additive to story-index/1. One writer: scripts/export_story_data.py manifest (merges R1 entries, R6 picker fields, R7 gates); nobody hand-edits it. 'default' stays the {galaxy, ray} object (engine.js lineUrl and resolveStory read index.default.galaxy); the story id goes in the new key default_story. picker 'off' (default) means the page behaves byte-identically to v2 (H0): the v2 'Try another beam' dialog, engine.resolveStory and story_vtt must see the same entries they see today, so v3 story entries must not change what /1 consumers resolve (they are reachable only by ?story=<id>, and listed only when picker is 'cases' and gates.all is true). film_beams stays until a grep shows no consumer in scripts/, tests/ and render.html. JSON Schema subset of js/engine.js schemaErrors.",
+ "type": "object",
+ "required": ["schema", "default", "default_story", "picker", "stories"],
+ "properties": {
+  "schema": {"const": "story-index/2"},
+  "default": {"type": "object", "required": ["galaxy", "ray"], "additionalProperties": false,
+   "properties": {"galaxy": {"type": "integer", "minimum": 0}, "ray": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"}}},
+  "default_story": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "id of the default story; 'full' (the hand-tuned hero tour)"},
+  "picker": {"type": "string", "enum": ["off", "cases"], "description": "'off' until the owner flips it (OWNER_DECISIONS 10)"},
+  "fion": {"type": "string"},
+  "stories": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/entry"}},
+  "film_beams": {"type": "array", "items": {"$ref": "#/$defs/v1entry"}},
+  "about": {"type": "string"}
+ },
+ "$defs": {
+  "storyId": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+  "file": {"type": "string", "pattern": "^[A-Za-z0-9_./-]+\\.json$"},
+  "v1entry": {
+   "type": "object",
+   "required": ["galaxy", "ray", "story"],
+   "properties": {
+    "galaxy": {"type": "integer", "minimum": 0},
+    "ray": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
+    "story": {"$ref": "#/$defs/file"},
+    "page_fits": {"$ref": "#/$defs/file"},
+    "label": {"type": "string"},
+    "eligible": {"type": "boolean"},
+    "reason": {"type": "string"},
+    "role": {"type": "string"}
+   }
+  },
+  "entry": {
+   "type": "object",
+   "required": ["id", "galaxy", "ray", "story", "page_fits", "beats", "shots", "case", "gates"],
+   "properties": {
+    "id": {"$ref": "#/$defs/storyId", "description": "'full' for the hero; clean, multiphase, damped, empty, hot for Tier A"},
+    "galaxy": {"type": "integer", "minimum": 0},
+    "ray": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
+    "case": {"type": "string", "enum": ["full", "clean_single", "multiphase", "damped", "empty", "hot_only", "generic"]},
+    "subcase": {"type": ["string", "null"], "enum": ["dla", "lls", null]},
+    "story": {"$ref": "#/$defs/file"},
+    "page_fits": {"$ref": "#/$defs/file"},
+        "line": {"$ref": "#/$defs/file", "description": "Tier A: the stored TNGS line (data/-relative, v3/lines/<g>_<ray>.bin); without it the page looks in the explorer library, which lacks most Tier A rays (fix1 H1)"},
+    "beats": {"$ref": "#/$defs/file", "description": "hero: beats.json (unchanged name); Tier A: beats.<id>.json"},
+    "shots": {"$ref": "#/$defs/file", "description": "hero: shots.json (unchanged name); Tier A: shots.<id>.json"},
+    "film": {"$ref": "#/$defs/file", "description": "films/<id>.json (optional)"},
+    "viz": {"type": "object", "required": ["manifest_url", "base"],
+     "properties": {"manifest_url": {"type": "string"}, "base": {"type": "string"}}},
+    "poster": {"type": "string"},
+    "title": {"type": "string", "maxLength": 48, "description": "card title, <= 5 words, no digits, no trailing full stop"},
+    "blurb": {"type": "string", "maxLength": 90, "description": "card blurb, <= 12 words, no digits, no trailing full stop"},
+    "label": {"type": "string"},
+    "eligible": {"type": "boolean"},
+    "reason": {"type": "string"},
+    "gates": {"type": "object", "required": ["all"],
+     "properties": {"all": {"type": "boolean"}, "steps": {"type": "array", "items": {"type": "object"}}},
+     "additionalProperties": {"type": ["boolean", "object", "number", "string", "null"]}}
+   }
+  }
+ }
+}

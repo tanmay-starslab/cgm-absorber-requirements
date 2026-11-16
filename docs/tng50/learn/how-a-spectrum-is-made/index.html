@@ -74,11 +74,11 @@
 <link rel="modulepreload" href="../../js/colormaps.js">
 <link rel="modulepreload" href="../../js/state.js">
 <link rel="preload" href="copy.json" as="fetch" crossorigin="anonymous">
-<link rel="preload" href="beats.json" as="fetch" crossorigin="anonymous">
-<link rel="preload" href="shots.json" as="fetch" crossorigin="anonymous">
 <link rel="preload" href="data/index.json" as="fetch" crossorigin="anonymous">
 <link rel="preload" href="eq/eq.json" as="fetch" crossorigin="anonymous">
-<link rel="preload" href="data/story_488530_rand_b062_a062.json" as="fetch" crossorigin="anonymous">
+<script>/* HERO_CHANGE_NOTE (fix1, review perf M1): the full tour's own files are preloaded only when no ?story= is asked for (a case story never reads them); a case story preloads its case copy instead */
+(function(){var s=new URLSearchParams(location.search).get("story"),f=s&&s!=="full"?["copy.cases.json"]:["beats.json","shots.json","data/story_488530_rand_b062_a062.json"],c=document.currentScript;
+f.forEach(function(h){var l=document.createElement("link");l.rel="preload";l.href=h;l.as="fetch";l.crossOrigin="anonymous";c.before(l);});})();</script>
 <!-- /first-frame preloads -->
 <link rel="stylesheet" href="css/story.css">
 <link rel="stylesheet" href="css/story2.css">

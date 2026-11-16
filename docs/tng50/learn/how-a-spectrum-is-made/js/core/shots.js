@@ -19,6 +19,8 @@
 //   pose   {at, look, fov, roll}                  at/look are points (see below)
 // Points: "origin" (galaxy centre) | "probe" | {l, back?, up?, side?} on the ray (+ offsets; l may be "probe+30") |
 //         {cell: idx, back?, up?, side?} (a ray cell's 3D centre) | {mix: [pointA, pointB, w]}.
+//         v3 (generated shots): "@role" or {cell: "@role", ...} (story-data/3 roles through seek's cellPos) |
+//         {enc: k, back?, up?, side?} (plan encounter k's centre). An unresolved role or encounter falls back to the probe.
 // Any key may carry beamAngle (deg): the roll is then solved so the projected beam descends toward the screen's right
 // at that angle (rollForBeam), which keeps the beam out of a left text column whatever the camera does.
 //
@@ -75,9 +77,13 @@ export function pointOf(spec, ctx) {
   if (spec == null || spec === "probe") return F.P(ctx.l);
   if (spec === "origin") return [0, 0, 0];
   if (Array.isArray(spec)) return spec.slice(0, 3);
+  if (typeof spec === "string" && spec.charCodeAt(0) === 64) return (ctx.cellPos && ctx.cellPos(spec)) || F.P(ctx.l);   // v3 "@role"
   if (spec.mix) { const [a, b, w] = spec.mix; return lerp(pointOf(a, ctx), pointOf(b, ctx), w * (ctx.mods && ctx.mods.mixScale != null ? ctx.mods.mixScale : 1)); }
   let base;
-  if (spec.cell != null) base = ctx.cellPos(spec.cell);
+  // v3: {cell: "@role"} resolves through seek's cellPos (null = unresolved: the key is dropped, the probe stands in);
+  // {enc: k} is a plan encounter's centre (k = plan.slots key or encounter id)
+  if (spec.cell != null) base = ctx.cellPos(spec.cell) || F.P(ctx.l);
+  else if (spec.enc != null) { const le = ctx.encL ? ctx.encL(spec.enc) : null; base = F.P(le != null ? le : ctx.l); }
   else if (spec.l != null) base = F.P(lval(spec.l, ctx.l, ctx.lscale));
   else base = F.P(ctx.l);
   return add(base, F.off(spec.back || 0, spec.up || 0, spec.side || 0));

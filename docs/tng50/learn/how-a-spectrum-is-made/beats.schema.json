@@ -1,17 +1,22 @@
 {
-  "$id": "story-beats/2",
-  "title": "Story beats v2 (one timeline for scroll, Watch, reduced-motion stops, narrative and film)",
+  "$id": "story-beats/3",
+  "title": "Story beats v3 (one timeline for scroll, Watch, reduced-motion stops, narrative and film; v3 = v2 + Tier A director keys, DESIGN_tierA sections 5-6, frozen at R0)",
   "description": "Read by js/core/timeline.js with engine.schemaErrors (JSON Schema subset: type, required, properties, additionalProperties, enum, const, items, minItems, minimum, maximum, pattern, $ref). Cross-beat rules (contiguity, ordering, shot ids, text gaps) are checked in timeline.validateBeats.",
   "type": "object",
   "required": ["schema", "meta", "beats"],
   "additionalProperties": false,
   "properties": {
-    "schema": {"const": "story-beats/2"},
+    "schema": {"type": "string", "enum": ["story-beats/2", "story-beats/3"], "description": "the hand-tuned hero beats.json stays story-beats/2 (byte-identical, H0); generated beats.<id>.json files say story-beats/3"},
     "meta": {
       "type": "object",
       "required": ["refHalf", "watchTotal_s", "fadeP", "groupGapP", "leadDefault"],
       "properties": {
         "about": {"type": "string"},
+        "story": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "v3: story id (clean, multiphase, damped, empty, hot); absent in the hero beats.json"},
+        "case": {"type": "string", "enum": ["clean_single", "multiphase", "damped", "empty", "hot_only", "generic"], "description": "v3: the declared case (story-data/3 case.declared)"},
+        "target_s": {"type": "number", "exclusiveMinimum": 0, "description": "v3: the case watch target the director composed to (DESIGN_tierA section 5)"},
+        "generator": {"type": "object", "description": "v3: provenance written by scripts/story_director.mjs (version, inputs and their sha256, calibration, repair log id); never Date-stamped (byte-identical reruns)"},
+        "tf": {"$ref": "#/$defs/tfBlock"},
         "refGalaxy": {"type": "integer"},
         "refRay": {"type": "string"},
         "refHalf": {"type": "number", "exclusiveMinimum": 0},
@@ -27,6 +32,11 @@
   },
   "$defs": {
     "vec3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "win2": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+    "tfBlock": {"type": "object", "description": "v3 meta.tf (DESIGN_tierA section 6.2 step 10), read by js/stage/tfstory.js (R4); the hero has none", "required": ["source"], "properties": {
+      "vol_window": {"$ref": "#/$defs/win2"}, "ion": {"type": "object", "additionalProperties": {"$ref": "#/$defs/win2"}, "description": "ion:<lead> window, keyed by preset id (ion:OVI ...)"},
+      "pctl": {"$ref": "#/$defs/win2"}, "bands": {"type": "array", "items": {"type": "number"}}, "speed": {"$ref": "#/$defs/win2"}, "fog": {"$ref": "#/$defs/win2"},
+      "source": {"type": "string", "enum": ["tube", "manifest"]}, "steps": {"type": "array", "items": {"type": "object"}, "description": "logged GPU G11/G14 percentile/fog steps (at most two)"}}},
     "u": {"type": "number", "minimum": 0, "maximum": 1},
     "lval": {"type": ["number", "string"]},
     "preset": {"type": "string", "enum": ["density", "halo", "phases", "ion:HI", "ion:OVI", "speed", "metals"], "description": "ids of js/stage/tfstory.js PRESETS (the stage draws these)"},
@@ -39,9 +49,9 @@
     "numOrKeys": {"type": ["number", "array"], "items": {"$ref": "#/$defs/numKey"}},
     "anchor": {"type": "object", "required": ["kind"], "additionalProperties": false, "properties": {
       "kind": {"type": "string", "enum": ["cell", "cloud", "l", "origin", "dock", "probe"]},
-      "ref": {"type": ["number", "string"]}}},
+      "ref": {"type": ["number", "string"], "description": "v3: a string starting with @ is a story-data/3 role (@S5, @cloudA.core, @hiPeak, @lead.core); the director throws on an unknown role, the browser logs and drops the key"}}},
     "text": {"type": "object", "required": ["id", "band", "part", "u0", "u1"], "additionalProperties": false, "properties": {
-      "id": {"type": "string", "pattern": "^B[0-9]+[a-e]?(\\.[a-z0-9]+)?$"},
+      "id": {"type": "string", "pattern": "^(B[0-9]+[a-e]?|B7p|B10w|B12n)(\\.[a-z0-9]+)?$"},
       "band": {"type": "string", "enum": ["act", "text"]},
       "part": {"type": "string", "enum": ["display", "sub", "all"]},
       "u0": {"$ref": "#/$defs/u"}, "u1": {"$ref": "#/$defs/u"},
@@ -57,19 +67,20 @@
       "anchor": {"$ref": "#/$defs/anchor"},
       "hl": {"type": "array", "items": {"type": "object", "required": ["term", "u0", "u1"], "additionalProperties": false, "properties": {
         "term": {"type": "string"}, "u0": {"$ref": "#/$defs/u"}, "u1": {"$ref": "#/$defs/u"}}}},
-      "ghost": {"type": "string", "enum": ["T125", "T263", "N492"]},
+      "ghost": {"type": "string", "pattern": "^(T125|T263|N492|[TN]@[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)?)$", "description": "v2 hero ids T125/T263/N492; v3 role form T@cloudA.core, T@S5, N@hiPeak"},
       "totals": {"type": "boolean"},
       "noPhone": {"type": "boolean", "description": "review2 three_d T3: not shown on phone/narrow layouts (on-axis camera stretch)"},
       "phoneU": {"type": "array", "items": {"$ref": "#/$defs/u"}, "minItems": 2, "maxItems": 2, "description": "review2 science M2: chain row a phone shows for u in [u0, u1)"}}},
     "field": {"type": "object", "required": ["name", "level"], "additionalProperties": false, "properties": {
-      "name": {"type": "string", "enum": ["nH", "T", "Z", "vel", "HI", "OVI"], "description": "viz manifest field names, as js/stage/tfstory.js fieldsOf returns them (vel = the vx/vy/vz velocity pack)"},
-      "level": {"type": "string", "enum": ["L0", "L1"]}}},
+      "name": {"type": "string", "enum": ["nH", "T", "Z", "vel", "HI", "OVI", "MgII", "NeVIII"], "description": "viz manifest field names, as js/stage/tfstory.js fieldsOf returns them (vel = the vx/vy/vz velocity pack)"},
+      "level": {"type": "string", "enum": ["L0", "L1", "L2"]}}},
     "beat": {
       "type": "object",
       "required": ["id", "p0", "p1", "kind", "l0", "l1", "ion", "shot", "tf", "dock", "fields", "lead", "textBand", "text", "eqs", "interactions", "copyRef", "spec", "shells"],
       "additionalProperties": false,
       "properties": {
-        "id": {"type": "string", "pattern": "^B[0-9]+[a-e]?$"},
+        "id": {"type": "string", "pattern": "^(B[0-9]+[a-e]?|B7p|B10w|B12n)$", "description": "v3 adds B7p (multiphase side view), B10w (damped pull-out), B12n (empty non-detection), all default-off and cond-skipped"},
+      "slot": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$", "description": "v3: the story-data/3 plan.slots key this beat's l0/l1 come from (A, B, C, D or a flight/gap slot); generated beats only"},
         "cond": {"type": "string", "description": "copy.json flag of a beat whose entry has no else block (B6 has_hot_stretch, B7e has_cold_knot): when the shell finds it false, the beat shows no text and the rail and PageDown skip it (timeline.setSkip); the camera still flies through"},
         "p0": {"$ref": "#/$defs/u"}, "p1": {"$ref": "#/$defs/u"},
         "kind": {"type": "string", "enum": ["gate", "hold", "flight", "stop", "still"]},
@@ -77,7 +88,7 @@
         "lu": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/u"}},
         "ion": {"type": "string", "enum": ["OVI", "HI"]},
         "shot": {"type": "string"},
-        "cell": {"type": "integer", "minimum": 0},
+        "cell": {"type": ["integer", "string"], "minimum": 0, "pattern": "^@[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)?$", "description": "v2: a cell index; v3: a role (@S5, @cloudA.core)"},
         "stops": {"type": "object", "required": ["n"], "properties": {"n": {"type": "integer", "minimum": 2, "maximum": 8}}},
         "tf": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/tfKey"}},
         "dock": {"type": ["string", "array"], "pattern": "^(strip|pair|hero)$", "items": {"type": "object", "required": ["u", "state"], "additionalProperties": false,

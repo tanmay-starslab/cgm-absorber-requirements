@@ -82,12 +82,13 @@ export function observedR(data, k, R, vw = VW + 30) {
    slices of at most budgetMs (idle time after ready, U_spec phase 1: the sweep then costs drawing only, browser p95 was
    1.1 ms on A100 with one degrade per new R). Returns true when every (ion, R) is cached. Same bits as observedR. The caller passes its clock. */
 export const SWEEP_R = (() => { const out = new Set(); for (let R = R_LO; R <= R_HI; ) { out.add(quantR(R)); const s = 10 ** (Math.floor(Math.log10(R)) - 1); R = quantR(R) + s; } return [...out].sort((a, b) => b - a); })();
-export function warmObservedR(data, ions, budgetMs, now) {          // now: the caller's clock (scenes stay pure)
+export function warmObservedR(data, ions, budgetMs, now, vwOf) {    // now: the caller's clock (scenes stay pure)
   const t0 = now();
   for (const R of SWEEP_R) for (const k of ions) {
-    const m = RMEMO.get(data); if (m && m.has(`${k}|${R}|${VW + 30}`)) continue;
+    const vw = (vwOf && vwOf(k)) || VW + 30;                          // fix1: a Tier A panel wider than ±VW warms its own window
+    const m = RMEMO.get(data); if (m && m.has(`${k}|${R}|${vw}`)) continue;
     if (now() - t0 > budgetMs) return false;
-    observedR(data, k, R);
+    observedR(data, k, R, vw);
   }
   return true;
 }
@@ -97,17 +98,30 @@ export function warmObservedR(data, ions, budgetMs, now) {          // now: the 
    dotted), the blurred model, faint truth ticks for cells with τ₀ > 0.1 (cells, not clouds), the darkest point marked, and
    on the lead panel the blur bell of FWHM c/R drawn to scale. "Blur turns narrow black dips grey": the H I trough is wide,
    so its panel stays black while the narrow O VI dips lift. Pure. */
+const BELL = new WeakMap();
 export function dockLSF(A, pe) {
   const o = pe.obs; if (!o || !o.obs) return;
   const I = K.ion(pe.data, pe.ion), col = K.ionColor(pe.ion), c = I.cells;
   if (I.F) K.curve(A, I.F.v, I.F.flux, {color: K.COL.truth, width: 1, alpha: 0.55, dash: [2, 3]});
   K.curve(A, o.obs.v, o.obs.model, {color: col, width: 2.2, glow: 6});
   if (pe.role === "lead") {
-    for (let j = 0; j < c.n; j++) if (c.tau0[j] > 0.1 && c.V[j] > A.v0 && c.V[j] < A.v1)
+    // fix2: a damped H I lead has hundreds of such cells (a solid bar, not ticks); the ticks stay for <= 60 (hero O VI)
+    let nt = 0; for (let j = 0; j < c.n; j++) if (c.tau0[j] > 0.1 && c.V[j] > A.v0 && c.V[j] < A.v1) nt++;
+    if (nt <= 60) for (let j = 0; j < c.n; j++) if (c.tau0[j] > 0.1 && c.V[j] > A.v0 && c.V[j] < A.v1)
       K.tick(A, c.V[j], {alpha: K.clamp(0.3 + 0.25 * Math.log10(c.tau0[j] / 0.1)), color: K.COL.truth, y: A.Y(1.16), len: Math.max(5, A.box.h * 0.06), width: 1.2});
     // review2 ux M2: the bell sits on the 0 line and its ±4σ tails stay inside the panel (R 5000: σ 25 km/s), clipped too
     const fw = K.C_KMS / o.R, span = A.v1 - A.v0, h = A.box.h * 0.28;
-    const bx = Math.min(A.v0 + 0.84 * span, A.v1 - 4 * fw / 2.35482 - 0.01 * span);
+    // fix2 (review2 ux M1): keep the 84 % spot when the panel is flat there (the hero), else the nearest spot on flat
+    // continuum, else inside a flat black core (damped H I: the bell rises from the 0 line into the empty trough)
+    const sg = fw / 2.35482, lo = A.v0 + 4 * sg + 0.01 * span, hi = A.v1 - 4 * sg - 0.01 * span, x84 = Math.min(A.v0 + 0.84 * span, hi);
+    const flat = (x, lvl) => [o.obs.v && {v: o.obs.v, f: o.obs.model}, I.F && {v: I.F.v, f: I.F.flux}].every(s => !s ||
+      s.v.every((v, k) => Math.abs(v - x) > 4 * sg || Math.abs(lvl - s.f[k]) < 0.02));
+    const key = `${fw}:${A.v0}:${A.v1}`, memo = BELL.get(o.obs);   // the scan runs once per spectrum and window, not per frame
+    let bx = memo && memo.key === key ? memo.x : x84;
+    if (!(memo && memo.key === key) && !flat(bx, 1)) for (const lvl of [1, 0]) { let hit = null;
+      for (let d = 0.01 * span; d < span && hit == null; d += 0.01 * span) hit = [x84 + d, x84 - d].find(y => y >= lo && y <= hi && flat(y, lvl));
+      if (hit != null) { bx = hit; break; } }
+    BELL.set(o.obs, {key, x: bx});
     K.bell(A, bx, fw, A.Y(0), h, {clip: true});
     // beauty M4 (fix3): the bell is named on screen, once it is tall enough to carry a label above it
     if (h >= 24 && A.ctx && A.ctx.fillText) {

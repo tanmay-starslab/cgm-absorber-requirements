@@ -20,6 +20,7 @@ import {planEquations} from "../eq/equations.js";
 import {resolveTemplate} from "../engine.js";
 import {createMenu, createKeyHelp, createCredits, keyAction} from "./menu.js";
 import {createNarrative} from "./narrative.js";
+import {beatSkip, activeText, storyCase, caseChip, attachCases} from "../copy/derive.js";
 import {createPicker} from "./picker.js";
 
 /* act chip labels (UI words, not data); copy.json[beat].chip overrides. Act titles that are z-planes on the ray: */
@@ -47,7 +48,9 @@ export function uiText(copy, key, fallback, vars = {}) {
   return String(raw == null ? "" : raw).replace(/\{\{\$([\w.]+)\}\}/g, (m, k) => (vars[k] != null ? String(vars[k]) : m));
 }
 
-export function actFor(beats, i, copy = {}) {
+export function actFor(beats, i, copy = {}, caseId = null) {
+  const cc = caseId ? caseChip(copy, caseId, beats, i) : null;   // a case story names its acts from copy.cases (no hero letters)
+  if (cc) return cc;
   for (let k = Math.min(i, (beats || []).length - 1); k >= 0; k--) {
     const b = beats[k], c = copy[b.copyRef || b.id];
     if (c && c.chip) return c.chip;
@@ -376,6 +379,10 @@ export function createShell(els, opts = {}) {
   }
   const H = opts.hooks || {};
   const flags = opts.flags || (opts.data && opts.data.flags) || {};
+  // the copy resolver's context: the story's case picks `variants[].case`; the lookup lets a line with a hole fall back
+  const dropped = new Set();
+  const copyCtx = {caseId: opts.caseId ?? storyCase(opts.data), lookup: opts.lookup || null,
+                   onDrop: d => { if (!dropped.has(d.id)) { dropped.add(d.id); console.info(`copy: ${d.id} dropped (${d.why})`); } }};
   // every face the solver's metrics assume, requested now: a face that loads on first use (the italic accent) would draw
   // with fallback metrics for a frame and break the solver box (G1); onFonts re-measures nothing, it only re-renders
   if (typeof document !== "undefined" && document.fonts && document.fonts.load) {
@@ -385,7 +392,7 @@ export function createShell(els, opts = {}) {
   }
   const kin = createKinetic(els.kinetic), plaque = createPlaque(els.labels);
   const rail = createRail(els.rail, {playToggle: H.watchToggle, flyStart: H.flyStart, flyEnd: H.flyEnd, flyToggle: H.flyToggle, jump: H.jump, key: H.key,
-                                     tickLabel: t => (t ? actFor(opts.beats, (opts.beats || []).findIndex(b => b.id === t.id), opts.copy) : ""),
+                                     tickLabel: t => (t ? actFor(opts.beats, (opts.beats || []).findIndex(b => b.id === t.id), opts.copy, copyCtx.caseId) : ""),
                                      watchRemaining: H.watchRemaining});
   const keyHelp = !H.keys && els.sheets ? createKeyHelp(els.sheets) : null;
   // Data and credits (menu entry and the stage's ID badge, els.idBadge)
@@ -408,7 +415,11 @@ export function createShell(els, opts = {}) {
     watchHint: H.watchHint, musicTrack: H.musicTrack, musicTrackLabel: H.musicTrackLabel});
   const narrative = createNarrative({list: els.narrativeList, live: els.live, overlay: els.textOverlay, canvas: els.canvas},
                                     {jump: H.jump, quiet: H.quiet});
-  narrative.build(opts.beats, opts.copy, opts.lookup, opts.honesty || []);
+  narrative.build(opts.beats, opts.copy, opts.lookup, opts.honesty || [], flags, {caseId: copyCtx.caseId});
+  // a case story's own copy (copy.cases.json, R5b) when the shell has not attached it: after the first frame, then re-model
+  if (copyCtx.caseId && opts.copy && !opts.copy.cases && typeof fetch === "function")
+    fetch("copy.cases.json").then(r => (r.ok ? r.json() : null)).then(f => { if (!f || opts.copy.cases) return; attachCases(opts.copy, f); buildModels();
+      narrative.build(opts.beats, opts.copy, opts.lookup, opts.honesty || [], flags, {caseId: copyCtx.caseId}); if (H.kick) H.kick(); }).catch(() => {});
   if (els.phasePill && H.tfPopover) els.phasePill.addEventListener("click", H.tfPopover);
 
   // end actions (review SC-7): DOM pills in the HUD layer, placed by the solver like every other box
@@ -446,7 +457,7 @@ export function createShell(els, opts = {}) {
   function modelFor(t) {
     const band = S.bands && S.bands.text; if (!band) return null;
     const level = t.band === "act" ? 0 : 1, k = `${textKey(t)}|${Math.round(band.w)}|${level}|${S.cls}`;
-    if (!cache.has(k)) cache.set(k, groupModel(copyEntry(opts.copy, t.id, flags), band, S.type, level, opts.lookup, t.part || "all"));
+    if (!cache.has(k)) cache.set(k, groupModel(copyEntry(opts.copy, t.id, flags, copyCtx), band, S.type, level, opts.lookup, t.part || "all"));
     return cache.get(k);
   }
   function relayout(dock, side) {
@@ -475,7 +486,7 @@ export function createShell(els, opts = {}) {
     if (dock !== S.dockState || side !== S.side) { const textW = S.bands && S.bands.text ? S.bands.text.w : 0; relayout(dock, side); if (!S.bands.text || S.bands.text.w !== textW) buildModels(); }
     if (S.p0 == null) S.p0 = fs.p;
     if (!S.hintSeen && Math.abs(fs.p - S.p0) > 0.01) { S.hintSeen = true; try { localStorage.setItem("story2.hintSeen", "1"); } catch (e) {} }
-    const act = actFor(opts.beats, fs.beat ? fs.beat.i : 0, opts.copy), legend = tfLegend(fs.tf, opts.copy);
+    const act = actFor(opts.beats, fs.beat ? fs.beat.i : 0, opts.copy, copyCtx.caseId), legend = tfLegend(fs.tf, opts.copy);
     if (legend && legend.id === "speed" && ext.speedCellsOnly) legend.name = uiText(opts.copy, "speed_cells_only", legend.name);   // T4
     const hintText = coarse ? uiText(opts.copy, "hint_touch", HINT_TEXT.coarse) : uiText(opts.copy, "hint_desktop", HINT_TEXT.fine);
     const text = activeText(fs.text, flags).map(t => (t.band === "act" && t.anchor && ext.project ? {...t, screen: ext.project(t.anchor)} : t));
@@ -593,7 +604,7 @@ export function createShell(els, opts = {}) {
   }
   return {resize, render, rects, scrims: () => S.scrims || [], onKey, keyHelp, picker, narrative, menu, rail, kinetic: kin,
           layout: () => ({cls: S.cls, bands: S.bands, type: S.type, w: S.w, h: S.h, corridors: S.corridors || []}), modelFor, solved: () => S.solved,
-          sizeTable: deps => captureStorySizes({copy: opts.copy, lookup: opts.lookup, flags, layer: els.kinetic, ...deps})};
+          sizeTable: deps => captureStorySizes({copy: opts.copy, lookup: opts.lookup, flags, caseId: copyCtx.caseId, layer: els.kinetic, ...deps})};
 }
 
 /* ---------------------------------------------------------------- conditional text slots */
@@ -602,17 +613,7 @@ export function createShell(els, opts = {}) {
    conservative branch shows. Pure. */
 /* beats whose copy flag is false (beat.cond: B6 has_hot_stretch, B7e has_cold_knot) leave PageDown and the rail ticks:
    the integrator wires timeline.setSkip(beatSkip(flags)). Same rule as activeText: a missing flag counts as false. Pure. */
-export const beatSkip = flags => b => !!(b && b.cond) && !(flags && flags[b.cond] === true);
-
-export function activeText(text, flags) {
-  const out = [];
-  for (const t of text || []) {
-    if (t.cond && !(flags && flags[t.cond] === true)) continue;
-    if (t.alt) for (let k = out.length - 1; k >= 0; k--) if (out[k].band === t.band) { out.splice(k, 1); break; }
-    out.push(t);
-  }
-  return out;
-}
+export {beatSkip, activeText};                    // implemented once in js/copy/derive.js (the copy resolver, R5a)
 
 /* ---------------------------------------------------------------- node G1 composer (U_qa contract) */
 /* U_qa's class names (lib/storyqa.mjs) for size tables captured by its harness */
@@ -704,7 +705,7 @@ export function itemsFor(fs, ctx = {}) {
   const models = new Map();
   const modelFor = t => {
     const level = t.band === "act" ? 0 : 1, k = `${textKey(t)}|${level}`;
-    if (!models.has(k)) models.set(k, groupModel(copyEntry(story.copy, t.id, flags), bands.text, type, level, story.lookup || null, t.part || "all"));
+    if (!models.has(k)) models.set(k, groupModel(copyEntry(story.copy, t.id, flags, {caseId: story.caseId ?? null, lookup: story.lookup || null}), bands.text, type, level, story.lookup || null, t.part || "all"));
     return models.get(k);
   };
   const dk = bands.dock;
@@ -720,7 +721,7 @@ export function itemsFor(fs, ctx = {}) {
     tags.push({id: "chip:" + c.letter, anchor: sc, size: {w: Math.ceil(textWidth(label, "sans", 12)) + 24, h: 26, font: 12}});
   }
   const cell = ctx.cell || {nH: 1.23e-3, T: 1.15e4, v: -151.6, f: 0.234, ion: (fs.spec && fs.spec.lead) === "HI" ? "H I" : "O VI"};
-  const env = {cls, bands, type, modelFor, act: actFor(story.beats, fs.beat ? fs.beat.i : 0, story.copy || {}),
+  const env = {cls, bands, type, modelFor, act: actFor(story.beats, fs.beat ? fs.beat.i : 0, story.copy || {}, story.caseId ?? null),
                legend: tfLegend(fs.tf, story.copy || null), hint: ctx.hint != null ? !!ctx.hint : fs.p < 0.02,
                hintText: HINT_TEXT.fine, plaque: probe && fs.cell && !ctx.reduced ? {lines: plaqueLines(cell), anchor: probe} : null,
                eqs: eqItemsFor(fs, {cls, type, bands, story, table, reduced: ctx.reduced}), dockKids, tags, reduced: !!ctx.reduced,
@@ -749,14 +750,14 @@ export async function captureStorySizes(d) {
     const base = d.copy[b.copyRef || b.id] || {};
     copy[b.copyRef || b.id] = {...(copy[b.copyRef || b.id] || {}), chip: base.chip};
     for (const t of b.text || []) {
-      const e = copyEntry(d.copy, t.id, flags); if (!e) continue;
+      const e = copyEntry(d.copy, t.id, flags, {caseId: d.caseId ?? null, lookup: d.lookup || null}); if (!e) continue;
       copy[t.id] = {...(copy[t.id] || {}), display: res(e.display), display_short: res(e.display_short), sub: res(e.sub), sub_short: res(e.sub_short)};
       if (t.id === (b.copyRef || b.id)) copy[t.id].chip = base.chip;
     }
   }
   const eqLite = d.eq ? {eqs: Object.fromEntries(Object.entries(d.eq.eqs).map(([k, v]) => [k, {title: v.title, variants: v.variants}]))} : null;
   const story = {beats: beats.map(b => ({id: b.id, copyRef: b.copyRef, eqs: (b.eqs || []).map(e => (typeof e === "string" ? e : e.id))})),
-                 copy, flags, eq: eqLite};
+                 copy, flags, eq: eqLite, ...(d.caseId ? {caseId: d.caseId} : {})};
   // text: model vs real
   const widths = new Map();
   for (const dock of ["strip", "pair", "hero"]) for (const side of ["left", "right"]) {
