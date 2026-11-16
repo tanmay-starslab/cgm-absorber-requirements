@@ -442,7 +442,9 @@ export function dataUrl(g, ray, tpl = DATA_URL) { return String(tpl).split("{g}"
    index default, else the first entry; null for an empty index */
 export const INDEX_URL = "data/index.json";
 export function resolveStory(index, g, ray) {
-  const list = index && Array.isArray(index.stories) ? index.stories : [];
+  // story-index/2 Tier A entries (case other than "full") are reachable only by ?story=<id>, never by (g, ray): render.html
+  // and other /1 consumers must resolve exactly what they did before (DESIGN_tierA §7.2, H0 index)
+  const list = index && Array.isArray(index.stories) ? index.stories.filter(e => e && (!e.case || e.case === "full")) : [];
   if (!list.length) return null;
   // an entry marked eligible: false (U0 story_facts: weak O VI, no black H I core, no S6 pair, no sane fits) never plays
   // as its own story; the request falls back to the default like a galaxy that is not exported

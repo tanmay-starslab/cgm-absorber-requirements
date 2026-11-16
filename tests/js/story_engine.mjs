@@ -268,16 +268,19 @@ const frameLog = (eng, ctx, t) => { ctx.__log.length = 0; eng.seek(t); return ct
       eq(E.resolveStory(weak, 411449, "rand_b062_a062"), E.resolveStory(index, index.default.galaxy, index.default.ray), "an ineligible story falls back to the index default");
     }
     for (const ent of index.stories.filter(e => e.eligible !== false)) {
-      const {data, entry} = await E.loadStoryData(base, ent.galaxy, ent.ray, E.DATA_URL, readJ, readB);
+      // Tier A entries are reachable only by ?story=<id> (main.js loadTierA -> loadEntryData), never by (g, ray)
+      const tierA = !!ent.case && ent.case !== "full";
+      const {data, entry} = tierA ? {data: await E.loadEntryData(base, index, ent, readJ, readB).dataP, entry: {...ent, galaxy: +ent.galaxy}}
+        : await E.loadStoryData(base, ent.galaxy, ent.ray, E.DATA_URL, readJ, readB);
       eq([entry.galaxy, entry.ray], [+ent.galaxy, ent.ray], `index entry ${ent.galaxy}/${ent.ray} loads`);
       ok(data.lines && data.lines.OVI && data.lines.HI && Number.isFinite(data.lines.vSys), `stored line decoded for ${ent.galaxy}/${ent.ray}` + (data.lines_error ? ": " + data.lines_error : ""));
       ok(!ent.page_fits || data.page_fits, `page fits attached for ${ent.galaxy}/${ent.ray}`);
       const ctx = recCtx(960, 540);
-      const eng = E.createEngine({doc, ctx, galaxy: ent.galaxy, ray: ent.ray, base, fetchJson: readJ, fetchBin: readB, cut: "full"});
+      const eng = E.createEngine({doc, ctx, galaxy: ent.galaxy, ray: ent.ray, base, fetchJson: readJ, fetchBin: readB, cut: "full", ...(tierA ? {data} : {})});
       let err = null; try { await eng.ready(); } catch (e) { err = e; }
       ok(!err, `${ent.galaxy}/${ent.ray}: ready() with the real steps.json, scenes and data` + (err ? ": " + err.message : ""));
       if (err) continue;
-      eq([eng.story.galaxy, eng.env.galaxy], [+ent.galaxy, +ent.galaxy], "engine reports the galaxy it loaded");
+      eq([tierA ? +data.meta.galaxy : eng.story.galaxy, eng.env.galaxy], [+ent.galaxy, +ent.galaxy], "engine reports the galaxy it loaded");
       const D = eng.duration, ts = Array.from({length: 85}, (_, i) => D * i / 84);
       const safeLog = t => { try { return frameLog(eng, ctx, t); } catch (e) { return "THROW " + e.message; } };
       const fwd = ts.map(safeLog), rev = ts.slice().reverse().map(safeLog).reverse();

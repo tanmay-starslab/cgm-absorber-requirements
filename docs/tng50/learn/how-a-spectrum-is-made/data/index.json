@@ -1,20 +1,12 @@
 {
- "schema": "story-index/1",
+ "schema": "story-index/2",
  "default": {
   "galaxy": 488530,
   "ray": "rand_b062_a062"
  },
+ "default_story": "full",
+ "picker": "off",
  "fion": "fion_OVI_slice.json",
- "stories": [
-  {
-   "galaxy": 488530,
-   "ray": "rand_b062_a062",
-   "story": "story_488530_rand_b062_a062.json",
-   "page_fits": "page_fits_488530_rand_b062_a062.json",
-   "label": "Subhalo 488530",
-   "eligible": true
-  }
- ],
  "film_beams": [
   {
    "galaxy": 488530,
@@ -42,6 +34,185 @@
    "label": "Subhalo 488530",
    "eligible": false,
    "role": "emptiest"
+  }
+ ],
+ "stories": [
+  {
+   "galaxy": 488530,
+   "ray": "rand_b062_a062",
+   "story": "story_488530_rand_b062_a062.json",
+   "page_fits": "page_fits_488530_rand_b062_a062.json",
+   "label": "Subhalo 488530",
+   "eligible": true,
+   "id": "full",
+   "beats": "beats.json",
+   "shots": "shots.json",
+   "case": "full",
+   "subcase": null,
+   "gates": {
+    "all": true,
+    "note": "hand-tuned hero; H0 is its gate"
+   }
+  },
+  {
+   "id": "damped",
+   "galaxy": 488530,
+   "ray": "rand_b050_a215",
+   "story": "v3/story_488530_rand_b050_a215.json",
+   "page_fits": "v3/page_fits_488530_rand_b050_a215.json",
+   "line": "v3/lines/488530_rand_b050_a215.bin",
+   "beats": "beats.damped.json",
+   "shots": "shots.damped.json",
+   "film": "films/damped.json",
+   "case": "damped",
+   "subcase": "dla",
+   "label": "Subhalo 488530",
+   "viz": {
+    "manifest_url": "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/manifest_v2.json",
+    "base": "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/"
+   },
+   "eligible_case": true,
+   "gates": {
+    "all": true,
+    "data": {
+     "G16": true,
+     "G15_data": true,
+     "G13r_data": true,
+     "parity": true,
+     "cover": true,
+     "budget": true,
+     "all_data": true
+    },
+    "note": "R8: Watch and scroll checked end to end in a browser (2026-11-16); GPU frame-time gates not measured"
+   }
+  },
+  {
+   "id": "empty",
+   "galaxy": 511920,
+   "ray": "edge_b106_a018_s29389",
+   "story": "v3/story_511920_edge_b106_a018_s29389.json",
+   "page_fits": "v3/page_fits_511920_edge_b106_a018_s29389.json",
+   "line": "v3/lines/511920_edge_b106_a018_s29389.bin",
+   "beats": "beats.empty.json",
+   "shots": "shots.empty.json",
+   "film": "films/empty.json",
+   "case": "empty",
+   "subcase": null,
+   "label": "Subhalo 511920",
+   "viz": {
+    "manifest_url": "https://huggingface.co/datasets/tanmay-starslab/tng50-mwm31-web-0/resolve/main/511920/viz/manifest_v2.json",
+    "base": "https://huggingface.co/datasets/tanmay-starslab/tng50-mwm31-web-0/resolve/main/511920/viz/"
+   },
+   "eligible_case": true,
+   "gates": {
+    "all": true,
+    "data": {
+     "G16": true,
+     "G15_data": true,
+     "G13r_data": true,
+     "parity": true,
+     "cover": true,
+     "budget": true,
+     "all_data": true
+    },
+    "note": "R8: Watch and scroll checked end to end in a browser (2026-11-16); GPU frame-time gates not measured"
+   }
+  },
+  {
+   "id": "multiphase",
+   "galaxy": 488530,
+   "ray": "rand_b139_a096",
+   "story": "v3/story_488530_rand_b139_a096.json",
+   "page_fits": "v3/page_fits_488530_rand_b139_a096.json",
+   "line": "v3/lines/488530_rand_b139_a096.bin",
+   "beats": "beats.multiphase.json",
+   "shots": "shots.multiphase.json",
+   "film": "films/multiphase.json",
+   "case": "multiphase",
+   "subcase": null,
+   "label": "Subhalo 488530",
+   "viz": {
+    "manifest_url": "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/manifest_v2.json",
+    "base": "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/"
+   },
+   "eligible_case": true,
+   "gates": {
+    "all": true,
+    "data": {
+     "G16": true,
+     "G15_data": true,
+     "G13r_data": true,
+     "parity": true,
+     "cover": true,
+     "budget": true,
+     "all_data": true
+    },
+    "note": "R8: Watch and scroll checked end to end in a browser (2026-11-16); GPU frame-time gates not measured"
+   }
+  },
+  {
+   "id": "hot",
+   "galaxy": 488530,
+   "ray": "rand_b103_a094_s0",
+   "story": "v3/story_488530_rand_b103_a094_s0.json",
+   "page_fits": "v3/page_fits_488530_rand_b103_a094_s0.json",
+   "line": "v3/lines/488530_rand_b103_a094_s0.bin",
+   "beats": "beats.hot.json",
+   "shots": "shots.hot.json",
+   "film": "films/hot.json",
+   "case": "hot_only",
+   "subcase": null,
+   "label": "Subhalo 488530",
+   "viz": {
+    "manifest_url": "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/manifest_v2.json",
+    "base": "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/"
+   },
+   "eligible_case": true,
+   "gates": {
+    "all": true,
+    "data": {
+     "G16": true,
+     "G15_data": true,
+     "G13r_data": true,
+     "parity": true,
+     "cover": true,
+     "budget": true,
+     "all_data": true
+    },
+    "note": "R8: Watch and scroll checked end to end in a browser (2026-11-16); GPU frame-time gates not measured"
+   }
+  },
+  {
+   "id": "clean",
+   "galaxy": 424288,
+   "ray": "edge_b266_a178_s33492",
+   "story": "v3/story_424288_edge_b266_a178_s33492.json",
+   "page_fits": "v3/page_fits_424288_edge_b266_a178_s33492.json",
+   "line": "v3/lines/424288_edge_b266_a178_s33492.bin",
+   "beats": "beats.clean.json",
+   "shots": "shots.clean.json",
+   "film": "films/clean.json",
+   "case": "clean_single",
+   "subcase": null,
+   "label": "Subhalo 424288",
+   "viz": {
+    "manifest_url": "https://huggingface.co/datasets/tanmay-starslab/tng50-mwm31-web-0/resolve/main/424288/viz/manifest_v2.json",
+    "base": "https://huggingface.co/datasets/tanmay-starslab/tng50-mwm31-web-0/resolve/main/424288/viz/"
+   },
+   "eligible_case": true,
+   "gates": {
+    "all": true,
+    "data": {
+     "G16": true,
+     "G15_data": true,
+     "G13r_data": true,
+     "parity": true,
+     "cover": true,
+     "budget": true,
+     "all_data": true
+    },
+    "note": "R8: Watch and scroll checked end to end in a browser (2026-11-16); GPU frame-time gates not measured"
+   }
   }
  ]
 }

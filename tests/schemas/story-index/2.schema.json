@@ -18,6 +18,7 @@
  "$defs": {
   "storyId": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
   "file": {"type": "string", "pattern": "^[A-Za-z0-9_./-]+\\.json$"},
+  "binfile": {"type": "string", "pattern": "^[A-Za-z0-9_./-]+\\.bin$", "description": "TNGS binary line; engine.js lineUrl/fetchBin load it as bytes, not JSON"},
   "v1entry": {
    "type": "object",
    "required": ["galaxy", "ray", "story"],
@@ -43,7 +44,7 @@
     "subcase": {"type": ["string", "null"], "enum": ["dla", "lls", null]},
     "story": {"$ref": "#/$defs/file"},
     "page_fits": {"$ref": "#/$defs/file"},
-        "line": {"$ref": "#/$defs/file", "description": "Tier A: the stored TNGS line (data/-relative, v3/lines/<g>_<ray>.bin); without it the page looks in the explorer library, which lacks most Tier A rays (fix1 H1)"},
+    "line": {"$ref": "#/$defs/binfile", "description": "Tier A: the stored TNGS line (data/-relative, v3/lines/<g>_<ray>.bin); without it the page looks in the explorer library, which lacks most Tier A rays (fix1 H1)"},
     "beats": {"$ref": "#/$defs/file", "description": "hero: beats.json (unchanged name); Tier A: beats.<id>.json"},
     "shots": {"$ref": "#/$defs/file", "description": "hero: shots.json (unchanged name); Tier A: shots.<id>.json"},
     "film": {"$ref": "#/$defs/file", "description": "films/<id>.json (optional)"},
