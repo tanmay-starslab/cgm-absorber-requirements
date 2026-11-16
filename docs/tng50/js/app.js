@@ -12,7 +12,7 @@ import {createInstrument} from "./instrument.js";
 import * as FITM from "./fit.js";
 import {initTips, ION_TIPS} from "./tips.js";
 import {initFeatures} from "./features.js";   /* ux4 features: share, keys, random, undo, solo, CSV, loading */
-import {initLiquidTabs} from "./liquidtabs.js";   /* CSS-only liquid drop behind the Spectra | 3D tabs */
+import {initLiquidTabs, initLiquidSeg, initLiquidButtons} from "./liquidtabs.js";   /* CSS-only liquid drop (tabs, segmented rows) and glossy top-bar buttons */
 import {initLiquidBg} from "./liquidbg.js";   /* liquid metal shader background (3D tab; Spectra only with SPECTRA_BG) */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
   nearestSightline, defaultSightline, srcOf, galaxySummary} from "./galaxies.js";
@@ -710,7 +710,7 @@ function showTab(t, focus) { if (!TABS.includes(t)) return; const prev = S.tab; 
 for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", () => showTab(k));
   b.addEventListener("keydown", ev => { const i = TABS.indexOf(S.tab), n = {ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1}[ev.key];
     if (n == null) return; ev.preventDefault(); showTab(TABS[(n + TABS.length) % TABS.length], true); }); }
-initLiquidTabs($("#tabs"));
+initLiquidTabs($("#tabs")); initLiquidSeg($("#layout")); initLiquidButtons();
 /* liquid metal background (owner 2026-11-16): wanted mainly on the 3D tab, behind the stage and the control cards (it sits
    under the page at z-index -1, so it never draws over the volume render). SPECTRA_BG is the single switch for the Spectra
    tab (off: the spectra keep the static glow background); ?bg=on turns it on for one visit, ?bg=off removes it everywhere. */
@@ -871,7 +871,7 @@ function mountFind() { if (FINDP) return; FINDP = import(modUrl("search.js")).th
 let CHAT = null;
 $("#chat-open").hidden = !(CFG.chat && CFG.chat.enabled);
 $("#chat-open").addEventListener("click", async () => { try { if (!CHAT) { const m = await import(modUrl("chat.js")), root = $("#chat-root"); root.hidden = false;
-    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
+    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); initLiquidSeg(root.querySelector(".chat-mode")); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
 
 /* ---------------- side column (collapsible, remembered) and the phone drawer ---------------- */
 function setSide(on) { document.body.classList.toggle("side-off", !on); const b = $("#side-toggle"); b.setAttribute("aria-expanded", String(on));

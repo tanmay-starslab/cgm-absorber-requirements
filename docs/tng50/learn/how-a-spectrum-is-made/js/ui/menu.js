@@ -1,6 +1,8 @@
-// The one menu (DESIGN_final §1.3 P1-3): Explore, Physics, Read as text, Try another beam, Watch, Share, Keys.
+// The one menu (DESIGN_final §1.3 P1-3): Explore, Physics, Read as text, Try another beam, Watch, Share, Music track, Keys.
 // A 44 px icon button in the HUD (in the rail in phone landscape) opening a sheet on the modal layer (z 60). Esc or a click
-// outside closes it and returns focus to the button. Each entry calls a hook; entries without a hook are not shown.
+// outside closes it and returns focus to the button. Each entry calls a hook; entries without a hook are not shown. An entry
+// with "stay" keeps the menu open and takes its label and hint from hooks[id + "Label"]() -> {label, hint} (the music track:
+// "Music: Day One", "switch to Beethoven"; refresh(id) repaints it).
 //
 // Keys (DESIGN §9.3): U_motion's bindInput owns Space-hold, arrows, Shift+arrows, PageUp/PageDown, Home/End; the shell
 // claims the rest through bindInput({onKey}) with keyAction (pure): ? help, F formula trail, T colour preset, R / N focus
@@ -16,6 +18,7 @@ export const ENTRIES = Object.freeze([
   {id: "physics", label: "Science details", hint: "numbers, equations and caveats", toggle: true},
   {id: "text", label: "Read as text", hint: "the whole story, no motion"},
   {id: "share", label: "Copy link to this moment"},
+  {id: "musicTrack", label: "Music", stay: true},                // label and hint from hooks.musicTrackLabel()
   {id: "keys", label: "Keys and help"},
   {id: "credits", label: "Data and credits"},
   {id: "explorer", label: "Back to the explorer", href: true},
@@ -25,11 +28,13 @@ export function createMenu(button, sheet, hooks = {}) {
   button.setAttribute("aria-haspopup", "true"); button.setAttribute("aria-expanded", "false");
   sheet.setAttribute("role", "menu"); sheet.hidden = true; sheet.dataset.noscrub = "";
   const list = ENTRIES.filter(e => hooks[e.id] || (e.href && hooks.explorerHref));
-  const hintOf = e => (e.id === "watch" && hooks.watchHint ? hooks.watchHint() : e.hint);
+  const dyn = e => (e.stay && hooks[e.id + "Label"] ? hooks[e.id + "Label"]() : null);
+  const labelOf = e => (dyn(e) || e).label;
+  const hintOf = e => (e.id === "watch" && hooks.watchHint ? hooks.watchHint() : (dyn(e) || e).hint);
   sheet.innerHTML = list.map(e => e.href
     ? `<a class="mn-i" role="menuitem" href="${hooks.explorerHref()}" data-id="${e.id}"><span class="mn-l">${e.label}</span></a>`
     : `<button class="mn-i" role="${e.toggle ? "menuitemcheckbox" : "menuitem"}" type="button" data-id="${e.id}"${e.toggle ? ' aria-checked="false"' : ""}>` +
-      `<span class="mn-l">${e.label}</span>${hintOf(e) ? `<span class="mn-h" data-num>${hintOf(e)}</span>` : ""}</button>`).join("");
+      `<span class="mn-l">${labelOf(e)}</span>${hintOf(e) ? `<span class="mn-h" data-num>${hintOf(e)}</span>` : ""}</button>`).join("");
   const items = () => [...sheet.querySelectorAll(".mn-i")];
   let open = false;
   function set(o) {
@@ -43,6 +48,7 @@ export function createMenu(button, sheet, hooks = {}) {
     const it = e.target.closest(".mn-i"); if (!it) return;
     const id = it.dataset.id, entry = ENTRIES.find(x => x.id === id);
     if (entry && entry.toggle) { const on = it.getAttribute("aria-checked") !== "true"; it.setAttribute("aria-checked", String(on)); hooks[id](on); return; }
+    if (entry && entry.stay) { hooks[id](); refresh(id); return; }
     if (!entry.href) { e.preventDefault(); set(false); button.focus(); hooks[id](); }
   });
   sheet.addEventListener("keydown", e => {
@@ -54,8 +60,12 @@ export function createMenu(button, sheet, hooks = {}) {
     e.stopPropagation();
   });
   document.addEventListener("pointerdown", e => { if (open && !sheet.contains(e.target) && !button.contains(e.target)) set(false); });
+  function refresh(id) {
+    const it = sheet.querySelector(`[data-id="${id}"]`), e = ENTRIES.find(x => x.id === id); if (!it || !e) return;
+    const l = it.querySelector(".mn-l"), h = it.querySelector(".mn-h"); if (l) l.textContent = labelOf(e); if (h) h.textContent = hintOf(e) || "";
+  }
   return {
-    get open() { return open; }, set,
+    get open() { return open; }, set, refresh,
     setChecked(id, on) { const it = sheet.querySelector(`[data-id="${id}"]`); if (it) it.setAttribute("aria-checked", String(!!on)); },
   };
 }
@@ -134,7 +144,9 @@ export function creditSections(galaxy) {
       `(Byrohl &amp; Nelson 2025, ${A("https://arxiv.org/abs/2507.11603", "arXiv:2507.11603")}), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background ` +
       "(Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding."]},
     {h: "Music", p: [
-      "Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (orchestral recording); excerpted, faded and looped."]},
+      "Hans Zimmer, Day One (Interstellar, 2014); excerpted and looped.",
+      "Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (orchestral recording); excerpted, faded and looped.",
+      "Off by default; choose the track in the menu."]},
     {h: "Code", p: [
       `MIT, ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements", "github.com/tanmay-starslab/cgm-absorber-requirements")}; ` +
       `third-party licences: ${A("https://github.com/tanmay-starslab/cgm-absorber-requirements/blob/main/THIRD_PARTY_LICENSES", "THIRD_PARTY_LICENSES")}`]},

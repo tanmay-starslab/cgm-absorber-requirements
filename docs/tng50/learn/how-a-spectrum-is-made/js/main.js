@@ -22,7 +22,7 @@ import {createPrefetcher} from "./core/prefetch.js";
 import {createWatchDriver, createTicker} from "./drivers/play.js";
 import {createStoryExplore} from "./drivers/explore.js";
 import {createShell, beatSkip, anchorL, beamCorridor, activeText} from "./ui/hud.js";
-import {createSound} from "./ui/sound.js";
+import {createSound, nextTrack} from "./ui/sound.js";
 import {focusStyle} from "./ui/kinetic.js";
 import {computeBands, layoutClass, isPhone} from "./ui/layoutclass.js";
 import {createGate, parseEntry, entryFragment} from "./ui/gate.js";
@@ -191,6 +191,8 @@ async function boot() {
   let trailOn = false;
   const hooks = {
     music: () => music.toggle(),
+    musicTrack: () => music.cycleTrack(),
+    musicTrackLabel: () => ({label: "Music: " + music.track().label, hint: "switch to " + nextTrack(music.track().id).label}),
     setTarget: p => clock.setTarget(p),
     jump: p => (input ? input.jumpTo(p, "rail") : clock.setTarget(p)),
     flyStart: () => input && input.holdStart("fly"),
@@ -570,7 +572,7 @@ async function boot() {
     perf: () => ({stage, frameMs: perfMs.frame.slice(), jsMs: perfMs.vol.slice()}),
     gpuBytes: () => (stage && stage.core && stage.core.gpuBytes ? stage.core.gpuBytes() : null),
     sizeTable: deps => shell.sizeTable({seek, data, beats, shots: shotsDoc, overlay, ...(deps || {})}),
-    overrides: () => explore.overrides, explore, bus, shell, spectrum, overlay, timeline, input, watch, gate,
+    overrides: () => explore.overrides, explore, bus, shell, spectrum, overlay, timeline, input, watch, gate, music,
     frame: () => { frame(); return lastFs; }, eqDebug: () => eqDbg,
     orbit: () => ({yaw: orb.yaw, pitch: orb.pitch, held: orb.held, look: !!(input && input.look)}), gateWaiting: () => !!gateAsk, first3d: () => first3d,
     bootMs: Math.round(performance.now() - t0),
