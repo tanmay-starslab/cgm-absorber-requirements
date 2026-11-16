@@ -1,0 +1,54 @@
+{
+ "schema": "story-film-plan/1",
+ "story": "empty",
+ "galaxy": 511920,
+ "ray": "edge_b106_a018_s29389",
+ "beats": "beats.empty.json",
+ "shots": "shots.empty.json",
+ "fps": 30,
+ "target_s": 80,
+ "duration_s": 80,
+ "chunks": [
+  {
+   "id": "open",
+   "s": 12,
+   "beats": [
+    "B1"
+   ],
+   "tf": "density"
+  },
+  {
+   "id": "halo_hold",
+   "s": 18,
+   "beats": [
+    "B2"
+   ],
+   "tf": "film:empty"
+  },
+  {
+   "id": "side",
+   "s": 16,
+   "beats": [
+    "B3",
+    "B4"
+   ],
+   "tf": "film:empty"
+  },
+  {
+   "id": "noise",
+   "s": 16,
+   "beats": [
+    "B12n"
+   ],
+   "tf": null
+  },
+  {
+   "id": "limit",
+   "s": 18,
+   "beats": [
+    "B13"
+   ],
+   "tf": "phases"
+  }
+ ]
+}

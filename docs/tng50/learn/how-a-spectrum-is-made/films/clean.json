@@ -1,0 +1,65 @@
+{
+ "schema": "story-film-plan/1",
+ "story": "clean",
+ "galaxy": 424288,
+ "ray": "edge_b266_a178_s33492",
+ "beats": "beats.clean.json",
+ "shots": "shots.clean.json",
+ "fps": 30,
+ "target_s": 90,
+ "duration_s": 90,
+ "chunks": [
+  {
+   "id": "open",
+   "s": 20,
+   "beats": [
+    "B1",
+    "B2"
+   ],
+   "tf": "density"
+  },
+  {
+   "id": "drop",
+   "s": 11,
+   "beats": [
+    "B3",
+    "B4"
+   ],
+   "tf": "film:outskirts"
+  },
+  {
+   "id": "cloud",
+   "s": 8,
+   "beats": [
+    "B5"
+   ],
+   "tf": "film:ovi"
+  },
+  {
+   "id": "cell",
+   "s": 21,
+   "beats": [
+    "B7b",
+    "B7c"
+   ],
+   "tf": "film:ovi"
+  },
+  {
+   "id": "telescope",
+   "s": 20,
+   "beats": [
+    "B12a",
+    "B12b"
+   ],
+   "tf": null
+  },
+  {
+   "id": "readback",
+   "s": 10,
+   "beats": [
+    "B13"
+   ],
+   "tf": "phases"
+  }
+ ]
+}

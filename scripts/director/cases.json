@@ -1,0 +1,593 @@
+{
+ "schema": "director-cases/1",
+ "about": "Per-case skeleton, watch target, camera style per beat and film chunks for scripts/story_director.mjs (DESIGN_tierA §5 table and §6.2 step 6). `beats`: the beats that may be on, in story order for the holds and stills (flights and stops are placed along l by compose.sequence). A beat whose template cond flag is false for the ray is dropped. `styles`: beat -> style (styles.mjs); `wide`: beats chased with the ×1.6 wide chase; `override`: beat fields replacing the template's (\"@lead\" = the story's lead ion). `film`: chunk roles (§5 film row), each mapped to its beats; seconds scale with the beats' watch time to `target_s`.",
+ "default_styles": {
+  "B0": "gate",
+  "B1": "coldopen",
+  "B2": "halo",
+  "B3": "drop",
+  "B4": "first",
+  "B5": "cloudA",
+  "B6": "quiet",
+  "B7a": "cloudB",
+  "B7b": "orbitStop",
+  "B7c": "orbitDrag",
+  "B7d": "restB",
+  "B7e": "coldknot",
+  "B8": "halfway",
+  "B9": "thread",
+  "B10": "cloudD",
+  "B11": "lookback",
+  "B12a": "telescope",
+  "B12b": "telescopeHold",
+  "B13": "readback",
+  "B14": "yours",
+  "B7p": "pairTableau",
+  "B10w": "pullout",
+  "B12n": "tableau"
+ },
+ "stories": {
+  "clean": {
+   "case": "clean_single",
+   "target_s": 150,
+   "beats": [
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B7b",
+    "B7c",
+    "B8",
+    "B10",
+    "B11",
+    "B12a",
+    "B12b",
+    "B13",
+    "B14"
+   ],
+   "styles": {
+    "B5": "chaseOrbit",
+    "B10": "cloudD"
+   },
+   "role": {
+    "B5": "@lead.core"
+   },
+   "override": {
+    "B5": {
+     "ion": "@lead",
+     "tf": [
+      {
+       "u": 0,
+       "preset": "phases",
+       "focusR": 14,
+       "darkSky": true
+      },
+      {
+       "u": 0.5,
+       "preset": "phases",
+       "focusR": 14,
+       "darkSky": true
+      },
+      {
+       "u": 0.6,
+       "preset": "ion:@lead",
+       "focusR": 14,
+       "darkSky": true
+      },
+      {
+       "u": 0.88,
+       "preset": "ion:@lead",
+       "focusR": 14,
+       "darkSky": true
+      },
+      {
+       "u": 1.0,
+       "preset": "phases",
+       "focusR": 14,
+       "darkSky": true
+      }
+     ]
+    },
+    "B10": {
+     "ion": "@lead"
+    }
+   },
+   "film": {
+    "target_s": 90,
+    "chunks": [
+     {
+      "id": "open",
+      "beats": [
+       "B1",
+       "B2"
+      ],
+      "tf": "density"
+     },
+     {
+      "id": "drop",
+      "beats": [
+       "B3",
+       "B4"
+      ],
+      "tf": "film:outskirts"
+     },
+     {
+      "id": "cloud",
+      "beats": [
+       "B5"
+      ],
+      "tf": "film:ovi"
+     },
+     {
+      "id": "cell",
+      "beats": [
+       "B7b",
+       "B7c"
+      ],
+      "tf": "film:ovi"
+     },
+     {
+      "id": "telescope",
+      "beats": [
+       "B12a",
+       "B12b"
+      ],
+      "tf": null
+     },
+     {
+      "id": "readback",
+      "beats": [
+       "B13"
+      ],
+      "tf": "phases"
+     }
+    ]
+   }
+  },
+  "multiphase": {
+   "case": "multiphase",
+   "target_s": 190,
+   "beats": [
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B7a",
+    "B7p",
+    "B8",
+    "B11",
+    "B12a",
+    "B12b",
+    "B13",
+    "B14"
+   ],
+   "styles": {
+    "B5": "cloudA",
+    "B7a": "cloudB"
+   },
+   "override": {},
+   "film": {
+    "target_s": 120,
+    "chunks": [
+     {
+      "id": "open",
+      "beats": [
+       "B1",
+       "B2"
+      ],
+      "tf": "density"
+     },
+     {
+      "id": "drop",
+      "beats": [
+       "B3",
+       "B4"
+      ],
+      "tf": "film:outskirts"
+     },
+     {
+      "id": "cool",
+      "beats": [
+       "B5"
+      ],
+      "tf": "film:hi"
+     },
+     {
+      "id": "hot",
+      "beats": [
+       "B7a"
+      ],
+      "tf": "film:ovi"
+     },
+     {
+      "id": "side",
+      "beats": [
+       "B7p"
+      ],
+      "tf": "phases"
+     },
+     {
+      "id": "telescope",
+      "beats": [
+       "B12a",
+       "B12b"
+      ],
+      "tf": null
+     },
+     {
+      "id": "readback",
+      "beats": [
+       "B13"
+      ],
+      "tf": "phases"
+     }
+    ]
+   },
+   "cap": {
+    "B5": 15
+   }
+  },
+  "damped": {
+   "case": "damped",
+   "target_s": 170,
+   "beats": [
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B8",
+    "B10",
+    "B10w",
+    "B11",
+    "B12a",
+    "B12b",
+    "B13",
+    "B14"
+   ],
+   "styles": {
+    "B5": "chaseOrbit",
+    "B10": "cloudD"
+   },
+   "role": {
+    "B5": "@hiPeak"
+   },
+   "override": {
+    "B3": {
+     "ion": "HI"
+    },
+    "B4": {
+     "ion": "HI"
+    },
+    "B5": {
+     "ion": "HI"
+    },
+    "B10": {
+     "ion": "HI"
+    },
+    "B11": {
+     "ion": "HI"
+    },
+    "B12a": {
+     "ion": "HI"
+    },
+    "B12b": {
+     "ion": "HI"
+    },
+    "B14": {
+     "ion": "HI"
+    }
+   },
+   "film": {
+    "target_s": 100,
+    "chunks": [
+     {
+      "id": "open",
+      "beats": [
+       "B1",
+       "B2"
+      ],
+      "tf": "density"
+     },
+     {
+      "id": "drop",
+      "beats": [
+       "B3",
+       "B4"
+      ],
+      "tf": "film:outskirts"
+     },
+     {
+      "id": "core",
+      "beats": [
+       "B5"
+      ],
+      "tf": "film:hi"
+     },
+     {
+      "id": "wings",
+      "beats": [
+       "B10"
+      ],
+      "tf": "film:wings"
+     },
+     {
+      "id": "pullout",
+      "beats": [
+       "B10w"
+      ],
+      "tf": "film:wings"
+     },
+     {
+      "id": "telescope",
+      "beats": [
+       "B12a",
+       "B12b"
+      ],
+      "tf": null
+     },
+     {
+      "id": "readback",
+      "beats": [
+       "B13"
+      ],
+      "tf": "phases"
+     }
+    ]
+   }
+  },
+  "empty": {
+   "case": "empty",
+   "target_s": 110,
+   "beats": [
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B8",
+    "B11",
+    "B12n",
+    "B12b",
+    "B13",
+    "B14"
+   ],
+   "styles": {
+    "B3": "tableau",
+    "B4": "tableau",
+    "B8": "tableau",
+    "B11": "tableau",
+    "B12b": "tableau",
+    "B13": "tableau",
+    "B14": "tableau"
+   },
+   "override": {
+    "B12b": {
+     "spec": {
+      "mode": "observed",
+      "R": 15000,
+      "sn": [
+       {
+        "u": 0.12,
+        "v": 4
+       },
+       {
+        "u": 0.45,
+        "v": 100
+       },
+       {
+        "u": 0.6,
+        "v": 10
+       }
+      ]
+     },
+     "interactions": [
+      "R",
+      "sn"
+     ]
+    },
+    "B13": {
+     "spec": {
+      "mode": "observed",
+      "R": 15000,
+      "sn": 10
+     },
+     "eqs": [],
+     "interactions": [
+      "R",
+      "sn"
+     ]
+    }
+   },
+   "film": {
+    "target_s": 80,
+    "chunks": [
+     {
+      "id": "open",
+      "beats": [
+       "B1"
+      ],
+      "tf": "density"
+     },
+     {
+      "id": "halo_hold",
+      "beats": [
+       "B2"
+      ],
+      "tf": "film:empty"
+     },
+     {
+      "id": "side",
+      "beats": [
+       "B3",
+       "B4"
+      ],
+      "tf": "film:empty"
+     },
+     {
+      "id": "noise",
+      "beats": [
+       "B12n"
+      ],
+      "tf": null
+     },
+     {
+      "id": "limit",
+      "beats": [
+       "B13"
+      ],
+      "tf": "phases"
+     }
+    ]
+   }
+  },
+  "hot": {
+   "case": "hot_only",
+   "target_s": 160,
+   "beats": [
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7a",
+    "B7b",
+    "B7c",
+    "B7d",
+    "B8",
+    "B11",
+    "B12a",
+    "B12b",
+    "B13",
+    "B14"
+   ],
+   "styles": {
+    "B5": "wide",
+    "B6": "quiet",
+    "B7a": "cloudB"
+   },
+   "wide": [
+    "B5",
+    "B6"
+   ],
+   "override": {
+    "B5": {
+     "ion": "OVI",
+     "tf": [
+      {
+       "u": 0,
+       "preset": "phases",
+       "focusR": 14,
+       "darkSky": true
+      },
+      {
+       "u": 0.5,
+       "preset": "phases",
+       "focusR": 14,
+       "darkSky": true
+      },
+      {
+       "u": 0.6,
+       "preset": "ion:OVI",
+       "focusR": 14,
+       "darkSky": true
+      },
+      {
+       "u": 0.88,
+       "preset": "ion:OVI",
+       "focusR": 14,
+       "darkSky": true
+      },
+      {
+       "u": 1.0,
+       "preset": "phases",
+       "focusR": 14,
+       "darkSky": true
+      }
+     ]
+    },
+    "B6": {
+     "dock": "pair"
+    },
+    "B7a": {
+     "dock": "pair"
+    },
+    "B7b": {
+     "dock": "pair"
+    },
+    "B8": {
+     "dock": "pair"
+    }
+   },
+   "film": {
+    "target_s": 100,
+    "chunks": [
+     {
+      "id": "open",
+      "beats": [
+       "B1",
+       "B2"
+      ],
+      "tf": "density"
+     },
+     {
+      "id": "hot_stretch",
+      "beats": [
+       "B6"
+      ],
+      "alt": [
+       "B5"
+      ],
+      "tf": "film:hot"
+     },
+     {
+      "id": "cell",
+      "beats": [
+       "B7b",
+       "B7c"
+      ],
+      "tf": "film:ovi"
+     },
+     {
+      "id": "band",
+      "beats": [
+       "B11"
+      ],
+      "tf": "film:metals"
+     },
+     {
+      "id": "telescope",
+      "beats": [
+       "B12a",
+       "B12b"
+      ],
+      "tf": null
+     },
+     {
+      "id": "readback",
+      "beats": [
+       "B13"
+      ],
+      "tf": "phases"
+     }
+    ]
+   }
+  }
+ },
+ "fix1": {
+  "date": "2026-11-14",
+  "notes": [
+   "multiphase: B7b, B7c (the generic cell study between 'First, hot gas' and 'Then cool gas') and B9 (its 'new dips' were formed in B5) dropped (review F6, S5)",
+   "damped: B7a-B7d dropped; the O VI cell study sat between the wall and the wings and B7a's 'beyond the wall' showed inside it (F6, S11)",
+   "empty: B12a dropped (no dips to merge, F6); B12b ends at S/N 10, R 15 000 from u 0.6 (the noise line at u 0.62-0.88, S6); B13 shows the observed spectrum at the limits' R 15 000, S/N 10 with no fit equations (S7, F6); no newNoise control (none exists on the story page)"
+  ]
+ },
+ "fix2": "review2 R2-B4: multiphase cap B5 at 15 s (cases `cap`: beat -> max watch s, compose.allocate). R2-B7: damped B11, B12a, B12b and B14 read H I (B13 stays O VI: the page fits are O VI only and its copy names O VI). R2-B12: hot keeps the pair dock from B5 to B11 (H I visible while the copy says its dip stays faint)."
+}

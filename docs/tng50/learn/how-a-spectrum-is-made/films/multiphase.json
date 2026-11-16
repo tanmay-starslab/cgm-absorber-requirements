@@ -1,0 +1,72 @@
+{
+ "schema": "story-film-plan/1",
+ "story": "multiphase",
+ "galaxy": 488530,
+ "ray": "rand_b139_a096",
+ "beats": "beats.multiphase.json",
+ "shots": "shots.multiphase.json",
+ "fps": 30,
+ "target_s": 120,
+ "duration_s": 120,
+ "chunks": [
+  {
+   "id": "open",
+   "s": 28,
+   "beats": [
+    "B1",
+    "B2"
+   ],
+   "tf": "density"
+  },
+  {
+   "id": "drop",
+   "s": 18,
+   "beats": [
+    "B3",
+    "B4"
+   ],
+   "tf": "film:outskirts"
+  },
+  {
+   "id": "hot",
+   "s": 8,
+   "beats": [
+    "B7a"
+   ],
+   "tf": "film:ovi"
+  },
+  {
+   "id": "cool",
+   "s": 13,
+   "beats": [
+    "B5"
+   ],
+   "tf": "film:hi"
+  },
+  {
+   "id": "side",
+   "s": 10,
+   "beats": [
+    "B7p"
+   ],
+   "tf": "phases"
+  },
+  {
+   "id": "telescope",
+   "s": 29,
+   "beats": [
+    "B12a",
+    "B12b"
+   ],
+   "tf": null
+  },
+  {
+   "id": "readback",
+   "s": 14,
+   "beats": [
+    "B13"
+   ],
+   "tf": "phases"
+  }
+ ]
+}

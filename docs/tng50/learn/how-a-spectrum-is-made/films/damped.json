@@ -1,0 +1,72 @@
+{
+ "schema": "story-film-plan/1",
+ "story": "damped",
+ "galaxy": 488530,
+ "ray": "rand_b050_a215",
+ "beats": "beats.damped.json",
+ "shots": "shots.damped.json",
+ "fps": 30,
+ "target_s": 100,
+ "duration_s": 100,
+ "chunks": [
+  {
+   "id": "open",
+   "s": 22,
+   "beats": [
+    "B1",
+    "B2"
+   ],
+   "tf": "density"
+  },
+  {
+   "id": "drop",
+   "s": 12,
+   "beats": [
+    "B3",
+    "B4"
+   ],
+   "tf": "film:outskirts"
+  },
+  {
+   "id": "core",
+   "s": 15,
+   "beats": [
+    "B5"
+   ],
+   "tf": "film:hi"
+  },
+  {
+   "id": "wings",
+   "s": 12,
+   "beats": [
+    "B10"
+   ],
+   "tf": "film:wings"
+  },
+  {
+   "id": "pullout",
+   "s": 7,
+   "beats": [
+    "B10w"
+   ],
+   "tf": "film:wings"
+  },
+  {
+   "id": "telescope",
+   "s": 22,
+   "beats": [
+    "B12a",
+    "B12b"
+   ],
+   "tf": null
+  },
+  {
+   "id": "readback",
+   "s": 10,
+   "beats": [
+    "B13"
+   ],
+   "tf": "phases"
+  }
+ ]
+}

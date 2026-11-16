@@ -1,0 +1,5 @@
+{
+ "schema": "director-overrides/1",
+ "about": "Beauty overrides for scripts/story_director.mjs (DESIGN_tierA §6.2 step 8): logged entries only, reviewed in R9 after the contact-sheet round, at most 2 per story, never used to rescue a gate. Each entry: {story, beat, shot: {fields replacing the generated shot's}, why, reviewed_by}.",
+ "overrides": []
+}
