@@ -1,13 +1,20 @@
-# cgm-absorber-requirements
+# Galaxies: absorption spectra of simulated galaxies, and what it takes to observe them
 
-What S/N and spectral resolving power does it take to **detect** a circumgalactic absorber, and to
-**resolve** it into its velocity components? This repository answers both questions for twelve strong
-CGM transitions, with publication figures, a technical note and an interactive explainer.
+**Live site: https://galaxies.tanmaysingh.uk**
 
-- **Interactive explainer:** https://tanmay-starslab.github.io/cgm-absorber-requirements/ (source: `docs/index.html`)
-- **TNG50 sightline explorer:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/ (see [below](#tng50-sightline-explorer))
-- **How a spectrum is made:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/learn/how-a-spectrum-is-made/
-  (a step-by-step story from gas cells to a fitted spectrum; see [below](#learn-page-how-a-spectrum-is-made))
+What began as a requirements study for a NASA proposal (what S/N and resolving power it takes to **detect** a
+circumgalactic absorber and to **resolve** it into velocity components) has grown into a public website for exploring
+the circumgalactic medium (CGM) of simulated galaxies. It has three parts, all built from this repository:
+
+| Page | URL | What it is | Source |
+|---|---|---|---|
+| **Explorer** | [/](https://galaxies.tanmaysingh.uk/) | Quasar sightlines through the CGM of 198 Milky Way and M31 analogues from TNG50: twelve ions from H I to O VII, any resolving power and S/N, in-browser Voigt fits, a 3D view of the gas, new rays on demand, and a chat assistant that drives the page | `docs/tng50/` ([below](#tng50-sightline-explorer)) |
+| **How a spectrum is made** | [/learn/how-a-spectrum-is-made/](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A guided story from gas cells to a fitted spectrum, to scroll or to watch | `docs/tng50/learn/` ([below](#learn-page-how-a-spectrum-is-made)) |
+| **Detect & Resolve** | [/requirements/](https://galaxies.tanmaysingh.uk/requirements/) | The original instrument study: minimum detectable column and smallest resolvable velocity separation for twelve CGM transitions, with figures and a technical note | `docs/index.html`, `absreq/`, `paper/` |
+
+Old `tanmay-starslab.github.io/cgm-absorber-requirements/...` links redirect to the new site.
+
+## Detect & Resolve
 
 ![Requirement matrix](figures/requirements_matrix.png)
 
@@ -49,7 +56,7 @@ absreq/        lines.py · profiles.py · detection.py · separation.py · theor
 scripts/       build_grids.py → grids/   make_figures.py → figures/   make_tables.py → paper/   export_web_data.py → docs/
 figures/       lsf_resolution, requirements_matrix, ions/<ion>_{instrument,absorber}_plane  (PDF + PNG)
 paper/         detectability_note.tex/.pdf
-docs/          interactive explainer (GitHub Pages); docs/tng50/ TNG50 sightline explorer
+docs/          Detect & Resolve page (index.html); docs/tng50/ explorer and the learn page
 tngsight/ server/ deploy/ tng50/   TNG50 explorer: library, API server, deployment, original app
 tests/         analytic limits and thin-line agreement
 ```
@@ -68,8 +75,9 @@ python scripts/export_web_data.py
 
 ## TNG50 sightline explorer
 
-A second page applies the same instrument question to simulated absorbers: 672 quasar sightlines through the CGM of
-TNG50-1 subhalo 488530 at z = 0, plus any geometry you request (face-on, edge-on or random; impact parameter
+The explorer applies the same instrument question to simulated absorbers. It covers 198 TNG50-1 Milky Way and M31
+analogues at z = 0, with a galaxy picker (filter by stellar mass, halo mass, SFR, central or satellite). Subhalo 488530
+has the deepest data: 672 quasar sightlines, plus any geometry you request (face-on, edge-on or random; impact parameter
 b ≤ 300 kpc; azimuth Φ; or a ray picked in 3D), cast on demand with yt + Trident.
 
 - **Lines (Phase 3).** Twelve ions ordered by ionisation potential, from cool to hot: H I 1216 (Lyα), Mg II 2796,
@@ -106,7 +114,7 @@ b ≤ 300 kpc; azimuth Φ; or a ray picked in 3D), cast on demand with yt + Trid
   numbers do not come from a tool result get an "unverified" badge.
 
 ```
- GitHub Pages: docs/tng50/              backend (Docker): server.app             laptop
+ Cloudflare: docs/tng50/                backend (Docker): server.app             laptop
  static page + library (.bin)           coordinator + fallback compute          ────────────────────
  ───────────────────────────            ───────────────────────────────          serve.sh  127.0.0.1:8787
  degrades and fits in the browser       job queue, SSE progress, figures         (local page backend)
@@ -116,7 +124,8 @@ b ≤ 300 kpc; azimuth Φ; or a ray picked in 3D), cast on demand with yt + Trid
                                         HFSync ⇄ private HF dataset (generated/)
 ```
 
-- **Page:** https://tanmay-starslab.github.io/cgm-absorber-requirements/tng50/ (source: `docs/tng50/`)
+- **Site:** https://galaxies.tanmaysingh.uk, a static Cloudflare Worker (`wrangler.jsonc`) built by
+  `scripts/build_site.mjs` into `dist/`. Every push to `main` redeploys it.
 - **API backend:** the `deploy/hf_space` image, on an Oracle Cloud VM (`deploy/oci/`) or as an HF Docker Space
 - **Data:** private HF dataset `tanmay-starslab/tng50-sub488530-cgm` (slim cutout, slim ion table, library)
 
@@ -173,7 +182,7 @@ which are hosted outside the repository.
 Credits: IllustrisTNG, TNG50-1 at z = 0, snapshot 99 (Nelson et al. 2019a, ComAC 6, 2, arXiv:1812.05609;
 Nelson et al. 2019b, MNRAS 490, 3234, arXiv:1902.05554; Pillepich et al. 2019, MNRAS 490, 3196, arXiv:1902.05553;
 data from https://www.tng-project.org/data/, used as the TNG Collaboration requests). Spectra of the 198 MW/M31
-galaxies: the SBI_CGM fiducial ray library, rays through the TNG50 Voronoi mesh traced with THOR (Byrohl & Nelson
+galaxies: a fiducial ray library, rays through the TNG50 Voronoi mesh traced with THOR (Byrohl & Nelson
 2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background
 (Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding. Galaxy 488530's default and custom rays,
 and every 3D ion cube: Trident (Hummels, Smith & Silvia 2017) on yt (Turk et al. 2011) with the HM2012 background
