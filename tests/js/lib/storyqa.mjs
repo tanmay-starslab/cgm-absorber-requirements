@@ -464,6 +464,19 @@ export const RESIDENT = `(() => { const S = window.__story, st = S && S.stage; i
 /** Waits up to ms for at least one cube level to be bound; returns the last probe. */
 export async function waitResident(P, ms = 90000) { await P.waitFor(`(${RESIDENT}).levels > 0 || !(${RESIDENT}).stage`, ms, 250); return P.eval(RESIDENT); }
 
+/* Tier A (R7_gpu, DESIGN_tierA §1/§10): with STORY_QA_STORY=<id> in the environment, every request for the story page
+ * (ROOT/index.html or ROOT/) that has no story= parameter is redirected to the same URL with story=<id> first. This makes
+ * the v2 gate scripts (story_overlap, story_a11y, story_perf, story_g11, story_budget) run on one Tier A story without
+ * any change to them; "full" or an empty value leaves the hero page alone. Returns the redirect target or null. */
+export function tierRedirect(url, id = process.env.STORY_QA_STORY) {
+  if (!id || id === "full") return null;
+  const u = new URL(url, "http://x"), page = "/tng50/" + STORY_REL + "/";
+  if (u.pathname !== page && u.pathname !== page + "index.html") return null;
+  if (u.searchParams.has("story")) return null;
+  const q = u.search.replace(/^\?/, "");
+  return u.pathname + "?story=" + encodeURIComponent(id) + (q ? "&" + q : "") + u.hash;
+}
+
 /* gzip static server (GitHub Pages compresses text): <dir> at /tng50/, optional extra root at /viz/, a local three at /three.js */
 const TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".css": "text/css",
   ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp", ".avif": "image/avif", ".jpg": "image/jpeg", ".woff2": "font/woff2", ".woff": "font/woff",
@@ -474,6 +487,8 @@ export async function gzServe(dir, {port = 0, viz = null, three = null} = {}) {
   const served = {bytes: 0, n: 0, vizBytes: 0};   // bytes on the wire as served (worker fetches included; Resource Timing misses them)
   const srv = createServer((req, res) => {
     let p = decodeURIComponent(new URL(req.url, "http://x").pathname), f = null;
+    const tier = tierRedirect(req.url);   // Tier A per-story runs (STORY_QA_STORY): the story page always opens ?story=<id>
+    if (tier) { res.writeHead(302, {Location: tier, "Cache-Control": "no-store"}); res.end(); return; }
     if (p.startsWith("/tng50/")) { if (p.endsWith("/")) p += "index.html"; f = resolve(join(dir, p.slice(7))); if (!f.startsWith(dir + "/")) f = null; }
     else if (viz && p.startsWith("/viz/")) { f = resolve(join(viz, p.slice(5))); if (!f.startsWith(viz + "/")) f = null; }
     else if (three && p === "/three.js") f = three;
@@ -666,3 +681,238 @@ export function moduleGraph(page, docsDir) {
   return {files: [...seen], external: [...external], missing: [...missing]};
 }
 export {REPO};
+
+/* ================================================================ Tier A per-story gate runner (R7_gpu, DESIGN_tierA §1, §10)
+ *
+ *   node tests/js/lib/storyqa.mjs --all | --story id[,id] [--sets node,h0,browser,gpu] [--out DIR] [--docs DIR]
+ *        [--index FILE] [--pass N] [--quick] [--no-hero-budget]
+ *
+ * Builds a temp page tree (ROOT copied, everything else symlinked) whose data/index.json is a story-index/2 index listing
+ * the Tier A stories (default: R1's draft, story3_w/R1/index_v2_draft.json; the shipped index stays /1 and is never
+ * written), then runs the v2 gate scripts once per story with STORY_QA_STORY=<id> (gzServe redirects the page to
+ * ?story=<id>) and STORY_VIZ=<CGM_WORK>/data/gal/<g>/viz (the story's own cubes):
+ *   browser  story_overlap --quick (G1/G2/G3/G10/G12 in the DOM), story_a11y (G9)
+ *   gpu      story_g11 --viewports (G4/G11), story_g11 --g14 (G14), story_budget --story (G6s), story_perf (G5a, heaviest
+ *            story only); needs TNG_GPU=1 on an A100 node (scripts/story_qa.sbatch QA_SET=tiergpu)
+ *   node     beats meta.generator.gates_node (R3: schema, G1/G2/G3/G12 node, G13r, G15, G19, G20), story data gates_case
+ *            (R1: G16, G15/G13r data), the G17/G18 reports (R7_fuzz), sha256 of every file the story loads
+ *   h0       tests/js/story_hero_identity.mjs on the real tree (the hero must stay byte-identical)
+ * and writes <out>/gates.json (story-gates-run/1): per story {H0, G1..G4, G5a, G6s, G9..G20, sha, exemptions, notes}, the
+ * record export_story_data.py manifest merges into index.json gates (R7 never writes index.json itself). A gate is true
+ * (pass), false (fail), or null (not measured in this run; the reason is in notes). */
+export const TIER_IDS = ["clean", "multiphase", "damped", "empty", "hot"];
+const CGM = process.env.CGM_WORK || process.env.TNG_WORK || "/Volumes/cgm_work";
+export const TIER_INDEX_DEFAULT = join(CGM, "scratch/story3_w/R1/index_v2_draft.json");
+export const TIER_FUZZ_DEFAULT = {g17: join(CGM, "scratch/story3_w/R7_fuzz/g17_hard.json"), g18: join(CGM, "scratch/story3_w/R7_fuzz/g18/g18_report.json")};
+/** story-index/2 for the test tree: the given index with gates.all forced true on the stories under test (test only; the
+ *  shipped index's gates come from export_story_data.py manifest reading gates.json). */
+export function tierIndex(file = TIER_INDEX_DEFAULT, ids = TIER_IDS) {
+  const ix = JSON.parse(readFileSync(file, "utf8"));
+  for (const e of ix.stories || []) if (ids.includes(e.id)) e.gates = {...(e.gates || {}), all: true, note: "R7 test tree: forced true to reach ?story"};
+  return ix;
+}
+/** Temp docs/tng50 tree: ROOT copied (no media/, build/, audio), the rest symlinked; data/index.json replaced. */
+export async function tierTree(docs, index, base = null) {
+  const fs = await import("node:fs");
+  const T = base ? (fs.mkdirSync(base, {recursive: true}), base) : mkdtempSync(join(process.env.TMPDIR || tmpdir(), "r7tier-"));
+  const md = join(T, "tng50"); fs.rmSync(md, {recursive: true, force: true}); fs.mkdirSync(join(md, "learn"), {recursive: true});
+  for (const e of readdirSync(docs)) if (e !== "learn") fs.symlinkSync(join(docs, e), join(md, e));
+  for (const e of readdirSync(join(docs, "learn"))) if (e !== "how-a-spectrum-is-made") fs.symlinkSync(join(docs, "learn", e), join(md, "learn", e));
+  const src = join(docs, STORY_REL), dst = join(md, STORY_REL);
+  fs.cpSync(src, dst, {recursive: true, dereference: false, filter: f => !/\.(m4a|mp4|webm)$/.test(f) && !f.startsWith(join(src, "media")) && !f.startsWith(join(src, "build"))});
+  writeFileSync(join(dst, "data/index.json"), JSON.stringify(index, null, 1));
+  return md;
+}
+/** Files a story loads (beats, shots, story data, page fits, film plan, copy, case copy), relative to ROOT. */
+export function tierFiles(entry) {
+  return [entry.beats, entry.shots, "data/" + entry.story, "data/" + entry.page_fits, entry.film, "copy.json", entry.id === "full" ? null : "copy.cases.json"].filter(Boolean);
+}
+const sha16 = buf => createHashSync("sha256").update(buf).digest("hex").slice(0, 16);
+import {createHash as createHashSync} from "node:crypto";
+
+/** Per-story G11 exemption rule (DESIGN_tierA §1 G4/G11): v2's B2/B6 stay exempt in the script; beyond them at most one
+ *  documented exemption per story. Returns {pass, exempt: [frame ids], fails: [...]}. */
+export function g11Verdict(frames) {
+  const bad = (frames || []).filter(f => (f.fails || []).some(x => x.gate === "G11"));
+  const g4 = (frames || []).filter(f => (f.fails || []).some(x => x.gate === "G4"));
+  const beats = [...new Set(bad.map(f => f.id))];
+  return {G11: frames && frames.length ? beats.length <= 1 : null, G4: frames && frames.length ? !g4.length : null,
+    exempt: beats.length === 1 ? beats : [], g11Beats: beats, g4Frames: g4.map(f => `${f.viewport} ${f.id}`)};
+}
+/** G14 verdict from story_g11 --g14 results. */
+export function g14Verdict(res) {
+  if (!res || !res.length) return {G14: null, fails: []};
+  const fails = res.filter(r => (r.fails || []).length).map(r => `${r.beat}${r.enc ? " " + r.enc : ""}: ${r.fails.map(f => f.msg).join("; ")}`);
+  return {G14: !fails.length, fails};
+}
+/** Per-story G6 (DESIGN_tierA §9): first-3D-frame bytes <= hero x 1.15, story files <= 1.5 MB, GPU <= 448/192 MB;
+ *  the page shell growth <= 3 kB gz is a page-wide number (shellGrowth, from story_budget --story). */
+export const G6S = {first3dRatio: 1.15, storyFilesMB: 1.5, shellGrowthKB: 3, gpuDesktopMB: 448, gpuMobileMB: 192};
+export function g6sVerdict(b, hero) {
+  const MB = 1024 * 1024, fails = [], notes = [];
+  if (!b) return {G6s: null, fails: ["no budget result"], notes};
+  const br = b.browser || {}, st = b.story || {};
+  if (st.filesBytes != null && st.filesBytes > G6S.storyFilesMB * MB) fails.push(`story files ${(st.filesBytes / MB).toFixed(2)} MB > ${G6S.storyFilesMB} MB`);
+  if (br.gpuDesktop != null && br.gpuDesktop > G6S.gpuDesktopMB * MB) fails.push(`GPU desktop ${(br.gpuDesktop / MB).toFixed(0)} MB > ${G6S.gpuDesktopMB}`);
+  if (br.gpuMobile != null && br.gpuMobile > G6S.gpuMobileMB * MB) fails.push(`GPU mobile ${(br.gpuMobile / MB).toFixed(0)} MB > ${G6S.gpuMobileMB}`);
+  const hb = hero && hero.browser && hero.browser.first3dBytes;
+  if (br.first3dBytes == null || !hb) notes.push(`first-3D bytes not compared (story ${br.first3dBytes ?? "n/a"}, hero ${hb ?? "n/a"})`);
+  else { const r = br.first3dBytes / hb; notes.push(`first-3D bytes ${(br.first3dBytes / MB).toFixed(2)} MB = hero x ${r.toFixed(3)}`);
+    if (r > G6S.first3dRatio) fails.push(`first-3D bytes hero x ${r.toFixed(3)} > ${G6S.first3dRatio}`); }
+  if (b.node && b.node.shellGrowth != null) { notes.push(`page shell +${(b.node.shellGrowth / 1024).toFixed(2)} kB gz over ${b.node.baseRef} (allowance ${G6S.shellGrowthKB} kB; page-wide, owner item)`); }
+  const measured = br.first3dBytes != null || br.gpuDesktop != null || st.filesBytes != null;
+  return {G6s: measured ? !fails.length : null, fails, notes};
+}
+
+async function tierMain(argv) {
+  const {spawnSync} = await import("node:child_process");
+  const fs = await import("node:fs");
+  const {pos, opt} = (await import("./browser.mjs")).parseArgs(argv);
+  const ids = opt.all ? TIER_IDS : String(opt.story || "").split(",").filter(Boolean);
+  if (!ids.length) { console.error("usage: node tests/js/lib/storyqa.mjs --all | --story id[,id] [--sets node,h0,browser,gpu] [--out DIR]"); process.exit(2); }
+  const sets = new Set(String(opt.sets || "node,h0,browser,gpu").split(","));
+  const OUT = resolve(opt.out || join(CGM, "scratch/story3_w/R7_gpu/run_" + (opt.pass || "x")));
+  fs.mkdirSync(OUT, {recursive: true});
+  const DOCS = resolve(opt.docs || join(REPO, "docs/tng50"));
+  const ixFile = resolve(opt.index || TIER_INDEX_DEFAULT), IX = tierIndex(ixFile, ids);
+  const byId = Object.fromEntries((IX.stories || []).map(e => [e.id, e]));
+  const T0 = Date.now(), log = m => { const s = `[${((Date.now() - T0) / 1000).toFixed(0)} s] ${m}`; console.log(s); fs.appendFileSync(join(OUT, "runner.log"), s + "\n"); };
+  log(`tier run: stories ${ids.join(",")}; sets ${[...sets].join(",")}; docs ${DOCS}; index ${ixFile}; out ${OUT}`);
+  const needTree = sets.has("browser") || sets.has("gpu");
+  const TREE = needTree ? await tierTree(DOCS, IX, join(OUT, "tree")) : null;
+  const run = (name, args, env, dir) => {
+    fs.mkdirSync(dir, {recursive: true});
+    const t = Date.now(), r = spawnSync(process.execPath, [join(REPO, "tests/js", name + ".mjs"), ...args], {cwd: REPO, env: {...process.env, ...env}, encoding: "utf8", maxBuffer: 256 << 20, timeout: (+opt["script-timeout"] || 1800) * 1000});
+    const txt = (r.stdout || "") + (r.stderr || ""); fs.writeFileSync(join(dir, name + (args.includes("--g14") ? "_g14" : "") + ".log"), txt);
+    const last = txt.trim().split("\n").filter(l => /^(PASS|FAIL|ok|not ok|\d+ passed|.*passed.*failed)/i.test(l)).slice(-1)[0] || txt.trim().split("\n").slice(-1)[0] || "";
+    log(`${r.status === 0 ? "PASS" : "FAIL"} ${name}${args.includes("--g14") ? " --g14" : ""} ${dir.split("/").pop()} ${((Date.now() - t) / 1000).toFixed(0)} s  ${last.slice(0, 160)}`);
+    return {status: r.status, signal: r.signal, out: txt};
+  };
+  const readJ = f => { try { return JSON.parse(readFileSync(f, "utf8")); } catch { return null; } };
+  const vizOf = g => join(CGM, "data/gal", String(g), "viz");
+  const result = {schema: "story-gates-run/1", pass: opt.pass ? +opt.pass : null, started: new Date(T0).toISOString(), index: ixFile, docs: DOCS, gpu: !!process.env.TNG_GPU, stories: {}};
+  const heaviest = ids.includes("damped") ? "damped" : ids[0];
+
+  /* H0 once, on the real tree */
+  let H0 = null;
+  if (sets.has("h0")) { const r = run("story_hero_identity", [], {}, join(OUT, "_hero")); H0 = r.status === 0; result.H0_log = join(OUT, "_hero/story_hero_identity.log"); }
+
+  /* hero budget baseline (first-3D bytes) */
+  let heroBudget = opt["hero-budget"] ? readJ(resolve(opt["hero-budget"])) : null;
+  const skip = new Set(String(opt.skip || "").split(",").filter(Boolean));
+  if (sets.has("gpu") && !opt["no-hero-budget"] && !heroBudget) {
+    const d = join(OUT, "_hero");
+    run("story_budget", [TREE, "--story", "full", "--out", d], {STORY_QA_STORY: "", STORY_VIZ: vizOf(488530), TNG_BROWSER: "1"}, d);
+    heroBudget = readJ(join(d, "budget.json"));
+  }
+
+  /* hero baselines in the same tree (sets browser/gpu): a story failure the hand-tuned hero shares is marked "also on hero"
+   * (a v2 condition, routed as such), never hidden */
+  const hero = {};
+  const AXE0 = process.env.AXE_JS || join(CGM, "scratch/story2_w/review3_perf_a11y/axe/package/axe.min.js");
+  const henv = {STORY_QA_STORY: "", STORY_VIZ: vizOf(488530), TNG_BROWSER: "1", ...(existsSync(AXE0) ? {AXE_JS: AXE0} : {})}, HD = join(OUT, "_hero");
+  if (sets.has("browser") && !opt["no-hero-base"]) {
+    run("story_overlap", [TREE, "--quick", "--samples", "24", "--no-explorer", "--motion", "reduced", "--out", HD], henv, HD);
+    hero.overlap = readJ(join(HD, "overlap.json"));
+    hero.a11y = run("story_a11y", [TREE, "--out", HD], henv, HD).status === 0;
+  }
+  if (sets.has("gpu") && !opt["no-hero-base"]) {
+    run("story_g11", [TREE, "--viewports", "1440x900,390x844", "--shots", join(HD, "shots_g11"), "--out", HD], henv, HD);
+    hero.g11 = g11Verdict(readJ(join(HD, "g11.json")));
+    if (!skip.has("perf")) { hero.g5a = run("story_perf", [TREE, "--out", HD], henv, HD).status === 0; hero.perf = readJ(join(HD, "perf.json")); }
+  }
+  const sig = x => { const m = String(x.msg || x), sp = m.indexOf(" "), vp = sp > 0 ? m.slice(0, sp) : "";   // viewport kept; beat, text, numbers dropped
+    return (x.gate || "") + " " + vp + " " + m.slice(sp + 1).replace(/^B\d+[a-z]*:\s*/, "").replace(/"[^"]*"/g, '"~"').replace(/\[[^\]]*\]/g, "[]").replace(/\d+(\.\d+)?/g, "N").slice(0, 160); };
+  const heroSigs = new Set(((hero.overlap && hero.overlap.failures) || []).map(sig));
+  result.hero = {overlap: hero.overlap ? {states: hero.overlap.states, failing: hero.overlap.failing, byGate: hero.overlap.byGate} : null, a11y: hero.a11y ?? null,
+    g11: hero.g11 || null, g5a: hero.g5a ?? null, budget: heroBudget ? heroBudget.browser || null : null};
+
+  for (const id of ids) {
+    const e = byId[id]; if (!e) { log(`no index entry for ${id}`); result.stories[id] = {error: "no index entry"}; continue; }
+    const AXE = process.env.AXE_JS || join(CGM, "scratch/story2_w/review3_perf_a11y/axe/package/axe.min.js");
+    const D = join(OUT, id), env = {STORY_QA_STORY: id, STORY_VIZ: vizOf(e.galaxy), TNG_BROWSER: "1", ...(existsSync(AXE) ? {AXE_JS: AXE} : {})};
+    fs.mkdirSync(D, {recursive: true});
+    const G = {H0, sha: null}, notes = [], ROOTD = join(DOCS, STORY_REL);
+    /* sha of the story's files (as tested) */
+    const files = tierFiles(e), shas = {};
+    for (const f of files) { const p = join(ROOTD, f); shas[f] = existsSync(p) ? sha16(readFileSync(p)) : null; }
+    G.sha = sha16(Buffer.from(JSON.stringify(shas))); G.files = shas;
+    if (sets.has("node")) {
+      const beats = readJ(join(ROOTD, e.beats)), data = readJ(join(ROOTD, "data", e.story));
+      const gn = (beats && beats.meta && beats.meta.generator && beats.meta.generator.gates_node) || {};
+      for (const k of ["G1", "G2", "G3", "G12", "G13r", "G15", "G19", "G20"]) G[k + "_node"] = gn[k] ?? null;
+      G.schema = gn.schema ?? null;
+      const gc = (data && data.gates_case) || {};
+      G.G16 = gc.G16 ? !!gc.G16.pass : null;
+      G.G15 = (gn.G15 ?? null) === null ? null : !!gn.G15 && (gc.G15_data ? !!gc.G15_data.pass : true);
+      G.G13r = (gn.G13r ?? null) === null ? null : !!gn.G13r && (gc.G13r_data ? gc.G13r_data.pass !== false : true);
+      G.G19 = gn.G19 ?? null; G.G20 = gn.G20 ?? null;
+      const watch = beats && beats.meta ? beats.meta.watchTotal_s : null;
+      if (watch != null) { G.watch_s = watch; notes.push(`watch ${watch} s (target ${beats.meta.target_s} s; owner window 100-200 s, OWNER_DECISIONS 5)${watch > 200 || watch < 100 ? " OUTSIDE the owner window" : ""}`); }
+      const g17 = readJ(opt.g17 || TIER_FUZZ_DEFAULT.g17), g18 = readJ(opt.g18 || TIER_FUZZ_DEFAULT.g18) || readJ(join(CGM, "scratch/story3_w/R7_fuzz/g18_interim.json"));
+      if (g17 && g17.hard) { const failed = (g17.hard.failed || []).map(x => typeof x === "string" ? x : JSON.stringify(x));
+        const mine = g17.hard_files ? g17.hard_files.some(f => f.endsWith("/" + e.story.split("/").pop())) : true;
+        G.G17 = mine ? !failed.some(f => f.includes(e.ray)) : null; if (!mine) notes.push("G17: story file not in the fuzz hard set"); }
+      else { G.G17 = null; notes.push("G17 report not found"); }
+      G.G18 = null; if (g18) notes.push(`G18 (report only, page-wide${g18.n < 200 ? ", interim" : ""}): ${g18.all_three ?? "?"}/${g18.n ?? "?"} = ${g18.rate != null ? (100 * g18.rate).toFixed(1) : "?"} % (target 95 %)`);
+      else notes.push("G18 report not found (report only)");
+    }
+    if (sets.has("browser")) {
+      if (!skip.has("overlap")) run("story_overlap", [TREE, "--quick", "--samples", "24", "--no-explorer", "--motion", "reduced", "--shots", join(D, "shots_overlap"), "--out", D], env, D);
+      const ov = skip.has("overlap") ? null : readJ(join(D, "overlap.json"));
+      if (ov && ov.states) { const bg = ov.byGate || {}; for (const k of ["G1", "G2", "G3", "G10", "G12"]) G[k + "_dom"] = !bg[k];
+        notes.push(`overlap DOM: ${ov.states} states, ${ov.failing} failing ${JSON.stringify(bg)}`);
+        const fl = (ov.failures || []).map(f => ({gate: f.gate, msg: f.msg, hero: heroSigs.has(sig(f))}));
+        G.overlap_failures = fl.slice(0, 40); const sh = fl.filter(f => f.hero).length;
+        if (fl.length) notes.push(`overlap DOM failures: ${fl.length} listed, ${sh} with the same message on the hero (also on hero)`);
+        // a DOM layout failure the hand-tuned hero shows with the same message (same viewport, element and reason) is a v2
+        // condition, not a Tier A regression: the gate passes with a documented "inherited_v2" exemption (DESIGN_tierA §1
+        // "all-pass or a documented exemption"; treated like the v2 G6 shell item, §9). Any story-only failure still fails.
+        if (heroSigs.size && fl.length === (ov.failures || []).length) for (const k of ["G1", "G2", "G3", "G10", "G12"]) {
+          const mine = fl.filter(f => f.gate === k); if (!mine.length || mine.some(f => !f.hero)) continue;
+          G[k + "_dom"] = true; G.exemptions = {...(G.exemptions || {}), inherited_v2: {...((G.exemptions || {}).inherited_v2 || {}), [k]: [...new Set(mine.map(sig))]}}; } }
+      else notes.push("overlap DOM: no states measured");
+      const a = skip.has("a11y") ? {status: null, out: ""} : run("story_a11y", [TREE, "--out", D], env, D);
+      G.G9 = a.status === null ? null : a.status === 0; if (G.G9 === false) { const fl = a.out.split("\n").filter(l => /^FAIL/.test(l)).slice(0, 6); notes.push(...fl.map(l => "G9 " + l.replace(/^FAIL\s+/, "")));
+        if (hero.a11y === false) notes.push("G9: the hero fails story_a11y too in this tree (see _hero/story_a11y.log)"); }
+    }
+    if (sets.has("gpu")) {
+      run("story_g11", [TREE, "--viewports", "1440x900,390x844", "--shots", join(D, "shots_g11"), "--out", D], env, D);
+      const gv = g11Verdict(readJ(join(D, "g11.json"))); G.G11 = gv.G11; G.G4 = gv.G4; if (gv.exempt.length) G.exemptions = {...(G.exemptions || {}), G11: gv.exempt};
+      if (gv.g11Beats.length) notes.push(`G11 frames failing: ${gv.g11Beats.join(", ")}${gv.exempt.length ? " (one exemption allowed; must be documented)" : ""}`);
+      if (gv.g4Frames.length) notes.push(`G4 frames failing: ${gv.g4Frames.join(", ")}`);
+      fs.mkdirSync(join(D, "g14"), {recursive: true});
+      run("story_g11", ["--g14", "--story", id, TREE, "--shots", join(D, "shots_g14"), "--out", join(D, "g14")], env, D);
+      const g14 = g14Verdict(readJ(join(D, "g14/g14.json"))); G.G14 = g14.G14; for (const f of g14.fails) notes.push("G14 " + f);
+      if (!skip.has("budget")) { run("story_budget", [TREE, "--story", id, "--out", D], env, D);
+        const gs = g6sVerdict(readJ(join(D, "budget.json")), heroBudget); G.G6s = gs.G6s; notes.push(...gs.notes); for (const f of gs.fails) notes.push("G6s " + f); }
+      if (id === heaviest && !skip.has("perf")) { const r = run("story_perf", [TREE, "--out", D], env, D); G.G5a = r.status === 0; }
+    }
+    /* combined layout gates: node (R3, full matrix x 1600 p) and DOM (this run) must both hold where measured */
+    for (const k of ["G1", "G2", "G3", "G12"]) { const a = G[k + "_node"], b = G[k + "_dom"]; G[k] = a === false || b === false ? false : (a ?? b ?? null); }
+    G.G10 = G.G10_dom ?? null;
+    const gateIds = ["H0", "G1", "G2", "G3", "G4", ...(id === heaviest && sets.has("gpu") && !skip.has("perf") ? ["G5a"] : []), "G6s", "G9", "G10", "G11", "G12", "G13r", "G14", "G15", "G16", "G17", "G19", "G20"];
+    const missing = gateIds.filter(k => G[k] == null), failing = gateIds.filter(k => G[k] === false);
+    G.all = !failing.length && !missing.length;
+    result.stories[id] = {...G, failing, missing, notes};
+    log(`${id}: ${G.all ? "ALL PASS" : `failing [${failing.join(", ")}] missing [${missing.join(", ")}]`}`);
+    fs.writeFileSync(join(OUT, "gates.json"), JSON.stringify(result, null, 1) + "\n");
+  }
+  result.finished = new Date().toISOString();
+  fs.writeFileSync(join(OUT, "gates.json"), JSON.stringify(result, null, 1) + "\n");
+  log(`wrote ${join(OUT, "gates.json")}`);
+  /* preview (R7_gpu): the same browser/GPU gates on a scratch tree with the owners' pending handoff patches applied
+   * (--preview DOCS, STORY_QA_PREVIEW, or a symlink <out>/../preview_docs_for_pass<N>). A preview never sets gates. */
+  const pvLink = opt.pass ? join(dirname(OUT), "preview_docs_for_pass" + opt.pass) : null;
+  const PV = opt.preview || process.env.STORY_QA_PREVIEW || (pvLink && existsSync(pvLink) ? fs.realpathSync(pvLink) : null);
+  if (PV && !opt["is-preview"]) {
+    log(`preview run on ${PV}`);
+    const hb = join(OUT, "_hero/budget.json");
+    const r = spawnSync(process.execPath, [new URL(import.meta.url).pathname, ...(opt.all ? ["--all"] : ["--story", ids.join(",")]), "--docs", PV, "--out", join(OUT, "preview"),
+      "--sets", [...sets].filter(x => x !== "h0").join(","), "--is-preview", "--no-hero-base", "--skip", opt["preview-skip"] || "budget,perf,overlap,a11y", ...(existsSync(hb) ? ["--hero-budget", hb] : []), "--index", ixFile],
+      {cwd: REPO, env: process.env, stdio: "inherit", timeout: 3 * 3600 * 1000});
+    log(`preview finished (${r.status}); gates in ${join(OUT, "preview/gates.json")}`);
+  }
+  process.exit(0);
+}
+if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) await tierMain(process.argv.slice(2));

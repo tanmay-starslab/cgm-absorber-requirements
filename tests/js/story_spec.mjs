@@ -215,6 +215,15 @@ const inside = (r, c, e = 0.5) => r.x >= c.x - e && r.y >= c.y - e && r.x + r.w 
   const L = dockLayout({x: 24, y: 600, w: 1392, h: 216}, "pair", {lead: "HI", readouts: g19.readouts, ghostLabels: g19.ghostLabels});
   check(L.kids.some(k => k.id === "ghost:axis") && L.kids.some(k => k.id === "ghost:wings"), "B10 ghost labels register as dock children in the pair dock");
 }
+/* fix2 (review2 ux M2, beauty R2-B6, science R2-S3): spans that differ: the tick row is the bottom panel's, the top one names its span */
+{
+  const win = {OVI: [-300, 300], HI: [-2000, 2000]}, L = dockLayout({x: 24, y: 600, w: 1392, h: 216}, "pair", {lead: "OVI", win, readouts: {OVI: [{id: "fit", text: "fit: log N 14.5"}]}});
+  const ax = L.kids.find(k => k.id === "read:OVI:axis");
+  check(ax && /±300 km\/s/.test(ax.text) && ax.rect.y < L.panels.OVI.y && L.panels.HI.y > L.panels.OVI.y && L.kids.some(k => k.id === "read:OVI:fit"),
+    `unequal spans: the O VI row says "${ax && ax.text}" above its panel, keeps its readout, and H I (±2 000) is the bottom panel the ticks label`);
+  const same = dockLayout({x: 24, y: 600, w: 1392, h: 216}, "pair", {lead: "OVI"});
+  check(!same.kids.some(k => /axis/.test(k.id)), "equal spans (the hero): no axis note");
+}
 
 /* ---------------- 9: E7 pixel rule, blur ---------------- */
 {

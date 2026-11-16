@@ -194,6 +194,36 @@ const g19 = B.ghostCell(data, fion, {eq: "E3", term: "N", ion: "HI", idx: 492, s
 const g18 = B.ghostCell(data, fion, {eq: "E3", term: "N", ion: "HI", idx: 492, s: 18.4});
 ok(g19.wings && !g18.wings, "wings flag above 10^18.5 only");
 ok(B.namedOverride(g19).key === "N492" && B.namedOverride(g19).value === 18.6, "N ghost on cell 492 maps to the N492 override");
+/* v3 (DESIGN_tierA §6.4, §10 R2): role ghost aliases, data-driven log N range, role anchors in the planner */
+{
+  ok(B.GHOST_ALIAS["T@cloudA.core"] === "T125" && B.GHOST_ALIAS["T@S5"] === "T263" && B.GHOST_ALIAS["N@S4a"] === "N492" && Object.isFrozen(B.GHOST_ALIAS),
+    "v3: ghost aliases T125 -> T@cloudA.core, T263 -> T@S5, N492 -> N@S4a");
+  ok(B.ghostKey("T@S5") === "T263" && B.ghostKey("T263") === "T263" && B.ghostKey("T@hiPeak") === "T@hiPeak" && B.ghostKey(null) === null
+    && B.ghostTermOf("N@S4a") === "N" && B.ghostTermOf("T@hiPeak") === "T", "v3: ghostKey / ghostTermOf");
+  // a role story's drag feeds the key its beat declared, whatever cell the role lands on
+  const gx = B.ghostCell(data, fion, {eq: "E3", term: "N", ion: "HI", idx: 300, s: 17.2});
+  ok(B.namedOverride(gx) === null && B.namedOverride(gx, "N492").key === "N492" && B.namedOverride(gx, "N492").value === 17.2, "v3: named N492 on a non-hero cell");
+  const gT = B.ghostCell(data, fion, {eq: "E2", term: "T", ion: "OVI", idx: 301, s: 5.5}); gT.named = "T263";
+  ok(B.namedOverride(gT).key === "T263" && B.namedOverride(gT).value === gT.cell.T && B.namedOverride(gT, "N492") === null, "v3: ghost.named T263 on another cell; a T ghost never feeds an N key");
+  ok(B.namedOverride(B.ghostCell(data, fion, {eq: "E2", term: "T", ion: "OVI", idx: 263, s: 5.5})).key === "T263", "v3: hero cell rule unchanged without a declared key");
+  // log N range from data: hero unchanged, damped reaches 10^21, a caller range wins, tau0 (via N) follows
+  const dd = JSON.parse(readFileSync(join(ROOT, "data/story_488530_rand_b050_a215.json"), "utf8"));
+  const hiIdx = dd.ions.HI.cells.logN.reduce((bi, v, i, A) => (v > A[bi] ? i : bi), 0);
+  const sD = B.sliderSpec(EQ.eqs.E3, "N", {data: dd, ion: "HI", idx: hiIdx});
+  ok(sD && sD.min === 12 && sD.max === 21, `v3: damped B10 N slider 10^${sD && sD.min} -> 10^${sD && sD.max} (ray total 10^${dd.ions.HI.totals.logN})`);
+  const oS = B.sliderSpec(EQ.eqs.E3, "N", {data: dd, ion: "OVI", idx: dd.ions.OVI.cells.logN.reduce((bi, v, i, A) => (v > A[bi] ? i : bi), 0)});
+  ok(oS && oS.max === 16, "v3: O VI range unchanged on the damped ray (total below 10^16)");
+  const sG = B.sliderSpec(EQ.eqs.E3, "N", {data: dd, ion: "HI", idx: hiIdx, range: {HI: [17, 22]}});
+  ok(sG.min === 17 && sG.max === 21, "v3: a caller range wins, capped at 10^21");
+  const tD = B.sliderSpec(EQ.eqs.E3, "tau0", {data: dd, ion: "HI", idx: hiIdx}), off = tD.now - dd.ions.HI.cells.logN[hiIdx];
+  ok(Math.abs(tD.max - (21 + off)) < 1e-9 && Math.abs(tD.min - (12 + off)) < 1e-9, "v3: tau0 slider (via N) follows the data range");
+  ok(JSON.stringify(B.logNRange([12, 19], 18.2, {data, ion: "HI"})) === "[12,19]", "v3: hero H I (total 10^18.04) keeps [12, 19]");
+  // planner: seek resolves role anchors to cells; the declared ghost key rides on the item (and onto the ghost)
+  const fsR = {beat: {id: "B7c", i: 9, u: 0.5}, cell: {idx: 40, w: 0.5}, spec: {lead: "OVI"}, eqs: [{id: "E2", anchor: {kind: "cell", ref: 263}, hl: [], ghost: null, ghostKey: "T263", phase: 0}]};
+  const flat = planEquations(fsR, EQ, {data, cls: "desktop"}).flatMap(x => (x.chain ? x.parts : [x]));
+  ok(flat.some(x => x.key === "E2" && x.idx === 263 && x.named === "T263"), "v3: planner carries the declared ghost key (item.named)");
+  ok(planEquations({...fsR, eqs: [{...fsR.eqs[0], ghostKey: undefined}]}, EQ, {data, cls: "desktop"}).flatMap(x => (x.chain ? x.parts : [x])).every(x => !("named" in x)), "v3: no named key on hero items");
+}
 const gt = B.ghostCell(data, fion, {eq: "E3", term: "tau0", ion: "OVI", idx: 263, s: 1});
 near(B.tau0Of(gt.cell.logN, data.ions.OVI.atom.f, data.ions.OVI.atom.lam0_A, data.ions.OVI.cells.b[263]), 10, 1e-9, "tau0 drag sets N so that tau0 = target");
 const sR = B.sliderSpec(EQ.eqs.E6, "R", {data, ion: "OVI", idx: null, spec: {R: 15000}});

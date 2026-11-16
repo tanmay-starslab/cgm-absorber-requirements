@@ -492,5 +492,137 @@ else {
   const f = seek(0.098, data); ok(f.fields.some(x => x.name === "T"), "seek: fields hint includes the next beat's field inside its lead");
 }
 
+/* ================= v3 roles and beat registry (DESIGN_tierA §6.1, §6.2 step 9; unit R2) =================
+   Role-form beats/shots are made mechanically from the hero (cell 263 -> @S5, eq anchors 125/263/492 -> @cloudA.core/@S5/
+   @S4a, ghosts T125/T263/N492 -> T@cloudA.core/T@S5/N@S4a) and run on hero data carrying the matching roles: seek must give
+   the hero's FrameState exactly (bar the new eqs[].ghostKey). Then the same beats on a second ray with its own roles. */
+const clone = o => JSON.parse(JSON.stringify(o));
+const ROLE_OF = {125: "@cloudA.core", 263: "@S5", 492: "@S4a"}, GHOST_OF = {T125: "T@cloudA.core", T263: "T@S5", N492: "N@S4a"};
+function roleBeats(bd) {
+  const b = clone(bd); b.schema = "story-beats/3";
+  for (const x of b.beats) {
+    if (Number.isInteger(x.cell) && ROLE_OF[x.cell]) x.cell = ROLE_OF[x.cell];
+    for (const e of x.eqs) { if (e.anchor && e.anchor.kind === "cell" && ROLE_OF[e.anchor.ref]) e.anchor.ref = ROLE_OF[e.anchor.ref]; if (e.ghost) e.ghost = GHOST_OF[e.ghost] || e.ghost; }
+  }
+  return b;
+}
+function roleShots(sd) {
+  const walk = x => { if (Array.isArray(x)) return x.map(walk); if (x && typeof x === "object") { const o = {}; for (const [k, v] of Object.entries(x)) o[k] = k === "cell" && ROLE_OF[v] ? ROLE_OF[v] : walk(v); return o; } return x; };
+  return walk(sd);
+}
+/* roles {name: idx} on a copy of the data, cells table from the ray's own cell centres */
+function withRoles(d, map, extra = {}) {
+  const ctx = SK.prepare(d, beats, shots), cells = {};
+  for (const id of new Set(Object.values(map).filter(Number.isInteger))) cells[String(id)] = {c: ctx.cellPos(id), h: 1, l: ctx.cellL(id)};
+  const roles = {cells};
+  for (const [k, v] of Object.entries(map)) roles[k] = {cell: v, ok: true, why: ""};
+  return {...d, roles: {...roles, ...extra}};
+}
+/* role audit for the director and tests (DESIGN_tierA §6.2 step 9: an unknown role throws there; the page only drops the
+   key, ctx.drops). Kept out of js/core to save shell bytes (G6); the director (R3) and the fuzz (R7) use the same recipe. */
+/* [{ref, where}] for every role a beats/shots pair names */
+function roleRefs(beatsDoc, shotsDoc) {
+  const out = [], add = (ref, where) => { if (SK.isRole(ref)) out.push({ref, where}); };
+  for (const b of (beatsDoc && beatsDoc.beats) || []) {
+    add(b.cell, `${b.id}.cell`);
+    for (const t of b.text || []) add(t.anchor && t.anchor.ref, `${b.id}/${t.id}.anchor`);
+    for (const e of b.eqs || []) { add(e.anchor && e.anchor.ref, `${b.id}/${e.id}.anchor`); const g = String(e.ghost || ""); add(g.slice(g.indexOf("@")), `${b.id}/${e.id}.ghost`); }
+  }
+  const walk = (x, w) => { if (SK.isRole(x)) add(x, w); else if (x && typeof x === "object") for (const k of Object.keys(x)) walk(x[k], `${w}.${k}`); };
+  walk((shotsDoc && shotsDoc.shots) || {}, "shots");
+  return out;
+}
+/* [{ref, where, kind, why}]: kind unknown | noPosition | okFalse / noCell (an equation on it is dropped, G13r) */
+function auditRoles(data, beatsDoc, shotsDoc) {
+  const out = [];
+  for (const {ref, where} of roleRefs(beatsDoc, shotsDoc)) {
+    const r = SK.resolveRole(data, ref), eq = /\/E\w+\.(anchor|ghost)$/.test(where), put = (kind, why) => out.push({ref, where, kind, why});
+    if (!r) put("unknown", "unknown role");
+    else if (r.cell == null && !r.c && !Number.isFinite(r.l)) put("noPosition", r.why || "no position");
+    else if (eq && !r.ok) put("okFalse", `ok:false ${r.why}: equation dropped`);
+    else if (eq && r.cell == null) put("noCell", "equation needs a cell: dropped");
+  }
+  return out;
+}
+function assertRoles(data, beatsDoc, shotsDoc) {
+  const bad = auditRoles(data, beatsDoc, shotsDoc).filter(a => a.kind === "unknown" || a.kind === "noPosition");
+  if (bad.length) throw new Error("seek: unresolved roles: " + bad.map(a => `${a.ref} at ${a.where} (${a.why})`).join("; "));
+  return true;
+}
+{
+  const rb = roleBeats(beats), rs = roleShots(shots);
+  ok(TL.createTimeline(rb, {shots: rs, schema}).validate().length === 0, "v3: role-form beats valid (schema story-beats/3, registry, @role cells)");
+  ok(TL.createTimeline(beats, {shots, schema}).validate().every(e => !/registry|cell must/.test(e)), "v3: hero beats pass the beat registry");
+  const rdata = withRoles(data, {"cloudA.core": 125, S5: 263, S4a: 492});
+  ok(auditRoles(rdata, rb, rs).length === 0 && assertRoles(rdata, rb, rs) === true, "v3: every role of the role-form hero resolves");
+  const sk = SK.makeSeek({beats: rb, shots: rs}), sh = SK.makeSeek({beats, shots});
+  const rnd = lcg(12345), ps = Array.from({length: 500}, () => rnd());
+  const strip = f => { for (const e of f.eqs) delete e.ghostKey; return JSON.stringify(f); };
+  const ovs = [{}, {T263: 2e6, T125: 3e4, N492: 17.5}, {T263: 3e4, R: 30000, sn: 20}];
+  let same = 0, tot = 0, first = null;
+  for (const ov of ovs) for (const p of ps) { tot++; const a = strip(sk(p, rdata, ov)), b = JSON.stringify(sh(p, data, ov)); if (a === b) same++; else if (!first) first = p; }
+  ok(same === tot, `v3: role-form hero seek == hero seek on ${tot} (p, overrides) frames${first == null ? "" : " (first diff at p " + first + ")"}`);
+  const fB7c = sk(TL.createTimeline(rb).byId("B7c").p0 + 0.002, rdata, {T263: 2e6});
+  const e2 = fB7c.eqs.find(e => e.id === "E2");
+  ok(e2 && e2.anchor.ref === 263 && e2.ghostKey === "T263" && e2.ghost && e2.ghost.term === "T" && e2.ghost.value === 2e6, "v3: T@S5 ghost reads the frozen T263 key, anchor resolved to the role's cell");
+  ok(sh(0.5, data).eqs.every(e => !("ghostKey" in e)), "v3: hero FrameState has no ghostKey");
+
+  // a second ray (the damped pick) with its own roles, one ok:false role and the shots' @S5 orbit
+  const d2 = J("data/story_488530_rand_b050_a215.json");
+  const ovi = d2.ions.OVI.cells, hi = d2.ions.HI.cells, arg = c => c.tau0.reduce((bi, t, i, A) => (t > A[bi] ? i : bi), 0);
+  const s5 = (ovi.idx || [])[arg(ovi)] ?? arg(ovi), hc = (hi.idx || [])[arg(hi)] ?? arg(hi);
+  const r2 = withRoles(d2, {S5: s5, "cloudA.core": hc, S4a: hc});
+  r2.roles.S4a = {cell: hc, ok: false, why: "x_HI below 1e-4 (test)"};
+  const tl2 = TL.createTimeline(rb);
+  let threw = null, finite = true, b10E3 = 0, b10Hero = 0, b7bl = true;
+  try {
+    for (const p of ps) { const f = sk(p, r2, {}); if (!f.cam.pos.every(Number.isFinite) || !Number.isFinite(f.l)) finite = false;
+      if (f.beat.id === "B10" && f.eqs.some(e => e.id === "E3")) b10E3++;
+      if (f.beat.id === "B10" && sh(p, d2, {}).eqs.some(e => e.id === "E3")) b10Hero++;
+      if (f.beat.id === "B7b" && Math.abs(f.l - SK.prepare(r2, rb, rs).cellL(s5)) > 1e-9) b7bl = false; }
+  } catch (e) { threw = e; }
+  ok(!threw && finite, `v3: second ray with roles, 500 p: no throw, finite camera${threw ? " (" + threw.message + ")" : ""}`);
+  ok(b7bl, "v3: B7b stop (cell @S5) holds at the second ray's S5 cell");
+  ok(b10E3 === 0 && b10Hero > 5, `v3: E3 on an ok:false role (@S4a) is dropped (G13r; ${b10Hero} B10 frames where numeric beats show it)`);
+  const ctx2 = SK.prepare(r2, rb, rs);
+  ok(auditRoles(r2, rb, rs).some(a => a.ref === "@S4a" && a.kind === "okFalse") && ctx2.drops.has("@S4a"), "v3: the ok:false drop is recorded (audit, ctx.drops)");
+  // unknown role: the browser drops the key, the director/tests throw
+  const bad = clone(rb); bad.beats.find(b => b.id === "B7b").cell = "@nope"; bad.beats.find(b => b.id === "B5").eqs[0].anchor.ref = "@nope2";
+  let thrown = false; try { assertRoles(rdata, bad, rs); } catch (e) { thrown = /@nope/.test(e.message) && /@nope2/.test(e.message); }
+  ok(thrown, "v3: assertRoles throws on unknown roles (director and test mode)");
+  const skb = SK.makeSeek({beats: bad, shots: rs}), tlb = TL.createTimeline(bad), B7b = tlb.byId("B7b"), B5 = tlb.byId("B5");
+  let fb = null; try { fb = [skb(B7b.p0 + 0.001, rdata), skb(B5.p0 + (B5.p1 - B5.p0) * 0.5, rdata)]; } catch (e) { fb = e; }
+  ok(Array.isArray(fb) && fb[0].l === SK.prepare(rdata, bad, rs).tl.byId("B7b").l0 * SK.prepare(rdata, bad, rs).lscale && !fb[1].eqs.some(e => e.id === "E2"),
+    "v3: browser seek with an unknown role: no throw, the stop falls back to its l0, the equation is dropped");
+  const cb = SK.prepare(rdata, bad, rs);
+  ok(cb.drops.get("@nope") === "unknown role" && cb.drops.get("@nope2") === "unknown role" && auditRoles(rdata, bad, rs).filter(a => a.kind === "unknown").length === 2, "v3: unknown roles recorded for the page log (ctx.drops)");
+  // shots points: "@role", {cell: "@role"}, {enc: k}, unknown -> probe
+  const pctx = {frame: cb.frame, l: 12, lscale: 1, cellPos: cb.cellPos, encL: k => SK.prepare({...rdata, plan: {slots: {A: {on: true, l0: 0, l1: 20, encounter: "e1"}}, encounters: [{id: "e1", lc: 7.5}]}}, rb, rs).encL(k)};
+  const P = l => cb.frame.P(l), same3 = (a, b) => a.every((x, i) => Math.abs(x - b[i]) < 1e-9);
+  ok(same3(SH.pointOf("@S5", pctx), cb.cellPos(263)) && same3(SH.pointOf({cell: "@S5"}, pctx), cb.cellPos(263)), "v3: pointOf resolves \"@S5\" and {cell: \"@S5\"}");
+  ok(same3(SH.pointOf({enc: "A"}, pctx), P(7.5)) && same3(SH.pointOf({enc: "e1"}, pctx), P(7.5)), "v3: pointOf {enc: k} = the plan encounter's centre (slot key or id)");
+  ok(same3(SH.pointOf("@nope", pctx), P(12)) && same3(SH.pointOf({cell: "@nope", up: 0}, pctx), P(12)) && same3(SH.pointOf({enc: "Z"}, pctx), P(12)), "v3: unresolved role/encounter falls back to the probe");
+  ok(same3(cb.cellPos(263), SK.prepare(data, beats, shots).cellPos(263)) && SK.prepare(data, beats, shots).cellPos(99999).every(Number.isFinite), "v3: numeric cellPos unchanged (hero)");
+  // derived roles: pair (cells) and pairMid (l)
+  const rp = {...rdata, roles: {...rdata.roles, pair: {cells: [125, 263], ok: true}, pairMid: {l: 24.1}}};
+  const rr = SK.resolveRole(rp, "@pair"), rm = SK.resolveRole(rp, "@pairMid");
+  ok(rr && rr.cell == null && rr.c.length === 3 && Math.abs(rr.l - (rdata.roles.cells["125"].l + rdata.roles.cells["263"].l) / 2) < 1e-9 && rm.l === 24.1 && SK.resolveRole(rp, "@cells") === null && SK.resolveRole(rp, "S5") === null,
+    "v3: resolveRole handles {cells} and {l} roles; 'cells' and bare names are not roles");
+  // registry
+  const reg = d => TL.createTimeline(d).validate().filter(e => /registry|cond \(default off\)|cell must/.test(e));
+  const mk = (id, cond, cell) => { const d = clone(beats); const x = d.beats.find(b => b.id === "B8"); x.id = id; if (cond) x.cond = cond; if (cell !== undefined) x.cell = cell; return d; };
+  ok(reg(mk("B7p")).length === 1 && reg(mk("B7p", "has_phase_offset")).length === 0 && reg(mk("B10w", "hi_damped")).length === 0 && reg(mk("B12n", "empty_faint")).length === 0,
+    "v3: registry: B7p/B10w/B12n are known, optional, and need a cond");
+  ok(reg(mk("B99")).length === 1 && reg(mk("B8", null, "S5")).length === 1 && reg(mk("B8", null, "@S5")).length === 0 && Object.keys(TL.BEAT_REGISTRY).length === 23,
+    "v3: registry rejects unknown ids and non-role string cells");
+}
+{
+  const strip = s => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const src = strip(fs.readFileSync(path.join(ROOT, "js/eq/bind.js"), "utf8"));
+  ok(!/Math\.random|Date\.now|new Date|performance\.now|requestAnimationFrame|setTimeout|setInterval|\bdocument\b|\bwindow\b|console\./.test(src), "js/eq/bind.js (imported by seek): no clock, randomness, DOM or console");
+  const sk = strip(fs.readFileSync(path.join(ROOT, "js/core/seek.js"), "utf8")).replace(/exposeStory[\s\S]*$/, "");
+  ok(!/console\./.test(sk), "js/core/seek.js: no console (drops are recorded, main.js logs them)");
+}
+
 console.log(`${fails ? "FAIL" : "PASS"} story_core: ${n} checks, ${fails} failures`);
 process.exit(fails ? 1 : 0);

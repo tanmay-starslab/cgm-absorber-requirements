@@ -521,5 +521,106 @@ const frameLog = (eng, ctx, t) => { ctx.__log.length = 0; eng.seek(t); return ct
   eq(FIT.tauVoigt(OVI, [{v: 0, logN: 14, b: 0}], [0])[0], 0, "non-positive b is skipped, not NaN");
 }
 
+/* ---------------- v3 ?story=<id> (DESIGN_tierA §7.2, §10 R2) ----------------
+   TNG_BROWSER=1 (or STORY_V3_BROWSER=1): a temp copy of the page gets a story-index/2 index with the hero ("full") and a
+   Tier A "damped" entry (488530 rand_b050_a215, role-form beats/shots made from the hero, roles on the data, one ok:false),
+   then (1) ?story=damped boots, its data is the damped ray, __story.seek runs over 500 p with no throw, the entry's viz is
+   used without ?viz; (2) the plain page with ?g=488530&ray=rand_b050_a215 still plays the hero data (Tier A entries are
+   hidden from the resolver and the v2 picker); (3) ?story=nope opens the hero at B0 (fix1). Screenshots to --shots DIR when given. */
+if (process.env.TNG_BROWSER || process.env.STORY_V3_BROWSER) await v3StoryBrowser();
+else console.log("# v3 ?story browser part skipped (set TNG_BROWSER=1)");
+async function v3StoryBrowser() {
+  const {mkdtempSync, mkdirSync, cpSync, readdirSync, symlinkSync, writeFileSync, rmSync, existsSync} = fs;
+  const os = await import("node:os");
+  const BR = await import(pathToFileURL(path.join(REPO, "tests/js/lib/browser.mjs")).href);
+  const QA = await import(pathToFileURL(path.join(REPO, "tests/js/lib/storyqa.mjs")).href);
+  const SK = await imp("js/core/seek.js");
+  const J = f => JSON.parse(fs.readFileSync(path.join(ROOT, f), "utf8"));
+  const argv = process.argv.slice(2), shotsDir = argv.includes("--shots") ? path.resolve(argv[argv.indexOf("--shots") + 1]) : null;
+  let base = QA.plainEdge(); if (!base) { try { base = BR.findBrowser(); } catch { base = null; } }
+  if (!base) { ok(false, "v3 browser: no Chromium found (TNG_EDGE)"); return; }
+  const edge = QA.edgeWith(base, QA.SWIFTSHADER_FLAGS);
+  // temp tree: docs/tng50 symlinked except the story page, which is a real copy
+  const T = mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), "r2story-")), docs = path.join(REPO, "docs/tng50"), md = path.join(T, "tng50");
+  mkdirSync(path.join(md, "learn"), {recursive: true});
+  for (const e of readdirSync(docs)) if (e !== "learn") symlinkSync(path.join(docs, e), path.join(md, e));
+  for (const e of readdirSync(path.join(docs, "learn"))) if (e !== "how-a-spectrum-is-made") symlinkSync(path.join(docs, "learn", e), path.join(md, "learn", e));
+  const PR = path.join(md, "learn/how-a-spectrum-is-made");
+  cpSync(ROOT, PR, {recursive: true, filter: f => !f.endsWith(".m4a") && !f.includes(`${path.sep}media${path.sep}`)});
+  const beats = J("beats.json"), shots = J("shots.json"), RO = {125: "@cloudA.core", 263: "@S5", 492: "@S4a"}, GH = {T125: "T@cloudA.core", T263: "T@S5", N492: "N@S4a"};
+  const rb = JSON.parse(JSON.stringify(beats)); rb.schema = "story-beats/3"; rb.meta.story = "damped"; rb.meta.case = "damped";
+  for (const b of rb.beats) { if (RO[b.cell]) b.cell = RO[b.cell]; for (const e of b.eqs) { if (e.anchor && e.anchor.kind === "cell" && RO[e.anchor.ref]) e.anchor.ref = RO[e.anchor.ref]; if (e.ghost) e.ghost = GH[e.ghost] || e.ghost; } }
+  const walk = x => (Array.isArray(x) ? x.map(walk) : x && typeof x === "object" ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, k === "cell" && RO[v] ? RO[v] : walk(v)])) : x);
+  const rs = walk(shots);
+  const DF = "story_488530_rand_b050_a215.json", d2 = J("data/" + DF), ctx0 = SK.prepare(d2, beats, shots);
+  const arg = c => c.tau0.reduce((bi, t, i, A) => (t > A[bi] ? i : bi), 0), idOf = (c, j) => (c.idx ? c.idx[j] : j);
+  const s5 = idOf(d2.ions.OVI.cells, arg(d2.ions.OVI.cells)), hc = idOf(d2.ions.HI.cells, arg(d2.ions.HI.cells));
+  const cells = {}; for (const id of [s5, hc]) cells[String(id)] = {c: ctx0.cellPos(id), h: 1, l: ctx0.cellL(id)};
+  d2.roles = {S5: {cell: s5, ok: true, why: ""}, "cloudA.core": {cell: hc, ok: true, why: ""}, S4a: {cell: hc, ok: false, why: "test"}, cells};
+  writeFileSync(path.join(PR, "data", DF), JSON.stringify(d2));
+  writeFileSync(path.join(PR, "beats.damped.json"), JSON.stringify(rb)); writeFileSync(path.join(PR, "shots.damped.json"), JSON.stringify(rs));
+  const ix = J("data/index.json"), hero = ix.stories[0];
+  const srv = await QA.gzServe(md, {viz: "/Volumes/cgm_work/data/gal/488530/viz".replace("/Volumes/cgm_work", process.env.CGM_WORK || "/Volumes/cgm_work")});
+  const vizOk = existsSync(path.join(process.env.CGM_WORK || "/Volumes/cgm_work", "data/gal/488530/viz/manifest_v2.json"));
+  const ix2 = {schema: "story-index/2", default: ix.default, default_story: "full", picker: "off", fion: ix.fion,
+    stories: [{id: "full", case: "full", beats: "beats.json", shots: "shots.json", gates: {all: true}, ...hero},
+      {id: "damped", case: "damped", subcase: "dla", galaxy: 488530, ray: "rand_b050_a215", story: DF, page_fits: "page_fits_488530_rand_b050_a215.json",
+       beats: "beats.damped.json", shots: "shots.damped.json", label: "Subhalo 488530", eligible: true, gates: {all: false},
+       ...(vizOk ? {viz: {manifest_url: srv.origin + "/viz/manifest_v2.json", base: srv.origin + "/viz/"}} : {})}],
+    film_beams: ix.film_beams};
+  writeFileSync(path.join(PR, "data/index.json"), JSON.stringify(ix2));
+  const page = srv.base + "learn/how-a-spectrum-is-made/index.html";
+  const lB7b = ctx0.cellL(s5), lHero = SK.prepare(J("data/story_488530_rand_b062_a062.json"), beats, shots).cellL(263);
+  const B7b = rb.beats.find(b => b.id === "B7b"), pB7b = (B7b.p0 + B7b.p1) / 2;
+  try {
+    const P = await BR.launch({edge, block: BR.BLOCK, reducedMotion: true, width: 1440, height: 900});
+    try {
+      await QA.setViewport(P, {w: 1440, h: 900, zoom: 1});
+      const reqs0 = P.requests.length;
+      await P.goto(page + "?story=damped&nogate=1");
+      const kind = await QA.detect(P, 120000);
+      ok(kind === "v2", `v3 browser: ?story=damped boots (${kind})`);
+      ok(!(await P.eval("window.__storyError || null")), "v3 browser: ?story=damped no boot error");
+      const r = await P.fn(`const S = __story; let thr = null, bad = 0; let s = 12345; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+        for (let i = 0; i < 500; i++) { try { const f = S.seek(rnd()); if (!f.cam.pos.every(Number.isFinite) || !Number.isFinite(f.l)) bad++; } catch (e) { thr = String(e); break; } }
+        const f = S.seek(${pB7b}); return {thr, bad, l: f.l, beat: f.beat.id, eqs: f.eqs.map(e => [e.id, e.anchor && e.anchor.ref, e.ghostKey || null])};`);
+      ok(!r.thr && r.bad === 0, `v3 browser: __story.seek over 500 p on ?story=damped, no throw, finite (${r.thr || "ok"})`);
+      ok(r.beat === "B7b" && Math.abs(r.l - lB7b) < 1e-6, `v3 browser: B7b holds at the damped ray's @S5 cell (l ${r.l} vs ${lB7b})`);
+      ok(r.eqs.some(e => e[0] === "E1" && e[1] === s5), "v3 browser: B7b equations anchored on the role's cell");
+      const reqs = P.requests.slice(reqs0).map(u => u.replace(/^[A-Z]+ /, ""));
+      ok(reqs.some(u => /beats\.damped\.json/.test(u)) && reqs.some(u => /shots\.damped\.json/.test(u)) && reqs.some(u => u.includes("data/" + DF)),
+        `v3 browser: ?story=damped fetched its entry's beats/shots/data (the hero preloads in index.html are R6b's: ${reqs.filter(u => /\.json/.test(u)).map(u => u.split("/").pop()).join(" ").slice(0, 400)})`);
+      if (vizOk) {   // the 3D tier only (force3d on the software renderer): the stage reads the entry's manifest
+        await P.goto(page + "?story=damped&nogate=1&force3d=1");
+        await QA.detect(P, 120000);
+        const t = await P.waitFor(`performance.getEntriesByType("resource").some(e => e.name.startsWith(${JSON.stringify(srv.origin + "/viz/")}))`, 60000, 200);
+        ok(t >= 0 && P.requests.some(u => u.includes(srv.origin + "/viz/manifest_v2.json")), "v3 browser: the entry's viz {manifest_url, base} is used without ?viz (force3d)");
+        if (shotsDir) { await BR.sleep(6000); await P.shot(path.join(shotsDir, "v3_damped_force3d_p0.png")); }
+      }
+      ok(!P.exceptions.length, `v3 browser: no page exception (${P.exceptions.join(" | ").slice(0, 300)})`);
+      if (shotsDir) {
+        for (const [tag, p] of [["b7b", pB7b], ["b10", (() => { const b = rb.beats.find(x => x.id === "B10"); return (b.p0 + b.p1) / 2; })()]]) {
+          await P.eval(`(() => { const S = __story; if (typeof S.seekTo === "function") S.seekTo(${p}); else S.setTarget(${p}, true); })()`);
+          await P.waitFor(`Math.abs((__story.state().p ?? -1) - ${p}) < 2e-3`, 20000, 50); await BR.sleep(4000);
+          await P.shot(path.join(shotsDir, `v3_damped_${tag}.png`));
+        }
+      }
+      // the hero page with a Tier A entry in the index: (g, ray) of the damped ray still plays the hero
+      const n1 = P.requests.length;
+      await P.goto(page + "?g=488530&ray=rand_b050_a215&nogate=1");
+      ok((await QA.detect(P, 120000)) === "v2" && !(await P.eval("window.__storyError || null")), "v3 browser: hero page boots with a story-index/2 index");
+      const h = await P.fn(`const f = __story.seek(${(beats.beats.find(b => b.id === "B7b").p0 + beats.beats.find(b => b.id === "B7b").p1) / 2}); return {l: f.l};`);
+      ok(Math.abs(h.l - lHero) < 1e-6 && !P.requests.slice(n1).some(u => u.includes("data/" + DF)), `v3 browser: ?g=488530&ray=rand_b050_a215 plays the hero, Tier A entry hidden (l ${h.l} vs ${lHero})`);
+      if (shotsDir) await P.shot(path.join(shotsDir, "v3_hero_with_v2_index.png"));
+      // fix1 (review regress F1): an unknown story id opens the hero at B0 (a console warning, never a dead page)
+      await P.goto(page + "?story=nope&nogate=1");
+      ok((await QA.detect(P, 120000)) === "v2" && !(await P.eval("window.__storyError || null")), "v3 browser: ?story=<unknown> boots, no boot error");
+      const hz = await P.fn(`const f = __story.seek(0); return {beat: f.beat.id, l: __story.seek(${(beats.beats.find(b => b.id === "B7b").p0 + beats.beats.find(b => b.id === "B7b").p1) / 2}).l};`);
+      ok(hz.beat === "B0" && Math.abs(hz.l - lHero) < 1e-6, `v3 browser: ?story=<unknown> plays the hero from B0 (${hz.beat}, l ${hz.l})`);
+      if (shotsDir) await P.shot(path.join(shotsDir, "v3_unknown_story_hero.png"));
+    } finally { await P.close(); }
+  } finally { await srv.close(); rmSync(T, {recursive: true, force: true}); }
+}
+
 console.log(`${fails ? "FAIL" : "PASS"} story_engine: ${n} checks, ${fails} failures`);
 process.exit(fails ? 1 : 0);

@@ -37,7 +37,7 @@
 import {readFileSync, existsSync, readdirSync} from "node:fs";
 import {join, resolve, relative} from "node:path";
 import {pathToFileURL} from "node:url";
-import {ROOT as REPO, parseArgs, checker, serve, launch, BLOCK, READY, sleep} from "./lib/browser.mjs";
+import {ROOT as REPO, parseArgs, checker, serve, launch, BLOCK, READY, sleep, SEP_CHARS} from "./lib/browser.mjs";
 
 const {pos, opt} = parseArgs(process.argv.slice(2));
 const DIR = resolve(pos[0] || join(REPO, "docs/tng50"));
@@ -189,8 +189,101 @@ for (const G of [DEF_GAL, ...GALS.filter(g => g !== DEF_GAL)]) {
 }
 check(!galBad.length, `galaxy part of the hand-off reads back for the default and ${GALS.filter(g => g !== DEF_GAL).length} other galaxies${galBad.length ? ": " + galBad.slice(0, 4).join("; ") : ""}${GX ? " (with js/galaxies.js)" : ""}`);
 
+/* ================================================================ Tier A: the case picker (DESIGN_tierA §7.2, §10 R6)
+   node (always): js/ui/picker.js pure parts. Tier A entries never become "Try another beam" rows (pickerModel equals its
+   hero-index output); casesModel lists nothing unless index.picker === "cases", only gates.all entries, never in flight;
+   the one showing comes first, then the story B14 offers next (§5); card text obeys §7.2 (title <= 5 words, blurb <= 12,
+   no digits, no trailing full stop, no dot separators, never "ride"); caseHref; every built story (beats.<id>.json) has
+   a card; the shipped index keeps the picker "off" (OWNER_DECISIONS 10) and lists only stories whose files exist.
+   browser (TNG_BROWSER=1; --cases runs only this part): casesBrowser() below. */
+const PK_F = join(SROOT, "js/ui/picker.js");
+const PK = existsSync(PK_F) ? await import(pathToFileURL(PK_F).href) : null;
+const CASE_IDS = ["clean", "multiphase", "damped", "empty", "hot"];
+let IX1 = null; try { IX1 = JSON.parse(readFileSync(join(SROOT, "data/index.json"), "utf8")); } catch { /* no index */ }
+/* a story-index/2 for the tests: the shipped one when it is /2, else built from the hero entry and the director's
+   beats.<id>.json (meta.story, meta.case, refGalaxy, refRay, generator.data.file) */
+function tierIndex(ix, {picker = "cases", all = true} = {}) {
+  if (!ix) return null;
+  if (ix.schema === "story-index/2") return {...ix, picker, stories: ix.stories.map(e => ({...e, gates: {...(e.gates || {}), all: e.case === "full" || (all ? true : !!(e.gates && e.gates.all))}}))};
+  const hero = {...ix.stories[0], id: "full", case: "full", subcase: null, beats: "beats.json", shots: "shots.json", gates: {all: true}};
+  const st = [hero];
+  for (const id of CASE_IDS) {
+    const f = join(SROOT, `beats.${id}.json`); if (!existsSync(f)) continue;
+    const m = JSON.parse(readFileSync(f, "utf8")).meta || {}, file = String(m.generator?.data?.file || "").split("/data/").pop();
+    if (!file) continue;
+    let subcase = null; try { subcase = JSON.parse(readFileSync(join(SROOT, "data", file), "utf8")).case?.subcase ?? null; } catch { /* none */ }
+    st.push({id, galaxy: +m.refGalaxy, ray: m.refRay, case: m.case, subcase, story: file, page_fits: file.replace(/story_/, "page_fits_"),
+             beats: `beats.${id}.json`, shots: `shots.${id}.json`, label: `Subhalo ${m.refGalaxy}`, eligible: true, gates: {all}});
+  }
+  return {schema: "story-index/2", default: ix.default, default_story: "full", picker, ...(ix.fion ? {fion: ix.fion} : {}), stories: st, ...(ix.film_beams ? {film_beams: ix.film_beams} : {})};
+}
+const TIX = tierIndex(IX1);
+if (check(!!PK && typeof PK.casesModel === "function" && typeof PK.caseHref === "function", `picker.js exports casesModel and caseHref (${relative(REPO, PK_F)})`) && TIX) {
+  const ids = TIX.stories.map(e => e.id);
+  note(`test index: ${TIX.stories.length} stories (${ids.join(", ")}) from ${IX1.schema === "story-index/2" ? "data/index.json" : "the hero entry and beats.<id>.json"}`);
+  const cur = {galaxy: IX1.default.galaxy, ray: IX1.default.ray};
+  /* the v2 dialog never shows a Tier A entry */
+  const heroOnly = {...TIX, stories: TIX.stories.filter(e => e.case === "full")};
+  check(JSON.stringify(PK.pickerModel(TIX, cur, "")) === JSON.stringify(PK.pickerModel(heroOnly, cur, "")) &&
+        JSON.stringify(PK.pickerModel(TIX, cur, "488530")) === JSON.stringify(PK.pickerModel(heroOnly, cur, "488530")),
+        "pickerModel: Tier A entries are never beam rows (same model as the hero-only index, with and without a query)");
+  check(JSON.stringify(PK.pickerModel(IX1, cur, "")) === JSON.stringify(PK.pickerModel({...IX1, stories: IX1.stories.filter(e => !e.case || e.case === "full")}, cur, "")),
+        "pickerModel on the shipped data/index.json is unchanged by the Tier A filter");
+  /* off unless "cases"; never in flight */
+  const off = [["story-index/1", PK.casesModel(IX1, {current: cur, atEnd: true})], ["picker off", PK.casesModel({...TIX, picker: "off"}, {current: cur, atEnd: true})],
+    ["in flight", PK.casesModel(TIX, {current: cur, atEnd: false})], ["no gates.all", PK.casesModel(tierIndex(IX1, {all: false}), {current: cur, atEnd: true})]];
+  const offBad = off.filter(([, m]) => m.on && m.cards.some(c => c.id !== "full"));
+  check(!offBad.length, `casesModel lists no Tier A story for the /1 index, picker "off", in flight or without gates.all${offBad.length ? ": " + offBad.map(x => x[0]).join(", ") : ""}`);
+  const on = PK.casesModel(TIX, {current: cur, atEnd: true});
+  check(on.on && on.cards.length === ids.length && on.cards[0].id === "full" && on.cards[0].current && on.cards.filter(c => c.current).length === 1,
+    `picker "cases" at an end: ${on.cards.length} cards, the full tour first and marked showing (${on.cards.map(c => c.id).join(" ")})`);
+  const mix = tierIndex(IX1); mix.stories = mix.stories.map(e => (e.id === "hot" ? {...e, gates: {all: false}} : e));
+  check(!PK.casesModel(mix, {current: cur, atEnd: true}).cards.some(c => c.id === "hot"), "an entry with gates.all false is not listed");
+  /* order: showing, then B14's next (§5), then index order; current from ?story, else galaxy+ray, else default_story */
+  const orderBad = [];
+  for (const e of TIX.stories) {
+    const m = PK.casesModel(TIX, {story: e.id, current: {galaxy: 1, ray: "x"}, atEnd: true}), nx = PK.NEXT[e.id];
+    if (m.cards[0].id !== e.id || !m.cards[0].current) orderBad.push(`${e.id}: first ${m.cards[0].id}`);
+    if (nx && ids.includes(nx) && m.cards[1].id !== nx) orderBad.push(`${e.id}: second ${m.cards[1].id}, want ${nx}`);
+    if (e.case !== "full") { const g = PK.casesModel(TIX, {current: {galaxy: e.galaxy, ray: e.ray}, atEnd: true}); if (g.cards[0].id !== e.id) orderBad.push(`${e.id} by galaxy+ray: ${g.cards[0].id}`); }
+  }
+  const ds = PK.casesModel({...TIX, default_story: ids.at(-1)}, {current: {}, atEnd: true});
+  if (ds.cards[0].id !== ids.at(-1)) orderBad.push(`default_story ${ids.at(-1)}: first ${ds.cards[0].id}`);
+  check(!orderBad.length, `card order: the one showing, then the story B14 offers next, then index order (all ${ids.length} stories)${orderBad.length ? ": " + orderBad.join("; ") : ""}`);
+  check(PK.casesModel(TIX, {current: cur, atEnd: true, query: "halo"}).cards.every(c => /halo/i.test(c.title + c.blurb)), "the search box filters cards by title and blurb");
+  /* hrefs */
+  const hrefs = [[PK.caseHref("full", TIX), "index.html"], [PK.caseHref("clean", TIX), "index.html?story=clean"], [PK.caseHref("full", {...TIX, default_story: "clean"}), "index.html?story=full"]];
+  check(hrefs.every(([a, b]) => a === b), `caseHref: full -> index.html, clean -> index.html?story=clean, full under another default -> ?story=full (${hrefs.map(h => h[0]).join(", ")})`);
+  /* card text */
+  const words = s => String(s).trim().split(/\s+/).filter(Boolean).length;
+  const cards = Object.entries(PK.CARDS).map(([k, [t, b]]) => ({k, t, b})).concat((IX1.stories || []).filter(e => e.title || e.blurb).map(e => ({k: "index " + e.id, t: e.title || "", b: e.blurb || ""})));
+  const tb = [];
+  for (const c of cards) {
+    if (words(c.t) > 5 || words(c.b) > 12) tb.push(`${c.k}: ${words(c.t)}/${words(c.b)} words`);
+    if (/\d/.test(c.t + c.b)) tb.push(`${c.k}: digits`);
+    if (/\.\s*$/.test(c.t) || /\.\s*$/.test(c.b)) tb.push(`${c.k}: trailing full stop`);
+    if (SEP_CHARS.some(ch => (c.t + c.b).includes(ch))) tb.push(`${c.k}: dot separator`);
+    if (/\bride\b/i.test(c.t + c.b)) tb.push(`${c.k}: "ride"`);
+  }
+  check(!tb.length, `card text (${cards.length} cards): title <= 5 words, blurb <= 12, no digits, no trailing full stop, no dot separators, never "ride"${tb.length ? ": " + tb.join("; ") : ""}`);
+  check(PK.casesModel({...TIX, stories: TIX.stories.map(e => (e.id === "damped" ? {...e, subcase: "lls"} : e))}, {atEnd: true}).cards.find(c => c.id === "damped")?.title === PK.CARDS.lls[0] &&
+        PK.casesModel({...TIX, stories: TIX.stories.map(e => (e.id === "clean" ? {...e, title: "Own title", blurb: "Own blurb"} : e))}, {atEnd: true}).cards.find(c => c.id === "clean")?.title === "Own title",
+        "a damped entry of subcase lls reads as a Lyman-limit system; an entry's own title/blurb wins");
+  const noCard = CASE_IDS.filter(id => existsSync(join(SROOT, `beats.${id}.json`)) && !PK.CARDS[id]);
+  check(!noCard.length && Object.values(PK.NEXT).every(n => PK.CARDS[n]), `every built story (beats.<id>.json) has a card and every B14 "next" is a known story${noCard.length ? ": " + noCard.join(", ") : ""}`);
+  /* the shipped index */
+  if (IX1.schema === "story-index/2") {
+    check(IX1.picker === "off" || process.env.STORY_PICKER_ON === "1", `shipped data/index.json keeps picker "off" until the owner flips it (OWNER_DECISIONS 10; now "${IX1.picker}")`);
+    const miss = [];
+    for (const e of IX1.stories.filter(x => x.gates && x.gates.all)) for (const k of ["beats", "shots"]) if (!existsSync(join(SROOT, e[k]))) miss.push(`${e.id}.${k}`);
+    for (const e of IX1.stories.filter(x => x.gates && x.gates.all)) if (!existsSync(join(SROOT, "data", e.story))) miss.push(`${e.id}.story`);
+    check(!miss.length, `every listed story's beats, shots and data exist${miss.length ? ": " + miss.join(", ") : ""}`);
+  } else note(`shipped data/index.json is ${IX1.schema || "story-index/1"}: the case picker is off by construction`);
+}
+
 /* ---------------------------------------------------------------- browser */
 if (!process.env.TNG_BROWSER) { note("browser part skipped (set TNG_BROWSER=1)"); process.exit(C.finish()); }
+if (opt.cases) { await casesBrowser(); process.exit(C.finish()); }
 const edge = opt.edge;   // reduced motion on: the explorer's 3D thumbnail stops spinning on GPU-less nodes
 const srv = await serve({dir: DIR, page: PAGE, port: opt.port});
 const P = await launch({profile: opt.profile, edge, block: BLOCK, reducedMotion: true});
@@ -309,4 +402,192 @@ try {
   }
   check(!P.exceptions.length, `no uncaught exceptions${P.exceptions.length ? ": " + P.exceptions.slice(0, 3).join(" | ") : ""}`);
 } finally { await P.close(); await srv.close(); }
+await casesBrowser();
 process.exit(C.finish());
+
+/* ================================================================ Tier A picker in the browser (DESIGN_tierA §7.2, §10 R6)
+   A temp copy of the page (docs/tng50 symlinked, the story page copied) gets a story-index/2 with picker "cases" and every
+   story listed (test only; the shipped index stays "off"). Software GL, reduced motion, stills tier (no cubes needed).
+   - picker off: the shipped page's dialog list equals the cases page's dialog opened in flight (no Stories group in flight,
+     G12) and the v2 markup is untouched;
+   - B0 (?nogate): menu -> "Try another beam" shows the Stories group, the full tour first and marked, B14's next second;
+     keyboard: ArrowDown walks the cards, Enter loads ?story=<id>; Escape closes and gives focus back;
+   - hand-off chain full -> clean -> ... -> hot -> full: on each story's B14 the end action opens the picker, the card of
+     the story showing is marked and first; a click reloads on ?story=<id>, whose beats ids equal beats.<id>.json and whose
+     story data and beats were fetched; no boot error;
+   - G1/G2 on the picker states: every viewport of the G1 matrix at zoom 1 and 1.5 (open at B0, cases): the dialog inside
+     the viewport, no text under 12 px, cards >= 44 px, no two options overlap, card text inside its card, titles <= 2
+     lines; G9: axe-core (AXE_JS, wcag2a/aa) on the open dialog 0 serious/critical, no animation > 0.3 s;
+   - B12n (empty): the "New noise" reseed control, when present, is reachable by keyboard and changes the seed.
+   Screenshots to --shots DIR. */
+async function casesBrowser() {
+  const {mkdtempSync, mkdirSync, cpSync, readdirSync, symlinkSync, writeFileSync, rmSync} = await import("node:fs");
+  const os = await import("node:os");
+  const QA = await import("./lib/storyqa.mjs");
+  if (!TIX || !PK) { check(false, "cases browser: no test index or picker module"); return; }
+  const SHOTS = opt.shots ? resolve(opt.shots) : null; if (SHOTS) mkdirSync(SHOTS, {recursive: true});
+  const T = mkdtempSync(join(process.env.TMPDIR || os.tmpdir(), "r6pick-")), docs = DIR, md = join(T, "tng50");
+  mkdirSync(join(md, "learn"), {recursive: true});
+  for (const e of readdirSync(docs)) if (e !== "learn") symlinkSync(join(docs, e), join(md, e));
+  for (const e of readdirSync(join(docs, "learn"))) if (e !== "how-a-spectrum-is-made") symlinkSync(join(docs, "learn", e), join(md, "learn", e));
+  const PR = join(md, STORY);
+  cpSync(SROOT, PR, {recursive: true, filter: f => !f.endsWith(".m4a") && !f.includes("/media/") && !f.includes("/build/")});
+  writeFileSync(join(PR, "data/index.json"), JSON.stringify(TIX));
+  const ix0 = join(md, "learn/off"); mkdirSync(ix0, {recursive: true});
+  const srv = await QA.gzServe(md), PAGE_C = srv.base + STORY + "/index.html";
+  const srvOff = await QA.gzServe(DIR), PAGE_OFF = srvOff.base + STORY + "/index.html";
+  const AXE = process.env.AXE_JS || join(process.env.TNG_WORK || "/Volumes/cgm_work", "scratch/story2_w/review3_perf_a11y/axe/package/axe.min.js");
+  let base = QA.plainEdge(); if (!base) { try { const {findBrowser} = await import("./lib/browser.mjs"); base = findBrowser(); } catch { base = null; } }
+  const P = await launch({edge: base ? QA.edgeWith(base, QA.SWIFTSHADER_FLAGS) : undefined, block: BLOCK, reducedMotion: true, width: 1440, height: 900});
+  const ids = TIX.stories.map(e => e.id), byId = Object.fromEntries(TIX.stories.map(e => [e.id, e]));
+  const BOOT = `!!(window.__story && __story.ready) || !!window.__storyError`;
+  const boot = async (url, ms = 150000) => { await P.goto(url); const t = await P.waitFor(BOOT, ms, 200); const err = await P.eval("window.__storyError || null").catch(() => "eval failed");
+    return t >= 0 && !err ? {ok: true, ms: t} : {ok: false, err: err || "timeout"}; };
+  const PROBE = `(() => { const pk = document.getElementById("picker"); if (!pk || pk.hidden) return {open: false};
+    const R = e => { const r = e.getBoundingClientRect(); return {x: r.left, y: r.top, w: r.width, h: r.height}; }, W = innerWidth, H = innerHeight;
+    const vis = e => e.getClientRects().length > 0;
+    const groups = [...pk.querySelectorAll(".pk-g")].map(g => g.getAttribute("aria-label"));
+    const cards = [...pk.querySelectorAll(".pk-c")].map(o => ({id: o.dataset.story, cur: o.getAttribute("aria-selected") === "true", title: o.querySelector(".pk-l").textContent,
+      blurb: (o.querySelector(".pk-b") || {}).textContent || "", tag: (o.querySelector(".pk-t") || {}).textContent || ""}));
+    const opts = [...pk.querySelectorAll(".pk-o")].filter(vis), texts = [...pk.querySelectorAll("h2,.pk-gl,.pk-l,.pk-b,.pk-t,.pk-foot,.pk-none,input")].filter(vis);
+    const fonts = texts.map(e => parseFloat(getComputedStyle(e).fontSize)), small = texts.filter((e, i) => fonts[i] < 12).map(e => e.className || e.tagName);
+    const ob = opts.map(R), over = [];
+    for (let i = 0; i < ob.length; i++) for (let j = i + 1; j < ob.length; j++) { const a = ob[i], b = ob[j];
+      const ar = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); if (ar > 4) over.push(i + "x" + j); }
+    const outside = [], lines = [];
+    for (const o of opts) { const r = R(o); for (const t of o.querySelectorAll(".pk-l,.pk-b,.pk-t")) { const q = R(t); if (q.x < r.x - 0.5 || q.x + q.w > r.x + r.w + 0.5 || q.y < r.y - 0.5 || q.y + q.h > r.y + r.h + 0.5) outside.push(o.dataset.story || o.dataset.ray);
+      if (o.classList.contains("pk-c") && t.classList.contains("pk-l")) lines.push(Math.round(q.h / parseFloat(getComputedStyle(t).lineHeight))); }
+      for (const t of o.querySelectorAll(".pk-l,.pk-t")) { const q = R(t); for (const u of o.querySelectorAll(".pk-t")) { if (u === t) continue; const s = R(u);
+        const ar = Math.max(0, Math.min(q.x + q.w, s.x + s.w) - Math.max(q.x, s.x)) * Math.max(0, Math.min(q.y + q.h, s.y + s.h) - Math.max(q.y, s.y)); if (ar > 4) outside.push((o.dataset.story || "") + " tag overlap"); } } }
+    const b = R(pk), list = pk.querySelector(".pk-list"), lr = R(list), first = opts[0] ? R(opts[0]) : null;
+    const anims = document.getAnimations().filter(a => pk.contains(a.effect && a.effect.target)).map(a => +(a.effect.getComputedTiming().duration) || 0);
+    return {open: true, W, H, box: b, inside: b.x >= -0.5 && b.y >= -0.5 && b.x + b.w <= W + 0.5 && b.y + b.h <= H + 0.5, groups, cards, beams: pk.querySelectorAll(".pk-o:not(.pk-c)").length,
+      minFont: Math.min(...fonts), small, over, outside, minH: Math.min(...ob.filter((r, i) => opts[i].classList.contains("pk-c")).map(r => r.h)), maxTitleLines: Math.max(0, ...lines),
+      firstVisible: !!first && first.y >= Math.max(lr.y, b.y) - 0.5 && first.y + first.h <= Math.min(lr.y + lr.h, b.y + b.h) + 0.5, listHTML: list.innerHTML, anims,
+      focus: document.activeElement ? (document.activeElement.dataset.story || document.activeElement.dataset.ray || document.activeElement.tagName.toLowerCase()) : null}; })()`;
+  const openMenu = async () => { await P.eval(`document.getElementById("menu-btn").click()`); await P.waitFor(`!document.getElementById("menu-sheet").hidden`, 4000, 50);
+    await P.eval(`document.querySelector('#menu-sheet .mn-i[data-id="picker"]').click()`); await P.waitFor(`document.getElementById("picker") && !document.getElementById("picker").hidden`, 4000, 50); await sleep(250); return P.eval(PROBE); };
+  const closePicker = async () => { await P.eval(`(() => { const p = document.getElementById("picker"); if (p && !p.hidden) p.querySelector(".pk-x").click(); })()`); await sleep(150); };
+  const jumpTo = async p => { await P.eval(`__story.setTarget(${p}, true)`); await P.waitFor(`Math.abs(__story.state().p - ${p}) < 2e-4`, 8000, 50); await sleep(400); };
+  const openEnd = async () => { await jumpTo(1); await P.waitFor(`(() => { const e = document.getElementById("end-actions"); return e && !e.hidden && e.getClientRects().length; })()`, 8000, 100);
+    await P.eval(`document.querySelector('#end-actions [data-end="ride_another"]').click()`); await P.waitFor(`document.getElementById("picker") && !document.getElementById("picker").hidden`, 4000, 50); await sleep(250); return P.eval(PROBE); };
+  const fetched = async () => P.eval(`performance.getEntriesByType("resource").map(e => e.name.split("/how-a-spectrum-is-made/").pop())`);
+  const beatIds = id => JSON.parse(readFileSync(join(SROOT, byId[id].beats), "utf8")).beats.map(b => b.id);
+  try {
+    console.log(`cases browser: temp page ${T}; ${ids.length} stories listed; browser ${P.browser}`);
+    await QA.setViewport(P, {w: 1440, h: 900, zoom: 1});
+    /* picker off: the shipped page, end of the story */
+    let r = await boot(PAGE_OFF + "?nogate=1");
+    let offHTML = null;
+    if (check(r.ok, `picker off: shipped page boots (${r.ok ? r.ms + " ms" : r.err})`)) {
+      const o = await openEnd(); offHTML = o.listHTML;
+      check(o.open && !o.cards.length && !o.groups.includes("Stories"), `picker off: the end action opens the v2 dialog with no Stories group (${o.groups.join(", ")})`);
+      if (SHOTS) await P.shot(join(SHOTS, "pick_off_b14_1440.png"));
+      if (existsSync(AXE)) { await P.eval(readFileSync(AXE, "utf8") + ";0");
+        const v = await P.eval(`axe.run(document.getElementById("picker"), {runOnly: {type: "tag", values: ["wcag2a", "wcag2aa"]}}).then(r => r.violations.filter(v => v.impact === "serious" || v.impact === "critical").map(v => v.id + " x" + v.nodes.length + " at " + v.nodes.slice(0, 3).map(n => n.target.join(" ")).join("; ")))`, 120000);
+        check(!v.length, `G9 picker off (v2 dialog, B14): axe-core wcag2a/aa 0 serious or critical${v.length ? ": " + v.join(", ") : ""}`); }
+      await closePicker();
+    }
+    /* cases page at B0 (no gate) */
+    r = await boot(PAGE_C + "?nogate=1");
+    if (!check(r.ok, `cases page boots with the test index (${r.ok ? r.ms + " ms" : r.err})`)) return;
+    let o = await openMenu();
+    const want = PK.casesModel(TIX, {current: {galaxy: TIX.default.galaxy, ray: TIX.default.ray}, atEnd: true}).cards.map(c => c.id);
+    check(o.open && o.groups[0] === "Stories" && JSON.stringify(o.cards.map(c => c.id)) === JSON.stringify(want) && o.cards[0].cur && o.cards[0].tag === "showing now",
+      `B0: menu -> Try another beam leads with the Stories group, ${o.cards.length} cards in order ${o.cards.map(c => c.id).join(" ")}, the full tour marked showing`);
+    check(o.cards.every(c => c.title === (PK.CARDS[byId[c.id].subcase === "lls" ? "lls" : c.id] || [])[0] || c.title === byId[c.id].title), "B0: each card shows its §7.2 title and blurb");
+    if (SHOTS) await P.shot(join(SHOTS, "pick_cases_b0_1440.png"));
+    /* G9: axe on the open dialog; reduced-motion animations */
+    if (existsSync(AXE)) {
+      await P.eval(readFileSync(AXE, "utf8") + ";0");
+      const v = await P.eval(`axe.run(document.getElementById("picker"), {runOnly: {type: "tag", values: ["wcag2a", "wcag2aa"]}}).then(r => r.violations.map(v => ({id: v.id, impact: v.impact, n: v.nodes.length, at: v.nodes.slice(0, 3).map(n => n.target.join(" ") + (n.any && n.any[0] && n.any[0].data && n.any[0].data.contrastRatio ? " " + n.any[0].data.contrastRatio : "")).join("; ")})))`, 120000);
+      const bad = v.filter(x => x.impact === "serious" || x.impact === "critical");
+      check(!bad.length, `G9 picker (cases, B0): axe-core wcag2a/aa on the dialog, 0 serious or critical${v.length ? " (" + v.map(x => `${x.id} ${x.impact} x${x.n} at ${x.at}`).join(", ") + ")" : ""}`);
+    } else note(`G9 picker: axe-core not found (${AXE}); set AXE_JS`);
+    check(o.anims.every(d => d <= 300), `G9 picker: no animation over 0.3 s in the dialog (${o.anims.join(", ") || "none"})`);
+    /* keyboard: ArrowDown from the search box walks the cards; Escape closes and focus returns to the menu button */
+    await QA.press(P, "ArrowDown"); const f1 = (await P.eval(PROBE)).focus; await QA.press(P, "ArrowDown"); const f2 = (await P.eval(PROBE)).focus;
+    check(f1 === want[0] && f2 === want[1], `G9 picker: ArrowDown walks the cards in order (${f1}, ${f2})`);
+    await QA.press(P, "Escape"); await sleep(200);
+    const fx = await P.eval(`({open: !document.getElementById("picker").hidden, focus: document.activeElement && (document.activeElement.id || document.activeElement.className)})`);
+    check(!fx.open && fx.focus !== "" && fx.focus !== null && !/^BODY$/i.test(fx.focus), `G9 picker: Escape closes the dialog and gives focus back (${fx.focus})`);
+    /* G1/G2 over the matrix (picker open, cases, B0) */
+    const g1 = [];
+    o = await openMenu();
+    for (const [w, h] of QA.VIEWPORTS) for (const z of [1, 1.5]) {
+      await QA.setViewport(P, {w, h, zoom: z}); await sleep(250);
+      const s = await P.eval(PROBE), tag = `${w}x${h}@${z}`;
+      if (!s.open) { g1.push(`${tag}: dialog closed`); o = await openMenu(); continue; }
+      if (!s.inside) g1.push(`${tag}: dialog outside the viewport`);
+      if (s.minFont < 12) g1.push(`${tag}: text ${s.minFont} px (${s.small.slice(0, 3).join(",")})`);
+      if (s.over.length) g1.push(`${tag}: options overlap ${s.over.slice(0, 3).join(",")}`);
+      if (s.outside.length) g1.push(`${tag}: card text outside its card ${[...new Set(s.outside)].slice(0, 3).join(",")}`);
+      if (s.minH < 44) g1.push(`${tag}: card ${s.minH.toFixed(0)} px tall`);
+      if (s.maxTitleLines > 2) g1.push(`${tag}: a title wraps to ${s.maxTitleLines} lines`);
+      if (!s.firstVisible) g1.push(`${tag}: first card not visible in the list`);
+      if (SHOTS && ((w === 390 && z === 1) || (w === 260 && z === 1.5) || (w === 844 && z === 1) || (w === 1920 && z === 1))) await P.shot(join(SHOTS, `pick_cases_b0_${w}x${h}_z${z}.png`));
+    }
+    check(!g1.length, `G1/G2 picker states: ${QA.VIEWPORTS.length * 2} viewport x zoom cases, dialog in view, text >= 12 px, cards >= 44 px, no overlaps, titles <= 2 lines${g1.length ? ": " + g1.slice(0, 8).join("; ") : ""}`);
+    await QA.setViewport(P, {w: 1440, h: 900, zoom: 1}); await closePicker();
+    /* in flight: no Stories group; the list equals the picker-off dialog's */
+    const bs = await P.eval(`__story.beats()`), mid = bs[Math.floor(bs.length / 2)];
+    await jumpTo((mid.p0 + mid.p1) / 2);
+    o = await openMenu();
+    check(o.open && !o.cards.length && !o.groups.includes("Stories"), `in flight (${mid.id}): the dialog shows no Stories group (G12)`);
+    if (offHTML !== null) check(o.listHTML === offHTML, "in flight with picker \"cases\" the dialog list is byte-identical to the picker-off dialog");
+    if (SHOTS) await P.shot(join(SHOTS, `pick_cases_flight_${mid.id}_1440.png`));
+    await closePicker();
+    /* keyboard pick at B0: Enter on the next story's card loads it */
+    await jumpTo(0); o = await openMenu();
+    await QA.press(P, "ArrowDown"); await QA.press(P, "ArrowDown"); const kTarget = (await P.eval(PROBE)).focus;
+    await QA.press(P, "Enter");
+    const tk = await P.waitFor(`location.search.includes("story=${kTarget}") && (${BOOT})`, 150000, 250);
+    check(tk >= 0 && !(await P.eval("window.__storyError || null")), `keyboard: Enter on the ${kTarget} card reloads on ?story=${kTarget} and the story boots`);
+    /* the hand-off chain through every story's B14 */
+    const chain = [...ids.filter(i => i !== "full"), "full"];
+    let here = kTarget, seen = new Set([kTarget]);
+    const order = [kTarget, ...chain.filter(i => i !== kTarget)];
+    if (order[order.length - 1] !== "full") order.push("full");
+    for (let i = 0; i + 1 < order.length; i++) {
+      const from = order[i], to = order[i + 1];
+      if (from !== "full") {
+        const got = await P.eval(`__story.beats().map(b => b.id)`), files = await fetched(), e = byId[from];
+        check(JSON.stringify(got) === JSON.stringify(beatIds(from)) && files.some(f => f.startsWith(e.beats)) && files.some(f => f.startsWith("data/" + e.story)),
+          `${from}: ?story=${from} plays ${e.beats} (${got.length} beats) on data/${e.story}`);
+      }
+      o = await openEnd();
+      check(o.open && o.cards[0] && o.cards[0].id === from && o.cards[0].cur && (!PK.NEXT[from] || !ids.includes(PK.NEXT[from]) || o.cards[1].id === PK.NEXT[from]),
+        `${from} B14: the end action opens the picker, ${from} first and marked, then ${o.cards[1] && o.cards[1].id}${o.cards[0] ? "" : " (no cards)"}`);
+      if (SHOTS && i < 2) await P.shot(join(SHOTS, `pick_cases_b14_${from}_1440.png`));
+      if (from === "empty" || (i === 0 && from !== "empty")) {}
+      await P.eval(`document.querySelector('#picker .pk-c[data-story="${to}"]').click()`);
+      const t = await P.waitFor(`(${to === "full" ? `!location.search.includes("story=")` : `location.search.includes("story=${to}")`}) && (${BOOT})`, 150000, 250);
+      const err = await P.eval("window.__storyError || null").catch(() => "eval failed");
+      check(t >= 0 && !err, `${from} -> ${to}: the card reloads on ${PK.caseHref(to, TIX)} and the story boots${err ? ": " + String(err).slice(0, 200) : ""}`);
+      seen.add(to); here = to;
+    }
+    check(ids.every(i => seen.has(i)), `hand-off chain visited every listed story (${[...seen].join(" -> ")})`);
+    /* B12n reseed control (empty story) */
+    if (byId.empty) {
+      r = await boot(PAGE_C + "?story=empty&nogate=1");
+      const b12 = (await P.eval(`__story.beats()`)).find(b => b.id === "B12n");
+      if (r.ok && b12) {
+        await jumpTo((b12.p0 + b12.p1) / 2);
+        const c = await P.eval(`(() => { const e = [...document.querySelectorAll('[data-dial="seed"], [data-key="newNoise"], [data-key="seed"], #dock button')].find(x => /new noise/i.test(x.textContent + " " + (x.getAttribute("aria-label") || "")) || x.dataset.key === "newNoise" || x.dataset.dial === "seed");
+          return e ? {tag: e.tagName, tab: e.tabIndex, vis: e.getClientRects().length > 0, name: e.getAttribute("aria-label") || e.textContent.trim()} : null; })()`);
+        if (SHOTS) await P.shot(join(SHOTS, "empty_b12n_1440.png"));
+        if (!c) {
+          if (process.env.STORY_REQUIRE_RESEED === "1") check(false, "B12n: no \"New noise\" reseed control on the page (STORY_REQUIRE_RESEED=1)");
+          else note("PENDING B12n: no \"New noise\" reseed control exists on the page (beats ask interactions newNoise; js/spectrum is outside R6). Not counted.");
+        } else {
+          const s0 = await P.eval(`__story.state().spec.seed`);
+          await P.eval(`(() => { const e = [...document.querySelectorAll('[data-dial="seed"], [data-key="newNoise"], [data-key="seed"], #dock button')].find(x => /new noise/i.test(x.textContent + " " + (x.getAttribute("aria-label") || "")) || x.dataset.key === "newNoise" || x.dataset.dial === "seed"); e.focus(); })()`);
+          await QA.press(P, "Enter"); await sleep(300);
+          const s1 = await P.eval(`__story.state().spec.seed`);
+          check(c.vis && c.tab >= 0 && !!c.name && s1 !== s0, `B12n: the reseed control "${c.name}" is visible, in the tab order and Enter reseeds (${s0} -> ${s1})`);
+        }
+      } else check(false, `B12n: ?story=empty boots and has B12n (${r.ok ? "no B12n" : r.err})`);
+    }
+    check(!P.exceptions.length, `cases browser: no uncaught exceptions${P.exceptions.length ? ": " + P.exceptions.slice(0, 3).join(" | ") : ""}`);
+  } finally { await P.close(); await srv.close(); await srvOff.close(); try { rmSync(T, {recursive: true, force: true}); } catch { /* temp */ } }
+}

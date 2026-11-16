@@ -5,6 +5,12 @@
 //   node tests/js/story_budget.mjs [docs/tng50]          self-test (budget_*.json) + node part
 //   node tests/js/story_budget.mjs --fixture F.json       evaluate one recorded set of numbers
 //   TNG_BROWSER=1 node tests/js/story_budget.mjs [docs/tng50] [--out DIR] [--edge BIN] [--viz DIR] [--allow-origin a,b]
+//   [TNG_BROWSER=1] node tests/js/story_budget.mjs <tree> --story <id|full> [--out DIR] [--base-ref 8557cac]
+//        Tier A per-story budget (DESIGN_tierA §9, G6s; R7_gpu): the tree's data/index.json must be story-index/2 (the
+//        tests/js/lib/storyqa.mjs runner builds it). Node part: page shell growth over the base ref (allowance 3 kB gz,
+//        page-wide) and the story's own files (<= 1.5 MB). Browser part: bytes served until "story:first-3d" at 50 Mbps
+//        (first3dBytes; the runner compares it with the hero's, <= x 1.15), run bytes and GPU memory (<= 448/192 MB).
+//        In this mode only the per-story rule gates; v2's absolute shell/run limits are reported as notes (owner item).
 //
 // Node part, gzip -9 of the files as committed, from the static module graph of ROOT/index.html (module and classic
 // scripts, stylesheets, static and literal dynamic imports, workers, CSS @import; the explorer modules it imports count):
@@ -24,6 +30,8 @@
 //   - backdrop-filter area < 3 % of the screen (HUD pills only, P1-6); cumulative layout shift < 0.05; no request off
 //     this origin except --allow-origin hosts (the hosted cubes).
 import {existsSync, readFileSync, statSync, mkdirSync} from "node:fs";
+import {execFileSync} from "node:child_process";
+import {gzipSync} from "node:zlib";
 import {join, resolve, relative, basename} from "node:path";
 import {parseArgs, checker, launch, BLOCK, sleep} from "./lib/browser.mjs";
 import {REPO, STORY_REL, evalBudget, selfTest, report, writeResult, plainEdge, gzServe, setViewport, detect, walk, gzSize, moduleGraph, G6, storyAssets, assetQuery, RESIDENT} from "./lib/storyqa.mjs";
@@ -63,10 +71,40 @@ const videos = walk(ROOT, new Set(["media", "build", "node_modules"])).filter(f 
 const dataB = walk(join(ROOT, "data")).reduce((a, f) => a + statSync(f).size, 0);
 C.note(`ROOT/data on disk: ${(dataB / MB).toFixed(2)} MB (the browser run measures what one run loads)`);
 const nodeNums = {name: "node", shellGz, fontsBytes, banned: [...new Set(banned)], videoOutsideMedia: videos};
+/* Tier A per-story mode (--story): G6s numbers; only the per-story rule gates (DESIGN_tierA §9) */
+const STORY = opt.story && opt.story !== true ? String(opt.story) : null, TIER = !!STORY;
+const storyNums = {};
+if (TIER) {
+  const BASE = String(opt["base-ref"] || process.env.STORY_BASE_REF || "8557cac");
+  // shell growth: every file of the current graph against the same path at the base ref (new files count whole)
+  // fix1 round 2 (review perf M2): modules only a case story imports (CASE_ONLY, behind a ?story dynamic import) are not
+  // the hero's shell; the growth over the base ref is a failing check (DESIGN_tierA §1 G6, §9: <= 3 kB gz)
+  const CASE_ONLY = new Set(["js/stage/tfcase.js"].map(p => join(ROOT, p)));
+  let base = 0, nb = 0, heroGz = 0;
+  for (const [f, n] of sizes) { if (CASE_ONLY.has(f)) continue; heroGz += n; const rel = relative(DIR, f); let buf = null;
+    try { buf = execFileSync("git", ["-C", REPO, "show", `${BASE}:docs/tng50/${rel}`], {maxBuffer: 64 << 20, stdio: ["ignore", "pipe", "ignore"]}); } catch { nb++; }
+    if (buf) base += gzipSync(buf, {level: 9}).length; }
+  nodeNums.shellGrowth = heroGz - base; nodeNums.baseRef = BASE; nodeNums.shellBase = base; nodeNums.caseOnlyGz = shellGz - heroGz;
+  C.check(heroGz - base <= 3 * KB, `G6 shell growth: hero page shell ${kb(heroGz)} gz vs ${kb(base)} at ${BASE} (+${kb(heroGz - base)} <= 3 kB; ${nb} file(s) new since ${BASE}; case-only modules ${kb(shellGz - heroGz)} not counted)`);
+  const ix = JSON.parse(readFileSync(join(ROOT, "data/index.json"), "utf8"));
+  const ent = STORY === "full" ? (ix.stories || []).find(e => e.id === "full" || (!e.id && !e.case)) || {story: `story_${ix.default.galaxy}_${ix.default.ray}.json`, page_fits: `page_fits_${ix.default.galaxy}_${ix.default.ray}.json`, beats: "beats.json", shots: "shots.json"}
+    : (ix.stories || []).find(e => e.id === STORY);
+  if (!C.check(!!ent, `--story ${STORY}: entry in ${relative(DIR, join(ROOT, "data/index.json"))} (story-index/2 needed)`)) process.exit(C.finish());
+  const files = [ent.beats || "beats.json", ent.shots || "shots.json", "data/" + ent.story, ent.page_fits ? "data/" + ent.page_fits : null, ent.film || null, STORY === "full" ? null : "copy.cases.json"].filter(Boolean);
+  const per = files.map(f => { const p = join(ROOT, f); return [f, existsSync(p) ? statSync(p).size : null, existsSync(p) ? gzSize(p) : null]; });
+  const missingF = per.filter(x => x[1] === null).map(x => x[0]);
+  if (missingF.length) C.check(false, `${STORY}: missing story files ${missingF.join(", ")}`);
+  storyNums.files = Object.fromEntries(per.map(([f, n, z]) => [f, {bytes: n, gz: z}]));
+  storyNums.filesBytes = per.reduce((a, x) => a + (x[1] || 0), 0); storyNums.filesGz = per.reduce((a, x) => a + (x[2] || 0), 0);
+  C.note(`${STORY}: story files ${(storyNums.filesBytes / MB).toFixed(3)} MB (${kb(storyNums.filesGz)} gz): ${per.map(([f, n]) => `${f} ${kb(n || 0)}`).join(", ")}`);
+  C.check(STORY === "full" || storyNums.filesBytes <= 1.5 * MB, `G6s ${STORY}: story files ${(storyNums.filesBytes / MB).toFixed(3)} MB <= 1.5 MB`);
+  const r = evalBudget({...nodeNums, shellGz: undefined});
+  if (report(C, r)) C.check(true, `G6 node (tier mode): fonts ${kb(fontsBytes)}, no banned dependency, no stray video (shell ${kb(shellGz)} gz vs v2's ${G6.shellKB} kB is the owner's G6 item, noted)`);
+} else
 if (report(C, evalBudget(nodeNums))) C.check(true, `G6 node: shell JS+CSS ${kb(shellGz)} gz (<= ${G6.shellKB} kB), fonts ${kb(fontsBytes)} (<= ${G6.fontsKB} kB), no banned dependency, no stray video`);
 
 /* ---------------------------------------------------------------- browser part */
-if (!process.env.TNG_BROWSER) { C.note("browser part skipped (set TNG_BROWSER=1)"); writeResult(OUT, "budget.json", {node: nodeNums}); process.exit(C.finish()); }
+if (!process.env.TNG_BROWSER) { C.note("browser part skipped (set TNG_BROWSER=1)"); writeResult(OUT, "budget.json", {node: nodeNums, ...(TIER ? {story: {id: STORY, ...storyNums}} : {})}); process.exit(C.finish()); }
 const OBS = `(() => { const B = window.__qaBudget = {cls: 0, fcp: null};
   try { new PerformanceObserver(l => { for (const e of l.getEntries()) if (!e.hadRecentInput) B.cls += e.value; }).observe({type: "layout-shift", buffered: true}); } catch {}
   try { new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.name === "first-contentful-paint") B.fcp = e.startTime; }).observe({type: "paint", buffered: true}); } catch {} })();`;
@@ -76,7 +114,8 @@ const allow = String(opt["allow-origin"] || "").split(",").filter(Boolean);
 // for the wrong reason (review2_perf_a11y M1 measured 53.5 MB on the 3D tier). The byte runs force the 3D tier (?force3d=1; on a
 // CPU node the page otherwise lands on stills and loads no cubes) and fly slowly enough for the beat prefetch (--run-s, 90 s).
 const AS = storyAssets(opt), srv = await gzServe(DIR, AS), AQ = assetQuery(srv, AS);
-const URL0 = srv.base + STORY_REL + "/index.html" + (AQ ? "?" + AQ : ""), URL3 = URL0 + (AQ ? "&" : "?") + (opt["no-force3d"] ? "" : "force3d=1");
+const SQ = TIER && STORY !== "full" ? "story=" + encodeURIComponent(STORY) : "";
+const URL0 = srv.base + STORY_REL + "/index.html" + ((AQ || SQ) ? "?" + [SQ, AQ].filter(Boolean).join("&") : ""), URL3 = URL0 + ((AQ || SQ) ? "&" : "?") + (opt["no-force3d"] ? "" : "force3d=1");
 const RUN_S = +(opt["run-s"] || 90);
 C.note(`assets: cubes ${AS.viz || "page default (hosted, blocked here)"}; three ${AS.three || "page default (CDN)"}; byte runs ${opt["no-force3d"] ? "page tier" : "forced 3D tier"}, ${RUN_S} s flight`);
 const P = await launch({edge: opt.edge || plainEdge(), block: BLOCK, inject: [OBS], reducedMotion: false});
@@ -88,10 +127,14 @@ try {
   /* first live frame at 20 Mbps, first 3D frame at 50 Mbps */
   for (const [mbps, mark, key, limit] of [[20, "story:first-live", "liveMs", G6.liveS], [50, "story:first-3d", "first3dMs", G6.firstS]]) {
     await setViewport(P, {w: 1440, h: 900, zoom: 1, mobile: false}); await net(mbps, 40);
-    await P.goto(URL0);
+    // cold start (R7_gpu): the explorer loader keeps cubes in Cache Storage / IndexedDB, so the 50 Mbps run must not reuse the 20 Mbps run's
+    await P.send("Storage.clearDataForOrigin", {origin: srv.origin, storageTypes: "all"}).catch(() => {});
+    const sv1 = srv.served.bytes, sn1 = srv.served.n;
+    await P.goto(key === "first3dMs" && TIER ? URL3 : URL0);
     const kind = await detect(P, 60000);
     await P.waitFor(`${MARK(mark)} !== null || (${key === "liveMs"} && !window.__story && window.__qaBudget && __qaBudget.fcp !== null)`, limit * 3000, 50);
     const m = await P.eval(MARK(mark));
+    if (key === "first3dMs" && m !== null) { out.first3dBytes = srv.served.bytes - sv1; out.first3dServed = srv.served.n - sn1; C.note(`bytes served until ${mark}: ${(out.first3dBytes / MB).toFixed(2)} MB (polled every 50 ms, so a little high)`); }
     if (m !== null) { out[key] = m; C.note(`${mark} at ${m.toFixed(0)} ms (${mbps} Mbps)`); }
     else if (key === "liveMs") { const fcp = await P.eval("__qaBudget.fcp"); if (fcp !== null) out.liveMs = fcp; C.note(`no "${mark}" mark (${kind}); first contentful paint ${fcp === null ? "none" : fcp.toFixed(0) + " ms"} stands in`); }
     else C.note(`no "${mark}" mark (${kind || "not ready"}); first 3D frame not measured${kind === "v2" ? " (stage must mark it, see U_qa.md)" : " (v1 has no 3D)"}`);
@@ -132,8 +175,16 @@ try {
     out.offOrigin = [...new Set([...(out.offOrigin || []), ...off])];
   }
   C.note("dedicated-worker fetches are not in the page's Resource Timing; a v2 stage that fetches cubes in a worker must report them (see U_qa.md)");
+  if (TIER) {
+    // per-story rule only (DESIGN_tierA §9): GPU memory, origins; first-3D bytes are compared with the hero's by the runner
+    const B = {...G6, shellKB: Infinity, liveS: Infinity, firstS: Infinity, desktopMB: Infinity, mobileMB: Infinity};
+    const r = evalBudget({...out, cls: undefined, backdropFrac: undefined}, B);
+    C.note(`${STORY}: first live ${out.liveMs?.toFixed(0) ?? "n/a"} ms, first 3D ${out.first3dMs?.toFixed(0) ?? "n/a"} ms, run ${((out.desktopBytes || 0) / MB).toFixed(1)} / ${((out.mobileBytes || 0) / MB).toFixed(1)} MB, CLS ${out.cls?.toFixed(3)}, backdrop ${(100 * (out.backdropFrac || 0)).toFixed(1)} % (v2 limits reported, not gated here)`);
+    C.check(out.first3dBytes != null, `${STORY}: first-3D bytes measured (story:first-3d mark reached)`);
+    if (report(C, r)) C.check(true, `G6s browser ${STORY}: GPU memory within 448/192 MB, no off-origin request`);
+  } else
   if (report(C, evalBudget(out))) C.check(true, "G6 browser: first frames, run bytes, GPU memory, backdrop area, CLS and origins within budget");
   if (P.exceptions.length) C.note(`page exceptions: ${P.exceptions.slice(0, 3).join(" | ")}`);
 } finally { await P.close(); await srv.close(); }
-const f = writeResult(OUT, "budget.json", {node: nodeNums, browser: out}); if (f) C.note(`results ${relative(REPO, f)}`);
+const f = writeResult(OUT, "budget.json", {node: nodeNums, browser: out, ...(TIER ? {story: {id: STORY, ...storyNums}} : {})}); if (f) C.note(`results ${relative(REPO, f)}`);
 process.exit(C.finish());
