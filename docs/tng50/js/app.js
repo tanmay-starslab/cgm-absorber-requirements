@@ -12,8 +12,10 @@ import {createInstrument} from "./instrument.js";
 import * as FITM from "./fit.js";
 import {initTips, ION_TIPS} from "./tips.js";
 import {initFeatures} from "./features.js";   /* ux4 features: share, keys, random, undo, solo, CSV, loading */
+import {initLiquidTabs, initLiquidSeg, initLiquidButtons} from "./liquidtabs.js";   /* CSS-only liquid drop (tabs, segmented rows) and glossy top-bar buttons */
+import {initLiquidBg} from "./liquidbg.js";   /* liquid metal shader background (3D tab; Spectra only with SPECTRA_BG) */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
-  nearestSightline, defaultSightline, srcOf} from "./galaxies.js";
+  nearestSightline, defaultSightline, srcOf, galaxySummary} from "./galaxies.js";
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
 /* ---------------- config ---------------- */
@@ -86,16 +88,21 @@ const SIGHT = new Map();        // id -> decoded TNGS (fit.js decodeTNGS)
 let API = null, HEALTH = null, PROBES = [], pendingId = null;
 
 /* ---------------- theme ---------------- */
+/* owner 2026-11-16: every click must change what is on screen. The old 3-step cycle auto, light, dark had one step with
+   no visible change (auto already shows light or dark), so it needed a second click. Now "auto" (follow the system) is
+   only the starting state; a click always switches to the opposite of what is shown, and the choice is remembered. */
 const THEMES = ["auto", "light", "dark"];
 let theme = THEMES.includes(store.get("tngsight.theme")) ? store.get("tngsight.theme") : "auto";
+const shown = t => (t === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : t);
 function applyTheme(t) { if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
-  const b = $("#theme"), nx = THEMES[(THEMES.indexOf(t) + 1) % 3]; b.dataset.mode = t; b.setAttribute("aria-label", "Theme: " + t);
-  b.dataset.tip = `Theme ${t}: ${t === "auto" ? "follows your system" : "fixed"}; click for ${nx}`; }
+  const b = $("#theme"), cur = shown(t), nx = cur === "dark" ? "light" : "dark"; b.dataset.mode = t;
+  b.setAttribute("aria-label", `Theme: ${cur}${t === "auto" ? " (system)" : ""}. Switch to ${nx}`);
+  b.dataset.tip = `${cur === "dark" ? "Dark" : "Light"} theme${t === "auto" ? ", following your system" : ""}; click for ${nx}`; }
 applyTheme(theme);
-$("#theme").addEventListener("click", () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; store.set("tngsight.theme", theme); applyTheme(theme); });
+$("#theme").addEventListener("click", () => { theme = shown(theme) === "dark" ? "light" : "dark"; store.set("tngsight.theme", theme); applyTheme(theme); });
 function themeChanged() { buildIons(); build3dField(); spectra.schedule(); }
 new MutationObserver(() => themeChanged()).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => themeChanged());
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { applyTheme(theme); themeChanged(); });
 
 /* ---------------- notes and status ---------------- */
 let noteT = 0;
@@ -703,6 +710,18 @@ function showTab(t, focus) { if (!TABS.includes(t)) return; const prev = S.tab; 
 for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", () => showTab(k));
   b.addEventListener("keydown", ev => { const i = TABS.indexOf(S.tab), n = {ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1}[ev.key];
     if (n == null) return; ev.preventDefault(); showTab(TABS[(n + TABS.length) % TABS.length], true); }); }
+initLiquidTabs($("#tabs")); initLiquidSeg($("#layout")); initLiquidButtons();
+/* liquid metal background (owner 2026-11-16): wanted mainly on the 3D tab, behind the stage and the control cards (it sits
+   under the page at z-index -1, so it never draws over the volume render). SPECTRA_BG is the single switch for the Spectra
+   tab (off: the spectra keep the static glow background); ?bg=on turns it on for one visit, ?bg=off removes it everywhere. */
+const SPECTRA_BG = false;
+const BG_SPECTRA = SPECTRA_BG || new URLSearchParams(location.search).get("bg") === "on";
+document.body.classList.toggle("lmbg-spectra", BG_SPECTRA);
+initLiquidBg({name: "explorer", showWhen: () => S.tab === "3d" || BG_SPECTRA,
+  calm: () => (S.tab === "spectra" ? $("#panel-spectra") : null), observe: [$("#panel-spectra"), $("#v3d-stage")],
+  /* never cost the 3D view: a static frame when viewer3d's calibration found its exact moving frame over 33 ms (it fell back to
+     the fast path: a weak GPU); liquidbg.js also freezes itself when the page's median frame interval passes 20 ms */
+  heavy: () => S.tab === "3d" && window.tngViewer3d?.stats?.calibration?.moving_path === "fast"});
 let V3P = null, V3 = null, THUMB = null;
 function vizCfg() {
   if (!CFG.viz) return null;
@@ -764,7 +783,7 @@ function sourceUI() {
     bar.insertBefore(chip, bar.firstChild); }
   const sbi = srcOf(SRC) === "sbi", gid = GAL ?? CFG.galaxy?.subhalo_id;
   chip.textContent = `${GIX && gid != null ? gid + "  " : ""}${sbi ? "THOR" : "Trident"}${GFLAGS.gas_poor ? "  gas-poor" : ""}`;
-  chip.dataset.tip = sbi ? `Subhalo ${gid}: THOR rays through the Voronoi mesh, CLOUDY FG11 ions (SBI_CGM library); click for details`
+  chip.dataset.tip = sbi ? `Subhalo ${gid}: THOR rays through the Voronoi mesh, CLOUDY FG11 ions; click for details`
     : `Subhalo ${gid}: Trident HM2012 spectra, ±R200c; click for details`;
   chip.setAttribute("aria-label", `Subhalo ${gid}, spectra source ${sbi ? "THOR" : (SRC.label || "Trident")}. Open data and methods`);
   methodsText(sbi);
@@ -777,9 +796,9 @@ function methodsText(sbi) {
     MEL.lic = $("#lic-spectra"); MEL.lic2 = MEL.lic && MEL.lic.nextElementSibling;
     const pv = document.createElement("p"); pv.id = "methods-source"; pv.hidden = true; ag.after(pv); MEL.src = pv; }
   const SBI_TXT = {
-    tau: "Optical depths from the SBI_CGM GPU Voigt renderer (fp64) at 0.5 km/s over ±1500 km/s, resampled by velocity; sightlines ±2 R200c long. Velocities are relative to the galaxy's systemic velocity.",
+    tau: "Optical depths from a GPU Voigt renderer (fp64) at 0.5 km/s over ±1500 km/s, resampled by velocity; sightlines ±2 R200c long. Velocities are relative to the galaxy's systemic velocity.",
     ions: "Spectra: rays through the TNG50 Voronoi mesh traced by THOR (Byrohl & Nelson 2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background (Faucher-Giguère et al. 2009) and Rahmati et al. (2013) self-shielding for H I. 3D ion cubes: Trident HM2012 (H I from the TNG neutral fraction) within r ≤ 400 kpc, so a sightline drawn through a cube can differ from its spectrum by a few tenths of a dex.",
-    atomic: "Atomic data: the SBI_CGM profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits."};
+    atomic: "Atomic data: the profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits."};
   /* Data and credits: both spectra paragraphs are always shown; the one that applies to this galaxy's library leads with "This galaxy" */
   for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi]]) { if (!el) continue; let t = el.querySelector(".cur-l");
     if (on && !t) { t = document.createElement("strong"); t.className = "cur-l"; t.textContent = "This galaxy: "; el.prepend(t); } else if (!on && t) t.remove(); }
@@ -852,7 +871,7 @@ function mountFind() { if (FINDP) return; FINDP = import(modUrl("search.js")).th
 let CHAT = null;
 $("#chat-open").hidden = !(CFG.chat && CFG.chat.enabled);
 $("#chat-open").addEventListener("click", async () => { try { if (!CHAT) { const m = await import(modUrl("chat.js")), root = $("#chat-root"); root.hidden = false;
-    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
+    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); initLiquidSeg(root.querySelector(".chat-mode")); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
 
 /* ---------------- side column (collapsible, remembered) and the phone drawer ---------------- */
 function setSide(on) { document.body.classList.toggle("side-off", !on); const b = $("#side-toggle"); b.setAttribute("aria-expanded", String(on));
@@ -967,6 +986,21 @@ const fail = message => ({status: "error", message});
 function getState() { return {id: S.id, ions: S.ions.slice(), layout: S.layout, R: Object.fromEntries(Object.entries(S.R).map(([b, r]) => [b, r.slice()])), sn: S.sn.slice(),
   vc: S.vc, vhw: S.vhw, seed: S.seed, intrinsic: S.intr, fit: S.fit, tab: S.tab, galaxy: GAL, api: API, warm: !!(HEALTH && HEALTH.warm),
   job: JOB ? {job_id: JOB.job_id, id: JOB.id, kind: JOB.kind} : null}; }
+/* the chat's page snapshot (chat.js get_page_state and the [page ...] prefix of every question): the open galaxy and its
+   properties, the shown sightline, the tab, the 3D view and the instrument */
+function pageState() {
+  const ge = GIX ? GIX.byId.get(GAL) || null : null, cg = CFG.galaxy || {}, e = S.id ? CAT.get(S.id) : null, v = V3 && V3.webgl2 ? V3 : null;
+  const g = galaxySummary({...(ge || {}), id: GAL ?? cg.subhalo_id, Mstar: ge?.Mstar ?? cg.Mstar_Msun, M200c: ge?.M200c ?? cg.M200c_Msun,
+    R200c: cg.R200c_kpc ?? ge?.R200c, SFR: ge?.SFR ?? cg.SFR_Msun_yr, central: ge?.central ?? cg.central, gas_poor: GFLAGS.gas_poor ?? ge?.gas_poor,
+    src: srcOf(SRC) || ge?.src, n: CAT.size, viz: !!CFG.viz});
+  let tf = null; try { tf = v ? (v.tfOn && v.tfOn() ? v.tfState()?.preset || "custom" : "ramp") : null; } catch { tf = null; }
+  return {n_galaxies: GIX ? GIX.list.length : 1, galaxy: g,
+    sightline: e ? {id: e.id, orientation: e.orientation || null, b_kpc: e.b_kpc ?? null, azimuth_deg: e.azimuth_deg ?? null} : null,
+    tab: S.tab, view3d: v ? {species: v.species || null, mode: v.mode || null, tf} : null,
+    instrument: {R: Object.fromEntries(Object.entries(S.R).map(([b, r]) => [b, r.slice()])), sn: S.sn.slice(), layout: S.layout, ions: S.ions.slice(),
+      vc: S.vc, vhw: S.vhw, fit: !!S.fit},
+    job: JOB ? {id: JOB.id, kind: JOB.kind} : null};
+}
 function applyPatch(P) {
   for (const k of ["R", "sn", "layout", "ions", "vhw", "vc"]) if (P[k] !== undefined) S[k] = P[k];
   clampView(S, vmax()); syncAll(); if (P.fit !== undefined) setFit(P.fit); draw(); writeHash(); emit("tng:instrument", {state: getState()}); return getState(); }
@@ -977,7 +1011,7 @@ window.tngApp = {
   openCredits(opener) { const pop = $("#pop-licence"), b = opener || $("#credits-open"); if (!pop || !b) return false;
     if (!pop.hidden && lastOpener === b) { closePops(); return false; } openPop(b, pop); return true; },
   async selectGalaxy(id, {source = "chat"} = {}) { return switchGalaxy(+id, {source}); },
-  getState, entries: () => sorted().map(strip), entry: id => (CAT.has(id) ? strip(CAT.get(id)) : null),
+  getState, pageState, entries: () => sorted().map(strip), entry: id => (CAT.has(id) ? strip(CAT.get(id)) : null),
   async select(id, {source = "chat"} = {}) { if (!CAT.has(id)) return false; if (id !== S.id) await select(id, false, source); return true; },
   setInstrument(o = {}) { return applyPatch(instrumentPatch(o, reg, S, vmaxFor)); },
   setView(o = {}) { const P = instrumentPatch({...(o.vhw !== undefined ? {vhw: o.vhw} : {}), ...(o.vc !== undefined ? {vc: o.vc} : {})}, reg, S, vmaxFor); return applyPatch(P); },
@@ -1003,11 +1037,16 @@ window.tngApp = {
   async submitCustom({p0_kpc, p1_kpc} = {}) { const r = await submitJob("custom", {p0_kpc, p1_kpc}, true);
     return r.offline ? fail("generating a custom ray needs a sightline server (none is online)") : r; },
   components, componentsIndex, showTab: t => showTab(t),
-  async show3d({species, preset} = {}) { showTab("3d"); let v; try { v = await open3d(); } catch (x) { return {ok: false, webgl2: false, message: x.message}; }
+  /* mode: "integral" | "volume" (viewer.setMode); tf: a tf.js preset (viewer.setTf), drawn in volume mode only, so it implies it */
+  async show3d({species, preset, mode, tf} = {}) { showTab("3d"); let v; try { v = await open3d(); } catch (x) { return {ok: false, webgl2: false, message: x.message}; }
     if (!v.webgl2) return {ok: false, webgl2: false, species: null, preset: null, message: v.message};
     if (species && !(await v.setSpecies(species))) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: v.loadError && v.loadError.key === species ? `the ${species} volume could not be loaded: ${v.loadError.message}` : v.wanted !== species ? "superseded by a later 3D request" : `the ${species} volume is not available`};
+    const m = tf ? "volume" : mode;
+    if (m && !v.setMode(m)) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: `${v.species || "this field"} has no ${m} view`};
+    if (tf && !v.setTf(tf)) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: `the ${tf} colour preset is not available for ${v.species || "this field"}`};
     if (preset && !v.setPreset(preset)) return {ok: false, webgl2: true, species: v.species, preset, mode: v.mode, message: v.presetError || "select a sightline first"};
-    return {ok: true, webgl2: true, species: v.species, preset: preset || null, mode: v.mode}; },
+    let t = null; try { t = v.tfOn && v.tfOn() ? v.tfState()?.preset || "custom" : "ramp"; } catch { t = null; }
+    return {ok: true, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, tf: t}; },
   _debug: {figureBody, get dgBytes() { return dgBytes; }, get dgSize() { return DG.size; }, dgMax: DG_MAX_BYTES,
     quality(ion, ci, v) { const r = fitResult(ion, ci), d = S.id && SIGHT.has(S.id) ? dataFor(ion, ci) : null;
       return (r && r.comps || []).filter(c => v == null || Math.abs(c.v - v) < 1e-6).map(c => ({v: c.v, logN: c.logN, flag: c.flag, ...compQuality(c, ion, r, d)})); },

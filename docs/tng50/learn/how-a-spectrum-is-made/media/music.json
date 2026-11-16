@@ -1,12 +1,35 @@
 {
- "work": "Ludwig van Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto",
- "recording": "orchestral recording supplied by the site owner",
- "changes": "excerpted, faded, looped and loudness-levelled",
- "source_sha256": "95d11c0a1416c57f8334754f3963499da3afce1c0470620fc0588d598547b5b8",
- "loop_s": 92.0,
- "loop_window_s": [
-  4.0,
-  100.0
- ],
- "film_s": 176.0
+ "tracks": [
+  {
+   "id": "dayone",
+   "label": "Day One",
+   "file": "music_dayone.m4a",
+   "default": true,
+   "work": "Hans Zimmer, Day One (Interstellar, 2014)",
+   "recording": "commercial soundtrack recording supplied by the site owner",
+   "changes": "excerpted, crossfaded into a loop and loudness-levelled",
+   "loop_window_s": [
+    10.75,
+    110.75
+   ],
+   "source_sha256": "255647845d00cadc6aaef09132c59dca8628e751d151d13d6adb56c9d18367ab",
+   "loop_s": 96.0
+  },
+  {
+   "id": "beethoven",
+   "label": "Beethoven",
+   "file": "music_loop.m4a",
+   "default": false,
+   "work": "Ludwig van Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto",
+   "recording": "orchestral recording supplied by the site owner",
+   "changes": "excerpted, faded, looped and loudness-levelled",
+   "loop_window_s": [
+    4.0,
+    100.0
+   ],
+   "source_sha256": "95d11c0a1416c57f8334754f3963499da3afce1c0470620fc0588d598547b5b8",
+   "loop_s": 92.0,
+   "film_s": 176.0
+  }
+ ]
 }

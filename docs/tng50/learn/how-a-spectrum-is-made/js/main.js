@@ -22,7 +22,7 @@ import {createPrefetcher} from "./core/prefetch.js";
 import {createWatchDriver, createTicker} from "./drivers/play.js";
 import {createStoryExplore} from "./drivers/explore.js";
 import {createShell, beatSkip, anchorL, beamCorridor, activeText} from "./ui/hud.js";
-import {createSound} from "./ui/sound.js";
+import {createSound, nextTrack} from "./ui/sound.js";
 import {focusStyle} from "./ui/kinetic.js";
 import {computeBands, layoutClass, isPhone} from "./ui/layoutclass.js";
 import {createGate, parseEntry, entryFragment} from "./ui/gate.js";
@@ -135,7 +135,8 @@ async function boot() {
   const lineSkip = beatSkip(flags);
   timeline.setSkip && timeline.setSkip(lineSkip);
   const bus = createBus();
-  let stage = null, input = null, watch = null, ticker = null, gate = null, scrims = null;
+  let stage = null, input = null, watch = null, ticker = null, gate = null, scrims = null
+  let gateBg = null;   // the gate's liquid metal background handle (js/liquidbg.js), null once the flight starts
   let stillGeo = null;                                      // poster beam pixels on the stills tier (review M1)
   let stillsNoted = false;                                  // the fallback note is shown once (fix3 perf_a11y M6)
   let lastKey = "", lastChange = 0, eqDbg = null;
@@ -238,6 +239,8 @@ async function boot() {
   let trailOn = false;
   const hooks = {
     music: () => music.toggle(),
+    musicTrack: () => music.cycleTrack(),
+    musicTrackLabel: () => ({label: "Music: " + music.track().label, hint: "switch to " + nextTrack(music.track().id).label}),
     setTarget: p => clock.setTarget(p),
     jump: p => (input ? input.jumpTo(p, "rail") : clock.setTarget(p)),
     flyStart: () => input && input.holdStart("fly"),
@@ -335,6 +338,11 @@ async function boot() {
       onSkip: () => { closeGate(); clock.jump(B1read); kick(); },
       onText: () => shell.narrative.open()});
     gate.open(); html.classList.add("gate-open");
+    // liquid metal behind the gate's title (explorer js/liquidbg.js, dark palette): its own small WebGL1 context, created after
+    // first paint; paused the moment the flight is asked for and released once the gate has faded (never during the flight)
+    import("../../../js/liquidbg.js").then(M => { if (gate && gate.isOpen()) gateBg = M.initLiquidBg({name: "gate", host: gate.el, before: gate.el.querySelector(".sg-in"), theme: "dark", className: "sg-metal",
+      calm: () => gate && gate.el.querySelector(".sg-in"),
+      palette: {flat: M.hexRGB("#04050a"), low: M.hexRGB("#04050a"), metal: M.hexRGB("#353b48"), high: M.hexRGB("#c3cad6"), amt: 0.95, calm: 0.42, vig: 0.4, band: 0.07}}); }).catch(() => {});
     // G10: the gate's numbers come from data (galaxy id) or the timeline (Watch length), not typed copy
     for (const e of gate.el.querySelectorAll(".sg-s, .sg-cr")) e.dataset.key = "galaxy";
     for (const e of gate.el.querySelectorAll(".sg-l")) e.dataset.num = "watch_total";
@@ -350,10 +358,11 @@ async function boot() {
      at once never sees beads on black; capped at GATE_WAIT_MS after the first close request (a slow cube fetch then shows
      the empty sky rather than freezing the page behind the poster) */
   const GATE_WAIT_MS = 4000; let gateAsk = 0;
-  function closeGate() { if (!gate || !gate.isOpen()) return;
+  function closeGate() { if (!gate || !gate.isOpen()) return; if (gateBg) gateBg.pause("flight");
     if (tier === "3d" && stage !== undefined && !first3d) { const t = performance.now(); if (!gateAsk) { gateAsk = t; setTimeout(() => { closeGate(); }, GATE_WAIT_MS + 20); }
       if (t - gateAsk < GATE_WAIT_MS) { kick(); return; } }
-    gateAsk = 0; gate.close(); html.classList.remove("gate-open"); kick(); }
+    gateAsk = 0; gate.close(); html.classList.remove("gate-open"); kick();
+    if (gateBg) { const b = gateBg; gateBg = null; setTimeout(() => b.destroy(), 700); } }
 
   /* ---------------- the frame ---------------- */
   const insetsOf = () => { const cs = getComputedStyle($("stage")), n = v => parseFloat(cs.getPropertyValue(v)) || 0; return {top: n("--sat"), right: n("--sar"), bottom: n("--sab"), left: n("--sal")}; };
@@ -617,7 +626,7 @@ async function boot() {
     perf: () => ({stage, frameMs: perfMs.frame.slice(), jsMs: perfMs.vol.slice()}),
     gpuBytes: () => (stage && stage.core && stage.core.gpuBytes ? stage.core.gpuBytes() : null),
     sizeTable: deps => shell.sizeTable({seek, data, beats, shots: shotsDoc, overlay, ...(deps || {})}),
-    overrides: () => explore.overrides, explore, bus, shell, spectrum, overlay, timeline, input, watch, gate,
+    overrides: () => explore.overrides, explore, bus, shell, spectrum, overlay, timeline, input, watch, gate, music,
     frame: () => { frame(); return lastFs; }, eqDebug: () => eqDbg,
     orbit: () => ({yaw: orb.yaw, pitch: orb.pitch, held: orb.held, look: !!(input && input.look)}), gateWaiting: () => !!gateAsk, first3d: () => first3d,
     bootMs: Math.round(performance.now() - t0),

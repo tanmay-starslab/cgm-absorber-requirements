@@ -109,10 +109,13 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
      Versions are recorded in media/manifest.json.
    - Not used: GSAP (its Standard "No Charge" licence is not an open-source licence), Remotion
      (not free for universities), three.js inside the story, Lenis, Scrollama.
-   - Music (optional, off by default; media/music_loop.m4a and the films' soundtrack, see
-     media/MUSIC_LICENSE.txt): Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (the
-     work is public domain), an orchestral recording supplied by the site owner; excerpted, faded,
-     looped and loudness-levelled. The recording is not covered by this repository's MIT licence.
+   - Music (optional, off by default, two tracks chosen in the menu; see media/MUSIC_LICENSE.txt):
+     media/music_dayone.m4a (the default), Hans Zimmer, Day One (Interstellar, 2014), a commercial
+     soundtrack recording supplied by the site owner; excerpted, looped and loudness-levelled.
+     media/music_loop.m4a and the films' soundtrack: Beethoven, Symphony No. 7 in A major, Op. 92,
+     II. Allegretto (the work is public domain), an orchestral recording supplied by the site owner;
+     excerpted, faded, looped and loudness-levelled. Neither recording is covered by this
+     repository's MIT licence.
    - The story data, chapter images and film show TNG50 data and fall under item 3.
 
 ------------------------------------------------------------------------------------------------

@@ -35,6 +35,7 @@
 //   that has no gas.vectors). setWeight(k) picks their weight (nH or an ion with cubes; viewer.weight reads it),
 //   setTransfer({W, opacity, cmap}) their window (±W km/s, 0..W for vmag and sigmalos); viewer.velocity = {V, units, frame} or null.
 // ------------------------------------------------------------------------------------------------------------------------
+import {initLiquidSeg} from "./liquidtabs.js";   /* CSS-only liquid drop behind the Field and Render mode rows */
 import {lut, cssGradient, NAMES as CMAPS, VEL_NAMES} from "./colormaps.js";
 import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, speciesList, MU_ZERO,
   VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity} from "./vizdata.js";
@@ -192,7 +193,8 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
   --s-panel:#0c1016;--s-ink:#e9eef4;--s-ink2:#b3bdc9;--s-rule:#2f3844;--s-accent:#7db2f0;--s-fit:#f39a5c;--s-bad:#ff8a8a;--lib-line:#8d97a6;
   --s-mat:color-mix(in srgb,#0c1016 74%,transparent);--s-blur:blur(24px) saturate(1.5);--s-edge:rgba(200,215,240,.16);--s-hi:inset 0 1px 0 rgba(255,255,255,.10)}
 .v3d-stage{position:relative;width:100%;height:100%;touch-action:none;color-scheme:dark;background:${BG};color:var(--s-ink);overflow:hidden}
-.v3d-stage canvas{display:block;width:100%;height:100%;outline:none}
+.v3d-stage{background:#05070b}.v3d-stage canvas{display:block;width:100%;height:100%;outline:none;background:#05070b}
+.v3d.v3d-gl-off .v3d-stage canvas{visibility:hidden}
 .v3d-stage canvas:focus-visible{outline:2px solid var(--s-accent);outline-offset:-2px}
 #v3d-stage{position:relative}
 #v3d-stage .v3d:not(.v3d-thumb):not(.v3d-fs){position:absolute;inset:0}
@@ -214,7 +216,7 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d-leg .ticks{position:relative;height:14px}.v3d-leg .ticks span{position:absolute;transform:translateX(-50%);top:1px}
 .v3d-leg .ttl{font:500 11.5px var(--sans,system-ui,sans-serif);color:var(--s-ink);margin-bottom:3px}
 .v3d-leg .st{margin-top:4px;font:11px var(--sans,system-ui,sans-serif)}.v3d-leg .st i{display:inline-block;width:46px;height:8px;border-radius:2px;vertical-align:middle;margin-right:6px;background:linear-gradient(90deg,#4d6fd0,#fff4e6,#ffb347)}
-.v3d-lines{right:10px;bottom:48px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;padding:4px 8px}
+.v3d-lines[hidden]{display:none}.v3d-lines{right:10px;bottom:48px;display:flex;flex-direction:column;gap:2px;font-size:11.5px;padding:4px 8px}
 .v3d-lines i{display:inline-block;width:20px;height:0;border-top:2px solid;vertical-align:middle;margin-right:5px}
 .v3d-lines i.sel{border-top-width:5px;outline:1px dashed var(--s-ink);outline-offset:2px}
 .v3d-scale{left:50%;bottom:12px;transform:translateX(-50%);font:11px var(--mono,ui-monospace,monospace);text-align:center;padding:3px 8px}
@@ -290,7 +292,14 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-row{display:grid;grid-template-columns:62px minmax(0,1fr) 44px;align-items:center;gap:8px;min-height:26px}
 .v3c-row>label,.v3c-row>.lab{font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .v3c-row output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right;color:var(--ink,#eef0f7)}
+/* orbit speed: the label gets its own width and the value sits in a small box, so "orbit speed" and "30°/s" are never cut */
+.v3c-row.v3c-speed{grid-template-columns:auto minmax(0,1fr) auto}
+.v3c-btns+.v3c-speed{margin-top:8px}   /* air between the preset buttons and the orbit rows */
+.v3c-speed select{grid-column:2/4}
+.v3c-speed label{font-size:11px;white-space:nowrap}
+.v3c-speed output{font-size:10.5px;padding:2px 6px;border-radius:6px;border:1px solid var(--cg-edge,rgba(255,255,255,.18));min-width:3.6em;text-align:center}
 .v3c-row input[type=range]{width:100%;min-width:0;margin:0}
+.v3c-row select:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:-2px}   /* focus ring inside the box: never over the row above */
 .v3c-row select{grid-column:2/4;min-width:0;width:100%;height:28px;border:1px solid var(--cg-edge);border-radius:8px;background-color:var(--cg-well);color:inherit;font:inherit;font-size:12px;padding:0 6px}
 .v3c-row input[type=checkbox]{margin:0 6px 0 0;vertical-align:middle}
 .v3c-btns{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
@@ -369,7 +378,22 @@ body.v3d-noscroll{overflow:hidden}
 @media (prefers-contrast:more){.v3d{--s-edge:rgba(220,230,250,.5)}.v3c{--cg-edge:var(--mat-edge-hc,var(--muted,#98a0b8))}}`;
 
 const pretty = u => String(u || "").replace("cm^-3", "cm⁻³").replace("cm^-2", "cm⁻²").replace("Zsun", "Z☉");
-const isMobile = () => matchMedia("(max-width: 720px)").matches;
+/* "mobile" = the constrained GPU profile (192 MB texture budget, pixel ratio 1, no stars, serial loads). Width alone missed
+   large tablets (Galaxy Tab S8 Ultra, iPad Pro: desktop-width screens, mobile-browser GPU memory limits), which then lost the
+   WebGL context. A touch-only device, a mobile/tablet browser, a reported device memory <= 4 GB, or a context loss earlier
+   in this session (sessionStorage) all select it; ?gpu=full forces the desktop profile, ?gpu=lite the constrained one. */
+const LITE_KEY = "tng50.gpuLite";
+const isMobile = () => {
+  try { const q = new URLSearchParams(location.search).get("gpu"); if (q === "full") return false; if (q === "lite") return true; } catch { /* no URL */ }
+  try { if (sessionStorage.getItem(LITE_KEY) === "1") return true; } catch { /* private mode */ }
+  if (matchMedia("(max-width: 720px)").matches) return true;
+  if (matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches) return true;
+  if (navigator.userAgentData?.mobile) return true;
+  if (/Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent || "")) return true;
+  if (/Macintosh/.test(navigator.userAgent || "") && (navigator.maxTouchPoints || 0) > 1) return true;   // iPadOS reports a Mac
+  if ((navigator.deviceMemory ?? 8) <= 4) return true;
+  return false;
+};
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const median = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
 const mb = b => (b / 1e6).toFixed(b > 1e7 ? 0 : 1) + " MB";
@@ -430,7 +454,7 @@ async function create(app, opts = {}) {
   const el = document.createElement("div"); el.className = "v3d";
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
-    <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the view about the disk axis (O)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
+    <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the galaxy: tilt it if face-on, else spin it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
     <button type="button" class="v3d-pv" id="v3-pivot" hidden aria-label="Re-centre on the galaxy" data-tip="Orbit centre moved; return to the galaxy (C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg><span>re-centre</span></button>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
@@ -469,6 +493,8 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
+      <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select></div>
+      <div class="v3c-row v3c-speed"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="30" step="1" value="5" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">5°/s</output></div>
       <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
       <details id="v3-pv-more"><summary data-tip="Type an orbit centre in kpc, galaxy box axes">kpc</summary><form class="v3tf-g v3c-pvxyz" id="v3-pv-form"><input id="v3-pv-x" type="number" step="1" min="-400" max="400" aria-label="centre x, kpc" placeholder="x" data-tip="x in kpc from the galaxy centre"><input id="v3-pv-y" type="number" step="1" min="-400" max="400" aria-label="centre y, kpc" placeholder="y" data-tip="y in kpc from the galaxy centre"><input id="v3-pv-z" type="number" step="1" min="-400" max="400" aria-label="centre z, kpc" placeholder="z" data-tip="z in kpc from the galaxy centre"><button type="submit" class="v3c-btn" data-tip="Move the orbit centre there">go</button></form></details></section>
@@ -476,7 +502,7 @@ async function create(app, opts = {}) {
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
       <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
-      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Draw sightlines: selected, rich absorbers plus yours, all, none"><option value="selected">selected only</option><option value="showcase">rich absorbers + yours</option><option value="all">all</option><option value="none">none</option></select></div>
+      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase" title="Sightlines with several clean, unsaturated absorbers, plus rays you made">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section>
     <section class="v3c-card" data-group="mode"><h2>Mode</h2>
       <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
@@ -484,6 +510,7 @@ async function create(app, opts = {}) {
       <div class="v3c-row"><label for="v3-op">opacity</label><input id="v3-op" type="range" min="0" max="1" step="0.01" data-tip="Overall opacity of the volume rendering; volume mode only"><output id="v3-op-o" for="v3-op"></output></div></section>
     <section class="v3c-card" data-group="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section>
     <div class="v3c-lod" id="v3-lod" aria-hidden="true"></div>`;
+  ctlBox.querySelectorAll(".v3c-seg").forEach(initLiquidSeg);
   const q = s => el.querySelector(s) || ctlBox.querySelector(s), canvas = q("canvas"), stage = q(".v3d-stage"), msgEl = q(".v3d-msg");
   /* tune1 F1: the page's range style fills the track up to --pc; keep it at each slider's value (set from code and on input) */
   const fillRanges = () => { for (const i of ctlBox.querySelectorAll('input[type=range]')) { const a = i.min === "" ? 0 : +i.min, b = i.max === "" ? 100 : +i.max;
@@ -682,7 +709,7 @@ async function create(app, opts = {}) {
   /* ---- textures, LOD, GPU budget ---- */
   const loader = manifest ? makeLoader({manifest, base: viz.base, fallbackBase: viz.fallback_base, cache: viz.cache !== false}) : null;
   const TEX = new Map(), PEND = new Map(), FADE = new Map(), PROG = new Map();   // PROG: key -> {got, total} bytes (tune2)   // key "gas|nH|L1" / "stars||S1" -> {tex, bytes, used}
-  const BUDGET = (mobile ? 192 : 448) * 1e6;
+  let BUDGET = (mobile ? 192 : 448) * 1e6;
   let hostErr = null, useMovingExact = true, calibrated = "";
   const keyOf = (kind, k, L) => `${kind}|${k || ""}|${L}`;
   const hVis = () => camera.position.distanceTo(controls.target) * Math.tan(camera.fov * Math.PI / 360);
@@ -887,10 +914,23 @@ async function create(app, opts = {}) {
   }
   /* fix-ui FE-06: WebGL context loss. three.js rebuilds its GL state on restore and re-uploads every texture that still
      has its bytes; the cubes dropped theirs after upload, so they are dropped here and requested again (from CacheStorage) */
-  let ctxLost = false;
-  canvas.addEventListener("webglcontextlost", ev => { ev.preventDefault(); ctxLost = true;
-    say("The graphics context was lost (GPU reset or memory pressure). Restoring the 3D view…", true); });
-  canvas.addEventListener("webglcontextrestored", () => { ctxLost = false;
+  let ctxLost = false, losses = 0, restoreTimer = 0, gaveUp = false;
+  const giveUp = () => {
+    if (gaveUp) return; gaveUp = true; clearTimeout(restoreTimer);
+    el.classList.add("v3d-gl-off");
+    say("This device ran out of graphics memory for the 3D view. The spectra, sightlines and ray picking still work. Reload the page to try 3D again with lighter settings.", true);
+    try { viewer?.hooks?.onGLOff?.(); } catch { /* none */ }
+  };
+  canvas.addEventListener("webglcontextlost", ev => { ev.preventDefault(); ctxLost = true; losses++;
+    /* the next viewer in this session (reload, galaxy switch) starts in the constrained profile */
+    try { sessionStorage.setItem(LITE_KEY, "1"); } catch { /* private mode */ }
+    if (losses >= 2) { giveUp(); return; }
+    say("The 3D view ran short of graphics memory. Restoring it with lighter settings…", true);
+    clearTimeout(restoreTimer); restoreTimer = setTimeout(giveUp, 4000); });
+  canvas.addEventListener("webglcontextrestored", () => { ctxLost = false; clearTimeout(restoreTimer);
+    if (gaveUp) return;
+    /* lighter from here on: pixel ratio 1 or less, no stars, half the texture budget */
+    BUDGET = Math.min(BUDGET, 128e6); layer.stars = false; setPR(Math.min(curPR, 1));
     for (const [key, it] of [...TEX]) if (!it.tex.image?.data) TEX.delete(key);
     for (const sl of [...SLOT.gas, ...SLOT.w]) U[sl].value = RM.empty1; for (const sl of [...SLOT.stars, ...SLOT.vel]) U[sl].value = RM.empty4;
     U.uGasHave.value.set(0, 0, 0); U.uWHave.value.set(0, 0, 0); U.uStarHave.value.set(0, 0, 0); U.uVelHave.value.set(0, 0, 0); FADE.clear();
@@ -1476,7 +1516,9 @@ async function create(app, opts = {}) {
   /* ux4 pivot controls: stage chip, View card galaxy | ray, kpc form, double-click on the stage */
   q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
   q("#v3-orbit").addEventListener("click", () => setOrbit(!fullOrbit));
-  controls.addEventListener("start", () => { if (fullOrbit) setOrbit(false); });   // grabbing the view stops the orbit
+  q("#v3-orbit-axis").addEventListener("change", ev => { orbitAxis = ["auto", "spin", "major", "minor"].includes(ev.target.value) ? ev.target.value : "auto"; orbitAxisNow = null; orbitTip(); });
+  q("#v3-orbit-speed").addEventListener("input", ev => { orbitDeg = Math.max(1, Math.min(30, +ev.target.value || 5)); q("#v3-orbit-speed-o").textContent = orbitDeg + "°/s"; });
+  /* owner 2026-11-14: zooming, panning or turning the view no longer stops the orbit; only the stop button (or O) does */
   q("#v3-pv-gal").addEventListener("click", recentre);
   q("#v3-pv-ray").addEventListener("click", pivotToRay);
   q("#v3-pv-form").addEventListener("submit", ev => { ev.preventDefault();
@@ -1486,7 +1528,9 @@ async function create(app, opts = {}) {
     const r = canvas.getBoundingClientRect(), p = pickPivot(ev.clientX - r.left, ev.clientY - r.top); if (p) pivotTo(p, "pick"); });
   controls.addEventListener("change", () => syncPivot());
   controls.addEventListener("end", () => syncPivot(true));
-  function setLines(m) { if (!["selected", "showcase", "all", "none"].includes(m)) return; linesMode = m; q("#v3-lines").value = m; refreshLines(); }
+  function setLines(m) { if (!["selected", "showcase", "all", "none"].includes(m)) return; linesMode = m; q("#v3-lines").value = m;
+    const key = el.querySelector(".v3d-lines"); if (key) key.hidden = m === "none";   // no lines drawn: no line key
+    refreshLines(); }
 
   const onSel = ev => { select(ev.detail?.id); syncPivot(); }, onCat = () => refreshLines();
   addEventListener("tng:select", onSel); addEventListener("tng:catalog", onCat);
@@ -1557,7 +1601,31 @@ async function create(app, opts = {}) {
   /* the thumbnail's slow turn about the disk normal: only while it is docked, on screen, the page visible, motion allowed */
   let fullOrbit = false;   // the full stage's orbit button (O): the same slow turn as the thumbnail, started by the user
   const spinning = () => !!species && !document.hidden && !ctxLost && (docked === "thumb" ? thumbSpin && !reduced() && (io ? vis.thumb : true) : fullOrbit);
-  function setOrbit(on) { fullOrbit = !!on; const b = q("#v3-orbit"); if (b) { b.setAttribute("aria-pressed", String(fullOrbit)); b.querySelector("span").textContent = fullOrbit ? "stop" : "orbit"; }
+  const ORBIT_SVG = '<path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/>', STOP_SVG = '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/>';
+  let orbitDeg = 5, orbitAxis = "auto";
+  /* owner 2026-11-14: the orbit axis, fixed when the orbit starts (or the axis changes) so the turn is one smooth rotation.
+     rotation axis = the disk's spin axis (seen face-on this only spins the picture); major axis = the disk's major axis as
+     seen at the start (the screen's horizontal, projected into the disk plane): turning about it tumbles the disk from
+     face-on through edge-on and round; minor axis = the in-plane axis across it. auto = major when the view starts within
+     about 25 degrees of face-on, else the rotation axis. */
+  let orbitAxisNow = null;
+  function pickOrbitAxis() {
+    const view = controls.target.clone().sub(camera.position).normalize(), faceOn = Math.abs(view.dot(Lv)) > 0.9;
+    const mode = orbitAxis === "auto" ? (faceOn ? "major" : "spin") : orbitAxis;
+    if (mode === "spin") return Lv;
+    const right = new T.Vector3().crossVectors(view, camera.up);
+    let major = right.addScaledVector(Lv, -right.dot(Lv));
+    if (major.lengthSq() < 1e-6) major = Xv.clone();
+    major.normalize();
+    return mode === "major" ? major : new T.Vector3().crossVectors(Lv, major).normalize();
+  }
+  const orbitAxisVec = () => (orbitAxisNow ||= pickOrbitAxis());
+  /* the orbit button's tooltip names what the orbit will do (no key letters in the text; the key list has O) */
+  const ORBIT_TIPS = {auto: "Slowly turn the galaxy: tilt it if face-on, else spin it", spin: "Slowly spin the galaxy around its rotation axis",
+    major: "Slowly tilt the galaxy around its major axis", minor: "Slowly rock the galaxy around its minor axis"};
+  function orbitTip() { const b = q("#v3-orbit"); if (b) b.dataset.tip = fullOrbit ? "Stop the orbit" : ORBIT_TIPS[orbitAxis] || ORBIT_TIPS.auto; }
+  function setOrbit(on) { fullOrbit = !!on; orbitAxisNow = null; const b = q("#v3-orbit"); if (b) { b.setAttribute("aria-pressed", String(fullOrbit)); b.querySelector("span").textContent = fullOrbit ? "stop" : "orbit";
+      b.querySelector("svg").innerHTML = fullOrbit ? STOP_SVG : ORBIT_SVG; b.setAttribute("aria-label", fullOrbit ? "Stop orbit" : "Orbit"); orbitTip(); }
     spinKick(); }
   function spinKick() {
     if (spinning()) { if (!spinRaf) { spinLast = 0; spinRaf = requestAnimationFrame(spinTick); } }
@@ -1567,7 +1635,10 @@ async function create(app, opts = {}) {
     if (!spinLast) spinLast = now - 1000 / THUMB.fps;
     const dt = now - spinLast;
     if (dt >= 1000 / THUMB.fps - 2) { spinLast = now;
-      const off = camera.position.clone().sub(controls.target).applyAxisAngle(Lv, THUMB.degPerSec * Math.min(dt, 250) / 1000 * Math.PI / 180);
+      const rate = docked === "thumb" ? THUMB.degPerSec : orbitDeg, ang = rate * Math.min(dt, 250) / 1000 * Math.PI / 180;
+      const ax = docked === "thumb" ? Lv : orbitAxisVec();
+      const off = camera.position.clone().sub(controls.target).applyAxisAngle(ax, ang);
+      if (ax !== Lv) camera.up.applyAxisAngle(ax, ang).normalize();   // a tumble turns the whole view rigidly
       camera.position.copy(controls.target).add(off); camera.lookAt(controls.target);
       const t0 = performance.now(); accK = 0; draw(true); stats.thumbFrameMs = performance.now() - t0; }
     spinRaf = requestAnimationFrame(spinTick); }

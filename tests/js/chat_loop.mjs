@@ -147,7 +147,8 @@ function recExec() {
   const replies = Array.from({length: 20}, () => '{"tool":"show_3d","args":{}}');
   const {gen} = scripted(replies), {exec, calls} = recExec();
   const r = await C.runLocalTurn({generate: gen, state: {messages: []}, userText: "loop", exec});
-  check(calls.length === 6 && r.answer === null && /6 tool calls/.test(r.error), `local: 6-call cap (${calls.length} executed)`);
+  const M = C.MAX_TOOL_CALLS;
+  check(M === 8 && calls.length === M && r.answer === null && new RegExp(`${M} tool calls`).test(r.error), `local: ${M}-call cap (${calls.length} executed)`);
 }
 {
   const state = {messages: Array.from({length: 30}, (_, i) => ({role: i % 2 ? "assistant" : "user", content: "m" + i}))};
@@ -182,12 +183,12 @@ function claudeScript(responses) {
 }
 {
   const many = id => ({content: [0, 1, 2, 3].map(i => ({type: "tool_use", id: `t${id}_${i}`, name: "show_3d", input: {}})), stop_reason: "tool_use", usage: {}});
-  const {post, bodies} = claudeScript([many(1), many(2), {content: [{type: "text", text: "ok"}], stop_reason: "end_turn", usage: {}}]);
+  const {post, bodies} = claudeScript([many(1), many(2), many(3), {content: [{type: "text", text: "ok"}], stop_reason: "end_turn", usage: {}}]);
   const {exec, calls} = recExec(), state = {messages: []};
   const r = await C.runClaudeTurn({post, state, userText: "go", exec});
-  const res2 = bodies[2].messages[4].content;
-  check(calls.length === 6 && res2.length === 4 && res2.filter(b => b.is_error).length === 2 && /limit \(6 per question\)/.test(res2[3].content),
-    `claude: 6-call cap, extra tool_use answered with is_error (${calls.length} executed)`);
+  const res3 = bodies[3].messages[6].content;
+  check(calls.length === 8 && res3.length === 4 && res3.filter(b => b.is_error).length === 4 && /limit \(8 per question\)/.test(res3[3].content),
+    `claude: 8-call cap, extra tool_use answered with is_error (${calls.length} executed)`);
   check(r.answer === "ok", "claude: answer after the cap");
 }
 {
@@ -233,6 +234,152 @@ function claudeScript(responses) {
   check(await tryPost(fake(404, {detail: "chat disabled"})) === "Claude chat is disabled on this server.", "claude post: 404 message");
   check(/busy/.test(await tryPost(fake(503, {detail: "x"}, {"Retry-After": "5"}))), "claude post: 503 message");
   check(await tryPost(fake(422, {detail: "messages[0]: bad"})) === "Chat request failed: messages[0]: bad", "claude post: 422 detail");
+}
+
+// ---------------------------------------------------------------- galaxies, page snapshot, grounding across turns
+function galaxyApp() {
+  const comp = (v, logN, b, flag = 0) => ({v, dv: 0.1, logN, dlogN: 0.01, b, db: 0.2, region: 0, flag, EW: 10});
+  const GALS = [
+    {id: 488530, label: "Subhalo 488530", Mstar: 1.114e11, SFR: 7.08, M200c: 1.595e12, R200c: 246.4, central: true, n: 2, viz: true, src: "trident"},
+    {id: 425719, label: "Subhalo 425719", Mstar: 1.242e11, SFR: 7.89, M200c: 3.329e12, R200c: 314.8, central: true, m31: true, n: 2, viz: true, src: "sbi", gas_poor: false},
+    {id: 358609, label: "Subhalo 358609", Mstar: 9.702e10, SFR: 0.312, M200c: 5.042e12, R200c: 361.6, central: false, n: 3, viz: true, src: "sbi", gas_poor: true}];
+  const LIB = {
+    488530: {entries: [{id: "edge_b100_a090", orientation: "edge-on", b_kpc: 100, azimuth_deg: 90, logN: {OVI: 14.2}},
+                       {id: "face_b050_a000", orientation: "face-on", b_kpc: 50, azimuth_deg: 0, logN: {OVI: 13.5}}],
+             comps: {edge_b100_a090: {OVI: [comp(-40, 13.9, 23), comp(55, 13.4, 30)]}, face_b050_a000: {OVI: [comp(0, 14.0, 20)]}}},
+    425719: {entries: [{id: "edge_b080_a045_s3", orientation: "edge-on", b_kpc: 80, azimuth_deg: 45, logN: {OVI: 14.4}},
+                       {id: "edge_b150_a010_s9", orientation: "edge-on", b_kpc: 150, azimuth_deg: 10, logN: {OVI: 13.1}}],
+             comps: {edge_b080_a045_s3: {OVI: [comp(-60, 14.1, 25), comp(45, 13.8, 28)]}, edge_b150_a010_s9: {OVI: [comp(5, 13.1, 20)]}}},
+    358609: {entries: [], comps: {}}};
+  const log = [];
+  let gal = 488530;
+  const st = {id: "edge_b100_a090", tab: "spectra", layout: "1", ions: ["HI", "CIV", "OVI"], R: {uv: [20000], euv: [20000], xray: [500]}, sn: [10], vc: 0, vhw: 300, fit: false, job: null};
+  const app = {
+    log, st,
+    galaxies: () => GALS.map(e => ({...e})), galaxy: () => gal,
+    async selectGalaxy(id, o) { log.push(["selectGalaxy", id, o && o.source]); if (!LIB[id]) return false; if (id === 358609) return false;   // its pack "fails to load"
+      gal = id; st.id = LIB[id].entries[0]?.id || null; return true; },
+    getState: () => ({...st, galaxy: gal}),
+    entries: () => LIB[gal].entries.map(e => ({...e})),
+    entry: id => LIB[gal].entries.find(e => e.id === id) || null,
+    async select(id) { if (!app.entry(id)) return false; st.id = id; return true; },
+    async components(id) { return LIB[gal].comps[id] || null; },
+    async componentsIndex() { return {params: {}, entries: LIB[gal].comps}; },
+    showTab(t) { log.push(["showTab", t]); st.tab = t; },
+    async show3d(o) { log.push(["show3d", o]); st.tab = "3d"; return {ok: true, webgl2: true, species: o.species || "nH", preset: o.preset || null, mode: o.tf ? "volume" : o.mode || "integral", tf: o.tf || "ramp"}; },
+    pageState() { const e = app.entry(st.id), g = GALS.find(x => x.id === gal);
+      return {n_galaxies: GALS.length, galaxy: {...C_galaxySummary(g), n_sightlines: LIB[gal].entries.length},
+        sightline: e ? {id: e.id, orientation: e.orientation, b_kpc: e.b_kpc, azimuth_deg: e.azimuth_deg} : null, tab: st.tab,
+        view3d: null, instrument: {R: st.R, sn: st.sn, layout: st.layout, ions: st.ions, vc: st.vc, vhw: st.vhw, fit: st.fit}, job: null}; },
+  };
+  return app;
+}
+const {galaxySummary: C_galaxySummary} = await import(pathToFileURL(join(ROOT, "docs", "tng50", "js", "galaxies.js")).href);
+{
+  const app = galaxyApp(), ex = C.createToolExecutor(app, {loadSearch: () => import(searchUrl)});
+  let r = await ex("get_page_state", {});
+  check(r.ok && r.galaxy.id === 488530 && r.galaxy.spectra === "Trident" && r.galaxy.logMstar === 11.05 && r.sightline.id === "edge_b100_a090" && r.instrument.layout === "1",
+    `get_page_state returns the bridge snapshot (${J(r).slice(0, 140)}…)`);
+  r = await ex("list_galaxies", {});
+  check(r.ok && r.n_total === 3 && r.n_sample === 3 && r.open === 488530 && J(r.results.map(g => g.id)) === J([425719, 488530, 358609]),
+    `list_galaxies defaults to stellar mass, descending (${J(r.results.map(g => g.id))})`);
+  r = await ex("list_galaxies", {sort: "M200c", limit: 1});
+  check(r.ok && r.results.length === 1 && r.results[0].id === 358609 && r.results[0].logM200c === 12.7, `list_galaxies sort M200c, limit 1 (${J(r.results)})`);
+  r = await ex("list_galaxies", {central: true, spectra: "THOR"});
+  check(r.ok && J(r.results.map(g => g.id)) === J([425719]), "list_galaxies filters central and THOR spectra");
+  r = await ex("list_galaxies", {gas_poor: true});
+  check(r.ok && J(r.results.map(g => g.id)) === J([358609]) && r.results[0].SFR === 0.312 && r.results[0].central === false, "list_galaxies gas-poor filter, summary fields");
+  r = await ex("list_galaxies", {query: "m31"});
+  check(r.ok && J(r.results.map(g => g.id)) === J([425719]), "list_galaxies query uses the picker words");
+  r = await ex("list_galaxies", {logMstar_min: 11.07, sfr_max: 10});
+  check(r.ok && J(r.results.map(g => g.id)) === J([425719]), "list_galaxies mass and SFR ranges");
+  r = await ex("list_galaxies", {query: "x".repeat(81)});
+  check(r.ok === false && /at most 80 characters/.test(r.error), "list_galaxies query length is capped");
+  r = await ex("select_galaxy", {id: 1});
+  check(r.ok === false && /not in this sample/.test(r.error) && !app.log.length, "select_galaxy rejects an id outside the sample without touching the page");
+  r = await ex("select_galaxy", {id: 358609});
+  check(r.ok === false && /did not load/.test(r.error) && app.galaxy() === 488530, "select_galaxy reports a pack that fails to load");
+  r = await ex("select_galaxy", {id: 425719});
+  check(r.ok && r.galaxy.id === 425719 && r.galaxy.n_sightlines === 2 && r.galaxy.spectra === "THOR" && r.sightline.id === "edge_b080_a045_s3"
+    && app.log.some(x => x[0] === "selectGalaxy" && x[1] === 425719 && x[2] === "chat"), `select_galaxy switches through the bridge (${J(r)})`);
+  r = await ex("search_sightlines", {query: {ion: "OVI", n_min: 2, sep_kms: [50, 150], orientation: "edge-on"}});
+  check(r.ok && r.n_total === 1 && r.results[0].id === "edge_b080_a045_s3", `after select_galaxy the search runs on the new galaxy's library (${J(r.results && r.results.map(x => x.id))})`);
+  r = await ex("select_galaxy", {id: 425719});
+  check(r.ok && r.note === "already open", "select_galaxy of the open galaxy says so");
+  app.st.job = {id: "edge_b123_a045", kind: "geometry"};
+  r = await ex("select_galaxy", {id: 488530});
+  check(r.ok === false && /being generated/.test(r.error), "select_galaxy waits for a running generation");
+  app.st.job = null;
+  r = await ex("set_view", {tab: "spectra"});
+  check(r.ok && r.tab === "spectra" && app.log.some(x => x[0] === "showTab" && x[1] === "spectra"), "set_view spectra");
+  r = await ex("set_view", {tab: "3d"});
+  check(r.ok && r.tab === "3d", "set_view 3d opens the 3D view");
+  r = await ex("show_3d", {species: "OVI", tf: "clouds"});
+  check(r.ok && r.mode === "volume" && r.tf === "clouds" && J(app.log.at(-1)) === J(["show3d", {species: "OVI", tf: "clouds"}]), `show_3d passes mode and tf (${J(r)})`);
+  check(C.validateToolCall("show_3d", {mode: "volume", tf: "thor", species: "T", preset: "edge-on"}) === null && C.validateToolCall("show_3d", {tf: "fire"}) !== null,
+    "show_3d schema: mode and tf presets");
+  // the page snapshot: short, trusted, sent with every question
+  const page = C.pagePrefix(app.pageState());
+  check(page.startsWith("[page g=425719 ") && page.endsWith("]") && /THOR/.test(page) && /s=edge_b080_a045_s3 edge-on b=80kpc az=45/.test(page) && C.PAGE_RE.test(page + "\n"),
+    `page prefix (${page.length} chars): ${page}`);
+  check(page.length <= C.PAGE_MAX && C.PAGE_MAX < 1024, "page prefix stays under PAGE_MAX (< 1 kB)");
+  const big = app.pageState(); big.instrument.ions = Array.from({length: 200}, (_, i) => "ION" + i);
+  const capped = C.pagePrefix(big);
+  check(capped.length === C.PAGE_MAX && capped.endsWith("…]"), `an oversized snapshot is cut to PAGE_MAX (${capped.length})`);
+  check(!/[·•‧⋅・]/.test(page), "page prefix holds no dot separator");
+  check(C.pagePrefix(null) === "" && C.pageSnapshot({getState: () => ({id: null, tab: "spectra", galaxy: 1, R: {}, sn: [10], layout: "1", ions: [], vc: 0, vhw: 100, fit: false})}).galaxy.id === 1,
+    "pageSnapshot falls back to getState");
+}
+{ // the owner's transcript, Claude backend: three questions, the page switches galaxy, 50 and 150 never flagged
+  const app = galaxyApp(), ex = C.createToolExecutor(app, {loadSearch: () => import(searchUrl)}), state = {messages: []};
+  const known = id => !!app.entry(id), page = () => C.pagePrefix(app.pageState());
+  const tu = (id, name, input) => ({type: "tool_use", id, name, input}), txt = text => ({content: [{type: "text", text}], stop_reason: "end_turn", usage: {}});
+  const Q = {ion: "OVI", n_min: 2, sep_kms: [50, 150], orientation: "edge-on"};
+  const {post, bodies} = claudeScript([
+    {content: [tu("t1", "search_sightlines", {query: Q})], stop_reason: "tool_use", usage: {}},
+    txt("edge_b100_a090 has two O VI components 50–150 km/s apart. Open it to see the fitted components."),
+    {content: [tu("t2", "search_sightlines", {query: Q})], stop_reason: "tool_use", usage: {}},
+    txt("In subhalo 488530, edge_b100_a090 is the one edge-on sightline with two O VI components 50–150 km/s apart. Want me to search another galaxy?"),
+    {content: [tu("t3", "select_galaxy", {id: 425719})], stop_reason: "tool_use", usage: {}},
+    {content: [tu("t4", "search_sightlines", {query: Q})], stop_reason: "tool_use", usage: {}},
+    txt("Subhalo 425719 is open now. edge_b080_a045_s3 has two O VI components 50–150 km/s apart, at b = 80 kpc. In general, O VI traces gas near 300,000 K and its doublet sits at 1031.93 and 1037.62 Å.")]);
+  const r1 = await C.runClaudeTurn({post, state, userText: "Find edge-on sightlines with two O VI components 50–150 km/s apart", exec: ex, knownId: known, page: page()});
+  check(r1.unverified.length === 0 && /^\[page g=488530 /.test(bodies[0].messages[0].content) && bodies[0].messages[0].content.endsWith("\nFind edge-on sightlines with two O VI components 50–150 km/s apart"),
+    `owner Q1: snapshot prefixes the question, answer grounded (${J(r1.unverified)})`);
+  const r2 = await C.runClaudeTurn({post, state, userText: "can you find the same for this galaxy?", exec: ex, knownId: known, page: page()});
+  check(r2.unverified.length === 0, `owner Q2: 50 and 150 from the earlier question are grounded (${J(r2.unverified)})`);
+  const r3 = await C.runClaudeTurn({post, state, userText: "I meant the one that is open (425719)", exec: ex, knownId: known, page: page()});
+  check(app.galaxy() === 425719 && J(r3.calls.map(c => c.name)) === J(["select_galaxy", "search_sightlines"]) && r3.calls[1].result.results[0].id === "edge_b080_a045_s3",
+    `owner Q3: select_galaxy then search returns the new galaxy's ids (${J(r3.calls.map(c => c.result.results ? c.result.results.map(x => x.id) : c.result.galaxy && c.result.galaxy.id))})`);
+  check(r3.unverified.length === 0, `owner Q3: no unverified chip, general-knowledge sentence exempt (${J(r3.unverified)})`);
+}
+{ // the grounding rule: data-like numbers only, sources = the whole conversation
+  const G = (a, src = [], k = null) => C.groundingCheck(a, src, k);
+  check(J(G("Lyman-limit systems have log N(H I) of 17.2 to 20.3.")) === J(["17.2", "20.3"]), "unmarked log N values are checked");
+  check(J(G("Typically, Lyman-limit systems have log N(H I) of 17.2 to 20.3.")) === J([]), "a sentence marked as general knowledge is not checked");
+  check(J(G("HST/COS G130M has R about 18,000 and the O VI doublet ratio is 2.")) === J([]), "resolving power and plain numbers are not data-like");
+  check(J(G("The component at -73 km/s has b = 31 km/s.")) === J(["-73", "31"]), "component velocities and b in km/s are data-like");
+  check(J(G("It lies at 212 kpc in subhalo 999999.")) === J(["212", "999999"]), "kpc distances and subhalo ids are data-like");
+  check(J(G("It lies at 212 kpc in subhalo 425719.", ["[page g=425719 R200c=315kpc]\nwhere?", "{\"b_kpc\":212}"])) === J([]), "page snapshot and tool results ground them");
+  const h = [{role: "user", content: "[page g=1]\nfind 50-150 km/s"}, {role: "assistant", content: [{type: "text", text: "made up 77 km/s"}]},
+    {role: "user", content: [{type: "tool_result", tool_use_id: "a", content: "{\"v\":-42.17}"}]}, {role: "user", content: "TOOL_RESULT x: {\"logN\":13.91}"},
+    {role: "user", content: "Your last reply was invalid (args.vhw: must be >= 10)."}];
+  const src = C.historySources(h);
+  check(src.length === 3 && J(G("Seen at -42 and 50 to 150 km/s with logN 13.9; 77 km/s and 10 km/s?", src)) === J(["77", "10"]),
+    `historySources: user text, tool results and TOOL_RESULT count; the model's text and repair prompts do not (${J(G("Seen at -42 and 50 to 150 km/s with logN 13.9; 77 km/s and 10 km/s?", src))})`);
+}
+{ // the local model sees only the newest snapshot, within its character budget
+  const big = "TOOL_RESULT x: " + "y".repeat(4000);
+  const msgs = [{role: "user", content: "[page g=1 a]\nq1"}, {role: "assistant", content: "{}"}, {role: "user", content: big}, {role: "assistant", content: "{}"},
+    {role: "user", content: big}, {role: "assistant", content: "{}"}, {role: "user", content: "[page g=2 b]\nq2"}];
+  const ctx = C.localContext(msgs, 2000);
+  check(ctx.at(-1).content === "[page g=2 b]\nq2" && !ctx.some(m => m.content === "[page g=1 a]\nq1") && 2000 + ctx.reduce((s, m) => s + m.content.length, 0) <= C.LOCAL_CHARS,
+    `localContext keeps the newest snapshot and fits LOCAL_CHARS (${ctx.length} messages)`);
+  check(C.localContext([{role: "user", content: "[page g=1 a]\nq1"}, {role: "assistant", content: "{}"}, {role: "user", content: "[page g=1 b]\nq2"}])[0].content === "q1",
+    "localContext strips older snapshots");
+  const {gen, seen} = scripted(['{"answer":"ok"}']);
+  await C.runLocalTurn({generate: gen, state: {messages: []}, userText: "hi", exec: recExec().exec, page: "[page g=7]"});
+  check(seen[0][1].content === "[page g=7]\nhi", "local: the page snapshot prefixes the question");
 }
 
 // ---------------------------------------------------------------- misc helpers

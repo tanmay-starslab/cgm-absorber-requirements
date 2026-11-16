@@ -1,6 +1,6 @@
 """Stateless Claude proxy for the explorer's chat (`POST /api/chat`).
 
-The browser sends only `{"messages": [...]}`; model, system prompt, tools, tool_choice, max_tokens and
+The browser sends only `{"messages": [...]}`; model (settings.chat_model, one of CHAT_MODELS), system prompt, tools, tool_choice, max_tokens and
 effort are fixed here and cannot be overridden by the client. The history itself is client-written, so
 the server checks its structure (roles, block types, sizes, nesting depth, and that every tool_result
 answers a tool_use of the preceding assistant turn and every tool_use is answered), but it cannot stop a
@@ -25,10 +25,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from .ratelimit import RateLimiter, client_ip, client_key
+from .settings import CHAT_MODELS, check_chat_model
 
 log = logging.getLogger("tngsight.server.chat")
 
-MODEL = "claude-haiku-5-5"
+MODEL = CHAT_MODELS[0]          # the default; settings.chat_model (CHAT_MODEL) picks one of CHAT_MODELS
 API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 TOOLS: list = json.loads((Path(__file__).with_name("chat_tools.json")).read_text(encoding="utf-8"))
@@ -236,13 +237,57 @@ def _err(status, detail, retry=None):
     return JSONResponse({"detail": detail}, status, headers={"Retry-After": str(retry)} if retry else None)
 
 
+SMALL, LARGE = CHAT_MODELS[0], CHAT_MODELS[-1]
+# owner 2026-11-14: CHAT_MODEL=auto picks the model per question. Page control ("show", "switch to", "find sightlines
+# with …") goes to the small, fast model; questions that ask for understanding ("why", "explain", "how does", "what is
+# the difference", comparisons, long multi-part questions) go to the larger one. The rule reads only the newest typed
+# question (the text after the page snapshot), so every request of one turn (its tool loop) uses the same model.
+_EXPLAIN = re.compile(r"\b(why|explain|how (do|does|did|can|would|is|are)|what (is|are|does|do|causes|happens|would)|"
+                      r"difference|compare|versus|vs\.?|meaning|mean by|physic|interpret|implication|should i|"
+                      r"what can (we|i) learn|tell me about|understand|derive|estimate|predict)\b", re.I)
+_CONTROL = re.compile(r"^\s*(show|open|switch|select|set|go to|find|search|list|load|turn|change|zoom|use|plot|display|"
+                      r"hide|pick|generate|make|give me)\b", re.I)
+
+
+def _last_question(messages) -> str:
+    for m in reversed(messages):
+        if m.get("role") != "user":
+            continue
+        c = m.get("content")
+        if isinstance(c, str):
+            text = c
+        elif isinstance(c, list):
+            ts = [b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text"]
+            if not ts:
+                continue          # a tool_result turn: keep looking back for the question that started it
+            text = "\n".join(ts)
+        else:
+            continue
+        return re.sub(r"^\[page [^\]]*\]\s*", "", text.strip())
+    return ""
+
+
+def pick_model(messages) -> str:
+    """auto routing: LARGE for questions that ask for understanding, SMALL for page control and short lookups."""
+    q = _last_question(messages)
+    if not q:
+        return SMALL
+    words = len(q.split())
+    if _CONTROL.search(q) and not _EXPLAIN.search(q) and words <= 40:
+        return SMALL
+    if _EXPLAIN.search(q) or words > 40 or q.count("?") > 1:
+        return LARGE
+    return SMALL
+
+
 def make_router(settings, transport=None, clock=time.time) -> APIRouter:
     """`transport`: an httpx transport (tests use httpx.MockTransport); `clock`: wall clock for the
     daily budget (UTC days)."""
     S = settings
+    model = check_chat_model(getattr(S, "chat_model", MODEL) or MODEL)
     router = APIRouter()
     limiter = RateLimiter({"chat": S.rl_chat})
-    day = {"day": None, "n": 0, "tokens": 0, "per": {}}      # per: {client key: requests today}
+    day = {"day": None, "n": 0, "tokens": 0, "per": {}, "large": 0}      # per: {client key: requests today}
     inflight = [0]
 
     @router.post("/api/chat")
@@ -282,7 +327,7 @@ def make_router(settings, transport=None, clock=time.time) -> APIRouter:
         now = clock()
         d = int(now // 86400)
         if day["day"] != d:
-            day.update(day=d, n=0, tokens=0, per={})
+            day.update(day=d, n=0, tokens=0, per={}, large=0)
         if day["n"] >= S.chat_daily_budget or (S.chat_daily_tokens and day["tokens"] >= S.chat_daily_tokens):
             limiter.refund("chat", who)
             return done(_err(429, "daily chat budget exhausted", _seconds_to_utc_midnight(now)))
@@ -297,7 +342,15 @@ def make_router(settings, transport=None, clock=time.time) -> APIRouter:
             day["per"].pop(next(iter(day["per"])))
         day["per"][who] = day["per"].get(who, 0) + 1
         inflight[0] += 1
-        payload = {"model": MODEL, "max_tokens": min(int(S.chat_max_tokens), 1024), "system": SYSTEM_PROMPT,
+        use = model
+        if model == "auto":
+            use = pick_model(msgs)
+            if use == LARGE and day["large"] >= int(getattr(S, "chat_large_daily_budget", 150)):
+                use = SMALL                                   # the larger model's daily share is spent: fall back
+            if use == LARGE:
+                day["large"] += 1
+            log.info("chat ip=%s model=%s (auto)", iph, use)
+        payload = {"model": use, "max_tokens": min(int(S.chat_max_tokens), 1024), "system": SYSTEM_PROMPT,
                    "tools": TOOLS, "tool_choice": {"type": "auto"}, "output_config": {"effort": "low"},
                    "messages": msgs}
         if log.isEnabledFor(logging.DEBUG):
