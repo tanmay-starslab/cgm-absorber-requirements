@@ -15,7 +15,7 @@
 
 export const STORE_KEY = "tngStory.music";
 export const TRACK_KEY = "tngStory.musicTrack";
-export const VOLUME = 0.55;
+export const VOLUME = 0.6875;   /* 1.25x the earlier 0.55: too faint over laptop speakers (owner 2026-11-16) */
 export const XFADE = 1.0;
 export const TRACKS = Object.freeze([
   Object.freeze({id: "dayone", label: "Day One", src: "media/music_dayone.m4a", credit: "Hans Zimmer, Day One (Interstellar, 2014)"}),
