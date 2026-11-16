@@ -38,7 +38,9 @@ def _stories():
     p = DATA / "index.json"
     if not p.exists():
         return []
-    return [(e["galaxy"], e["ray"]) for e in json.loads(p.read_text())["stories"]]
+    # hero-view entries only: Tier A stories (story-index/2, case other than "full") are story-data/3 under data/v3/
+    # and have their own tests; engine.resolveStory hides them from (g, ray) the same way
+    return [(e["galaxy"], e["ray"]) for e in json.loads(p.read_text())["stories"] if e.get("case", "full") == "full"]
 
 
 STORIES = _stories() or [(488530, "rand_b062_a062")]
@@ -832,7 +834,7 @@ def test_v2_film_beams_index():
     ix = _index()
     beams = {(e["galaxy"], e["ray"]): e for e in ix.get("film_beams", [])}
     assert set(beams) == set(X.FILM_BEAMS) and 1 <= len(beams) <= 3
-    assert not set(beams) & {(e["galaxy"], e["ray"]) for e in ix["stories"]}
+    assert not set(beams) & {(e["galaxy"], e["ray"]) for e in ix["stories"] if e.get("case", "full") == "full"}
     film = json.loads((ROOT / "film.json").read_text())
     fb = {(X.REF_GALAXY, b["ray"]): b["role"] for b in film["cuts"]["beams"]["beams"]}
     assert fb == X.FILM_BEAMS
@@ -1034,14 +1036,26 @@ def test_tier_a_limits_roles_flags(sid):
 
 
 def test_tier_a_leaves_hero_and_index_untouched():
-    """H0 data side: the hero story file and data/index.json are byte-identical to the frozen base"""
+    """H0 data side: the hero story files are byte-identical to the frozen base, and data/index.json changes only
+    additively (story-index/2: the base's keys and hero entry kept, Tier A entries appended)"""
     import subprocess
-    for rel in ("story_488530_rand_b062_a062.json", "index.json", "story_488530_rand_b050_a215.json"):
+    def base(rel):
         path = f"docs/tng50/learn/how-a-spectrum-is-made/data/{rel}"
         r = subprocess.run(["git", "-C", str(REPO), "show", f"{HERO_BASE}:{path}"], capture_output=True)
         if r.returncode != 0:
             pytest.skip(f"git base {HERO_BASE} not available")
-        assert (DATA / rel).read_bytes() == r.stdout, rel
+        return r.stdout
+    for rel in ("story_488530_rand_b062_a062.json", "story_488530_rand_b050_a215.json"):
+        assert (DATA / rel).read_bytes() == base(rel), rel
+    old, new = json.loads(base("index.json")), _index()
+    assert new["schema"] in (old["schema"], "story-index/2")
+    for k, v in old.items():
+        if k not in ("schema", "stories"):
+            assert new[k] == v, k
+    hero = [e for e in new["stories"] if e.get("case", "full") == "full"]
+    assert len(hero) == len(old["stories"])
+    for o, n in zip(old["stories"], hero):
+        assert all(n[k] == v for k, v in o.items()), o.get("ray")
 
 
 
