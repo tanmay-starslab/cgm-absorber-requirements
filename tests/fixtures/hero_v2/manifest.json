@@ -14,7 +14,7 @@
   "eq": "4ddf1585463119cdbea5e1c87b2eab7a021e2dee7107ba8545ae90cd09e365ce",
   "vtt": "61a8631960b7eb6098418f0199c148a688fda72df3545ccedbcaf316d787239e",
   "index": "a0fdc0fe6ee7c8ec09dd2ac32c78dba61c55318bd2096ab67447fbe7b43566b8",
-  "dom": "fe00845a94386731ad33588b01468720f97499b9e725e9f7f13cacabe7e771fe"
+  "dom": "29e9df3a3835b096d6ecb2469840b35dd050c050d692ef71f8133c89574a3277"
  },
  "notes": [
   {
@@ -69,6 +69,14 @@
     "layout",
     "lines",
     "vtt",
+    "dom"
+   ]
+  },
+  {
+   "note": "owner 2026-11-16: merge of #66 credits wording (DOI links, data access terms) into the story picker",
+   "head": "0f607e4",
+   "worktree_dirty": [],
+   "parts_changed": [
     "dom"
    ]
   }
