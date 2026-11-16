@@ -61,6 +61,10 @@ MH_G = 1.6737352238051868e-24          # unyt mass_hydrogen (yt's mh): n_H = X_H
 TRIDENT_MASS = {"H": 1.00794, "C": 12.0107, "N": 14.0067, "O": 15.9994, "Ne": 20.1797, "Mg": 24.3050, "Si": 28.0855,
                 "S": 32.065}
 ION_FIELD = {"HI": ("H_p0_number_density", "H_p0_ion_fraction"), "OVI": ("O_p5_number_density", "O_p5_ion_fraction")}
+# Tier A extra ions (DESIGN_tierA §5: at most one per story); the cell dump has no ion fraction for them, so their
+# per-cell block has no f_ion column
+ION_FIELD_EXTRA = {"CIV": ("C_p3_number_density", None), "MgII": ("Mg_p1_number_density", None),
+                   "NeVIII": ("Ne_p7_number_density", None)}
 VISIBLE_TAU0 = 0.01                    # a cell "visible" alone: central dip of at least 1 %
 TICK_TAU0 = 0.1                        # S9 truth ticks
 GRID = (-400.0, 400.0, 1.0)            # F_intrinsic grid (V, km/s, galaxy frame)
@@ -880,8 +884,11 @@ def cloud_facts(cw, names, geo, tm, Nion, ions, Vr, T, vgrid) -> dict:
     return out
 
 
-def story_v2(gid, ray, raw, gal, geom, paths, out: Path, cells, ions, Vr, l_mid, select_pair, work_dir=None) -> tuple:
-    """story-data/2 blocks: (geometry, clouds, cloud_names, tube, facts2). Needs the cutout (cell matching)."""
+def story_v2(gid, ray, raw, gal, geom, paths, out: Path, cells, ions, Vr, l_mid, select_pair, work_dir=None,
+             win_fn=None) -> tuple:
+    """story-data/2 blocks: (geometry, clouds, cloud_names, tube, facts2). Needs the cutout (cell matching). win_fn
+    (Tier A, story_plan.Planner.windows) replaces the hero beat windows by the letters/2 plan's, given the geometry and
+    the clouds."""
     qg, ug, tab = kernel_cdf_table()
     geo = cell_geometry(raw, gal, geom, Path(paths["cutout"]), tab)
     n = len(geo["lc"])
@@ -908,6 +915,8 @@ def story_v2(gid, ray, raw, gal, geom, paths, out: Path, cells, ions, Vr, l_mid,
     # ---- clouds (rebuilt on the story ray by build_story_clouds.py)
     cdir = out / "clouds" / stem(gid, ray)
     cw = json.loads((cdir / "clouds.json").read_text()) if (cdir / "clouds.json").exists() else None
+    if win_fn is not None:
+        win, win_src = win_fn(geo, cw, Nion)
     names = cloud_names(cw, geo, win, Nion) if cw else None
     # ---- worked cells
     S5 = int(np.argmax(Nion["OVI"]))
@@ -1167,9 +1176,12 @@ def local_maxima(y, half=3):
 
 
 # ----------------------------------------------------------------------------------------------- stage: build
-def build_one(gid, ray, work: Path, out: Path, paths: dict) -> dict:
+def build_one(gid, ray, work: Path, out: Path, paths: dict, planner=None) -> dict:
+    """story-data/2 for (gid, ray); with a story_plan.Planner (build --case) the Tier A story-data/3: the extra ion's
+    cells, the letters/2 plan windows for every /2 fact, and the /3 blocks (case, claims, roles, plan, ...)."""
     from tngsight.library import load_npz
     gid = int(gid)
+    ion_keys = STORY_IONS + ((planner.extra,) if planner is not None and planner.extra else ())
     NGAL = n_galaxies()
     raw = np.load(work / f"{stem(gid, ray)}_cells.npz")
     meta = json.loads((work / f"{stem(gid, ray)}_meta.json").read_text())
@@ -1195,16 +1207,18 @@ def build_one(gid, ray, work: Path, out: Path, paths: dict) -> dict:
     vgrid = np.arange(GRID[0], GRID[1] + 1e-9, GRID[2])
     ions = {}
     checks = {}
-    for key in STORY_IONS:
+    for key in ion_keys:
         A = I.get(key)
         atom = {"lam0_A": float(A["lam0_A"]), "f": float(A["f"]), "gamma_s": float(A["gamma_s"]),
                 "mass_amu": TRIDENT_MASS[A["element"]], "k_tau": float(I.k_tau(key)), "a0_kms": float(I.a0(key))}
-        nf, ff = ION_FIELD[key]
+        nf, ff = ION_FIELD.get(key) or ION_FIELD_EXTRA[key]
         nion = raw[nf]
         N = nion * dl
         b = np.sqrt(2 * KB * T / (atom["mass_amu"] * AMU)) / 1e5
         logN = np.where(N > 0, np.log10(np.where(N > 0, N, 1)), -np.inf)
-        cols_ion = {"f_ion": col(raw[ff], sig), "logN": col(logN, lambda x: fixed(x, 5)), "b": col(b, lambda x: sig(x, 5))}
+        cols_ion = {"logN": col(logN, lambda x: fixed(x, 5)), "b": col(b, lambda x: sig(x, 5))}
+        if ff is not None:
+            cols_ion = {"f_ion": col(raw[ff], sig), **cols_ion}
         br = np.array(cols_ion["b"], float)
         a = atom["a0_kms"] / br
         Nr = np.array([10 ** x if x is not None else 0.0 for x in cols_ion["logN"]])
@@ -1219,7 +1233,7 @@ def build_one(gid, ray, work: Path, out: Path, paths: dict) -> dict:
         tfull = cell_tau(atom, N, V, b, atom["a0_kms"] / b, vn)
         dF_full = float(np.max(np.abs(np.exp(-tfull) - np.exp(-st))))
         ref = (gid, ray) == (REF_GALAXY, REF_RAY)
-        lim = DF_MAX[key] if ref else max(DF_MAX[key], ROUND_SLACK * dF_full)
+        lim = DF_MAX[key] if ref else max(DF_MAX.get(key, DF_MAX["HI"]), ROUND_SLACK * dF_full)
         ew_st = rest_ew_mA(st, du, atom["lam0_A"]); ew_cs = rest_ew_mA(tsum, du, atom["lam0_A"])
         ew_rel_full = abs(rest_ew_mA(tfull, du, atom["lam0_A"]) / ew_st - 1)
         ew_lim = EW_RTOL if ref else max(EW_RTOL, ROUND_SLACK * ew_rel_full)
@@ -1235,7 +1249,7 @@ def build_one(gid, ray, work: Path, out: Path, paths: dict) -> dict:
             m = xr > 0
             chk["nHI_over_xHI_nH_minus1"] = float(np.max(np.abs(nion[m] / xr[m] - 1))) if m.any() else 0.0
         checks[key] = chk
-        if dF > lim or dF_full > DF_CEIL[key] or chk["EW_rel"] > ew_lim or ew_rel_full > EW_CEIL or chk["dlogN"] > 1e-6:
+        if dF > lim or dF_full > DF_CEIL.get(key, DF_CEIL["HI"]) or chk["EW_rel"] > ew_lim or ew_rel_full > EW_CEIL or chk["dlogN"] > 1e-6:
             raise SystemExit(f"{gid} {ray} {key}: cell sum misses the stored spectrum: {chk}")
         tau_g = np.interp(vgrid, vn, st)
         Fint = np.exp(-tau_g)
@@ -1335,13 +1349,18 @@ def build_one(gid, ray, work: Path, out: Path, paths: dict) -> dict:
                     "cutout": meta["cutout"], "ion_table": meta["ion_table"]},
         "checks": checks,
     }
+    win_fn = None
+    if planner is not None:                                      # Tier A: every /2 fact on the letters/2 plan windows
+        def win_fn(geo, cw, Nion):
+            return planner.windows(geo, cw, Nion, Vr, pair)
     geometry, clouds, names, tube, facts2, _geo = story_v2(gid, ray, raw, gal, geom, paths, out, cells, ions, Vr,
-                                                          l_mid, pair, work)
-    for key in STORY_IONS:
+                                                          l_mid, pair, work, win_fn=win_fn)
+    for key in ion_keys:
         for k in ("_N", "_tau0", "_b", "_taug"):
             ions[key].pop(k)
-    for key in STORY_IONS:                                       # per ion, all columns (PLAN_final section 6)
-        ions[key]["cells"] = {**cells, **{c: ions[key].pop(c) for c in ("f_ion", "logN", "b", "tau0", "a")}}
+    for key in ion_keys:                                         # per ion, all columns (PLAN_final section 6)
+        ions[key]["cells"] = {**cells, **{c: ions[key].pop(c) for c in ("f_ion", "logN", "b", "tau0", "a")
+                                          if c in ions[key]}}
     data = {"meta": meta_out, "ions": ions,
             "select": {"S4a_cell": i_hi, "S4b_cell": c5, "S5_cell": c5, "S6_pair": pair, "S10_feature": feat,
                        "S9_ticks": ticks, "rules": {"S4a_cell": "H I cell with the largest N",
@@ -1350,19 +1369,47 @@ def build_one(gid, ray, work: Path, out: Path, paths: dict) -> dict:
             "worked": worked,
             "geometry": geometry, "clouds": clouds, "cloud_names": names, "tube": tube, "facts2": facts2}
     pf = out / f"page_fits_{stem(gid, ray)}.json"            # facts of the precomputed fits (scripts/story_fits.mjs)
-    finish_story(data, json.loads(pf.read_text()) if pf.exists() else None)
+    pfd = json.loads(pf.read_text()) if pf.exists() else None
+    finish_story(data, pfd)
+    budget = GZ_BUDGET
+    if planner is not None:                                      # story-data/3 (DESIGN_tierA §4.1)
+        import story_plan as SP
+        disk = SP.disk_record(gid, gal, work)
+        tb = out / tube["path"] if tube else None
+        v3 = planner.assemble(data, pfd, gal, disk, planner.hosted, tb)
+        budget = SP.finalize(data, planner.extra, v3)
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"story_{stem(gid, ray)}.json"
     txt = json.dumps(data, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
-    path.write_text(txt, encoding="utf-8")
     gz = len(gzip.compress(txt.encode("utf-8"), 9))
+    if planner is not None:                                      # the budget gate goes into the file itself
+        g = data["gates_case"]
+        g["budget"] = {"pass": gz <= budget, "gz_bytes": gz, "limit": budget,
+                       "rule": "gz <= 140 kB + 45 kB per extra ion (§4.4 item 4)"}
+        na_keys = sorted(k for k, v in data["keys"].items() if v == NA)
+        g["no_dash_keys"] = {"keys_with_dash": na_keys,
+                             "note": "R5b's lint decides which of these a shown variant needs (§4.4 item 4)"}
+        g["all_data"] = bool(g["G16"]["pass"] and g["G15_data"]["pass"] and g["G13r_data"]["pass"] and g["cover"]["pass"]
+                             and g["budget"]["pass"])
+        data["eligible_case"] = bool(g["G16"]["pass"])
+        txt = json.dumps(data, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        gz = len(gzip.compress(txt.encode("utf-8"), 9))
+    path.write_text(txt, encoding="utf-8")
     print(f"build {gid} {ray}: {path.name} {len(txt)/1024:.1f} kB, gz {gz/1024:.1f} kB; checks "
           + json.dumps({k: {"dF": v["max_abs_dF_cellsum_vs_stored"], "EW": v["EW_rel"]} for k, v in checks.items()}),
           flush=True)
-    if gz > GZ_BUDGET:
-        raise SystemExit(f"{path.name}: {gz} B gz exceeds the {GZ_BUDGET} B budget")
-    return {"galaxy": gid, "ray": ray, "story": path.name, "page_fits": f"page_fits_{stem(gid, ray)}.json",
-            "label": meta_out["label"], "eligible": data["story"]["eligible"]}
+    if gz > budget:
+        raise SystemExit(f"{path.name}: {gz} B gz exceeds the {budget} B budget")
+    ent = {"galaxy": gid, "ray": ray, "story": path.name, "page_fits": f"page_fits_{stem(gid, ray)}.json",
+           "label": meta_out["label"], "eligible": data["story"]["eligible"]}
+    if planner is not None:
+        ent.update(story_id=data["meta"]["story_id"], case=data["case"]["declared"], subcase=data["case"]["subcase"],
+                   eligible_case=data["eligible_case"], gates_case={k: (v or {}).get("pass") if isinstance(v, dict) else v
+                                                                   for k, v in data["gates_case"].items()})
+        print("case " + json.dumps({"story": ent["story_id"], "verdict": data["case"]["verdict"]["ok"],
+                                    "margin": data["case"]["verdict"]["margin"], "gates": ent["gates_case"],
+                                    "claims_false": data["gates_case"]["G16"]["claims_false"]}), flush=True)
+    return ent
 
 
 NA = "–"                               # display value of a quantity this sightline does not have
@@ -1897,11 +1944,200 @@ def write_manifest(stage: Path) -> Path:
     return p
 
 
+# ----------------------------------------------------------------------------------------------- Tier A: hosted cover
+HF_DATASETS = ["tanmay-starslab/tng50-mwm31-web-0", "tanmay-starslab/tng50-mwm31-web-1",
+               "tanmay-starslab/tng50-mwm31-web-2", "tanmay-starslab/tng50-mwm31-web-3"]
+HF_488530_VIZ = "https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz/resolve/main/"
+COVER_FIELDS = ("nH", "T", "Z", "HI", "OVI", "CIV", "MgII", "NeVIII", "vx", "vy", "vz")   # the fields story beats name
+
+
+def _get_json(url, timeout=60):
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "tng50-story-data/3"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def manifest_audit(out: Path) -> dict:
+    """DESIGN_tierA §4.4 item 1: one GET per hosted manifest (all 198 hosts + 488530) -> hosted_cover.json: per host the
+    dataset, base URL, cube levels (half, voxel) and, per level, which story fields have cubes (vx/vy/vz count when the
+    manifest stores the velocity as a vector cube), plus each field's vol_window (the TF fallback). A pick whose manifest
+    lacks a field its beats name is rejected by the build (--hosted)."""
+    import time
+    hosts = {}
+    for ds in HF_DATASETS:
+        for t in _get_json(f"https://huggingface.co/api/datasets/{ds}/tree/main"):
+            if t.get("type") == "directory" and t["path"].isdigit():
+                hosts[int(t["path"])] = ds
+    rec = {}
+    for gid, ds in [(REF_GALAXY, None)] + sorted(hosts.items()):
+        base = HF_488530_VIZ if ds is None else f"https://huggingface.co/datasets/{ds}/resolve/main/{gid}/viz/"
+        url = base + "manifest_v2.json"
+        try:
+            m = _get_json(url)
+        except Exception as exc:  # noqa: BLE001  (recorded per host, never hidden)
+            rec[str(gid)] = {"ok": False, "dataset": ds, "manifest_url": url, "error": repr(exc)[:300]}
+            continue
+        lv = {k: {"half_kpc": v["half_kpc"], "voxel_kpc": v["voxel_kpc"], "n": v["n"]}
+              for k, v in (m.get("levels") or {}).items() if k.startswith("L")}
+        gas = m.get("gas") or {}
+        fields, vec = gas.get("fields") or {}, gas.get("vectors") or {}
+        per = {}
+        for L in lv:
+            have = {f for f, fv in fields.items() if L in (fv.get("cubes") or {})}
+            if any(L in (v.get("cubes") or {}) for v in vec.values()):
+                have |= {"vx", "vy", "vz"}
+            per[L] = sorted(have)
+        missing = {L: [f for f in COVER_FIELDS if f not in per[L]] for L in lv}
+        rec[str(gid)] = {"ok": all(not v for v in missing.values()) and set(lv) >= {"L0", "L1", "L2"},
+                         "dataset": ds or "tanmay-starslab/tng50-sub488530-viz", "base": base, "manifest_url": url,
+                         "levels": lv, "fields": per, "missing": {L: v for L, v in missing.items() if v},
+                         "vol_window": {f: fv.get("vol_window") for f, fv in fields.items() if fv.get("vol_window")},
+                         "R200c_kpc": (m.get("galaxy") or {}).get("R200c_kpc")}
+        time.sleep(0.05)
+    doc = {"schema": "hosted-cover/1", "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "rule": "one GET per hosted manifest_v2.json (Hugging Face); story fields per cube level",
+           "required_fields": list(COVER_FIELDS), "n_hosts": len(rec),
+           "n_ok": sum(1 for v in rec.values() if v.get("ok")), "hosts": rec}
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(doc, indent=1))
+    print(f"hosted cover: {doc['n_ok']}/{doc['n_hosts']} hosts list every story field at L0-L2 -> {out}")
+    return doc
+
+
+LINE_DIR = "v3/lines"          # Tier A stored lines, same origin as the page (fix1 H1/F1/S1)
+LINE_PARITY_MAX = 0.005       # |F_web(v + v_sys) - F_intrinsic(v)| on the story grid, O VI and H I
+
+
+DOCK_VW = 300                                  # dock.js VW (the hero's fixed half window)
+DOCK_EW_SHARE = 0.90                          # share of a detected ion's EW the panel must show (fix1 H2/F4/S8)
+DOCK_CAP = {"HI": 2000.0}                     # widest panel; damped H I wings reach past any panel (fix1 F2)
+DOCK_CAP_DEFAULT = 600.0
+DOCK_DETECT_LOGN = 13.0                       # below this the ion's "EW" is noise-level; keep plan.vwin
+
+
+def display_windows(d: dict, dec: dict) -> dict:
+    """Per-ion dock windows of a Tier A story (plan.vwin_ion, plan.grid_ion), measured on the stored line: start at the
+    plan's own half window (vwin) and widen in 50 km/s steps until the panel holds DOCK_EW_SHARE of the ion's
+    equivalent width (whole stored line), capped per ion. A damped H I trough (log N >= 19) gets its cap so the core and
+    the wings both show. grid_ion widens the live tau grid (tausum.js) of an ion whose window passes the story grid."""
+    half0 = max(abs(float(x)) for x in d["plan"]["vwin"])
+    grid = d["meta"]["grid"]
+    gmax = min(abs(float(grid["V0"])), abs(float(grid["V1"])))
+    vw, gi, rule = {}, {}, {}
+    for k in ("OVI", "HI"):
+        ln = dec["lines"][k]
+        v = np.asarray(ln["u"], float) + float(dec["vSys"])
+        D = 1.0 - np.asarray(ln["flux"], float)
+        tot = float(D.sum())
+        logN = float(d["ions"][k]["totals"]["logN"])
+        cap = DOCK_CAP.get(k, DOCK_CAP_DEFAULT)
+        W = half0
+        if logN >= DOCK_DETECT_LOGN and tot > 0:
+            if k == "HI" and logN >= 19.0:
+                W = cap
+            else:
+                while W < cap and float(D[np.abs(v) <= W].sum()) / tot < DOCK_EW_SHARE:
+                    W += 50.0
+        W = float(min(W, cap))
+        share = float(D[np.abs(v) <= W].sum()) / tot if tot > 0 else 1.0
+        vw[k] = [-W, W]
+        rule[k] = {"logN": round(logN, 3), "ew_share": round(share, 3)}
+        if W > gmax:
+            gi[k] = {"V0": -W, "V1": W, "dV": 1.0}
+    return {"vwin_ion": vw, "grid_ion": gi,
+            "rule": {"version": "dockwin/1", "start": "plan.vwin half", "step_kms": 50, "ew_share": DOCK_EW_SHARE,
+                     "cap": {**DOCK_CAP, "default": DOCK_CAP_DEFAULT}, "detect_logN": DOCK_DETECT_LOGN,
+                     "damped_hi": "log N(H I) >= 19 takes the cap", "measured": rule}}
+
+
+TROUGH_F = 0.97
+
+
+def trough_extent(d: dict, win: list):
+    """[lo, hi] km/s where the story's O VI F_intrinsic < TROUGH_F inside the dock window (None when it never dips):
+    the B11 'trough spans' range, so the words match the panel (the library AOD regions run wider; fix1 S10)"""
+    g = d["meta"]["grid"]
+    v = np.arange(float(g["V0"]), float(g["V1"]) + 0.5 * float(g["dV"]), float(g["dV"]))
+    F = np.asarray(d["ions"]["OVI"]["F_intrinsic"], float)
+    m = (F < TROUGH_F) & (v >= win[0]) & (v <= win[1])
+    if not m.any():
+        return None
+    return [float(v[m][0]), float(v[m][-1])]
+
+
+def write_story_line(src: Path, story: Path, out_root: Path = OUT_DEFAULT) -> dict:
+    """Tier A: the page's stored line (TNGS v2, tngsight.library.encode_web) of one story, written to
+    ROOT/data/v3/lines/<g>_<ray>.bin so the observed, fit and explore docks never depend on the explorer's library packs
+    (which hold only some of the Tier A rays). `src` is the Trident npz (tngsight-npz/2) the story was built from, or an
+    existing TNGS .bin (copied byte for byte after the same check). Fails loud unless the line reproduces the story's own
+    F_intrinsic of O VI and H I within LINE_PARITY_MAX (same cast, same v_sys). -> {"line": "v3/lines/<stem>.bin", ...}"""
+    from tngsight import library as LIB
+    d = json.loads(Path(story).read_text())
+    g, ray = int(d["meta"]["galaxy"]), d["meta"]["ray"]
+    src = Path(src)
+    blob = src.read_bytes() if src.suffix == ".bin" else LIB.encode_web(LIB.load_npz(src))
+    dec = LIB.decode_web(blob)
+    grid = d["meta"]["grid"]
+    v = np.arange(float(grid["V0"]), float(grid["V1"]) + 0.5 * float(grid["dV"]), float(grid["dV"]))
+    vs = float(dec["vSys"])
+    if abs(vs - float(d["meta"]["v_sys_kms"])) > 0.01:
+        raise SystemExit(f"{g} {ray}: line v_sys {vs} != story v_sys {d['meta']['v_sys_kms']}")
+    par = {}
+    for k in ("OVI", "HI"):
+        ln = dec["lines"][k]
+        F = np.interp(v - vs, ln["u"], ln["flux"])
+        par[k] = float(np.max(np.abs(F - np.asarray(d["ions"][k]["F_intrinsic"], float))))
+        if par[k] > LINE_PARITY_MAX:
+            raise SystemExit(f"{g} {ray}: stored line {k} differs from F_intrinsic by {par[k]:.4f} > {LINE_PARITY_MAX}")
+    win = display_windows(d, dec)
+    tr = trough_extent(d, win["vwin_ion"]["OVI"])
+    before = json.dumps(d, sort_keys=True)
+    d["plan"]["vwin_ion"], d["plan"]["grid_ion"] = win["vwin_ion"], win["grid_ion"]
+    d["plan"]["vwin_rule"] = win["rule"]
+    if tr is not None:                         # fix1 S10: the B11 trough range is what the O VI panel shows
+        d["keys"]["trough_lo"], d["keys"]["trough_hi"] = f"{tr[0]:.0f}", f"{tr[1]:.0f}"
+        d["plan"]["trough_rule"] = {"ion": "OVI", "F_below": TROUGH_F, "on": "F_intrinsic inside plan.vwin_ion.OVI",
+                                    "lo": tr[0], "hi": tr[1], "library_aod": [d["keys"].get("ovi_aod_lo"), d["keys"].get("ovi_aod_hi")]}
+    if json.dumps(d, sort_keys=True) != before:
+        Path(story).write_text(json.dumps(d, separators=(",", ":"), ensure_ascii=False, allow_nan=False), encoding="utf-8")
+    rel = f"{LINE_DIR}/{g}_{ray}.bin"
+    dst = Path(out_root) / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_bytes(blob)
+    span = {k: [round(float(dec["lines"][k]["u"][0]), 1), round(float(dec["lines"][k]["u"][-1]), 1)] for k in ("OVI", "HI")}
+    print(f"line {g} {ray}: {len(blob)} B, parity O VI {par['OVI']:.1e} H I {par['HI']:.1e}, span {span} -> {dst}")
+    return {"line": rel, "parity": par, "bytes": len(blob), "span": span}
+
+
+def write_index_v2(index_in: Path, entries_v3: list, out: Path) -> dict:
+    """story-index/2 (tests/schemas/story-index/2.schema.json), strictly additive to the /1 index: hero entry 'full',
+    default kept as {galaxy, ray}, default_story 'full', picker 'off', Tier A entries appended with gates.all false
+    (R7 fills the gates, R6 the picker fields). Written to `out` (a staging path): ROOT/data/index.json stays /1 until
+    the /1 consumers skip non-full entries (U_R0 hazard 1)."""
+    d = json.loads(Path(index_in).read_text())
+    hero = [{**e, "id": "full", "beats": "beats.json", "shots": "shots.json", "case": "full", "subcase": None,
+             "gates": {"all": True, "note": "hand-tuned hero; H0 is its gate"}} for e in d["stories"]]
+    st = hero + [{"id": e["story_id"], "galaxy": e["galaxy"], "ray": e["ray"], "story": e["story"],
+                  "page_fits": e["page_fits"], **({"line": e["line"]} if e.get("line") else {}),
+                  "beats": f"beats.{e['story_id']}.json",
+                  "shots": f"shots.{e['story_id']}.json", "film": f"films/{e['story_id']}.json", "case": e["case"],
+                  "subcase": e.get("subcase"), "label": e.get("label"), "viz": e["viz"],
+                  "eligible_case": e.get("eligible_case", False),
+                  "gates": {"all": False, "data": e.get("gates_case"), "note": "R7 sets all"}} for e in entries_v3]
+    v2 = {"schema": "story-index/2", "default": d["default"], "default_story": "full", "picker": "off",
+          **{k: d[k] for k in ("fion", "film_beams", "about") if k in d}, "stories": st}
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(v2, indent=1))
+    return v2
+
+
+
 # ----------------------------------------------------------------------------------------------- CLI
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("stage", choices=["cells", "cuts", "build", "fion", "all", "patch", "select", "check",
-                                       "manifest"])
+                                       "manifest", "manifest-audit", "index-v2", "line"])
     ap.add_argument("--galaxy", nargs="+", type=int, default=[REF_GALAXY])
     ap.add_argument("--ray", default=REF_RAY)
     ap.add_argument("--library", help="library dir (one galaxy only)")
@@ -1909,7 +2145,26 @@ def main(argv=None):
     ap.add_argument("--galaxy-json", help="galaxy record (one galaxy only)")
     ap.add_argument("--work", type=Path, default=None, help="scratch for the cell dumps (default <work>/scratch/story_data)")
     ap.add_argument("--out", type=Path, default=OUT_DEFAULT)
+    ap.add_argument("--case", choices=["clean", "multiphase", "damped", "empty", "hot"], default=None,
+                    help="Tier A: build story-data/3 for this declared case (DESIGN_tierA §3, §4.4); one galaxy only")
+    ap.add_argument("--picks", type=Path, default=None,
+                    help="Tier A: JSON {story id: galaxy} of the frozen picks (same_galaxy_next)")
+    ap.add_argument("--hosted", type=Path, default=None, help="Tier A: hosted_cover.json (manifest-audit)")
+    ap.add_argument("--entries", nargs="*", type=Path, default=[], help="index-v2: Tier A entry JSON files")
+    ap.add_argument("--src", type=Path, default=None, help="line: Trident npz (or TNGS .bin) the story was built from")
+    ap.add_argument("--story", type=Path, default=None, help="line: the installed story-data/3 JSON")
     a = ap.parse_args(argv)
+    if a.stage == "manifest-audit":
+        manifest_audit(a.out if a.out.suffix == ".json" else a.out / "hosted_cover.json")
+        return
+    if a.stage == "line":
+        if not (a.src and a.story):
+            ap.error("line needs --src and --story")
+        write_story_line(a.src, a.story, a.out)
+        return
+    if a.stage == "index-v2":
+        write_index_v2(OUT_DEFAULT / "index.json", [json.loads(p.read_text()) for p in a.entries], a.out)
+        return
     if len(a.galaxy) > 1 and (a.library or a.cutout or a.galaxy_json):
         ap.error("--library/--cutout/--galaxy-json need a single --galaxy")
     if a.stage == "patch":                                   # keys + eligibility only, on existing exports
@@ -1944,7 +2199,18 @@ def main(argv=None):
         if a.stage in ("cuts", "all"):
             stage_cuts(gid, a.ray, work, paths)
         if a.stage in ("build", "all"):
-            entries.append(build_one(gid, a.ray, work, a.out, paths))
+            planner = None
+            if a.case:
+                import story_plan as SP
+                if len(a.galaxy) != 1:
+                    ap.error("--case needs a single --galaxy")
+                planner = SP.Planner(a.case, gid, a.ray, work, a.out, paths)
+                planner.story_galaxies = json.loads(a.picks.read_text()) if a.picks else {}
+                hc = json.loads(a.hosted.read_text())["hosts"].get(str(gid)) if a.hosted else None
+                if a.hosted and not (hc and hc.get("ok")):
+                    raise SystemExit(f"{gid}: hosted manifest lacks a story field or level: {hc and hc.get('missing')}")
+                planner.hosted = hc
+            entries.append(build_one(gid, a.ray, work, a.out, paths, planner))
     if entries:
         write_index(a.out, entries)
     if a.stage in ("build", "fion", "all"):

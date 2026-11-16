@@ -26,7 +26,11 @@ let LIB = arg("--library", GAL === 488530 ? (process.env.TNG_STORY_LIBRARY || jo
 const SWORK = arg("--work", process.env.STORY_WORK || join(WORK, "scratch/story_data"));
 if (!existsSync(join(LIB, "web", `${RAY}.bin`)) && existsSync(join(SWORK, `lib_${GAL}`, "web", `${RAY}.bin`))) LIB = join(SWORK, `lib_${GAL}`);
 const OUT = resolve(arg("--out", join(REPO, "docs/tng50/learn/how-a-spectrum-is-made/data")));
-const IONS = ["OVI", "HI"];
+// Tier A (DESIGN_tierA §4.4): --ions OVI,HI,MgII adds the story's extra ion; --page adds the page-default case (R 15 000,
+// S/N 10, page seed 0) the case/1 claims are judged at; --noise searches the empty-case noise seed. Without these flags
+// the output is exactly the v2 file (the hero and staged stories are never rebuilt with them).
+const IONS = (arg("--ions", "OVI,HI")).split(",").filter(Boolean);
+const PAGE = process.argv.includes("--page"), NOISE = process.argv.includes("--noise");
 const NOCAP = {capMs: 1e9, budgetMs: 1e9};
 const DEF_KEYS = ["v", "dv", "logN", "dlogN", "b", "db", "region", "flag", "EW"];
 const KB = 1.380649e-16, AMU = 1.66053906660e-24, MASS = {H: 1.00794, O: 15.9994};
@@ -46,6 +50,7 @@ const CASES = [
   {name: "s11a_seed1", layout: "1", R: [30000, 30000], sn: [10, 10], seed: 1, ci: [0]},
   {name: "s11a_seed2", layout: "1", R: [30000, 30000], sn: [10, 10], seed: 2, ci: [0]},
 ];
+if (PAGE) CASES.push({name: "page", layout: "1", R: [15000, 15000], sn: [10, 10], seed: 0, ci: [0]});
 const CASE_RS = {"1": [[0, 0]], "4": [[0, 0], [1, 0], [0, 1], [1, 1]]};
 
 const sum = a => { let s = 0; for (const x of a) s += x; return s; };
@@ -74,6 +79,7 @@ function runFit(ion, c, ci) {
 const fits = [];
 for (const c of CASES) for (const ion of IONS) {
   if (c.name.startsWith("s11a") && ion !== "OVI") continue;
+  if (!D.lines[ion]) { console.log(`no ${ion} line in ${RAY}.bin: skipped`); continue; }
   for (const ci of c.ci) { const f = runFit(ion, c, ci); fits.push(f); console.log(c.name, ion, f.R, f.snr, f.seed, f.status, f.comps.length, f.total_logN); }
 }
 const find = (name, ion, ci = 0) => fits.findIndex(f => f.case === name && f.ion === ion && f.ci === ci);
@@ -104,10 +110,47 @@ if (invented) { const f = fits[invented.fit]; Object.assign(facts, {invented_b: 
 // the names steps.json (U4) uses for the same quantities
 Object.assign(facts, {fit_logN: facts.s11_total_logN, fit_seed: facts.s11_noise_seed, inv_b: facts.invented_b, inv_T: facts.invented_T,
   inv_logN: facts.invented_total_logN});
+// --noise (empty case, DESIGN_tierA §4.4 item 6): the lowest page seed S in 0..999 whose noise shows exactly one 2-3 sigma
+// excursion (and none >= 3 sigma) over the exported ions inside the panel window, where the noiseless model has no gas,
+// at least 50 km/s inside the window edges (so the viewer sees the whole fake dip).
+// The draw is the page's own: degradeV(full line, R 15 000, S/N 10, seedFor(S, ion, 0)) as plot.js does. Excursion
+// significance = the matched filter of an unresolved line on the per-pixel noise: S(v) = sum w (1 - F) / (sigma sqrt(sum w^2)),
+// w = the Gaussian LSF sampled on the pixels; excursions are local maxima of S at least one FWHM apart.
+function noiseSearch(ions, R = 15000, snr = 10, vwin = [-300, 300]) {
+  const fwhm = 299792.458 / R, sig = fwhm / 2.3548;
+  const excursions = S => {
+    const out = [];
+    for (const ion of ions) {
+      const L = D.lines[ion]; if (!L) continue;
+      const d = degradeV(L, R, snr, D.vSys, {seed: seedFor(S, ion, 0)}), v = d.v, n = v.length, dv = v[1] - v[0];
+      const h = Math.ceil(3 * sig / dv), w = []; for (let k = -h; k <= h; k++) w.push(Math.exp(-0.5 * (k * dv / sig) ** 2));
+      const w2 = Math.sqrt(w.reduce((a, b) => a + b * b, 0));
+      const Sv = new Float64Array(n).fill(-Infinity);
+      for (let i = h; i < n - h; i++) { if (v[i] < vwin[0] || v[i] > vwin[1]) continue; let a = 0; for (let k = -h; k <= h; k++) a += w[k + h] * (1 - d.flux[i + k]); Sv[i] = a / (d.sigma * w2); }
+      const mh = Math.max(1, Math.round(fwhm / dv));
+      for (let i = 0; i < n; i++) {
+        if (!(Sv[i] >= 2)) continue;
+        let top = true; for (let k = Math.max(0, i - mh); k <= Math.min(n - 1, i + mh); k++) if (Sv[k] > Sv[i]) { top = false; break; }
+        if (top) out.push({ion, V: +v[i].toFixed(1), sigma: +Sv[i].toFixed(3), model_depth: +(1 - d.model[i]).toFixed(5)});
+      }
+    }
+    return out;
+  };
+  for (let S = 0; S <= 999; S++) {
+    const ex = excursions(S);
+    if (ex.length === 1 && ex[0].sigma < 3 && ex[0].model_depth < 0.01 && ex[0].V >= vwin[0] + 50 && ex[0].V <= vwin[1] - 50)
+      return {seed: S, excursion_sigma: ex[0].sigma, ion: ex[0].ion, V: ex[0].V, R, sn: snr, vwin, panel_seed: seedFor(S, ex[0].ion, 0),
+        rule: "lowest page seed S in 0..999 with exactly one 2-3 sigma matched-filter excursion (none >= 3) over the exported ions in vwin, noiseless depth < 0.01 there and >= 50 km/s inside the window edges; panel noise seed = seedFor(S, ion, 0) on the full line (plot.js)"};
+  }
+  return null;
+}
+const noise = NOISE ? noiseSearch(IONS) : undefined;
+if (NOISE) console.log("noise seed:", JSON.stringify(noise));
 const out = {schema: "story-fits/1", galaxy: GAL, ray: RAY, fit_version: FIT_VERSION, params: NOCAP, vSys: D.vSys,
   note: "fit.js degradeV + fitPanel with the explorer's request; capMs/budgetMs lifted for determinism",
   seed_rule: "seedParam = the explorer's page seed S; seed = the panel noise seed seedFor(S, ion, ci) (state.js casesFor order); S11a cycles S = 0, 1, 2 at R 30000, S/N 10",
   keys: compKeys, cases: fits, select: {s11a: s11, s11c_broad: broad, s11c_invented: invented}, facts};
+if (NOISE) out.noise = noise;
 mkdirSync(OUT, {recursive: true});
 const txt = JSON.stringify(out), path = join(OUT, `page_fits_${GAL}_${RAY}.json`);
 writeFileSync(path, txt);
