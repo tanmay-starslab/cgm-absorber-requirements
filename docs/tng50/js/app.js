@@ -12,6 +12,7 @@ import {createInstrument} from "./instrument.js";
 import * as FITM from "./fit.js";
 import {initTips, ION_TIPS} from "./tips.js";
 import {initFeatures} from "./features.js";   /* ux4 features: share, keys, random, undo, solo, CSV, loading */
+import {initLiquidTabs} from "./liquidtabs.js";   /* CSS-only liquid drop behind the Spectra | 3D tabs */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
   nearestSightline, defaultSightline, srcOf, galaxySummary} from "./galaxies.js";
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
@@ -708,6 +709,7 @@ function showTab(t, focus) { if (!TABS.includes(t)) return; const prev = S.tab; 
 for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", () => showTab(k));
   b.addEventListener("keydown", ev => { const i = TABS.indexOf(S.tab), n = {ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1}[ev.key];
     if (n == null) return; ev.preventDefault(); showTab(TABS[(n + TABS.length) % TABS.length], true); }); }
+initLiquidTabs($("#tabs"));
 let V3P = null, V3 = null, THUMB = null;
 function vizCfg() {
   if (!CFG.viz) return null;
