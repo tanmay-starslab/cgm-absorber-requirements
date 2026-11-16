@@ -2,9 +2,9 @@
   <a href="https://galaxies.tanmaysingh.uk"><img src="docs/readme/hero.webp" width="100%" alt="A TNG50 galaxy glowing in gas density, crossed by a single beam of quasar light"></a>
 </p>
 
-<h1 align="center">Galaxies</h1>
+<h1 align="center">Seeing the Circumgalactic Medium</h1>
 
-<p align="center"><b>See the invisible gas around galaxies through the light it absorbs.</b></p>
+<p align="center"><b>The vast halo of gas around galaxies, revealed by the light it absorbs: in simulations, and for the telescopes that will observe it.</b></p>
 
 <p align="center">
   <a href="https://galaxies.tanmaysingh.uk"><img alt="Live site" src="https://img.shields.io/badge/live-galaxies.tanmaysingh.uk-7c8cff?style=flat-square"></a>
@@ -16,7 +16,7 @@
   <a href="https://galaxies.tanmaysingh.uk/"><b>Explorer</b></a> &nbsp;|&nbsp;
   <a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><b>How a spectrum is made</b></a> &nbsp;|&nbsp;
   <a href="https://galaxies.tanmaysingh.uk/requirements/"><b>Detect & Resolve</b></a> &nbsp;|&nbsp;
-  <a href="#for-researchers-and-developers"><b>For developers</b></a>
+  <a href="#technical-details"><b>Technical details</b></a>
 </p>
 
 Every galaxy sits inside a vast halo of thin gas, the circumgalactic medium (CGM). It holds much of a galaxy's raw
@@ -24,7 +24,7 @@ material, yet it is far too faint to photograph. We see it only when a distant q
 atom takes its own small bite out of the light, and those dips, the absorption spectrum, tell us how much gas there
 is, how hot it is and how it moves.
 
-Galaxies lets you do that with simulated galaxies from TNG50. Point a beam through any of 198 Milky Way and Andromeda
+This project lets you explore the CGM of simulated galaxies from TNG50. Point a beam through any of 198 Milky Way and Andromeda
 look-alikes, read the spectrum it makes, change the telescope, and see what a real instrument would be able to tell.
 
 ## What you can do
@@ -102,27 +102,21 @@ page's own tools, and any number it did not get from a tool is marked as unverif
 | **How a spectrum is made** | [/learn/how-a-spectrum-is-made/](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A cinematic story from gas cells to a fitted spectrum |
 | **Detect & Resolve** | [/requirements/](https://galaxies.tanmaysingh.uk/requirements/) | The instrument study: what S/N and resolution it takes to detect and resolve an absorber |
 
-## How to cite
+## Credit
 
-If you use the site, the spectra or the code, please cite this repository (suggested form):
-
-> Singh, T. (2026). *Galaxies: absorption spectra of simulated galaxies, and what it takes to observe them.*
-> https://github.com/tanmay-starslab/cgm-absorber-requirements, https://galaxies.tanmaysingh.uk
-
-and the work it builds on: the TNG50 simulation (Nelson et al. 2019a, ComAC 6, 2; Nelson et al. 2019b, MNRAS 490,
-3234; Pillepich et al. 2019, MNRAS 490, 3196), Trident (Hummels, Smith & Silvia 2017, ApJ 847, 59) and yt (Turk et
-al. 2011, ApJS 192, 9). The full list is under [Credits](#credits).
+This is not a published work, so there is nothing formal to cite. If the site or the code helps you, a short
+acknowledgement with a link to https://galaxies.tanmaysingh.uk is kindly appreciated. The simulation and the tools it
+builds on have their own citation requests, listed under [Credits](#credits).
 
 ## Feedback and contributing
 
 Found a bug, spotted a number that looks wrong, or have an idea? We would love to hear it. Open an
 [issue](https://github.com/tanmay-starslab/cgm-absorber-requirements/issues), or read
-[CONTRIBUTING.md](CONTRIBUTING.md) to send a pull request. Questions from students and the curious are just as welcome
-as those from researchers.
+[CONTRIBUTING.md](CONTRIBUTING.md) to send a pull request.
 
 ---
 
-## For researchers and developers
+## Technical details
 
 What began as a requirements study for a NASA proposal (what S/N and resolving power it takes to **detect** a
 circumgalactic absorber and to **resolve** it into velocity components) has grown into a public website for exploring
