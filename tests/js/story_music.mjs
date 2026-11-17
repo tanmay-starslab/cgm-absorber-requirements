@@ -97,10 +97,17 @@ try {
       await P.waitFor(`${M} && __story.ready`, 120000); await sleep(800);
       d = await st(P);
       C.check(d.track === "beethoven" && d.on && await P.eval(`document.getElementById("sound-btn").dataset.track`) === "beethoven", `${w}: after reload: track ${d.track}, music ${d.on ? "on" : "off"} (remembered)`);
-      // M turns it off
+      // the switch shows what is heard: checked only while the audio actually runs (owner 2026-11-16: no "on" with silence)
+      const shown = () => P.eval(`document.getElementById("sound-btn").getAttribute("aria-checked")`);
+      const running = await P.eval(`${M}.debug().state === "running"`);
+      C.check((await shown()) === String(running), `${w}: after reload the switch matches the audio (${await shown()}, context running ${running})`);
+      // M flips what is shown: a waiting remembered "on" starts, a playing one stops
       await P.eval(`document.activeElement && document.activeElement.blur && document.activeElement.blur()`);
+      const before = await shown();
       await P.key("m"); await sleep(400);
-      C.check(await P.eval(`document.getElementById("sound-btn").getAttribute("aria-checked")`) === "false", `${w}: M turns the music off`);
+      C.check((await shown()) === (before === "true" ? "false" : "true"), `${w}: M flips the switch (${before} -> ${await shown()})`);
+      if ((await shown()) === "true") { await P.key("m"); await sleep(400); }
+      C.check((await shown()) === "false", `${w}: M turns the music off`);
       if (w === 1440 && SHOTS) {   // the credits dialog's Music section
         await P.click("#menu-btn"); await sleep(200); await P.click(`#menu-sheet [data-id="credits"]`); await sleep(400);
         await P.eval(`(() => { const s = [...document.querySelectorAll("#credits h3")].find(h => h.textContent === "Music"); s && s.scrollIntoView({block: "center"}); })()`);
