@@ -19,7 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-The file absreq/data/trident_lines.txt is redistributed from the Trident project
-(https://github.com/trident-project/trident) under its BSD 3-clause licence,
-reproduced in absreq/data/TRIDENT_LICENSE.txt.

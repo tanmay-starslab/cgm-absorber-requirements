@@ -1,0 +1,21 @@
+name: Science feedback
+description: A number, unit, label or physics statement that looks wrong or unclear
+labels: ["type: science", "status: needs triage"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Page URL
+      placeholder: https://galaxies.tanmaysingh.uk/...
+    validations: {required: true}
+  - type: textarea
+    id: what
+    attributes:
+      label: What looks wrong
+      description: Quote the value or sentence, and say what you expected
+    validations: {required: true}
+  - type: textarea
+    id: refs
+    attributes:
+      label: References
+      description: Papers, data or reasoning that support the correction (optional)

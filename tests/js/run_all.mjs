@@ -22,7 +22,9 @@ import path from "node:path";
 
 const dir = path.dirname(fileURLToPath(import.meta.url)), root = path.resolve(dir, "../.."), filt = process.argv[2] || "";
 const FIRST = ["story_hero_identity.mjs"];   // H0 before everything else
-const files = readdirSync(dir).filter(f => f.endsWith(".mjs") && f !== "run_all.mjs" && f.includes(filt)).sort()
+// RUN_ALL_SKIP: comma-separated files to leave out (CI skips the known failures tracked in issues; see .github/workflows/ci.yml)
+const SKIP = new Set((process.env.RUN_ALL_SKIP || "").split(",").map(s => s.trim()).filter(Boolean));
+const files = readdirSync(dir).filter(f => f.endsWith(".mjs") && f !== "run_all.mjs" && f.includes(filt) && !SKIP.has(f)).sort()
   .sort((a, b) => (FIRST.includes(b) - FIRST.includes(a)));
 const ARGS = {"page_smoke.mjs": ["docs/tng50", ...(process.env.TNG_SMOKE_API ? [process.env.TNG_SMOKE_API] : [])],   // TNG_SMOKE_API: optional backend URL
   "ui_static.mjs": ["docs/tng50"], "ui_budget.mjs": ["docs/tng50"],

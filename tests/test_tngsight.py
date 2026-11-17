@@ -389,7 +389,7 @@ ROW_KEYS = {"id", "orientation", "b_kpc", "azimuth_deg", "seed", "v_sys", "sourc
 
 
 def test_catalog_and_entry(scratch):
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
     p = synth_payload()
     p["logN"]["CIII"] = -np.inf
     row = pd.read_csv(GRID_INDEX).set_index("geom_id").loc["edge_b100_a090"].to_dict()

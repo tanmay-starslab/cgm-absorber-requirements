@@ -1,0 +1,17 @@
+# Categories for GitHub's auto-generated release notes, by PR label
+changelog:
+  exclude:
+    labels: ["type: chore"]
+  categories:
+    - title: New features
+      labels: ["type: feature"]
+    - title: Science and data
+      labels: ["type: science"]
+    - title: Fixes
+      labels: ["type: bug"]
+    - title: Performance
+      labels: ["type: performance"]
+    - title: Documentation
+      labels: ["type: docs"]
+    - title: Other changes
+      labels: ["*"]

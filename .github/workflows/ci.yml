@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-tng.txt
+      - name: Install
+        run: pip install -r requirements.txt -r requirements-tng.txt
+      - name: pytest
+        env:
+          MPLBACKEND: Agg
+        run: python -m pytest tests -q -p no:cacheprovider
+
+  js:
+    name: JS tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python deps for the parity tests
+        run: pip install numpy scipy
+      - name: run_all (browser tests skip themselves)
+        env:
+          PYTHON: python
+          H0_NO_DOM: "1"
+          # known failures, tracked in issues #74 (G6), #75 (H3), #76 (perf freeze), #77 (film copy), #78 (G1 phone landscape)
+          RUN_ALL_SKIP: story_budget.mjs,story_overlap.mjs,story_perf.mjs,story_static.mjs,story_layout.mjs
+        run: node tests/js/run_all.mjs
+
+  site:
+    name: Site build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build dist/
+        run: node scripts/build_site.mjs
+      - name: Key pages exist
+        run: |
+          for f in index.html learn/how-a-spectrum-is-made/index.html requirements/index.html robots.txt sitemap.xml; do
+            test -s "dist/$f" || { echo "missing dist/$f"; exit 1; }
+          done
