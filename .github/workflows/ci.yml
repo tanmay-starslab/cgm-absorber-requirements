@@ -45,8 +45,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Python deps for the parity tests
-        run: pip install numpy scipy
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-tng.txt
+      - name: Python deps for the parity fixtures
+        run: pip install -r requirements.txt -r requirements-tng.txt pillow
       - name: run_all (browser tests skip themselves)
         env:
           PYTHON: python
