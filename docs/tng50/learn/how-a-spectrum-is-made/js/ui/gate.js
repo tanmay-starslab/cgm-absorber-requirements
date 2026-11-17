@@ -4,7 +4,8 @@
 // The gate is the first screen: a still of this galaxy's gas and starlight (img/poster_<g>_<ray>.webp, landscape, and
 // _p.webp, portrait; scripts/story_posters.mjs), the title, and two equal choices: "Hold to fly" (hold the button or
 // Space for HOLD_MS; one press under reduced motion; Enter on the focused button starts at once, so a keyboard never needs
-// to hold) and "Watch (<length>)". Below them "Skip intro", "Read as text" and the music toggle, then a one-line credit for the still.
+// to hold) and "Watch (<length>)". Below them "Skip intro", "Read as text" and the music switch, then a one-line credit for the still.
+// Top left, where the story's back arrow sits, an arrow back to the explorer (opts.backHref, default ../../).
 // When the live volume is ready the integrator calls liveReady(): the gate's sky turns transparent; the poster stays until close.
 // While the gate is open it owns Space (capture phase), so the story's input layer does not fly before the flight starts;
 // a Space held through the end of the hold keeps flying once the gate closes (auto-repeat reaches input.js again).
@@ -98,7 +99,7 @@ html.gate-open #hud,html.gate-open #rail,html.gate-open #kinetic,html.gate-open 
 .sg-scrim{position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(4,5,10,.86) 0%,rgba(4,5,10,.62) 34%,rgba(4,5,10,0) 62%)}
 .sg-metal{-webkit-mask-image:linear-gradient(90deg,#000 0%,rgba(0,0,0,.82) 30%,transparent 60%);mask-image:linear-gradient(90deg,#000 0%,rgba(0,0,0,.82) 30%,transparent 60%)}   /* liquid metal behind the title (js/liquidbg.js) */
 .sg-in{position:absolute;display:flex;flex-direction:column;align-items:flex-start;gap:clamp(12px,2.2vh,22px);
-  left:calc(max(24px,6vw) + var(--sal,0px));top:50%;transform:translateY(-50%);width:min(36em,40vw);max-height:calc(100% - 48px)}
+  left:calc(max(24px,6vw) + var(--sal,0px));top:calc(50% + 22px);transform:translateY(-50%);width:min(36em,40vw);max-height:calc(100% - 92px)}   /* the top 68 px stay clear for the explorer arrow */
 .sg-t{margin:0;font:400 clamp(34px,min(5.4vw,9vh),84px)/1.02 var(--serif,Georgia,serif);letter-spacing:-.015em;text-wrap:balance;
   text-shadow:0 2px 24px rgba(0,0,0,.55)}
 .sg-s{margin:0;max-width:30em;font-size:clamp(15px,min(1.35vw,2.4vh),20px);color:var(--sky-muted,#b9b6c8);text-shadow:0 1px 12px rgba(0,0,0,.6)}
@@ -144,7 +145,7 @@ html.gate-open #hud,html.gate-open #rail,html.gate-open #kinetic,html.gate-open 
   .sg-b{flex:1 1 10em;min-width:0}
 }
 @media (max-height:480px) and (min-aspect-ratio:6/5){
-  .sg-in{gap:8px;width:min(34em,52vw);left:calc(20px + var(--sal,0px))}
+  .sg-in{gap:8px;width:min(34em,52vw);left:calc(72px + var(--sal,0px));top:50%;max-height:calc(100% - 24px)}   /* short: the explorer arrow sits in a left gutter */
   .sg-t{font-size:clamp(26px,7vh,40px)}.sg-s{font-size:14px}.sg-b{min-height:44px;font-size:15px;min-width:10em}.sg-k{margin-top:0}
 }
 @media (max-width:440px){.sg-c{flex-direction:column}.sg-b{width:100%;flex:none;min-height:48px}}
@@ -153,6 +154,14 @@ html.gate-open #hud,html.gate-open #rail,html.gate-open #kinetic,html.gate-open 
 @media (max-width:320px){.sg-t{font-size:max(26px,9.4vw)}.sg-c{flex-direction:column}.sg-b{width:100%;flex:none;min-height:44px}.sg-cr{display:none}
   .sg-in{gap:10px}.sg-k{gap:0 16px}.sg-b{padding:6px 12px;gap:8px}.sg-l{white-space:normal;text-align:left}}
 @media (max-width:320px) and (max-height:460px){.sg-s{display:none}}
+/* back to the explorer (owner 2026-11-16): where the story's back arrow sits, the HUD pill's look, with a short label */
+.sg-back{position:absolute;z-index:2;top:calc(16px + var(--sat,0px));left:calc(16px + var(--sal,0px));display:inline-flex;align-items:center;gap:6px;
+  height:44px;padding:0 16px 0 11px;border-radius:22px;border:1px solid #ffffff1f;background:#0b0f1ce6;color:var(--sky-ink,#f4f1ea);
+  font:400 14px/1 var(--sans,system-ui,sans-serif);text-decoration:none;transition:border-color .25s,box-shadow .25s}
+.sg-back svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.sg-back:hover,.sg-back:focus-visible{border-color:var(--beam,#fff4df);box-shadow:0 0 0 3px rgba(255,226,180,.14)}
+.sg-back:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:3px}
+@media (max-width:440px),(max-height:480px){.sg-back{width:44px;padding:0;justify-content:center}.sg-back span{display:none}}
 /* the story row (owner 2026-11-16): one quiet row of glass cards under the start buttons; a swipe strip on phones */
 .sg-st{display:flex;flex-direction:column;gap:6px;max-width:100%}
 .sg-sl{margin:0;font:500 11px/1 var(--sans,system-ui,sans-serif);letter-spacing:.08em;text-transform:uppercase;color:var(--sky-muted,#b9b6c8)}
@@ -181,7 +190,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;",
 
 /* host: the stage element. opts = {copy, vars: {galaxy, ...}, g, ray, posterBase ("img/"), watchSeconds, reduced,
      credit (string; default from vars), stories ([{id, title, blurb, img, href}], picker.js gateCards), onRide({via, holding}), onWatch(), onSkip(), onText(), autofocus (default true),
-     focusAfter (element or () => element; default host: where focus goes on close)}
+     focusAfter (element or () => element; default host: where focus goes on close), backHref, backViaHistory (() => bool)}
    -> {el, open(), close({instant}), isOpen(), liveReady(), rects(), setWatch(seconds), destroy()} */
 export function createGate(host, opts = {}) {
   const doc = host.ownerDocument || document, win = doc.defaultView || window;
@@ -204,6 +213,8 @@ export function createGate(host, opts = {}) {
   el.innerHTML =
     `<div class="sg-art" aria-hidden="true">${P ? `<picture><source media="(orientation: portrait)" srcset="${esc(P.portrait)}"><img alt="" src="${esc(P.landscape)}" decoding="async" fetchpriority="high"></picture>` : ""}</div>` +
     `<div class="sg-scrim" aria-hidden="true"></div>` +
+    `<a class="sg-back" href="${esc(opts.backHref || "../../")}" data-g1="gate.back" data-testid="gate-back" aria-label="Back to the explorer" title="Back to the explorer">` +
+      `<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg><span>Explorer</span></a>` +
     `<div class="sg-in">` +
       `<h1 class="sg-t" id="sg-t" data-g1="gate.title">${esc(title)}</h1>` +
       `<p class="sg-s" id="sg-s" data-g1="gate.sub">${esc(sub)}</p>` +
@@ -219,9 +230,8 @@ export function createGate(host, opts = {}) {
       `<div class="sg-k">` +
         `<button type="button" class="sg-a" data-g1="gate.skip" data-testid="gate-skip">${esc(fill(ui.skip_intro || "Skip intro", vars))}</button>` +
         `<button type="button" class="sg-a" data-g1="gate.text" data-testid="gate-text">${esc(fill(ui.read_as_text || "Read as text", vars))}</button>` +
-        (opts.music ? `<button type="button" class="sg-a sg-music" data-g1="gate.music" data-testid="gate-music" aria-pressed="false">` +
-          `<svg viewBox="0 0 20 20" aria-hidden="true"><path class="snd-spk" d="M3.5 7.6h2.6L10 4.5v11L6.1 12.4H3.5z"/><path class="snd-w" d="M12.6 7.4a3.6 3.6 0 0 1 0 5.2M14.8 5.4a6.4 6.4 0 0 1 0 9.2"/><path class="snd-x" d="M12.8 8l4 4M16.8 8l-4 4"/></svg>` +
-          `<span class="snd-l">${esc(ui.music_off || "Music off")}</span></button>` : "") +
+        (opts.music ? `<button type="button" class="sg-sw msw" role="switch" aria-checked="false" data-g1="gate.music" data-testid="gate-music">` +
+          `<span class="msw-l">Music</span><span class="msw-t" aria-hidden="true"><span class="msw-bars"><i></i><i></i><i></i></span><span class="msw-k"><svg viewBox="0 0 20 20"><path d="M8 14.2V5.6l7-1.6v8.4"/><circle cx="6" cy="14.4" r="2.2"/><circle cx="13" cy="12.6" r="2.2"/></svg></span></span></button>` : "") +
       `</div>` +
       (stories.length ? `<nav class="sg-st" aria-labelledby="sg-sl" data-g1="gate.stories"><p class="sg-sl" id="sg-sl">${esc(ui.gate_stories || "Or pick a story")}</p><ul class="sg-sr">` +
         stories.map(c => `<li><a class="sg-sc" href="${esc(c.href)}" data-story="${esc(c.id)}" aria-label="${esc(c.title)}: ${esc(c.blurb)}">` +
@@ -265,6 +275,8 @@ export function createGate(host, opts = {}) {
   watchB.addEventListener("click", () => { if (isOpen && !done) { done = true; opts.onWatch && opts.onWatch(); } });
   el.querySelector('[data-testid="gate-skip"]').addEventListener("click", () => { if (isOpen && !done) { done = true; opts.onSkip && opts.onSkip(); } });
   el.querySelector('[data-testid="gate-text"]').addEventListener("click", () => { opts.onText && opts.onText(); });
+  // the explorer arrow: back through history when the reader came from the explorer (its state comes back), else the link
+  el.querySelector(".sg-back").addEventListener("click", e => { if (opts.backViaHistory && opts.backViaHistory()) { e.preventDefault(); win.history.back(); } });
   // the music toggle: opts.music = createSound() (js/ui/sound.js) binds the click and keeps the label in step
   const musicB = el.querySelector('[data-testid="gate-music"]'); if (musicB && opts.music) opts.music.bind(musicB);
 
@@ -272,7 +284,7 @@ export function createGate(host, opts = {}) {
      activates them, as a button should) */
   const onKey = e => {
     if (!isOpen || e.key !== " " && e.code !== "Space") return;
-    const tgt = e.target, other = tgt && tgt.closest && tgt.closest(".sg-b.watch, .sg-a, .sg-sc");
+    const tgt = e.target, other = tgt && tgt.closest && tgt.closest(".sg-b.watch, .sg-a, .sg-sc, .sg-sw, .sg-back");
     if (other) return;
     e.preventDefault(); e.stopImmediatePropagation();
     if (e.type === "keydown" && !e.repeat) start("space");

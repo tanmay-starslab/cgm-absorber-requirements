@@ -711,10 +711,11 @@ for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", ()
   b.addEventListener("keydown", ev => { const i = TABS.indexOf(S.tab), n = {ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1}[ev.key];
     if (n == null) return; ev.preventDefault(); showTab(TABS[(n + TABS.length) % TABS.length], true); }); }
 initLiquidTabs($("#tabs")); initLiquidSeg($("#layout")); initLiquidButtons();
-/* liquid metal background (owner 2026-11-16): wanted mainly on the 3D tab, behind the stage and the control cards (it sits
-   under the page at z-index -1, so it never draws over the volume render). SPECTRA_BG is the single switch for the Spectra
-   tab (off: the spectra keep the static glow background); ?bg=on turns it on for one visit, ?bg=off removes it everywhere. */
-const SPECTRA_BG = false;
+/* liquid metal background (owner 2026-11-16): on both tabs, behind the 3D stage, the spectra and the control cards (it sits
+   under the page at z-index -1, so it never draws over the volume render or a spectrum; the spectra panel is its calm
+   rectangle). SPECTRA_BG is the single switch for the Spectra tab (off: the spectra keep the static glow background);
+   ?bg=off removes it everywhere. */
+const SPECTRA_BG = true;
 const BG_SPECTRA = SPECTRA_BG || new URLSearchParams(location.search).get("bg") === "on";
 document.body.classList.toggle("lmbg-spectra", BG_SPECTRA);
 initLiquidBg({name: "explorer", showWhen: () => S.tab === "3d" || BG_SPECTRA,

@@ -46,7 +46,7 @@ export function createSound({copy = null, win = window, onChange = null, onTrack
     const label = musicLabel(on, copy), invite = !on && store.get(STORE_KEY) == null;
     for (const b of buttons) {
       b.classList.toggle("invite", invite);
-      b.setAttribute("aria-pressed", String(on)); b.dataset.on = on ? "1" : "0"; b.dataset.track = track;
+      b.setAttribute(b.getAttribute("role") === "switch" ? "aria-checked" : "aria-pressed", String(on)); b.dataset.on = on ? "1" : "0"; b.dataset.track = track;
       b.title = `${label} (key M)\n${trackCredit(track)}`;
       const l = b.querySelector(".snd-l"); if (l) l.textContent = label;
       if (!l) b.setAttribute("aria-label", "Music");
