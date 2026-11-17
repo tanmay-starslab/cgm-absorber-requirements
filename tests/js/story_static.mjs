@@ -305,7 +305,10 @@ else {
     `render.html data-duration ${attr("data-duration")} = film.json film cut ${film.toFixed(3)} s (one frame)`);
   const rjs = [s, ...JS.filter(f => /render|video/i.test(f)).map(read)].join("\n");
   // review3 science M3 (fix3): film text snapshot + captions equal today's copy.json/beats.json render (story_vtt --check)
-  { const r = spawnSync(process.execPath, [join(REPO, "scripts/story_vtt.mjs"), "--check", "--root", SROOT], {encoding: "utf8"});
+  // films are not rendered any more (owner 2026-11-16), so their caption snapshot (git-ignored build/) is checked only
+  // when STORY_FILMS=1, i.e. when someone renders films again (issue #77)
+  if (process.env.STORY_FILMS !== "1") console.log("     film copy check skipped (no films are rendered; set STORY_FILMS=1 to check)");
+  else { const r = spawnSync(process.execPath, [join(REPO, "scripts/story_vtt.mjs"), "--check", "--root", SROOT], {encoding: "utf8"});
     check(r.status === 0, `film copy and captions in sync with copy.json (scripts/story_vtt.mjs --check)${r.status === 0 ? "" : ": " + (r.stderr || r.stdout).trim().split("\n").join("; ")}`); }
   check(/registerFrameSource\s*\(\s*{[^}]*\belement\s*:/.test(rjs) && !/registerFrameSource\s*\(\s*{[^}]*\bhost\s*:/.test(rjs), "registerFrameSource({element, ready, render}), no host key (eng P0-3)");
 }

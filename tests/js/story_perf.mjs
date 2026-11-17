@@ -45,7 +45,11 @@ if (opt.bench) { const j = JSON.parse(readFileSync(resolve(opt.bench), "utf8"));
 /* self-tests judge the fixtures with the frozen S0 rules */
 selfTest(C, "perf", fx => evalPerf(fx, G));
 selfTest(C, "bench", fx => evalBench(fx));
-C.check(!!S0 && S0.G5a_longtask_cadence !== undefined && S0.G5a_gpu_frame_p95_ms !== undefined, `S0 freeze read (${S0 ? S0.file : "missing"})`);
+// the S0 freeze is a GPU-node measurement kept outside the repo: without it the self-tests still run on the default rules,
+// and its absence fails only when STORY_REQUIRE=1 (issue #76)
+const S0ok = !!S0 && S0.G5a_longtask_cadence !== undefined && S0.G5a_gpu_frame_p95_ms !== undefined;
+if (S0ok || process.env.STORY_REQUIRE === "1") C.check(S0ok, `S0 freeze read (${S0 ? S0.file : "missing"})`);
+else C.note("S0 freeze not present (a GPU-node measurement outside the repo): default G5a rules; set STORY_REQUIRE=1 to require it");
 C.note(`G5a: scale ${G.scale}, frame p95 <= ${G.p95Max}, volume p50 <= ${G.volP50} / p95 <= ${G.volP95}, GPU frame p95 <= ${G.gpuFrameP95} ms, long tasks <= ${G.longMax} ms at ${G.cadence} cadence`);
 if (!process.env.TNG_BROWSER) { C.note("browser part skipped (set TNG_BROWSER=1; run on a GPU node)"); process.exit(C.finish()); }
 
