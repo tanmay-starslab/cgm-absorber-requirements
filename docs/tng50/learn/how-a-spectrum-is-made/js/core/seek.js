@@ -442,7 +442,10 @@ export function makeSeek(docs) {
     // equations
     const cell = cellAt(ctx, ion, l);
     const eqs = [];
-    for (const e of b.eqs) {
+    // a phone's 3D fills the stage until it turns into its inset (B12a): the beam still crosses the stage, so an
+    // equation waits for the inset to pass 0.5 (issue #75, story_core G3)
+    const insetWait = PHONE.has(ov.cls) && b.ui && b.ui.inset != null && keyed(b.ui.inset, u, false) < 0.5;
+    for (const e of insetWait ? [] : b.eqs) {
       const ph = tl.phase(u, e, b);
       if (Math.abs(ph) >= 1) continue;
       const anchor = {kind: e.anchor.kind, ref: e.anchor.ref ?? null};
