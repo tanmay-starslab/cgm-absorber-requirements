@@ -8,6 +8,8 @@
 
 <p align="center">
   <a href="https://galaxies.tanmaysingh.uk"><img alt="Live site" src="https://img.shields.io/badge/live-galaxies.tanmaysingh.uk-7c8cff?style=flat-square"></a>
+  <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/tanmay-starslab/cgm-absorber-requirements/ci.yml?branch=main&style=flat-square&label=CI"></a>
+  <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements/releases"><img alt="Release" src="https://img.shields.io/github/v/release/tanmay-starslab/cgm-absorber-requirements?style=flat-square"></a>
   <a href="LICENSE"><img alt="Code licence: MIT" src="https://img.shields.io/badge/code-MIT-3fb68b?style=flat-square"></a>
   <a href="https://www.tng-project.org/data/"><img alt="Data: IllustrisTNG TNG50" src="https://img.shields.io/badge/data-IllustrisTNG%20TNG50-f08a4b?style=flat-square"></a>
 </p>

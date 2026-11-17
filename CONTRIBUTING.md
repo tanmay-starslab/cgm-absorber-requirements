@@ -61,6 +61,15 @@ The headless-browser tests are skipped unless `TNG_BROWSER=1` is set (and need a
 - Do not change the physics, the grids or published numbers without discussing it in an issue first. They feed a
   technical note and a proposal.
 
+## Labels, releases and versions
+
+- Every issue and pull request gets a `type:` label (bug, feature, docs, science, performance, refactor, test, chore)
+  and an `area:` label (explorer, explainer, 3d, spectra, chat, server, data, requirements, site, ci). `priority:` and
+  `status:` labels are used during triage.
+- Releases are tagged `vMAJOR.MINOR.PATCH` ([Semantic Versioning](https://semver.org/)). Release notes are generated
+  from merged pull requests, grouped by their `type:` label, and [CHANGELOG.md](CHANGELOG.md) summarises each release.
+- CI (GitHub Actions) runs the Python tests, the JS tests and a site build on every pull request.
+
 ## Data and licences
 
 - Code is MIT ([`LICENSE`](LICENSE)). By contributing you agree that your code is released under it.
