@@ -100,7 +100,7 @@ try {
       // M turns it off
       await P.eval(`document.activeElement && document.activeElement.blur && document.activeElement.blur()`);
       await P.key("m"); await sleep(400);
-      C.check(await P.eval(`document.getElementById("sound-btn").getAttribute("aria-pressed")`) === "false", `${w}: M turns the music off`);
+      C.check(await P.eval(`document.getElementById("sound-btn").getAttribute("aria-checked")`) === "false", `${w}: M turns the music off`);
       if (w === 1440 && SHOTS) {   // the credits dialog's Music section
         await P.click("#menu-btn"); await sleep(200); await P.click(`#menu-sheet [data-id="credits"]`); await sleep(400);
         await P.eval(`(() => { const s = [...document.querySelectorAll("#credits h3")].find(h => h.textContent === "Music"); s && s.scrollIntoView({block: "center"}); })()`);

@@ -235,8 +235,12 @@ async function boot() {
     const fs = lastFs, ov = explore.overrides;
     return "../../index.html#" + entryFragment({g: data.meta.galaxy, ray: data.meta.ray, R: ov.R ?? (fs && fs.spec.R), sn: ov.sn ?? (fs && fs.spec.sn)});
   };
-  // the back arrow follows the story: same galaxy, beam and instrument in the explorer (the href is refreshed on press)
-  { const bb = $("back-btn"); if (bb) bb.addEventListener("pointerdown", () => { bb.href = explorerHref(); }); bb && bb.addEventListener("focus", () => { bb.href = explorerHref(); }); }
+  // the back arrow (owner 2026-11-16) returns to this story's gate: same ?story= and entry, minus the time; the history entry is
+  // replaced, so the browser's back from the gate still goes where the reader came from (the gate's own arrow: the explorer)
+  { const bb = $("back-btn"); if (bb) bb.addEventListener("click", e => { e.preventDefault();
+    const frag = entryFragment({...parseEntry(location), t: null, beat: null, from: entry.from});
+    try { history.replaceState(null, "", location.pathname + location.search + (frag ? "#" + frag : "")); } catch (x) { /* sandboxed */ }
+    location.reload(); }); }
   let trailOn = false;
   const hooks = {
     music: () => music.toggle(),
@@ -337,7 +341,9 @@ async function boot() {
         addEventListener("pointerup", end, true); addEventListener("keyup", end, true); } else clock.setTarget(Math.max(clock.state.target, B1read)); },
       onWatch: () => { closeGate(); watch.play(clock.state.p); },
       onSkip: () => { closeGate(); clock.jump(B1read); kick(); },
-      onText: () => shell.narrative.open()});
+      onText: () => shell.narrative.open(),
+      backViaHistory: () => { try { const r = new URL(document.referrer), x = new URL("../../", location.href);   // came straight from the explorer page
+        return r.origin === x.origin && (r.pathname === x.pathname || r.pathname === x.pathname + "index.html"); } catch (e) { return false; } }});
     gate.open(); html.classList.add("gate-open");
     // liquid metal behind the gate's title (explorer js/liquidbg.js, dark palette): its own small WebGL1 context, created after
     // first paint; paused the moment the flight is asked for and released once the gate has faded (never during the flight)

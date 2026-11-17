@@ -199,36 +199,68 @@ html.reduced .kt-blur{display:none}
 #act-chip .act-sw i{display:block;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1px #ffffff2e}
 #act-chip .act-note{margin-left:6px;font-size:13px;font-weight:400;color:rgba(236,240,255,0.78);white-space:nowrap}
 
-/* music toggle (js/ui/sound.js): a HUD pill next to the menu, icon + "Music on/off"; icon only where the solver gives 44 px */
-.snd{padding:0 14px 0 12px;gap:8px}
-.snd svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.snd .snd-spk{fill:currentColor;stroke:none}
-.snd .snd-w{display:none}
-.snd[aria-pressed="true"] .snd-w{display:inline}
-.snd[aria-pressed="true"] .snd-x{display:none}
-.snd[aria-pressed="true"]{border-color:color-mix(in srgb,var(--phase-hue) 70%,transparent);color:var(--sky-ink)}
-.snd[aria-pressed="false"]{color:var(--sky-muted)}
+/* music switch (owner 2026-11-16; js/ui/sound.js keeps the logic and sets aria-checked): "Music" and a glass track whose
+   liquid-metal knob (the note) stretches like a drop as it slides (the leading edge moves first, the trailing edge follows);
+   on, the track fills with a warm glow and three sound bars play under the knob. The same switch sits on the gate and in the
+   HUD pill (whose width hud.js soundWidth fixes; the knob carries the icon so it fits). No backdrop-filter (S0 §5). */
+.msw{--tw:36px;--th:22px;--k:18px;--warm:#ffc978;--ease-l:cubic-bezier(.32,.72,.28,1);-webkit-tap-highlight-color:transparent}
+.msw-l{white-space:nowrap}
+.msw-t{position:relative;flex:none;width:var(--tw);height:var(--th);border-radius:999px;overflow:hidden;
+  background:linear-gradient(180deg,rgba(236,240,255,.16),rgba(236,240,255,.05) 60%),rgba(12,16,28,.7);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.13),0 1px 0 rgba(255,255,255,.05);
+  transition:box-shadow .45s var(--ease-l)}
+.msw-t::before{content:"";position:absolute;inset:0;border-radius:inherit;opacity:0;transition:opacity .45s var(--ease-l);
+  background:radial-gradient(130% 160% at 18% 50%,rgba(255,222,164,.85),rgba(255,170,96,.55) 55%,rgba(232,120,60,.3)),linear-gradient(180deg,rgba(255,255,255,.25),transparent 55%)}
+.msw-t::after{content:"";position:absolute;left:12%;right:12%;top:1px;height:40%;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.22),transparent);pointer-events:none}
+.msw[aria-checked="true"] .msw-t{box-shadow:inset 0 1px 2px rgba(90,36,0,.45),inset 0 0 0 1px rgba(255,214,160,.6),0 0 16px -3px rgba(255,176,96,.75)}
+.msw[aria-checked="true"] .msw-t::before{opacity:1}
+.msw-k{position:absolute;z-index:1;top:2px;bottom:2px;left:2px;right:calc(100% - 2px - var(--k));border-radius:999px;display:grid;place-items:center;
+  background:radial-gradient(120% 120% at 34% 26%,#fff 0 10%,#e6eaf2 30%,#a9b1c2 72%,#7a8295);color:#4d5466;
+  box-shadow:0 1px 3px rgba(0,0,0,.55),inset 0 -1px 1.5px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.95);
+  transition:left .34s var(--ease-l),right .34s var(--ease-l) .09s,transform .3s var(--ease-l),color .4s}
+.msw[aria-checked="true"] .msw-k{left:calc(100% - 2px - var(--k));right:2px;color:#8a4310;
+  background:radial-gradient(120% 120% at 34% 26%,#fffdf7 0 10%,#ffe9c2 30%,#ffc56f 70%,#e48d3a);
+  box-shadow:0 1px 3px rgba(80,30,0,.5),0 0 10px rgba(255,190,110,.6),inset 0 -1px 1.5px rgba(120,50,0,.25),inset 0 1px 0 #fff;
+  transition:left .34s var(--ease-l) .09s,right .34s var(--ease-l),transform .3s var(--ease-l),color .4s}
+.msw-k svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.msw-k circle{fill:currentColor;stroke:none}
+.msw:active .msw-k{transform:scale(1.1,.86)}
+.msw-bars{position:absolute;left:7px;top:0;bottom:0;display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .35s}
+.msw-bars i{display:block;width:2px;height:11px;border-radius:1px;background:#fff;box-shadow:0 0 4px rgba(255,240,210,.8);transform:scaleY(.55)}
+.msw-bars i:nth-child(2){transform:scaleY(1)}
+.msw[aria-checked="true"] .msw-bars{opacity:1}
+.msw:focus-visible{outline:2px solid var(--accent,#8fa8ff);outline-offset:3px}
+@media (prefers-reduced-motion:no-preference){
+  html:not(.reduced) .msw[aria-checked="true"] .msw-bars i{animation:mswbar .9s ease-in-out infinite alternate}
+  html:not(.reduced) .msw[aria-checked="true"] .msw-bars i:nth-child(2){animation-duration:.7s;animation-delay:-.35s}
+  html:not(.reduced) .msw[aria-checked="true"] .msw-bars i:nth-child(3){animation-duration:1.1s;animation-delay:-.6s}
+}
+@keyframes mswbar{from{transform:scaleY(.3)}to{transform:scaleY(1)}}
+@media (prefers-reduced-motion:reduce){.msw-k,.msw[aria-checked="true"] .msw-k,.msw-t,.msw-t::before,.msw-bars{transition:none}.msw:active .msw-k{transform:none}}
+html.reduced .msw-k,html.reduced .msw[aria-checked="true"] .msw-k,html.reduced .msw-t::before{transition:none}
+/* HUD pill: label left, switch right, inside the width soundWidth gives; phones (44 px) show the switch alone */
+.snd.msw{padding:0 10px 0 14px;gap:10px;justify-content:space-between}
+.snd.msw[aria-checked="false"]{color:var(--sky-muted)}
+.snd.msw[aria-checked="true"]{border-color:color-mix(in srgb,var(--warm) 55%,transparent);color:var(--sky-ink)}
 .snd.icon{padding:0;justify-content:center}
-.snd.icon .snd-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-@media (prefers-reduced-motion:no-preference){.snd[aria-pressed="true"] .snd-w{animation:sndw 2.4s ease-in-out infinite}}
-@keyframes sndw{50%{opacity:.45}}
-.sg-music{display:inline-flex;align-items:center;gap:8px}
-.sg-music svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.sg-music .snd-spk{fill:currentColor;stroke:none}
-.sg-music .snd-w{display:none}.sg-music[aria-pressed="true"] .snd-w{display:inline}.sg-music[aria-pressed="true"] .snd-x{display:none}
-.sg-music[aria-pressed="true"]{color:var(--sky-ink)}
+.snd.icon .msw-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+/* gate: a glass pill beside Skip intro and Read as text */
+.sg-sw{--tw:40px;--th:24px;--k:20px;display:inline-flex;align-items:center;gap:12px;min-height:44px;padding:0 10px 0 16px;border-radius:22px;cursor:pointer;
+  border:1px solid rgba(236,240,255,.2);color:var(--sky-ink);font:500 14px/1 var(--sans);
+  background:radial-gradient(120% 90% at 50% 0%,rgba(255,255,255,.1),transparent 62%),#0b0f1cc7;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 6px 18px -8px rgba(0,0,0,.6);transition:border-color .3s,box-shadow .45s}
+.sg-sw:hover{border-color:rgba(255,232,196,.5)}
+.sg-sw[aria-checked="true"]{border-color:rgba(255,214,160,.55);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 24px -6px rgba(255,176,96,.55)}
+.sg-sw .msw-bars{left:8px;gap:2.5px}
+.sg-k{align-items:center}
 .to-cr{margin:2.5em 0 0;font:400 13px/1.5 var(--sans);color:var(--sky-muted)}
 .to-cr a{color:inherit}
-.snd,.sg-music{--snd-accent:#ffc978}
-/* music toggle highlight while the reader has not chosen yet (sound.js "invite"): accent ring, accent icon, a slow glow
-   (three times, then it rests lit; no glow under reduced motion) */
-.snd.invite{border-color:color-mix(in srgb,var(--snd-accent) 75%,transparent);color:var(--sky-ink);
-  box-shadow:0 0 0 3px color-mix(in srgb,var(--snd-accent) 18%,transparent)}
-.snd.invite svg,.sg-music.invite svg{color:var(--snd-accent)}
-.sg-music.invite{color:var(--sky-ink);padding:6px 12px 6px 10px;border-radius:18px;border:1px solid color-mix(in srgb,var(--snd-accent) 70%,transparent);
-  box-shadow:0 0 0 3px color-mix(in srgb,var(--snd-accent) 15%,transparent);text-decoration:none}
+.msw{--snd-accent:#ffc978}
+/* while the reader has not chosen yet (sound.js "invite"): a warm ring and a slow glow, three times, then it rests lit */
+.msw.invite{border-color:color-mix(in srgb,var(--snd-accent) 70%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--snd-accent) 15%,transparent)}
+.msw.invite .msw-k{color:#8a5a20}
 @media (prefers-reduced-motion:no-preference){
-  .snd.invite,.sg-music.invite{animation:sndinvite 2.6s ease-in-out 1.2s 3}
+  html:not(.reduced) .msw.invite{animation:sndinvite 2.6s ease-in-out 1.2s 3}
 }
 @keyframes sndinvite{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--snd-accent) 8%,transparent),0 0 22px color-mix(in srgb,var(--snd-accent) 35%,transparent)}}
 /* credits ID badge (hud:badge, placed by the solver; js/ui/hud.js badgeSizes): sim, subhalo and redshift as separate spans,
