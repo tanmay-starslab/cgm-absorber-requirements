@@ -51,12 +51,12 @@ jobs:
             requirements-tng.txt
       - name: Python deps for the parity fixtures
         run: pip install -r requirements.txt -r requirements-tng.txt pillow
-      - name: run_all (browser tests skip themselves)
+      - name: run_all (browser tests skip themselves; H0 uses the runner's Chrome for its DOM part)
         env:
           PYTHON: python
-          H0_NO_DOM: "1"
-          # known failures, tracked in issues #74 (G6), #75 (H3), #76 (perf freeze), #77 (film copy), #78 (G1 phone landscape)
-          RUN_ALL_SKIP: story_budget.mjs,story_overlap.mjs,story_perf.mjs,story_static.mjs,story_layout.mjs
+          TNG_EDGE: google-chrome
+          # known failures, tracked in issues #74 (G6), #75 (H3), #78 (G1 phone landscape)
+          RUN_ALL_SKIP: story_budget.mjs,story_overlap.mjs,story_layout.mjs
         run: node tests/js/run_all.mjs
 
   site:
