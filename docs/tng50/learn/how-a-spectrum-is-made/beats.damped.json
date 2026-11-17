@@ -12,8 +12,8 @@
     "sha256": "7f26b5dd761ff446"
    },
    "templates": {
-    "template.beats.json": "4ae3fc5fe1e5c4a1",
-    "template.shots.json": "edea1f6a3ea7754d",
+    "template.beats.json": "54625a3ce114cc60",
+    "template.shots.json": "6335494c7a856b2e",
     "cases.json": "41e050845be030bc",
     "overrides.json": "02cae8389cf73c82"
    },
