@@ -34,7 +34,7 @@
   "B0": {
     "chip": "How an absorption spectrum is made",
     "display": "How an absorption spectrum is made",
-    "display_short": "Making an absorption spectrum",
+    "display_short": "An absorption spectrum",
     "sub": "Follow a quasar's light along one sightline through the gas around galaxy {{galaxy}}.",
     "sub_short": "Follow quasar light along one sightline.",
     "narrative": "How an absorption spectrum is made. You will follow a quasar's light along one sightline through the gas around galaxy {{galaxy}}, and watch its spectrum build up cell by cell. Hold Space or the hold button to start, or choose Watch.",
