@@ -42,15 +42,17 @@ export function createSound({copy = null, win = window, onChange = null, onTrack
   const bufs = new Map(), loading = new Map();
   let voice = null;   // {id, node, g}: the playing source and its own gain (the crossfade), into the master gain
 
-  // the switch shows what you hear: a remembered "on" waiting for the first gesture (browsers block sound until then)
-  // shows off, and flips on when the music starts
+  // a remembered "on" shows on everywhere (owner 2026-11-16: the choice carries across stories). Some browsers (Safari,
+  // Firefox) block sound on a new page until the first click, so until then the switch is on but "waiting" (data-wait,
+  // still bars, its own title); the click that starts the story starts the music. Chrome carries the permission over.
   function paint() {
-    const audible = on && !pendingGesture;
-    const label = musicLabel(audible, copy), invite = !audible && store.get(STORE_KEY) == null;
+    const waiting = on && !!pendingGesture;
+    const label = musicLabel(on, copy), invite = !on && store.get(STORE_KEY) == null;
     for (const b of buttons) {
       b.classList.toggle("invite", invite);
-      b.setAttribute(b.getAttribute("role") === "switch" ? "aria-checked" : "aria-pressed", String(audible)); b.dataset.on = audible ? "1" : "0"; b.dataset.track = track;
-      b.title = `${label} (key M)\n${trackCredit(track)}`;
+      b.setAttribute(b.getAttribute("role") === "switch" ? "aria-checked" : "aria-pressed", String(on)); b.dataset.on = on ? "1" : "0"; b.dataset.track = track;
+      if (waiting) b.dataset.wait = "1"; else delete b.dataset.wait;
+      b.title = waiting ? `${label}: starts with the story (key M turns it off)\n${trackCredit(track)}` : `${label} (key M)\n${trackCredit(track)}`;
       const l = b.querySelector(".snd-l"); if (l) l.textContent = label;
       if (!l) b.setAttribute("aria-label", "Music");
     }
@@ -125,8 +127,7 @@ export function createSound({copy = null, win = window, onChange = null, onTrack
     if (on) start(); else stop();
     onChange && onChange(on);
   }
-  // a remembered "on" still waiting for a gesture looks off, so a toggle (click or M) starts it rather than turning it off
-  const toggle = () => { if (pendingGesture) { clearPending(); paint(); start(); } else set(!on); };
+  const toggle = () => set(!on);
 
   // choose the track (remembered). While the music plays the new track is fetched and crossfaded in; while it is off only
   // the choice changes, and nothing is downloaded until it is turned on.

@@ -97,16 +97,15 @@ try {
       await P.waitFor(`${M} && __story.ready`, 120000); await sleep(800);
       d = await st(P);
       C.check(d.track === "beethoven" && d.on && await P.eval(`document.getElementById("sound-btn").dataset.track`) === "beethoven", `${w}: after reload: track ${d.track}, music ${d.on ? "on" : "off"} (remembered)`);
-      // the switch shows what is heard: checked only while the audio actually runs (owner 2026-11-16: no "on" with silence)
+      // a remembered "on" shows on (owner 2026-11-16: the choice carries across stories); data-wait marks it until the audio
+      // runs (a browser that blocks sound on a new page); M turns it off either way
       const shown = () => P.eval(`document.getElementById("sound-btn").getAttribute("aria-checked")`);
+      const waitAttr = () => P.eval(`document.getElementById("sound-btn").dataset.wait || null`);
       const running = await P.eval(`${M}.debug().state === "running"`);
-      C.check((await shown()) === String(running), `${w}: after reload the switch matches the audio (${await shown()}, context running ${running})`);
-      // M flips what is shown: a waiting remembered "on" starts, a playing one stops
+      C.check((await shown()) === "true", `${w}: after reload the remembered choice shows on`);
+      C.check((await waitAttr() === "1") === !running, `${w}: data-wait only while the audio waits (wait ${await waitAttr()}, running ${running})`);
       await P.eval(`document.activeElement && document.activeElement.blur && document.activeElement.blur()`);
-      const before = await shown();
       await P.key("m"); await sleep(400);
-      C.check((await shown()) === (before === "true" ? "false" : "true"), `${w}: M flips the switch (${before} -> ${await shown()})`);
-      if ((await shown()) === "true") { await P.key("m"); await sleep(400); }
       C.check((await shown()) === "false", `${w}: M turns the music off`);
       if (w === 1440 && SHOTS) {   // the credits dialog's Music section
         await P.click("#menu-btn"); await sleep(200); await P.click(`#menu-sheet [data-id="credits"]`); await sleep(400);

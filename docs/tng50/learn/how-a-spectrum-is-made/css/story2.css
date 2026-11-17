@@ -241,6 +241,11 @@ html.reduced .msw-k,html.reduced .msw[aria-checked="true"] .msw-k,html.reduced .
 /* HUD pill: label left, switch right, inside the width soundWidth gives; phones (44 px) show the switch alone */
 .snd.msw{padding:0 10px 0 14px;gap:10px;justify-content:space-between}
 .snd.msw[aria-checked="false"]{color:var(--sky-muted)}
+/* on, waiting for the first click (a browser that blocks sound on a new page): the bars rest and the track breathes */
+html:not(.reduced) .msw[data-wait="1"] .msw-bars i{animation:none}
+.msw[data-wait="1"] .msw-bars{opacity:.55}
+html:not(.reduced) .msw[data-wait="1"] .msw-t::before{animation:mswwait 1.8s ease-in-out infinite alternate}
+@keyframes mswwait{from{opacity:.55}to{opacity:1}}
 .snd.msw[aria-checked="true"]{border-color:color-mix(in srgb,var(--warm) 55%,transparent);color:var(--sky-ink)}
 .snd.icon{padding:0;justify-content:center}
 .snd.icon .msw-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
