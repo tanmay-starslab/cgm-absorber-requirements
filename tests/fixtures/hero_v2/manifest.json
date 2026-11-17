@@ -9,10 +9,10 @@
  "node": "v24.21.0",
  "parts": {
   "seek": "6a0031d7719ab42fd25b3098acc8a14c4f43cea298893a9d7463646b25553083",
-  "layout": "2d0ec2a860850fe5ea7641f76750c416e446613a8a6d94e1e8175ef8050553ad",
-  "lines": "c1f83efe2ecfa56993fc78107f9355fa10168e1373ae892a435db38f9e2a1670",
+  "layout": "d4d5e0e02f089d2e1aedc7f1ff52197bd14417a026e99aa5bea44208f766d926",
+  "lines": "bac4d928b94db297907d14c8833d5dd71eee8b6196ad440a8de77e4e4592ede8",
   "eq": "4ddf1585463119cdbea5e1c87b2eab7a021e2dee7107ba8545ae90cd09e365ce",
-  "vtt": "61a8631960b7eb6098418f0199c148a688fda72df3545ccedbcaf316d787239e",
+  "vtt": "038bf60a5d7569d063c58bd2063aa7a7e5e7622b91ce58161ad92592b5b3a3d5",
   "index": "a0fdc0fe6ee7c8ec09dd2ac32c78dba61c55318bd2096ab67447fbe7b43566b8",
   "dom": "057d5317c19b7e429277afd5a0791762b79c5f5ccc5f0db6d33056fb53bd4e52"
  },
@@ -92,6 +92,23 @@
    ],
    "parts_changed": [
     "dom"
+   ]
+  },
+  {
+   "note": "issue #78: shorter B0 display_short ('An absorption spectrum') so the title fits phone landscape",
+   "head": "39d8922",
+   "worktree_dirty": [
+    "M docs/tng50/learn/how-a-spectrum-is-made/beats.clean.json",
+    " M docs/tng50/learn/how-a-spectrum-is-made/beats.damped.json",
+    " M docs/tng50/learn/how-a-spectrum-is-made/beats.empty.json",
+    " M docs/tng50/learn/how-a-spectrum-is-made/beats.hot.json",
+    " M docs/tng50/learn/how-a-spectrum-is-made/beats.multiphase.json",
+    " M docs/tng50/learn/how-a-spectrum-is-made/copy.json"
+   ],
+   "parts_changed": [
+    "layout",
+    "lines",
+    "vtt"
    ]
   }
  ]
