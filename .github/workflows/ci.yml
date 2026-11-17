@@ -55,8 +55,8 @@ jobs:
         env:
           PYTHON: python
           TNG_EDGE: google-chrome
-          # known failures, tracked in issues #74 (G6), #75 (H3), #78 (G1 phone landscape)
-          RUN_ALL_SKIP: story_budget.mjs,story_overlap.mjs,story_layout.mjs
+          # known failures, tracked in issues #74 (G6) and #78 (G1 phone landscape)
+          RUN_ALL_SKIP: story_budget.mjs,story_layout.mjs
         run: node tests/js/run_all.mjs
 
   site:

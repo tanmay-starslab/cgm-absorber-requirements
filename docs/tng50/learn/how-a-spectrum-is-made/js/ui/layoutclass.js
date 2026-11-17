@@ -58,9 +58,10 @@ export const BANDS = Object.freeze({
 export const GAP = 8;                                    // px between bands
 export const MIN_BAND = 24;                              // a band thinner than this is dropped (null)
 export const EQ_MIN_BAND = 64;                           // an equation band thinner than this borrows the text column's lower part
+export const WORLD_MIN = 40;                             // phone: the world band above a stepped chip keeps at least this height (the beam is framed in it)
 export const EQ_CHIP_BAND = 52;                          // U_eq's one-line chip/short box (48 px at 17 px) + the solver's 4 px pad
 export const HERO_GIVE = 0.10;                           // the hero dock gives up at most this much stage height for an equation chip
-export const HERO_GIVE_NARROW = 0.10;                   // narrow: as HERO_GIVE (0.18 would also fit 260x563, but the beam then crosses that chip band at B12a's start: story_core G3)
+export const HERO_GIVE_NARROW = 0.13;                   // narrow: the chip band (48 px + gap) is 56 px, so this keeps E6/E7/E8 down to 208x450
 
 const R = (x0, y0, x1, y1) => ({x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0)});
 const live = r => (r && r.w >= MIN_BAND && r.h >= MIN_BAND ? r : null);
@@ -88,11 +89,18 @@ export function computeBands(cls, w, h, opts = {}) {
   let dockCap = fullW ? rail.y - (top + textMinPx + GAP) : Infinity;
   // hero (B12a R, B12b S/N, B13 fit): keep room for one equation chip above the dock as well (E6/E7/E8 explain the
   // hero); the dock gives up at most HERO_GIVE of the stage height for it, otherwise the hero keeps its size, no chip
-  // narrow (chipOnly) too: U_eq's "short" variants are 44 px tall, so its 48 px stepped chip band now holds E6/E7/E8 (integrator, run 3)
+  // narrow (chipOnly) too: U_eq's "short" variants are 44 px tall, so its 48 px stepped chip band holds E6/E7/E8
   if (dockState === "hero" && fullW) {
     const eqRoom = B.eq.stepped ? Math.max(B.eq.hFrac * h, B.eq.hMin) + GAP : B.eq.toDock && !B.eq.x ? EQ_CHIP_BAND + GAP : 0;
     const cap2 = dockCap - eqRoom;
-    if (eqRoom && B.dock.hero * h - cap2 <= (B.chipOnly ? HERO_GIVE_NARROW : HERO_GIVE) * h) dockCap = Math.min(dockCap, cap2);
+    // the give is measured from the dock the hero would get (already capped by the text minimum), not its nominal height (issue #75)
+    if (eqRoom && Math.min(B.dock.hero * h, dockCap) - cap2 <= (B.chipOnly ? HERO_GIVE_NARROW : HERO_GIVE) * h) dockCap = Math.min(dockCap, cap2);
+  }
+  // phone strip/pair: leave room for the stepped chip and a WORLD_MIN world band above it, when the dock keeps at least its
+  // strip height; with no world band the camera centres the beam on the stage, across the chip band (issue #75)
+  if (B.eq.stepped && dockState !== "hero" && fullW) {
+    const cap3 = rail.y - (top + textMinPx + GAP + WORLD_MIN + GAP + Math.max(B.eq.hFrac * h, B.eq.hMin) + GAP);
+    if (cap3 >= B.dock.strip * h) dockCap = Math.min(dockCap, cap3);
   }
   const dockH = Math.max(0, Math.min(B.dock[dockState] * h, dockCap));
   const dock = R(X(B.dockX[0]), rail.y - dockH, X(B.dockX[1]), rail.y);

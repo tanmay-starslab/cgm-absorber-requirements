@@ -9,7 +9,7 @@
  "node": "v24.21.0",
  "parts": {
   "seek": "6a0031d7719ab42fd25b3098acc8a14c4f43cea298893a9d7463646b25553083",
-  "layout": "2d0ec2a860850fe5ea7641f76750c416e446613a8a6d94e1e8175ef8050553ad",
+  "layout": "f68e689029aa5072768eb4cc10a76dae7fbf517a247351f6237eaa60dfbe2d12",
   "lines": "c1f83efe2ecfa56993fc78107f9355fa10168e1373ae892a435db38f9e2a1670",
   "eq": "4ddf1585463119cdbea5e1c87b2eab7a021e2dee7107ba8545ae90cd09e365ce",
   "vtt": "61a8631960b7eb6098418f0199c148a688fda72df3545ccedbcaf316d787239e",
@@ -92,6 +92,17 @@
    ],
    "parts_changed": [
     "dom"
+   ]
+  },
+  {
+   "note": "issue #75: narrow equation chip fits",
+   "head": "7e5f588",
+   "worktree_dirty": [
+    "M docs/tng50/learn/how-a-spectrum-is-made/js/core/seek.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/ui/layoutclass.js"
+   ],
+   "parts_changed": [
+    "layout"
    ]
   }
  ]
