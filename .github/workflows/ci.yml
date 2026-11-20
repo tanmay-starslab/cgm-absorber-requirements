@@ -55,8 +55,6 @@ jobs:
         env:
           PYTHON: python
           TNG_EDGE: google-chrome
-          # known failure, tracked in issue #74 (G6 shell size)
-          RUN_ALL_SKIP: story_budget.mjs
         run: node tests/js/run_all.mjs
 
   site:

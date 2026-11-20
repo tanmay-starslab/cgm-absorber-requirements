@@ -14,7 +14,9 @@
 //
 // Node part, gzip -9 of the files as committed, from the static module graph of ROOT/index.html (module and classic
 // scripts, stylesheets, static and literal dynamic imports, workers, CSS @import; the explorer modules it imports count):
-//   - shell JS+CSS <= 120 kB gz, excluding three (any file whose name contains "three") and fonts;
+//   - first-frame shell JS+CSS (HTML scripts and styles, modulepreloads and their static imports; dynamic import() and
+//     workers load later and are not counted) <= 300 kB gz and <= SHELL_BASE_KB + 3 kB, excluding three and fonts
+//     (issue #74: the whole graph, about 390 kB, is not what a first frame downloads);
 //   - fonts <= 250 kB on disk (woff2/woff/ttf/otf under ROOT/vendor and every font the graph's CSS references);
 //   - no GSAP, Theatre, Remotion, pmndrs postprocessing or troika anywhere in the graph; Lenis only as a dynamic import
 //     (the ?lenis=1 A/B, D9); no katex.js at runtime (KaTeX is rendered at build time, D7/U_eq);
@@ -46,9 +48,10 @@ if (!existsSync(PAGE)) { C.check(process.env.STORY_REQUIRE !== "1", `no story pa
 if (OUT) mkdirSync(OUT, {recursive: true});
 
 /* ---------------------------------------------------------------- node part */
-const G = moduleGraph(PAGE, DIR);
+const G = moduleGraph(PAGE, DIR);   // everything the page can load: the dependency rules below
+const GS = moduleGraph(PAGE, DIR, {dynamic: false});   // the first-frame shell: scripts, styles, modulepreloads, static imports
 const isThree = f => /three/i.test(basename(f));
-const shell = G.files.filter(f => /\.(m?js|css)$/.test(f) && !isThree(f));
+const shell = GS.files.filter(f => /\.(m?js|css)$/.test(f) && !isThree(f));
 const sizes = shell.map(f => [f, gzSize(f)]).sort((a, b) => b[1] - a[1]), shellGz = sizes.reduce((a, x) => a + x[1], 0);
 C.note(`module graph: ${G.files.length} files (${shell.length} JS/CSS counted, ${G.files.filter(isThree).length} three file(s) excluded)`);
 C.note("largest: " + sizes.slice(0, 6).map(([f, n]) => `${relative(DIR, f)} ${kb(n)}`).join(", "));
