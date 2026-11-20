@@ -32,7 +32,7 @@ const C = checker(), check = C.check;
 if (!existsSync(PAGE)) { console.error("no page file " + PAGE); process.exit(2); }
 const REG = loadRegistry();
 
-export const STATIC_IDS = ["top", "title", "theme", "pill", "tabs", "tab-spectra", "tab-3d",
+export const STATIC_IDS = ["top", "title", "theme", "sfx", "pill", "tabs", "tab-spectra", "tab-3d",
   "info-read", "info-methods", "info-licence", "pop-read", "pop-methods", "pop-licence",
   "gal-open", "gal-pop", "gal-id", "gal-copy", "gal-search", "gal-list", "showcase", "filter", "galcount", "prev", "next",
   "ion-open", "ion-pop", "ion-all", "ion-none", "ion-default", "ion-chips", "layout",
@@ -126,7 +126,7 @@ if (basename(PAGE) === "_template.html") {   // the exporter contract (scripts/e
 
 /* ---------------------------------------------------------------- tips: one-line help on every control (tips spec) */
 export const TIP_IDS = ["tab-spectra", "tab-3d", "prev", "gal-open", "next", "geo-open", "find-toggle", "chat-open", "info-read", "info-methods",
-  "info-licence", "theme", "side-toggle", "controls-open", "ion-open", "ion-none", "ion-default", "sn-0", "sn-1", "vhw", "vreset", "fit", "intr",
+  "info-licence", "theme", "sfx", "side-toggle", "controls-open", "ion-open", "ion-none", "ion-default", "sn-0", "sn-1", "vhw", "vreset", "fit", "intr",
   "reroll", "dl-open", "dlpng", "dlpdf", "filter", "showcase", "gal-copy", "gb", "gaz", "gseed", "submit", "apiurl", "v3d-mini",
   "v3-ctl-toggle", "v3-fs-exit", "v3-lo", "v3-hi", "v3-vw", "v3-weight", "v3-cmap", "v3-fs", "v3-gasmix", "v3-stars", "v3-starmix", "v3-mu0",
   "v3-lines", "v3-guides", "v3-scale", "v3-op", "v3-tf-preset", "v3-tf-cv", "v3-tf-w", "v3-tf-a", "v3-tf-col", "v3-tf-add", "v3-tf-del",

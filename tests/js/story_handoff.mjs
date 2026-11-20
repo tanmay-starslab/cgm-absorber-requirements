@@ -79,6 +79,12 @@ if (Gt) {
   const gcss = readFileSync(GATE_F, "utf8");
   check(!/backdrop-filter/.test(gcss) && /\.sg-b\{[^}]*background:#0b0f1ce6/.test(gcss), "gate CSS: no backdrop-filter, Hold/Watch solid (#0b0f1ce6, S0 §5)");
   /* review2 perf_a11y L3: close() hands focus to the stage (or opts.focusAfter) instead of dropping it to <body> */
+  /* owner 2026-11-19: a Sounds switch (docs/tng50/js/uisound.js) beside Music, the same glass switch, bound through opts.sfx */
+  check(/data-testid="gate-music"[\s\S]{0,700}?class="sg-sw msw sfx" role="switch" aria-checked="false"[^`]*data-testid="gate-sfx"/.test(gcss) && /opts\.sfx\.bind\(sfxB\)/.test(gcss),
+    "gate: Sounds switch (role switch, off) right after Music, bound by opts.sfx");
+  const MN = await import(pathToFileURL(join(SROOT, "js/ui/menu.js")).href), me = MN.ENTRIES.find(e => e.id === "sfx");
+  check(!!(me && me.toggle), "menu: a Sound effects toggle entry (the HUD place for the switch)");
+  check(/(\.\.\/){3}js\/uisound\.js/.test(readFileSync(join(SROOT, "js/main.js"), "utf8")), "story main.js imports the explorer's shared js/uisound.js");
   check(/close\([^)]*\)\s*\{[\s\S]{0,900}?el\.contains\(act\)[\s\S]{0,400}?focusAfter[\s\S]{0,400}?\.focus\(\{preventScroll: true\}\)/.test(gcss), "gate close(): focus moves to the stage (or focusAfter), not <body>");
 }
 /* posters of the default story (data/index.json) */
@@ -367,6 +373,11 @@ try {
     const href = new URL(r.href, srv.base).href; await P.goto(href); await sleep(1500);
     const got = await P.eval(`import("./js/ui/gate.js").then(m => m.parseEntry(location))`);
     check(new URL(href).pathname.endsWith(`/${STORY}/`) && same(got, entryOf(href)), `following the CTA opens ${STORY}/ and its gate.js reads the entry (${JSON.stringify(got)})`);
+    await P.goto(new URL(`${STORY}/index.html`, srv.base).href);   // the bare story page opens on its gate (the CTA's entry may skip it)
+    await P.waitFor(`!!document.querySelector('[data-testid=gate-sfx]')`, 30000, 200);
+    const sw = await P.eval(`(() => { const m = document.querySelector('[data-testid=gate-music]'), s = document.querySelector('[data-testid=gate-sfx]'); if (!m || !s) return null;
+      const a = m.getBoundingClientRect(), b = s.getBoundingClientRect(); return {checked: s.getAttribute('aria-checked'), w: b.width, row: Math.abs(a.top - b.top) < 2 || b.top >= a.bottom - 1, inView: b.right <= innerWidth && b.bottom <= innerHeight}; })()`);
+    check(sw && sw.checked === 'false' && sw.w > 0 && sw.row && sw.inView, `story gate: Sounds switch visible beside Music, off by default (${JSON.stringify(sw)})`);
   }
 
   let lastHref = null, lastId = null;

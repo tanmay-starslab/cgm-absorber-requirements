@@ -23,6 +23,7 @@ import {createWatchDriver, createTicker} from "./drivers/play.js";
 import {createStoryExplore} from "./drivers/explore.js";
 import {createShell, beatSkip, anchorL, beamCorridor, activeText} from "./ui/hud.js";
 import {createSound, nextTrack} from "./ui/sound.js";
+import {uiSound, sfx} from "../../../js/uisound.js";
 import {focusStyle} from "./ui/kinetic.js";
 import {computeBands, layoutClass, isPhone} from "./ui/layoutclass.js";
 import {createGate, parseEntry, entryFragment} from "./ui/gate.js";
@@ -227,8 +228,12 @@ async function boot() {
     menuButton: $("menu-btn"), menuSheet: $("menu-sheet"), narrativeList: $("narrative"), live: $("live"), textOverlay: $("text-overlay"),
     canvas: $("gl"), actChip: $("act-chip"), phasePill: $("phase-pill"), hint: $("hint"), soundButton: $("sound-btn"), backButton: $("back-btn"), idBadge: $("id-badge")};
   // optional music (off by default, loaded on first use; js/ui/sound.js): the HUD pill, the gate toggle and the M key
-  const music = createSound({copy});
+  const music = createSound({copy, onChange: on => sfx(on ? "toggle-on" : "toggle-off")});
   music.bind(els.soundButton);
+  // optional UI sound effects (docs/tng50/js/uisound.js, off by default, shared with the explorer): the gate switch and a
+  // menu toggle; quieter while the music is on; story cards, the flight start and the end card give a cue
+  const fx = uiSound(); fx.setDuck(() => music.on());
+  document.addEventListener("click", e => { if (e.target.closest && e.target.closest(".sg-sc, .pk-c")) sfx("select"); }, true);
   const clouds = (prep.clouds || []).filter(c => c.letter).map(c => ({l_in: c.l_in, l_out: c.l_out, phase: String(c.id).startsWith("HI") ? "cold" : "warm", label: "Cloud " + c.letter}));
   const lToP = l => { for (const b of beats) { if (b.l0 == null || b.l1 == null) continue; if (l >= Math.min(b.l0, b.l1) && l <= Math.max(b.l0, b.l1)) return b.p0 + (b.p1 - b.p0) * (l - b.l0) / ((b.l1 - b.l0) || 1); } return null; };
   const explorerHref = () => {
@@ -244,6 +249,7 @@ async function boot() {
   let trailOn = false;
   const hooks = {
     music: () => music.toggle(),
+    sfx: on => fx.set(on),
     musicTrack: () => music.cycleTrack(),
     musicTrackLabel: () => ({label: "Music: " + music.track().label, hint: "switch to " + nextTrack(music.track().id).label}),
     setTarget: p => clock.setTarget(p),
@@ -272,6 +278,7 @@ async function boot() {
   };
   const shell = createShell(els, {beats, copy, data, lookup, flags, honesty: (copy.honesty && copy.honesty.items) || copy.honesty || [], index: shellIndex(index),
     current: {galaxy: data.meta.galaxy, ray: data.meta.ray}, clouds, lToP, hooks, follow: !Q.has("nofollow")});   // ?nofollow: A/B for the SC2-1 jump gate
+  fx.bind(els.menuSheet && els.menuSheet.querySelector('[data-id="sfx"]'));   // the menu toggle stays in step with the gate switch
   // review perf M3: the "Read the story as text" skip link opens the text overlay (the bare hash did nothing visible)
   { const sk = $("skip-text"); if (sk) sk.addEventListener("click", e => { e.preventDefault(); shell.narrative.open(); }); }
   const say = t => { const l = $("live"); if (l) { l.textContent = ""; setTimeout(() => { l.textContent = t; }, 30); } };
@@ -336,10 +343,10 @@ async function boot() {
   // review2 scrolly F3: the gate's first gesture lands where B1's first line is fully readable, not on B1's empty start
   const B1read = timeline.readPoint ? timeline.readPoint(B1) : B1.p0;
   if (deep == null && !Q.has("nogate") && !Q.has("still")) {
-    gate = createGate($("stage"), {copy, music, vars: {galaxy: data.meta.galaxy}, g: data.meta.galaxy, ray: data.meta.ray, stories: gateCards(index, story && story.id), watchSeconds: timeline.watch.total,
-      onRide: ({holding} = {}) => { closeGate(); if (holding) { input.holdStart("gate"); const end = () => { input.holdEnd("gate"); removeEventListener("pointerup", end, true); removeEventListener("keyup", end, true); };
+    gate = createGate($("stage"), {copy, music, sfx: fx, vars: {galaxy: data.meta.galaxy}, g: data.meta.galaxy, ray: data.meta.ray, stories: gateCards(index, story && story.id), watchSeconds: timeline.watch.total,
+      onRide: ({holding} = {}) => { sfx("start"); closeGate(); if (holding) { input.holdStart("gate"); const end = () => { input.holdEnd("gate"); removeEventListener("pointerup", end, true); removeEventListener("keyup", end, true); };
         addEventListener("pointerup", end, true); addEventListener("keyup", end, true); } else clock.setTarget(Math.max(clock.state.target, B1read)); },
-      onWatch: () => { closeGate(); watch.play(clock.state.p); },
+      onWatch: () => { sfx("play"); closeGate(); watch.play(clock.state.p); },
       onSkip: () => { closeGate(); clock.jump(B1read); kick(); },
       onText: () => shell.narrative.open(),
       backViaHistory: () => { try { const r = new URL(document.referrer), x = new URL("../../", location.href);   // came straight from the explorer page

@@ -358,6 +358,8 @@ Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full t
 - **Learn page:** Space Grotesk and JetBrains Mono (SIL OFL 1.1) are vendored in
   `docs/tng50/learn/how-a-spectrum-is-made/vendor/` with their licence. The film is rendered with HyperFrames
   (Apache-2.0) and ffmpeg, build tools only, not vendored. No GSAP or Remotion.
+- **uisfx** 0.4.0 (code MIT, sounds CC0): the optional UI sound effects runtime, vendored in
+  `docs/tng50/vendor/uisfx/` with both licences.
 - **TNG50 data.** The TNG50-derived spectra, library, story data and 3D cubes (`docs/tng50/data/`, `docs/tng50/learn/*/data/`, the npz library, the
   private HF dataset and the public datasets `tanmay-starslab/tng50-mwm31-web-0` to `-3` and `tanmay-starslab/tng50-sub488530-viz`)
   are not MIT and are not relicensed here. They are used as the TNG Collaboration requests

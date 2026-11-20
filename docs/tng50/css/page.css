@@ -478,6 +478,9 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
 .card .hd .undo{display:inline-flex;gap:4px}
 .ib.sm{width:24px;height:24px;border-radius:8px}.ib.sm svg{width:13px;height:13px}
 .ib:disabled{opacity:.35;cursor:default}
+/* Sound effects switch (js/uisound.js): lit like a pressed .ib when on; waves on, a cross off */
+.ib[aria-checked=true]{background:linear-gradient(var(--hl),var(--hl)),var(--mat-fill),var(--mat-thin);border-color:var(--accent);color:var(--ink)}
+#sfx[aria-checked=true] .x,#sfx:not([aria-checked=true]) .w{display:none}
 #keys-pop{width:340px}
 #keys-pop .kgrp{display:grid;grid-template-columns:1fr;gap:4px;padding:6px 0;border-top:1px solid var(--mat-edge-c)}
 #keys-pop .kgrp:first-of-type{border-top:0;padding-top:0}

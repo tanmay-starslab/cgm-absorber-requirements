@@ -38,6 +38,9 @@ console.log("page file: " + PAGE.replace(ROOT + "/", ""));
     ok = im.imports.three === cdn + "build/three.module.min.js" && /^sha384-/.test(I[im.imports.three] || "") && /^sha384-/.test(I[im.imports["three/addons/"] + "controls/OrbitControls.js"] || "")
       && Object.keys(I).every(u => u.startsWith(cdn)) && html.indexOf("importmap") < html.search(/<script(?![^>]*importmap)[^>]*>/); } catch {}
   check(ok, "three@0.169.0 importmap with SRI, in <head> before any other script"); }
+{ const b = (html.match(/<button[^>]*id="sfx"[^>]*>/) || [""])[0];   /* the sound effects switch (js/uisound.js) */
+  check(/role="switch"/.test(b) && /aria-checked="false"/.test(b) && /class="ib"/.test(b) && /data-tip="Sound effects"/.test(b) && /aria-label="Sound effects"/.test(b),
+    "top bar: #sfx is an .ib switch, off in the markup, tip and label \"Sound effects\""); }
 if (!process.env.TNG_BROWSER) { console.log("browser part skipped (set TNG_BROWSER=1 to drive the page in headless Edge)"); process.exit(C.finish()); }
 
 /* ---------------------------------------------------------------- browser */
@@ -67,6 +70,9 @@ try {
   console.log(`serving at ${srv.base}; Edge up in ${(P.startMs / 1000).toFixed(1)} s`);
   await P.viewport(1440, 900); await P.scheme(false);
   await load(api ? "" : "#id=" + PENDING, "default load");
+  { const r = await P.fn(`const b = document.getElementById("sfx"); if (!b) return null; const a = b.getAttribute("aria-checked"); b.click(); const on = b.getAttribute("aria-checked"), st = localStorage.getItem("tng.sfx");
+      b.click(); const r = b.getBoundingClientRect(); return {a, on, st, off: b.getAttribute("aria-checked"), st2: localStorage.getItem("tng.sfx"), vis: r.width > 0 && r.right <= innerWidth};`);
+    check(r && r.a === "false" && r.on === "true" && r.st === "on" && r.off === "false" && r.st2 === "off" && r.vis, `sound effects switch: off by default, toggles and persists tng.sfx (${JSON.stringify(r)})`); }
 
   /* ---- bridge, events, defaults ---- */
   await section('bridge, events, defaults', async () => {

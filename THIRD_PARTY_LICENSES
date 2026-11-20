@@ -118,6 +118,12 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
      repository's MIT licence.
    - The story data, chapter images and film show TNG50 data and fall under item 3.
 
+11. uisfx 0.4.0 (code MIT, audio CC0 1.0), https://uisfx.com, https://github.com/romainsimon/uisfx
+   - docs/tng50/vendor/uisfx/uisfx.js is the package's dist/index.js, unmodified apart from the removed
+     source-map comment; LICENSE (MIT, Copyright (c) 2026 Yuki Capital) and LICENSE-AUDIO (CC0) sit
+     beside it. The runtime synthesises the optional UI sound effects in the browser; no audio files
+     are shipped. Loaded only once a visitor turns Sounds on.
+
 ------------------------------------------------------------------------------------------------
 Trident licence (verbatim from trident 1.4.2)
 ------------------------------------------------------------------------------------------------
