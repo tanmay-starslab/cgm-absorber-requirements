@@ -41,7 +41,7 @@ try {
   for (const [w, h, mobile] of VPS) for (const dark of [false, true]) {
     const tag = `${w}x${h} ${dark ? "dark" : "light"}`;
     try {
-      await P.viewport(w, h, mobile); await P.scheme(dark); await P.goto(srv.base + (srv.query ? srv.query + "&" : "?") + "tier=high");   // perf R5: the live 3D view (software GL is otherwise the low tier's still)
+      await P.viewport(w, h, mobile); await P.scheme(dark); await P.goto(srv.base + (srv.query ? srv.query + "&" : "?") + "tier=mid");   // perf R5: the live 3D view in the lite profile (software GL is otherwise the low tier's still)
       const t = await P.waitFor(READY, 180000, 250);
       if (!check(t >= 0, `${tag}: page ready in ${(t / 1000).toFixed(1)} s`)) continue;
       await P.eval(UI_LIB); await sleep(800);

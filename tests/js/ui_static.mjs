@@ -266,7 +266,7 @@ const srv = await serve({dir: DIR, page: SERVE, port: opt.port, viz: opt.viz || 
 const P = await launch({profile: opt.profile, edge: opt.edge, inject: readInjects(opt.inject), block: BLOCK});
 try {
   console.log(`serving ${SERVE.replace(ROOT + "/", "")} at ${srv.base}; Edge up in ${(P.startMs / 1000).toFixed(1)} s`);
-  await P.viewport(1440, 900); await P.scheme(false); await P.goto(srv.base + (srv.query ? srv.query + "&" : "?") + "tier=high");   // perf R5: the live 3D view (software GL is otherwise the low tier's still)
+  await P.viewport(1440, 900); await P.scheme(false); await P.goto(srv.base + (srv.query ? srv.query + "&" : "?") + "tier=mid");   // perf R5: the live 3D view in the lite profile (software GL is otherwise the low tier's still)
   const tReady = await P.waitFor(READY, 180000, 250);
   if (!check(tReady >= 0, `page ready (tngApp v3 and a panel hit box) in ${(tReady / 1000).toFixed(1)} s`)) throw new Error("page never became ready");
   await P.eval(UI_LIB);
