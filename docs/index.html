@@ -18,8 +18,9 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://galaxies.tanmaysingh.uk/img/og/explorer.jpg">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
+<link rel="preload" href="tng50/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="tng50/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="tng50/css/tokens.css">
 <style>
 /* Layout: one reading column; a control strip that stays in reach on wide screens; each concept is a figure + caption pair.
    Materials (Apple-style glass): thin = buttons, chips, cards inside panels; regular = control strip, figure frames;
@@ -28,9 +29,7 @@
   --bg:#eef2f7; --panel:#ffffff; --ink:#0f151c; --ink2:#4b5563; --muted:#5d6773; --rule:#d6dce4; --grid:#e3e8ee;
   --accent:#1c5cab; --accent-ink:#ffffff; --truth:#1c5cab; --fit:#d4572a; --intr:#0f151c; --noise:#5b6573;
   --good:#0a7a37; --warn:#9a5c00; --bad:#b4232a;
-  --display:"Newsreader","Iowan Old Style",Georgia,serif;
-  --body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
-  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --display:var(--font-display); --body:var(--font-ui); --mono:var(--font-mono);   /* the site's self-hosted fonts (tng50/css/tokens.css) */
   --mat-thin:rgba(255,255,255,.52); --mat-regular:rgba(255,255,255,.62); --mat-thick:rgba(255,255,255,.80);
   --mat-blur-thin:blur(14px) saturate(1.7); --mat-blur-regular:blur(24px) saturate(1.8); --mat-blur-thick:blur(40px) saturate(1.9);
   --mat-edge-c:rgba(15,21,28,.10); --mat-edge-top:rgba(255,255,255,.95);
@@ -74,8 +73,8 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
     radial-gradient(46vmax 36vmax at 70% 104%,var(--glow3),transparent 70%),
     radial-gradient(30vmax 26vmax at 12% 78%,var(--glow1),transparent 72%)}
 .wrap{max-width:1080px;margin:0 auto;padding-inline:18px;padding-block:28px 64px;display:flex;flex-direction:column;gap:30px}
-h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,4.4vw,42px);line-height:1.08;margin:0;text-wrap:balance}
-h2{font-family:var(--display);font-weight:600;font-size:clamp(21px,2.6vw,26px);line-height:1.15;margin:0;text-wrap:balance}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(28px,4.4vw,42px);line-height:1.08;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-weight:400;font-size:clamp(21px,2.6vw,26px);line-height:1.15;margin:0;text-wrap:balance}
 p{margin:0;max-width:72ch} .lede{color:var(--ink2);font-size:16px}
 .mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .label{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:500}

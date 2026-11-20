@@ -25,7 +25,8 @@ cpSync(join(SRC, "tng50"), OUT, {recursive: true, filter: src => !skip(src)});
 // Detect & Resolve at /requirements/: its links to tng50/... now point at the site root
 mkdirSync(join(OUT, "requirements"), {recursive: true});
 let dr = readFileSync(join(SRC, "index.html"), "utf8");
-dr = dr.replaceAll('href="tng50/learn/', 'href="/learn/').replaceAll('href="tng50/"', 'href="/"').replaceAll('href="tng50/favicon.ico"', 'href="/favicon.ico"').replaceAll('href="tng50/img/icon/', 'href="/img/icon/').replaceAll('href="tng50/site.webmanifest"', 'href="/site.webmanifest"');
+dr = dr.replaceAll('href="tng50/learn/', 'href="/learn/').replaceAll('href="tng50/"', 'href="/"').replaceAll('href="tng50/favicon.ico"', 'href="/favicon.ico"').replaceAll('href="tng50/img/icon/', 'href="/img/icon/').replaceAll('href="tng50/site.webmanifest"', 'href="/site.webmanifest"')
+  .replaceAll('href="tng50/css/', 'href="/css/').replaceAll('href="tng50/fonts/', 'href="/fonts/');   // shared tokens.css and fonts
 writeFileSync(join(OUT, "requirements", "index.html"), dr);
 
 // the explorer's companion link (was ../ on GitHub Pages)
@@ -33,7 +34,9 @@ const ix = join(OUT, "index.html");
 writeFileSync(ix, readFileSync(ix, "utf8").replaceAll('<a href="../">Detect and resolve', '<a href="/requirements/">Detect and resolve'));
 
 writeFileSync(join(OUT, "_redirects"), ["/tng50/* /:splat 301", "/tng50 / 301", ""].join("\n"));
-writeFileSync(join(OUT, "_headers"), ["/*", "  X-Content-Type-Options: nosniff", "  Referrer-Policy: strict-origin-when-cross-origin", ""].join("\n"));
+// fonts are cached for a year: the woff2 names are not hashed, so a changed font file must get a new name
+writeFileSync(join(OUT, "_headers"), ["/*", "  X-Content-Type-Options: nosniff", "  Referrer-Policy: strict-origin-when-cross-origin",
+  "/fonts/*", "  Cache-Control: public, max-age=31536000, immutable", ""].join("\n"));
 // Per-case story paths (DESIGN_tierA §7.3, behind the picker flag): a copy of the explainer page per listed story, with
 // <base href="../"> for its relative assets and the story id put into ?story= before any page script reads it.
 // shortcut: the shim rewrites the address to <id>/?story=<id> because js/main.js reads only ?story=; drop it once
