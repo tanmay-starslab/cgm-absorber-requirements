@@ -71,6 +71,20 @@ def fmt_round(x, d):
     return r + 0.0
 
 
+def _ip(f, x):
+    """f(x) computed in place on a float64 copy. NumPy 1.26 on AVX-512 picks its SIMD (SVML) or scalar libm loop by
+    whether the input and output buffers touch in memory, and the two differ in the last bit, so a fresh output made
+    the fit depend on heap layout (issue #87). An exactly in-place call always takes the same loop."""
+    x = np.array(x, np.float64)
+    return f(x, out=x)
+
+
+def _pow10(x):
+    """10**x elementwise via the scalar C pow (same reason as _ip: NumPy's power loop also switches on adjacency)."""
+    x = np.asarray(x, np.float64)
+    return np.array([10.0 ** float(e) for e in x.ravel()]).reshape(x.shape)
+
+
 def _consts(key):
     a = ATOMIC[key]
     lam_cm = a["lam0"] * 1e-8
@@ -82,7 +96,7 @@ def _consts(key):
 def tau0(logN, b, key):
     """Line-centre optical depth with H(a, 0) ≈ 1."""
     k_tau, _ = _consts(key)
-    return k_tau * 10.0 ** logN / b
+    return k_tau * _pow10(logN) / b
 
 
 def logN_from_tau0(t0, b, key):
@@ -131,7 +145,7 @@ def damped_seed(v, flux, key, params=PARAMS):
     if w.sum() < 5:
         return None
     k_tau, a0 = _consts(key)
-    est = np.log10(-np.log(flux[w]) * SQRT_PI * dv[w] ** 2 / (k_tau * a0))
+    est = _ip(np.log10, -_ip(np.log, flux[w]) * SQRT_PI * dv[w] ** 2 / (k_tau * a0))
     q25, lN, q75 = (float(x) for x in np.percentile(est, [25, 50, 75]))
     if q75 - q25 > params["damped_wing_iqr"]:                 # not a Lorentzian (∝ Δv⁻²) wing: a Gaussian edge
         return None
@@ -150,7 +164,7 @@ def _tau_and_jac(v, p, key, want_jac):
     a = a0 / b
     w = wofz(u + 1j * a)
     H = w.real
-    A = k_tau * 10.0 ** logN                                  # (n,1)
+    A = k_tau * _pow10(logN)                                 # (n,1)
     tau_c = A * H / b                                         # (n,m)
     tau = tau_c.sum(axis=0)
     if not want_jac:
@@ -276,11 +290,11 @@ def fit_region(v, flux, lo, hi, key, params=PARAMS, edge=False, max_comp=None, n
         return nfev_cap is not None and nfev >= nfev_cap
 
     def resid(p):
-        return (Fr - np.exp(-_tau_and_jac(vr, p, key, False)[0])) / sig
+        return (Fr - _ip(np.exp, -_tau_and_jac(vr, p, key, False)[0])) / sig
 
     def jac(p):
         tau, dt = _tau_and_jac(vr, p, key, True)
-        return (np.exp(-tau) / sig)[:, None] * dt
+        return (_ip(np.exp, -tau) / sig)[:, None] * dt
 
     def solve(p0):
         nonlocal nfev
@@ -356,7 +370,7 @@ def fit_region(v, flux, lo, hi, key, params=PARAMS, edge=False, max_comp=None, n
             if over_cap():
                 hit_cap = True
                 break
-            Fm = np.exp(-_tau_and_jac(vr, p, key, False)[0]) if p.size else np.ones_like(Fr)
+            Fm = _ip(np.exp, -_tau_and_jac(vr, p, key, False)[0]) if p.size else np.ones_like(Fr)
             rr = Fr - Fm
             j, c_new = next_comp(rr, chi, Fm)
             target = chi * (1.0 - params["dchisq_min_frac"])
@@ -487,7 +501,7 @@ def fit_region(v, flux, lo, hi, key, params=PARAMS, edge=False, max_comp=None, n
 def equivalent_width_mA(v, comp, key):
     """Rest-frame EW [mÅ] of one component alone over the full grid: (λ0/c)∫(1 − e^{−τ}) dv."""
     t = tau_components(v, [[comp["v"], comp["logN"], comp["b"]]], key)
-    return ATOMIC[key]["lam0"] / C_KMS * float(np.trapz(-np.expm1(-t), v)) * 1e3
+    return ATOMIC[key]["lam0"] / C_KMS * float(np.trapz(-_ip(np.expm1, -t), v)) * 1e3
 
 
 def fit_flux(v, flux, key, params=PARAMS, info=None) -> list:
@@ -549,7 +563,7 @@ def fit_line(lam, tau, rest, v_sys, key, params=PARAMS, info=None) -> list:
     du = abs(float(v[1] - v[0])) if v.size > 1 else 1.0
     st = fit_stride(du, params)
     vs = v[::st]
-    flux = np.exp(-np.asarray(tau[::st], np.float64))
+    flux = _ip(np.exp, -np.asarray(tau[::st], np.float64))
     out = fit_flux(vs, flux, key, params, info)
     if info is not None:                                      # exact AOD columns from the full stored τ
         info["stride"] = st
