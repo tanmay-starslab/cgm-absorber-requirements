@@ -1,6 +1,9 @@
-# Vendored fonts
+# Site fonts (self-hosted)
 
-Both fonts are under the SIL Open Font License 1.1 (full text with copyright lines in `OFL.txt`). The files are the
+Shared by the explorer, the explainer and Detect & Resolve; the `@font-face` rules are in `../css/tokens.css`
+(the explainer's `story.css` and `render.html` point here too). Newsreader is in `newsreader/` with its own licence.
+
+Space Grotesk and JetBrains Mono are under the SIL Open Font License 1.1 (full text with copyright lines in `OFL.txt`). The files are the
 unmodified Google Fonts woff2 subsets (variable weight axis), fetched 2026-11-11 from fonts.gstatic.com so the page and
 the video render need no network:
 

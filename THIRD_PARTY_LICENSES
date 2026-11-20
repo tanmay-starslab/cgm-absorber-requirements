@@ -92,8 +92,9 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
 10. Learn page "How a spectrum is made" (docs/tng50/learn/how-a-spectrum-is-made/)
    - Page, engine, scenes and build scripts are our own code (MIT). The page imports the
      explorer's own modules (docs/tng50/js/fit.js, state.js); no third-party JavaScript is loaded.
-   - Fonts, SIL Open Font License 1.1 (text in vendor/OFL.txt), vendored unmodified as Google
-     Fonts woff2 subsets in vendor/:
+   - Fonts, SIL Open Font License 1.1 (text in docs/tng50/fonts/OFL.txt), vendored unmodified as
+     Google Fonts woff2 subsets in docs/tng50/fonts/ (shared with the explorer and Detect & Resolve;
+     Newsreader, with its own OFL.txt, in docs/tng50/fonts/newsreader/):
        Space Grotesk, Copyright 2020 The Space Grotesk Project Authors
        (https://github.com/floriankarsten/space-grotesk);
        JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors

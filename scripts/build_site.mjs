@@ -26,7 +26,8 @@ cpSync(join(SRC, "tng50"), OUT, {recursive: true, filter: src => !skip(src)});
 // Detect & Resolve at /requirements/: its links to tng50/... now point at the site root
 mkdirSync(join(OUT, "requirements"), {recursive: true});
 let dr = readFileSync(join(SRC, "index.html"), "utf8");
-dr = dr.replaceAll('href="tng50/learn/', 'href="/learn/').replaceAll('href="tng50/"', 'href="/"').replaceAll('href="tng50/favicon.ico"', 'href="/favicon.ico"').replaceAll('href="tng50/img/icon/', 'href="/img/icon/').replaceAll('href="tng50/site.webmanifest"', 'href="/site.webmanifest"');
+dr = dr.replaceAll('href="tng50/learn/', 'href="/learn/').replaceAll('href="tng50/"', 'href="/"').replaceAll('href="tng50/favicon.ico"', 'href="/favicon.ico"').replaceAll('href="tng50/img/icon/', 'href="/img/icon/').replaceAll('href="tng50/site.webmanifest"', 'href="/site.webmanifest"')
+  .replaceAll('href="tng50/css/', 'href="/css/').replaceAll('href="tng50/fonts/', 'href="/fonts/');   // shared tokens.css and fonts
 writeFileSync(join(OUT, "requirements", "index.html"), dr);
 
 // the explorer's companion link (was ../ on GitHub Pages)
@@ -62,14 +63,15 @@ if (existsSync(COMP)) {
 
 writeFileSync(join(OUT, "_redirects"), ["/tng50/* /:splat 301", "/tng50 / 301", ""].join("\n"));
 // Cache rules (Workers static assets _headers: one splat per rule, :placeholders match one path segment, and a header set by
-// two matching rules is joined with a comma, so no path matches two Cache-Control rules). Vendor files never change in
-// place: a year, immutable. js, css, data and images: 5 minutes, then served stale while revalidating for a day. HTML
+// two matching rules is joined with a comma, so no path matches two Cache-Control rules). Vendor files and fonts never
+// change in place: a year, immutable. js, css, data and images: 5 minutes, then served stale while revalidating for a day. HTML
 // (and anything unlisted) keeps the default revalidate-every-time.
 const SWR = "public, max-age=300, stale-while-revalidate=86400", IMM = "public, max-age=31536000, immutable";
 const rule = (path, cc) => [path, `  Cache-Control: ${cc}`];
 writeFileSync(join(OUT, "_headers"), [
   "/*", "  X-Content-Type-Options: nosniff", "  Referrer-Policy: strict-origin-when-cross-origin",
-  ...rule("/vendor/*", IMM), ...rule("/learn/:story/vendor/*", IMM),
+  // fonts too: the woff2 names are not hashed, so a changed font file must get a new name
+  ...rule("/vendor/*", IMM), ...rule("/learn/:story/vendor/*", IMM), ...rule("/fonts/*", IMM),
   ...["js", "css", "data", "img"].flatMap(d => rule(`/${d}/*`, SWR)),
   ...["js", "css", "data", "img", "eq", "media", "films"].flatMap(d => rule(`/learn/:story/${d}/*`, SWR)), ""].join("\n"));
 // Per-case story paths (DESIGN_tierA §7.3, behind the picker flag): a copy of the explainer page per listed story, with

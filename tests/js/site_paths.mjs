@@ -54,6 +54,13 @@ const sizes = (out, ids) => ids.reduce((a, id) => { const b = readFileSync(join(
 const ship = build("ship");
 check(!ship.err, `shipped index (${IX.schema}, picker ${JSON.stringify(IX.picker || "off")}) builds${ship.err ? ": " + ship.err.slice(0, 300) : ""}`);
 if (!ship.err && IX.picker !== "cases") check(!casePages(ship.out).length, `shipped index emits no case path (found: ${casePages(ship.out).join(", ") || "none"})`);
+if (!ship.err) {   // ux(a): the shared tokens.css and self-hosted fonts resolve from every page; fonts cached for a year
+  const miss = [["index.html", "/"], ["requirements/index.html", "/requirements/"], [`${STORY}/index.html`, `/${STORY}/`]].flatMap(([f, base]) =>
+    [...readFileSync(join(ship.out, f), "utf8").matchAll(/href="([^"]*(?:tokens\.css|\.woff2))"/g)].map(m => new URL(m[1], "http://x" + base).pathname)
+      .filter(p => !existsSync(join(ship.out, p))).map(p => `${f}: ${p}`));
+  check(!miss.length, `font preloads and tokens.css resolve in dist${miss.length ? ": " + miss.join(", ") : ""}`);
+  check(/^\/fonts\/\*\n {2}Cache-Control: public, max-age=31536000, immutable$/m.test(readFileSync(join(ship.out, "_headers"), "utf8")), "dist/_headers caches /fonts/* for a year");
+}
 if (IX.picker === "cases") note("shipped index has picker \"cases\": its listed stories get paths (checked below with the test index)");
 /* perf R5 dist transforms: gzipped sightline bins that inflate to the repository's bytes, per-sightline component slices
    announced as components_dir, and cache rules where no path gets two Cache-Control headers */
