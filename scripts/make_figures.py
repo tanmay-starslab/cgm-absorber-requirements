@@ -3,6 +3,7 @@
     python scripts/make_figures.py                 # everything
     python scripts/make_figures.py matrix lsf      # selected figures
     python scripts/make_figures.py ions "O VI"     # per-ion figures for one ion
+    python scripts/make_figures.py cos             # COS LSF vs matched Gaussian (needs grids/cos)
 
 Outputs go to figures/ (summary figures) and figures/ions/ (one pair per transition).
 """
@@ -313,13 +314,55 @@ def lsf_resolution():
     fig.savefig(FIG / "lsf_resolution.pdf"); fig.savefig(FIG / "lsf_resolution.png", dpi=250); plt.close(fig)
 
 
+# ------------------------------------------------------------------------- tabulated HST/COS LSF vs matched Gaussian
+COS_CASES = [("CIV1548", "G160M-1577-LP4"), ("SiII1260", "G130M-1291-LP4"), ("OVI1032", "G130M-1096-LP2")]
+
+
+def cos_vs_gaussian():
+    lines = {L.key: L for L in cgm_lines()}
+    CAT = ["#2a78d6", "#eb6834", "#1baf7a"]
+    S = np.logspace(np.log10(3), 2, 80)
+    fig, axes = plt.subplots(1, 3, figsize=(style.PAGE, 2.45), gridspec_kw=dict(wspace=0.42))
+    for (key, setting), col in zip(COS_CASES, CAT):
+        L, g = lines[key], np.load(ROOT / "grids" / "cos" / f"{key}_{setting}.npz")
+        fwhm = float(g["fwhm"]); lab = L.tex + " " + setting.replace("-", "/", 1).replace("-", " ")
+        v, k = g["v_kernel"], g["kernel"]
+        axes[0].plot(v / fwhm, k * fwhm, color=col, lw=1.1)
+        axes[1].plot([], [], color=col, lw=1.1, label=lab)
+        jb = int(np.argmin(abs(g["b_det"] - L.b_fid))); iN = int(np.argmin(abs(g["logN_sep"] - L.logN_tau1())))
+        for kk, ls in (("cos", "-"), ("gauss", (0, (3, 1.5)))):
+            axes[1].plot(S, [logN_min(g["logN_det"], g[f"K_{kk}"][:, jb], s) for s in S], color=col, ls=ls, lw=1.1)
+            axes[2].plot(S, [dv_min(g["dv_sep"], g[f"G_{kk}"][iN], s) for s in S], color=col, ls=ls, lw=1.1)
+    ax = axes[0]; x = np.linspace(-6, 6, 1201)
+    ax.plot(x, np.exp(-0.5 * (x / FW2SIG) ** 2) / (np.sqrt(2 * np.pi) * FW2SIG), color=INK, lw=0.8, ls=(0, (3, 1.5)))
+    ax.set_yscale("log"); ax.set_xlim(-6, 6); ax.set_ylim(1e-4, 20)
+    ax.set_xlabel(r"$v/\mathrm{FWHM}$"); ax.set_ylabel(r"LSF $\times$ FWHM")
+    ax.text(0.03, 0.97, "solid: COS\ndashed:\nGaussian\n(same FWHM)", transform=ax.transAxes, ha="left", va="top",
+            fontsize=6.4, color=INK2, linespacing=1.15)
+    axes[1].legend(loc="upper right", fontsize=5.8, handlelength=1.4, labelspacing=0.2, borderaxespad=0.3)
+    for ax in axes[1:]:
+        ax.set_xscale("log"); ax.set_xlim(3, 100); ax.set_xticks([3, 5, 10, 20, 50, 100])
+        ax.set_xticklabels(["3", "5", "10", "20", "50", "100"]); ax.xaxis.set_minor_formatter(NullFormatter())
+        ax.set_xlabel(r"S/N per resolution element")
+    axes[1].set_ylabel(r"$\log N_{\rm min}$ (3$\sigma$, $b=b_{\rm fid}$)")
+    axes[2].set_yscale("log"); axes[2].set_ylim(8, 300)
+    axes[2].set_yticks([10, 20, 50, 100, 200]); axes[2].set_yticklabels(["10", "20", "50", "100", "200"])
+    axes[2].yaxis.set_minor_formatter(NullFormatter())
+    axes[2].set_ylabel(r"$\Delta v_{\rm min}$ [km\,s$^{-1}$] (3$\sigma$)")
+    axes[2].text(0.97, 0.97, r"two components, $\tau_0=1$ each", transform=axes[2].transAxes, ha="right", va="top", fontsize=6.4, color=INK2)
+    for a, l in zip(axes, "abc"):
+        a.text(-0.02, 1.04, rf"({l})", transform=a.transAxes, ha="right", va="bottom", fontsize=9)
+    fig.savefig(FIG / "cos_lsf.pdf"); fig.savefig(FIG / "cos_lsf.png", dpi=250); plt.close(fig)
+
+
 if __name__ == "__main__":
     args = sys.argv[1:] or ["lsf", "matrix", "ions"]
     (FIG / "ions").mkdir(parents=True, exist_ok=True)
     if "lsf" in args: lsf_resolution(); print("lsf done", flush=True)
     if "matrix" in args: requirement_matrix(); print("matrix done", flush=True)
+    if "cos" in args: cos_vs_gaussian(); print("cos done", flush=True)
     if "ions" in args:
-        want = [a for a in args if a not in ("lsf", "matrix", "ions")]
+        want = [a for a in args if a not in ("lsf", "matrix", "cos", "ions")]
         for L in cgm_lines():
             if (not want or L.ion in want) and (ROOT / "grids" / f"{L.key}.npz").exists():
                 ion_instrument_plane(L); ion_absorber_plane(L); print(L.ion, "done", flush=True)

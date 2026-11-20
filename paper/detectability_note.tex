@@ -96,7 +96,7 @@ Each ion is given a fiducial Doppler parameter $b_{\rm fid}=(b_{\rm th}^2+b_{\rm
 
 \section{Assumptions and caveats}
 \begin{itemize}
-\item \textbf{Gaussian LSF.} The HST/COS LSF has extended wings; the tabulated LSF will raise $\Delta v_{\rm min}$ for COS-like set-ups.
+\item \textbf{Gaussian LSF.} The HST/COS LSF has extended wings, which raise $\log N_{\rm min}$ and $\Delta v_{\rm min}$ for COS-like set-ups; Appendix~\ref{app:cos} quantifies this with the tabulated LSF.
 \item \textbf{Doppler cores only.} Damping wings are neglected (adequate below $\log N\approx18$ for H\,\textsc{i}).
 \item \textbf{Equal components with $b=b_{\rm fid}$}; unequal pairs are treated in the thin limit (Fig.~\ref{fig:lsf}c).
 \item \textbf{Expected significances}, with the component count known to be one or two. Blind model selection needs higher thresholds.
@@ -111,4 +111,26 @@ Each ion is given a fiducial Doppler parameter $b_{\rm fid}=(b_{\rm th}^2+b_{\rm
 \caption{\OVI\,$\lambda1032$ in the instrument plane. Top: minimum detectable $\log N$ for three $b$. Bottom: smallest resolvable separation for two equal components at three column densities. Inside the dashed contour, pairs are resolved below the Sparrow separation.}\label{fig:ovi}\end{figure*}
 \begin{figure*}[p]\centering\includegraphics[width=\textwidth]{MgII2796_instrument_plane.pdf}
 \caption{As Fig.~\ref{fig:ovi} for \MgII\,$\lambda2796$.}\label{fig:mgii}\end{figure*}
+\appendix
+\section{The tabulated HST/COS LSF}\label{app:cos}
+The numbers above use a Gaussian LSF. As a separate option we repeat the calculation with the STScI optical-model LSF
+tables for COS (G130M/1055, 1096 at LP2; G130M/1291 at LP4 and LP5; G160M/1533 at LP6, G160M/1577 at LP4; the NUV model
+LSF with the G285M/2676 dispersion for \MgII), interpolated linearly between the tabulated wavelengths and placed on a
+velocity grid with the dispersion of the COS DISPTAB reference file. The statistics are unchanged except that the
+transfer function of the Gaussian is replaced by that of the tabulated kernel, and the resolution element in
+$\Sdet$ and $\Sres$ is the FWHM of the LSF core, so $R_{\rm eff}=c/\fwhm$. Table~\ref{tab:cos} and
+Fig.~\ref{fig:cos} compare each COS setting with a Gaussian of the same FWHM at $z=0$. For G130M/1291 and G160M/1577
+the wings raise $\log N_{\rm min}$ by 0.07--0.15\,dex at S/N\,=\,10 and $\Delta v_{\rm min}$ by a factor 1.2--1.5 at
+S/N\,=\,20; the penalty is largest for the narrow low ions, whose observed profiles are set by the LSF rather than
+by $b$. For the blue modes, whose LSF is broad and structured, a Gaussian of the same FWHM is not a useful proxy.
+The NUV model LSF is about two pixels wide ($R\approx35{,}000$ at 2796\,\AA), narrower than the empirical
+$R=20{,}000$--$24{,}000$ quoted for G285M, so the \MgII{} entry is indicative.
+
+\input{cos_lsf_table}
+
+\begin{figure*}[p]\centering\includegraphics[width=\textwidth]{cos_lsf.pdf}
+\caption{Tabulated HST/COS LSF against a Gaussian of the same FWHM. (a) Kernels on a $v/\fwhm$ axis. (b) Minimum
+detectable $\log N$ ($b=b_{\rm fid}$). (c) Smallest resolvable separation of two equal $\tau_0=1$ components. Solid: COS;
+dashed: Gaussian.}\label{fig:cos}\end{figure*}
+
 \end{document}

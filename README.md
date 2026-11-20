@@ -170,6 +170,23 @@ four-parameter problem is one precomputed 3-D cube. In the optically thin limit 
 is universal: Δv_min ≈ 1.98 FWHM_eff S_det^(−1/4) for equal pairs, with FWHM_eff² = (c/R)² + (1.665 b)².
 See `paper/detectability_note.pdf`.
 
+### HST/COS line-spread function (option)
+
+The published grids, figures and table use the Gaussian LSF. A second LSF, the tabulated HST/COS optical-model LSF
+from STScI, is available next to it (`absreq/lsf.py`; tables and provenance in `absreq/data/cos_lsf/`):
+`lsf.gaussian(R)` reproduces the Gaussian path bit for bit, `lsf.cos(grating, cenwave, lp, lam)` builds the COS kernel
+at an observed wavelength (columns interpolated linearly in wavelength, pixels put on velocity with the DISPTAB
+dispersion). The COS LSF has one resolution per setting, so its grids replace the R axis by the setting:
+`grids/cos/<key>_<setting>.npz` holds K and G for the COS kernel and for a Gaussian of the same FWHM, for the ten
+transitions COS reaches at z = 0 (O VI 1032 only with the blue modes G130M/1055 and 1096 at LP2; Mg II 2796 with
+G285M/2676; Ne VIII and O VII are out of range). S/N is per FWHM of the LSF core (R_eff = c/FWHM); the 6-pixel resel
+is about 0.7 FWHM for G130M/G160M, so S/N per 6-pixel resel = 0.82 x S/N per FWHM there.
+
+At the same FWHM the broad wings cost 0.07-0.15 dex in log N_min (S/N = 10) and raise Δv_min by 1.2-1.5x
+(S/N = 20, two τ0 = 1 components) for G130M/1291 and G160M/1577 (`grids/cos/summary.csv`, `paper/cos_lsf_table.tex`,
+`figures/cos_lsf.pdf`). The NUV model LSF is about 2 pixels wide (R ≈ 35,000 at 2796 Å), narrower than the empirical
+20,000-24,000 in the COS Instrument Handbook, so treat the Mg II numbers with care.
+
 
 </details>
 
@@ -314,6 +331,8 @@ python -m pytest tests
 PYTHON=$(which python) node tests/js/run_all.mjs   # JS tests (explorer page, 3D data decode, LUTs, LOD, picker, search, chat)
 python scripts/build_grids.py            # ~1-2 min per ion on 2 cores
 python scripts/make_figures.py
+python scripts/build_cos_grids.py && python scripts/build_cos_grids.py --table   # COS LSF option, ~2 min
+python scripts/make_figures.py cos
 python scripts/make_tables.py && (cd paper && pdflatex detectability_note.tex)
 python scripts/export_web_data.py
 ```
@@ -323,7 +342,8 @@ python scripts/export_web_data.py
 
 ### Caveats
 
-Gaussian LSF (the HST/COS LSF has broad wings, so COS-like numbers are optimistic); Doppler cores only;
+Gaussian LSF for the published numbers (the HST/COS LSF has broad wings, so COS-like numbers are optimistic; see the
+COS LSF option above for how much); Doppler cores only;
 equal components at the fiducial b; expected (median) significances; S/N per resolution element with
 constant continuum noise. Nominal instrument resolving powers are indicative.
 

@@ -35,3 +35,16 @@ def logN_min(logN, K_along_N, snr, nsig=NSIG):
     if t > K_along_N[-1]:
         return np.inf
     return float(np.interp(np.log(t), np.log(K_along_N), logN))
+
+
+def k_cube_lsf(line, logN, b, kernels):
+    """K[logN, b, kernel] for any LSF kernels (absreq.lsf).  With lsf.gaussian(R) kernels it equals k_cube(R)."""
+    v = (np.arange(N_V) - N_V // 2) * DV
+    fwhm = np.array([k.fwhm for k in kernels])
+    T2 = np.stack([k.power(N_V, DV) for k in kernels], axis=1)
+    K = np.empty((logN.size, b.size, len(kernels)))
+    for j, bj in enumerate(b):
+        tau = line.tau0(logN, bj)[:, None] * np.exp(-(v / bj) ** 2)[None, :]
+        P = np.abs(np.fft.fft(1.0 - np.exp(-tau), axis=1)) ** 2
+        K[:, j, :] = np.sqrt((DV / N_V) * P @ T2 / fwhm)
+    return K
