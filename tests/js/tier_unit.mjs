@@ -6,6 +6,8 @@ import {readFileSync} from "node:fs";
 import {join} from "node:path";
 import vm from "node:vm";
 import {ROOT, checker} from "./lib/browser.mjs";
+import {probe} from "../../docs/tng50/js/tier.js";
+import * as GLC from "../../docs/tng50/learn/how-a-spectrum-is-made/js/stage/glcheck.js";
 
 const C = checker(), check = C.check;
 const html = f => readFileSync(join(ROOT, "docs/tng50", f), "utf8");
@@ -68,5 +70,23 @@ r = run({nav: {...desk, connection: {effectiveType: "4g", saveData: true}}});
 check(r.tier === "low", "Save-Data before any probe: low");
 r = run({nav: {}, store: {"tng50.tier": "{not json"}});
 check(r.tier === "mid" && r.T.gl === null, "a corrupt stored probe is ignored: mid");
+
+/* probe(): the WebGL check of js/tier.js with a fake context; the micro-benchmark runs only on hardware without a caveat */
+function fakeDoc({renderer, caveat = false, none = false, benchMs = 5}) {
+  let benched = 0;
+  const gl = {getExtension: n => (n === "WEBGL_debug_renderer_info" ? {UNMASKED_RENDERER_WEBGL: 1} : n === "WEBGL_lose_context" ? {loseContext() {}} : null), getParameter: () => renderer, RENDERER: 2};
+  return {doc: {createElement: () => ({getContext: (k, o) => (none ? null : caveat && o.failIfMajorPerformanceCaveat ? null : gl)})},
+    glc: {...GLC, microBench: () => { benched++; return benchMs; }}, benched: () => benched};
+}
+for (const [o, stills, bench, why] of [
+  [{renderer: "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)"}, true, 0, "SwiftShader: stills, no benchmark"],
+  [{renderer: "llvmpipe (LLVM 15.0.7, 256 bits)"}, true, 0, "llvmpipe: stills, no benchmark"],
+  [{renderer: "ANGLE (NVIDIA GeForce RTX 3060)", caveat: true}, true, 0, "a major performance caveat: stills, no benchmark"],
+  [{renderer: "", none: true}, true, 0, "no WebGL2: stills"],
+  [{renderer: "ANGLE (NVIDIA GeForce RTX 3060)"}, false, 1, "a hardware GPU: benchmarked, 3D"],
+  [{renderer: "ANGLE (NVIDIA GeForce RTX 3060)", benchMs: 90}, true, 1, "a hardware GPU over the benchmark limit: stills"]]) {
+  const f = fakeDoc(o), r = probe(f.glc, f.doc);
+  check(r.stills === stills && f.benched() === bench, `probe: ${why} (stills ${r.stills}, ${f.benched()} benchmark runs; ${r.why})`);
+}
 
 process.exit(C.finish());
