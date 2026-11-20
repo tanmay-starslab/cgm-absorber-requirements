@@ -187,6 +187,17 @@ At the same FWHM the broad wings cost 0.07-0.15 dex in log N_min (S/N = 10) and 
 `figures/cos_lsf.pdf`). The NUV model LSF is about 2 pixels wide (R ≈ 35,000 at 2796 Å), narrower than the empirical
 20,000-24,000 in the COS Instrument Handbook, so treat the Mg II numbers with care.
 
+### Instrument markers
+
+`absreq/data/instruments.json` lists real spectrographs (HST/COS G130M and G160M, HST/STIS E140M, E140H, E230M,
+E230H, FUSE) with R, wavelength coverage, LSF type, status and a source for every number (COS and STIS instrument
+handbooks, Sahnow et al. 2000, COS-Halos S/N from Tumlinson et al. 2013). The instrument-plane figures and the
+Detect & Resolve maps mark the ones that cover each line at z = 0: a dotted line at R, a shaded band for an R range,
+an open circle at the reference S/N. R above 10^5 is named in the figure legend. The LUVOIR/LUMOS concept (France
+et al. 2017) is listed with `show: false`. A `proposed` entry is also hidden: fill in its name, label, wavelength
+range, R (and S/N) with sources and set `show: true`, and it appears in orange on the next `make_figures.py ions`
+and `export_web_data.py` run. `tests/test_instruments.py` checks the file.
+
 
 </details>
 
