@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "galaxy/1",
+  "title": "Galaxy registry record (galaxies/<sim>-<snap>-<id>.json)",
+  "$comment": "Lengths kpc physical, masses Msun, velocities km/s, T in K, angles deg. Definitions: tngsight/definitions.json. Subset of JSON Schema read by tngsight.registry.schema_errors and engine.js schemaErrors.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "slug", "sim", "snap", "subhalo_id", "central", "host_subhalo_id", "pos_kpc", "vel_kms", "so",
+               "T200_K", "rhalf_star_kpc", "Mstar_Msun", "Mstar_30kpc_Msun", "Mstar_2rhalf_Msun", "Mgas_Msun", "SFR_Msun_yr",
+               "frame", "misalignment_deg", "tng_cutout_handedness", "sat_gas_frac", "masses_Msun", "r_complete_kpc", "flags", "catalogue",
+               "n_members", "units", "provenance"],
+  "properties": {
+    "schema": {"const": "galaxy/1"},
+    "slug": {"type": "string", "pattern": "^[a-z0-9.]+(-[a-z0-9.]+)*-[0-9]{3}-[0-9]+$"},
+    "sim": {"type": "string", "minLength": 1},
+    "snap": {"type": "integer", "minimum": 0},
+    "subhalo_id": {"type": "integer", "minimum": 0},
+    "central": {"type": "boolean"},
+    "host_subhalo_id": {"type": ["integer", "null"], "minimum": 0},
+    "pos_kpc": {"$ref": "#/$defs/vec3"},
+    "vel_kms": {"$ref": "#/$defs/vec3"},
+    "so": {
+      "type": "object", "additionalProperties": false, "required": ["R200c", "R200m", "Rvir_BN"],
+      "properties": {"R200c": {"$ref": "#/$defs/so"}, "R200m": {"$ref": "#/$defs/so"}, "Rvir_BN": {"$ref": "#/$defs/so"}}
+    },
+    "T200_K": {"type": "number", "exclusiveMinimum": 0},
+    "rhalf_star_kpc": {"type": "number", "exclusiveMinimum": 0},
+    "Mstar_Msun": {"type": "number", "exclusiveMinimum": 0},
+    "Mstar_30kpc_Msun": {"type": "number", "minimum": 0},
+    "Mstar_2rhalf_Msun": {"type": "number", "minimum": 0},
+    "Mgas_Msun": {"type": "number", "minimum": 0},
+    "SFR_Msun_yr": {"type": "number", "minimum": 0},
+    "frame": {
+      "type": "object", "additionalProperties": false, "required": ["R", "v_bulk_kms", "n_stars", "aperture_kpc"],
+      "properties": {
+        "R": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/vec3"}},
+        "v_bulk_kms": {"$ref": "#/$defs/vec3"},
+        "n_stars": {"type": "integer", "minimum": 1},
+        "aperture_kpc": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "misalignment_deg": {
+      "type": "object", "additionalProperties": false, "required": ["cold_gas", "sf_gas", "tng_cutout_raw", "tng_cutout"],
+      "properties": {
+        "cold_gas": {"$ref": "#/$defs/angle_or_null"},
+        "sf_gas": {"$ref": "#/$defs/angle_or_null"},
+        "tng_cutout_raw": {"type": "number", "minimum": 0, "maximum": 180},
+        "tng_cutout": {"type": "number", "minimum": 0, "maximum": 90}
+      }
+    },
+    "tng_cutout_handedness": {"enum": [1, -1]},
+    "sat_gas_frac": {"type": "number", "minimum": 0, "maximum": 1},
+    "masses_Msun": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cgm", "cgm_exclude_bound", "ism", "outskirts", "outskirts_complete", "cgm_sf_excluded"],
+      "properties": {
+        "cgm": {"$ref": "#/$defs/phases"},
+        "cgm_exclude_bound": {"$ref": "#/$defs/phases"},
+        "ism": {"type": "number", "minimum": 0},
+        "outskirts": {"$ref": "#/$defs/phases"},
+        "outskirts_complete": {"type": "boolean"},
+        "cgm_sf_excluded": {"type": "number", "minimum": 0}
+      }
+    },
+    "r_complete_kpc": {"type": "number", "exclusiveMinimum": 0},
+    "flags": {"type": "object", "additionalProperties": {"type": "boolean"},
+              "required": ["fof_satellite", "host_unknown", "no_sf_gas", "few_sf_cells", "misaligned_cold", "misaligned_sf",
+                           "R200m_extrapolated", "R200c_beyond_cutout", "outskirts_incomplete"]},
+    "catalogue": {"type": "object", "additionalProperties": {"type": ["number", "boolean"]},
+                  "required": ["R200c_kpc", "M200c_Msun", "Mstar_30kpc_Msun", "SFR_inst_Msun_yr", "FlagCentral"]},
+    "n_members": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "units": {"type": "object", "additionalProperties": {"type": "string"}},
+    "provenance": {
+      "type": "object", "required": ["source", "sha256", "definitions", "built", "methods", "citations"],
+      "properties": {
+        "source": {"type": "string"},
+        "sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "definitions": {"type": "string"},
+        "built": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "methods": {"type": "object", "additionalProperties": {"type": "string"}},
+        "citations": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+  "$defs": {
+    "vec3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "so": {
+      "type": "object", "additionalProperties": false, "required": ["R_kpc", "M_Msun", "extrapolated"],
+      "properties": {"R_kpc": {"type": "number", "exclusiveMinimum": 0}, "M_Msun": {"type": "number", "exclusiveMinimum": 0},
+                     "extrapolated": {"type": "boolean"}}
+    },
+    "angle_or_null": {"type": ["number", "null"], "minimum": 0, "maximum": 180},
+    "phases": {
+      "type": "object", "additionalProperties": false, "required": ["cool", "warm", "hot"],
+      "properties": {"cool": {"type": "number", "minimum": 0}, "warm": {"type": "number", "minimum": 0},
+                     "hot": {"type": "number", "minimum": 0}, "total": {"type": "number", "minimum": 0}}
+    }
+  }
+}

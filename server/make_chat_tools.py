@@ -34,7 +34,7 @@ SPECIES_VEL = ["vlos", "vr", "vphi", "vmag", "sigmalos"]   # derived in the 3D s
 N_GALAXIES = 198                 # the page's galaxy sample (docs/tng50 galaxies list; tests/js/chat_tools_sync.mjs checks it)
 N_SBI = 197                      # of them with THOR + CLOUDY FG11 spectra (SBI_CGM); the other is the default galaxy
 DEFAULT_GALAXY = 488530          # Trident HM2012 spectra
-TF_PRESETS = ["ramp", "thor", "iso", "clouds"]   # docs/tng50/js/tf.js PRESETS (viewer3d setTf)
+TF_PRESETS = ["ramp", "thor", "nelson16", "iso", "clouds"]   # docs/tng50/js/tf.js PRESETS (viewer3d setTf)
 
 SET_INSTRUMENT_DESC = (
     "Set the spectrograph and view. R: resolving power per band (one value, or two for the two R cases). "
@@ -112,7 +112,7 @@ def build_tools(ions=None, query_schema=None) -> list:
         {"name": "show_3d",
          "description": "Open the 3D tab, optionally choosing the gas field, camera preset, render mode (integral: "
                         "projected; volume: volume rendering) and volume colour preset tf (ramp default, thor gas "
-                        "phases on temperature, iso bands, clouds; tf implies volume mode). Velocity views "
+                        "phases on temperature, nelson16 temperature shells of Nelson+16, iso bands, clouds; tf implies volume mode). Velocity views "
                         "(km/s, galaxy rest frame): vlos line-of-sight velocity, vr radial, vphi rotational, "
                         "vmag speed, sigmalos line-of-sight dispersion; vlos and sigmalos follow the camera.",
          "input_schema": {"type": "object", "additionalProperties": False, "properties": {

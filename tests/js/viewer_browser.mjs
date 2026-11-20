@@ -130,7 +130,7 @@ else {
   await shot("07_default_composite.png");
   /* ---- Phase 3: square stage, grouped control column, species menu, no dot separators ---- */
   { const L = JSON.parse(await ev(`(() => { const s = document.querySelector(".v3d-stage").getBoundingClientRect(), c = document.querySelector("#v3-ctl").getBoundingClientRect();
-      const groups = [...document.querySelectorAll("#v3-ctl > section:not([hidden]) > h2")].map(h => h.textContent);   // tf3d: the Transfer function card shows in volume mode only
+      const groups = [...document.querySelectorAll("#v3-ctl section.v3c-card:not(.v3c-off) > h2")].map(h => h.textContent);   // tf3d: the Transfer function card is live in volume mode only (ux/3d-layout: dimmed, not hidden, otherwise)
       return JSON.stringify({s: [s.width, s.height, s.left, s.right], c: [c.left, c.width], groups, vw: innerWidth, picker: !!document.querySelector("#v3-ctl #picker-root .pk, #v3-ctl #picker-root form")}); })()`));
     check(Math.abs(L.s[0] - L.s[1]) <= 1 && L.s[0] <= 0.6 * L.vw + 1 && L.s[0] >= 300 && L.c[0] >= L.s[3] - 1 && L.c[1] >= 280,
       `square stage ${L.s[0].toFixed(1)}×${L.s[1].toFixed(1)} (${(100 * L.s[0] / L.vw).toFixed(1)} % of ${L.vw}), control column beside it (left ${L.c[0].toFixed(0)} ≥ stage right ${L.s[3].toFixed(0)}, ${L.c[1].toFixed(0)} px wide)`);
@@ -185,8 +185,8 @@ else {
   /* ---- tf3d: the Transfer function card (THOR-style volume rendering; tfeditor.js, tf.js) ---- */
   { const T = JSON.parse(await ev(`(async () => { const v = window.tngViewer3d, c = () => document.getElementById("v3-tf"), U = v.volScene.children[0].material.uniforms, out = {};
       const wait = async f => { for (let i = 0; i < 400 && !f(); i++) await new Promise(r => setTimeout(r, 250)); return f(); };
-      out.hidInteg = c().hidden; v.setMode("volume"); await new Promise(r => setTimeout(r, 300));
-      out.shown = !c().hidden; out.after = c().previousElementSibling?.dataset.group; out.rampOff = U.uTFOn.value === 0 && !v.tfOn();
+      out.hidInteg = c().inert && !c().hidden; v.setMode("volume"); await new Promise(r => setTimeout(r, 300));
+      out.shown = !c().inert; out.after = c().previousElementSibling?.dataset.group; out.rampOff = U.uTFOn.value === 0 && !v.tfOn();
       out.urlRamp = /[?&]tf=nH~Pramp/.test(location.search);
       v.setTf("iso"); out.iso = v.tfOn() && U.uTFOn.value === 1 && v.tfState().bands.length === 3 && document.getElementById("v3-tf-preset").value === "iso";
       const cv = document.getElementById("v3-tf-cv"); cv.focus(); const c0 = v.tfState().bands[0].c;
@@ -203,7 +203,7 @@ else {
       document.getElementById("v3-tf-reset").click(); out.reset = !v.tfOn() && U.uTFOn.value === 0;
       v.setMode("integral"); await v.setSpecies("nH"); out.hidAgain = c().hidden && !/[?&]tf=/.test(location.search);
       return JSON.stringify(out); })()`));
-    check(T.hidInteg && T.shown && T.after === "mode" && T.rampOff && T.urlRamp, `TF card hidden in integral mode, shown after Mode in volume mode, Default ramp leaves TF mode off (uTFOn 0), URL tf=nH~Pramp`);
+    check(T.hidInteg && T.shown && T.after === "mode" && T.rampOff && T.urlRamp, `TF card in place but inert in integral mode, live after Mode in volume mode, Default ramp leaves TF mode off (uTFOn 0), URL tf=nH~Pramp`);
     check(T.iso && T.drawn > 1000, `Iso bands preset: TF on, 3 bands; editor canvas drawn (${T.drawn} px)`);
     check(T.keys && T.del && T.add && T.urlCustom && T.aria, `keyboard edits (arrow, +, Delete), + band, custom state in the URL, aria names the TF (${JSON.stringify({k: T.keys, d: T.del, a: T.add, u: T.urlCustom, l: T.aria})})`);
     check(T.twoD, "2D gradient TF and shading reach the shader (uTF2D 1, uShade 0.5), gradient row shown");
@@ -376,7 +376,7 @@ else {
   check(sm === "ready" && mob.vw === 390 && mob.sw <= mob.vw && Math.abs(mob.stage[0] - mob.stage[1]) <= 1 && mob.stage[0] >= 0.75 * mob.vw && mob.stage[0] <= mob.vw && mob.ctl.below && !Object.values(mob.stars).includes("bound") && mob.gas.L2 !== "bound",
     `mobile 390×844: innerWidth ${mob.vw}, scrollWidth ${mob.sw}, square stage ${mob.stage.join("×")}, controls below it (${mob.ctl.w} px wide), stars off, L2 ${mob.gas.L2}`);
   await shot("11_mobile_3d.png");
-  if (SHOTS) { await ev(`window.scrollTo(0, document.querySelector("#v3-ctl").getBoundingClientRect().top + scrollY - 200)`); await sleep(400); await shot("11b_mobile_controls.png"); }
+  if (SHOTS) { await ev(`document.getElementById("controls-open").click()`); await sleep(400); await shot("11b_mobile_controls.png"); await ev(`document.getElementById("controls-open").click()`); }   // ux/3d-layout: a bottom sheet
   await send("Emulation.setTouchEmulationEnabled", {enabled: false}); await metrics(1280, 800);
   /* host blocked: the message, and the Spectra tab still works */
   blockViz = true; await send("Network.enable"); await send("Network.setCacheDisabled", {cacheDisabled: true});

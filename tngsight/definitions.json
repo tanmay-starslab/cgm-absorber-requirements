@@ -1,0 +1,214 @@
+{
+  "schema": "definitions/1",
+  "version": "2026-11-19",
+  "source": "D8 physics definitions (panel synthesis, owner approved 2026-11-19); D9 satellites",
+  "units": {
+    "length": "kpc (physical)",
+    "mass": "Msun",
+    "velocity": "km/s",
+    "temperature": "K",
+    "sfr": "Msun/yr",
+    "angle": "deg",
+    "note": "TNG cutout Coordinates and RotatedCoordinates are ckpc/h; divide by h (a = 1 at z = 0)"
+  },
+  "phases": {
+    "basis": "temperature of non-star-forming gas",
+    "default": "three",
+    "schemes": {
+      "three": {
+        "label": "cool, warm, hot",
+        "classes": [
+          {"id": "cool", "label": "cool", "logT_min": null, "logT_max": 4.5},
+          {"id": "warm", "label": "warm", "logT_min": 4.5, "logT_max": 5.5},
+          {"id": "hot", "label": "hot", "logT_min": 5.5, "logT_max": null}
+        ]
+      },
+      "observer4": {
+        "label": "observer 4-phase",
+        "classes": [
+          {"id": "cool", "label": "cool", "logT_min": null, "logT_max": 4.5},
+          {"id": "warm", "label": "warm", "logT_min": 4.5, "logT_max": 5.5},
+          {"id": "warmhot", "label": "warm-hot", "logT_min": 5.5, "logT_max": 6.0},
+          {"id": "hot", "label": "hot (X-ray)", "logT_min": 6.0, "logT_max": null}
+        ]
+      },
+      "virial": {
+        "label": "virial",
+        "classes": [
+          {"id": "cool", "label": "below f T200", "T_max_T200": "f"},
+          {"id": "hot", "label": "above f T200", "T_min_T200": "f"}
+        ],
+        "f_options": [0.3, 0.5],
+        "f_default": 0.5
+      }
+    },
+    "sf_gas": {
+      "id": "ism_eeos",
+      "label": "ISM (eEOS)",
+      "selection": "StarFormationRate > 0",
+      "in_masses": true,
+      "in_stats": false,
+      "stats_excluded": ["T", "K", "P", "t_cool", "ion"],
+      "T_for_ion_calcs_K": 1000.0,
+      "display_default": "own_class",
+      "display_options": ["own_class", "ramesh"]
+    }
+  },
+  "virial": {
+    "T200": {
+      "formula": "mu m_p G M200c / (2 k R200c)",
+      "mu": 0.59,
+      "inputs": "M200c and R200c recomputed from particles about the galaxy"
+    },
+    "so": {
+      "centre": "SubhaloPos: the minimum-potential particle bound to the galaxy",
+      "particles": "all types (gas, dark matter, stars and wind particles, black holes) in the cutout",
+      "R200c": {"delta": 200, "reference": "critical"},
+      "R200m": {"delta": 200, "reference": "mean"},
+      "Rvir_BN": {"delta": "18 pi^2 + 82 x - 39 x^2, x = Omega_m(z) - 1", "reference": "critical"}
+    }
+  },
+  "regions": {
+    "ism": {
+      "label": "ISM",
+      "rule": "star-forming gas anywhere within R200c, plus all gas at r < 0.15 R200c",
+      "r_max_R200c": 0.15,
+      "sf_r_max_R200c": 1.0
+    },
+    "cgm": {
+      "label": "CGM",
+      "gas": "non_sf",
+      "r_min_R200c": 0.15,
+      "r_max_R200c": 1.0
+    },
+    "outskirts": {
+      "label": "outskirts",
+      "gas": "non_sf",
+      "r_min_R200c": 1.0,
+      "r_max_R200c": 2.0
+    },
+    "profiles_r_max_R200c": 2.0
+  },
+  "frame": {
+    "default": "stellar_L",
+    "stellar_L": {
+      "label": "stellar spin",
+      "z": "signed stellar angular momentum",
+      "stars": "bound to the galaxy (SubfindID), GFM_StellarFormationTime > 0 (no wind particles)",
+      "aperture_rhalf": 2.0,
+      "bulk_velocity": "mass-weighted mean velocity of bound stars within 10 kpc",
+      "bulk_velocity_r_kpc": 10.0,
+      "x": "projected stellar major axis (same stars, mass-weighted second moment in the disk plane)",
+      "x_sign": "largest absolute box component of x is positive",
+      "matrix": "rows x, y, z: r_disk = R (r_box - SubhaloPos)"
+    },
+    "rhalf": "3D radius holding half the mass of the bound stars (no wind particles)",
+    "azimuth": {"zero": "projected stellar major axis", "fold_deg": [0, 90], "fold_for": "surveys"},
+    "alternatives": {
+      "cold_gas_L": {
+        "label": "cold-gas spin",
+        "gas": "all gas with T < 1.5e4 K or n_H > 0.1 cm^-3",
+        "aperture": "max(0.1 R200c, 10 kpc)",
+        "bulk_velocity": "the cold gas's own mass-weighted mean velocity",
+        "note": "the explorer's frame up to Phase 3 (galaxy_488530.json)"
+      },
+      "sf_gas_L": {
+        "label": "SF-gas spin",
+        "gas": "star-forming gas bound to the galaxy",
+        "aperture_rhalf": 5.0,
+        "bulk_velocity": "stellar bulk velocity",
+        "min_cells": 50
+      },
+      "tng_cutout": {
+        "label": "TNG cutout frame",
+        "sims": ["TNG50-1"],
+        "rule": "RotatedCoordinates: inertia tensor of SF gas and stars within 2 r_1/2,* (Pillepich+24)",
+        "signed": false,
+        "fold": "angles folded to 0-90"
+      }
+    },
+    "misalignment_flag_deg": 30.0
+  },
+  "cooling": {
+    "default": "native",
+    "options": {
+      "native": {
+        "label": "TNG native",
+        "field": "GFM_CoolingRate",
+        "mask": ["sf", "net_heating"]
+      },
+      "ps20": {
+        "label": "PS20",
+        "table": "UVB_dust1_CR1_G1_shield1",
+        "metallicity": "absolute",
+        "cross_code": "uniform on cross-code pages"
+      }
+    }
+  },
+  "t_ff": {
+    "default": "sqrt_2r_g",
+    "use": "diagnostic only: hot phase, shell-averaged t_cool/t_ff",
+    "options": {
+      "sqrt_2r_g": {"label": "sqrt(2r/g)", "formula": "sqrt(2 r / g(r)), g = G M(<r) / r^2"},
+      "sqrt_3pi_32Grho": {"label": "sqrt(3 pi / 32 G rho)", "formula": "sqrt(3 pi / (32 G rho_mean(<r)))"}
+    }
+  },
+  "satellites": {
+    "default": "all_gas",
+    "options": {
+      "all_gas": {"label": "all gas"},
+      "exclude_bound": {"label": "exclude Subfind-bound", "rule": "drop gas bound to any other subhalo except the galaxy's FoF central", "needs": "SubfindID"}
+    },
+    "stamp": {"field": "sat_gas_frac", "shell_R200c": [0.15, 1.0]}
+  },
+  "toggles": [
+    {"id": "phases", "label": "phases", "default": "three", "options": ["three", "observer4", "virial_0.3", "virial_0.5"]},
+    {"id": "sf_display", "label": "SF gas", "default": "own_class", "options": ["own_class", "ramesh"]},
+    {"id": "cgm_inner", "label": "CGM inner edge", "default": "0.15R200c", "options": ["0.15R200c", "0.1R200c", "max(0.15R200c,4.8rhalf)"]},
+    {"id": "cgm_outer", "label": "CGM outer edge", "default": "R200c", "options": ["R200c", "Rvir_BN", "R200m", "2R200c"]},
+    {"id": "radius_norm", "label": "radius", "default": "R200c", "options": ["R200c", "R200m", "Rvir_BN"]},
+    {"id": "frame", "label": "frame", "default": "stellar_L", "options": ["stellar_L", "cold_gas_L", "tng_cutout"]},
+    {"id": "cooling", "label": "cooling", "default": "native", "options": ["native", "ps20"]},
+    {"id": "t_ff", "label": "t_ff", "default": "sqrt_2r_g", "options": ["sqrt_2r_g", "sqrt_3pi_32Grho"]},
+    {"id": "satellites", "label": "satellites", "default": "all_gas", "options": ["all_gas", "exclude_bound"]}
+  ],
+  "bins": {
+    "logT_edges": [4.5, 5.0, 5.5, 6.0],
+    "r_edges_R200c": [0.1, 0.15, 0.3, 1.0, 2.0],
+    "r_edges_per_halo": ["R200m"]
+  },
+  "texts": {
+    "phases": "Phases by temperature of non-SF gas: cool below 10^4.5 K, warm to 10^5.5 K, hot above",
+    "sf_gas": "Star-forming gas is its own ISM class: counted in masses, left out of T, K, P, t_cool and ions",
+    "cgm": "CGM: non-SF gas from 0.15 to 1 R200c",
+    "frame": "Frame: stellar spin within 2 r_1/2",
+    "tng_frame": "TNG cutout frame has no sign: angles folded to 0-90",
+    "satellites": "All gas included, satellites too: {sat_gas_frac} of CGM gas is bound to satellites",
+    "cooling": "Cooling: TNG native rates, SF and net-heating cells masked",
+    "ps20": "Cooling: PS20 tables, absolute metallicity",
+    "t_ff": "t_cool/t_ff is a diagnostic for hot gas only",
+    "radii": "Survey points keep their own radius convention",
+    "outskirts": "Cutout ends at {r_complete} kpc: outskirts incomplete",
+    "resolution": "CGM gas is resolution limited: cool clouds and column densities change with resolution"
+  },
+  "citations": {
+    "ramesh23": {"text": "Ramesh et al. 2023", "arxiv": "2211.00020", "for": ["phases", "satellites"]},
+    "tumlinson17": {"text": "Tumlinson, Peeples and Werk 2017", "arxiv": "1709.09180", "for": ["phases"]},
+    "ps20": {"text": "Ploeckinger and Schaye 2020", "arxiv": "2006.14322", "for": ["cooling"]},
+    "bryan_norman98": {"text": "Bryan and Norman 1998", "arxiv": "astro-ph/9710107", "for": ["radii"]},
+    "pillepich24": {"text": "Pillepich et al. 2024", "arxiv": "2303.16217", "for": ["sample", "tng_frame"]},
+    "nelson19a": {"text": "Nelson et al. 2019 (TNG data release)", "arxiv": "1812.05609", "for": ["sample"]},
+    "stern21": {"text": "Stern et al. 2021", "arxiv": null, "for": ["t_ff"]},
+    "truong21": {"text": "Truong et al. 2021", "arxiv": null, "for": ["frame", "satellites"]},
+    "defelippis21": {"text": "DeFelippis et al. 2021", "arxiv": null, "for": ["frame"]},
+    "kacprzak12": {"text": "Kacprzak et al. 2012", "arxiv": null, "for": ["frame"]},
+    "wilde21": {"text": "Wilde et al. 2021", "arxiv": null, "for": ["radii"]},
+    "tumlinson13": {"text": "Tumlinson et al. 2013", "arxiv": null, "for": ["radii"]},
+    "nelson20": {"text": "Nelson et al. 2020", "arxiv": null, "for": ["satellites", "resolution"]},
+    "hafen19": {"text": "Hafen et al. 2019", "arxiv": null, "for": ["satellites"]},
+    "hummels19": {"text": "Hummels et al. 2019", "arxiv": null, "for": ["resolution"]},
+    "vandevoort19": {"text": "van de Voort et al. 2019", "arxiv": null, "for": ["resolution"]},
+    "peeples19": {"text": "Peeples et al. 2019", "arxiv": null, "for": ["resolution"]},
+    "gible": {"text": "GIBLE (Ramesh and Nelson 2024)", "arxiv": null, "for": ["resolution"]}
+  }
+}

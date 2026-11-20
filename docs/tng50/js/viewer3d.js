@@ -41,9 +41,10 @@ import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, 
   VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity} from "./vizdata.js";
 import {makeMaterial} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
-import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, TF_W, TF_H} from "./tf.js";
+import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, NELSON16, TF_W, TF_H} from "./tf.js";
 import {createTfEditor, histCodes, histWindow} from "./tfeditor.js";
 import {initTips} from "./tips.js";
+import {sfx} from "./uisound.js";
 
 export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList};
 
@@ -258,6 +259,13 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 /* the grouped control column (B look, A's explicit labels); page tokens with dark fallbacks */
 .v3c{display:flex;flex-direction:column;gap:12px;min-width:0;font:13px/1.4 var(--sans,system-ui,sans-serif);color:var(--ink,#eef0f7)}
 .v3c[hidden]{display:none}
+/* ux/3d-layout: the two card columns and the tab strip are the page's to lay out (page.css); here (fullscreen panel, the
+   built layout) the columns are transparent and the strip is hidden. A card that does not apply stays in place, dimmed */
+.v3c-body,.v3c-col{display:contents}.v3c-tabbar{display:none}
+.v3c-off>:not(h2){opacity:.4}
+.v3c-hint{float:right;font:500 10px var(--mono,ui-monospace,monospace);letter-spacing:.04em;text-transform:none;color:var(--faint,#7a83a0)}
+.v3c-card:not(.v3c-off) .v3c-hint{visibility:hidden}
+.v3c-card[data-group=field] .v3c-row{height:28px}   /* the log rows and the velocity rows swap two for two: same height */
 .v3c{--cg-hi:var(--mat-highlight,inset 0 1px 0 rgba(255,255,255,.12));--cg-thin:var(--mat-thin,rgba(127,127,160,.10));--cg-edge:var(--mat-edge-c,var(--gline,rgba(160,175,220,.14)));
   --cg-sheen:var(--mat-fill,linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,0) 70%));--cg-sheen-h:var(--mat-fill-hover,linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04)));
   --cg-press:var(--mat-press,linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.06)));--cg-gloss:var(--mat-gloss,linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,0) 55%));
@@ -481,7 +489,15 @@ async function create(app, opts = {}) {
     `<input type="radio" name="${name}" value="${x.key}" data-testid="v3-species-${x.key}"${x.available ? "" : " disabled"} aria-label="${escH(x.spoken || x.label)}" data-tip="${escH(fieldTip(x))}">` +
     `<span>${x.group === "ion" ? "<i></i>" : ""}${x.group === "vel" ? x.html : escH(x.label)}</span></label>`;   // vel html: our own constant (vizdata VEL_VIEWS)
   const ctlBox = document.createElement("div"); ctlBox.className = "v3c"; ctlBox.id = "v3-ctl"; ctlBox.setAttribute("role", "group"); ctlBox.setAttribute("aria-label", "3D view settings");
-  ctlBox.innerHTML = `<section class="v3c-card" data-group="field"><h2>Field</h2>
+  /* ux/3d-layout: fixed card places. Column A holds Field, View, Layers; column B holds Mode, Transfer function, Pick ray, so
+     what opens with Volume sits below the clicked button. The page lays the columns out (page.css); data-tab names each
+     card's tab in the one-column tab layouts, whose strip (.v3c-tabbar) stays hidden elsewhere and in fullscreen */
+  const TABS = [["field", "Field"], ["view", "View"], ["layers", "Layers"], ["pick", "Pick"]];
+  ctlBox.dataset.tab = "field";
+  ctlBox.innerHTML = `<div class="v3c-tabbar"><div class="v3c-seg v3c-tabs" role="radiogroup" aria-label="Settings group">${TABS.map(([k, t], i) =>
+      `<label><input type="radio" name="v3-tab" value="${k}" data-tab="${k}"${i ? "" : " checked"}><span>${t}</span></label>`).join("")}</div>
+      <button type="button" class="v3c-btn v3c-done" data-tip="Close the 3D settings">Done</button></div>
+    <div class="v3c-body"><div class="v3c-col" data-col="a"><section class="v3c-card" data-group="field" data-tab="field"><h2>Field</h2>
       <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Velocity</span><div class="v3c-seg vel">${SPEC.filter(x => x.group === "vel").map(x => radio(x, "v3-species")).join("")}</div></div>
@@ -490,7 +506,7 @@ async function create(app, opts = {}) {
       <div class="v3c-row" id="v3-vw-row" hidden><label for="v3-vw">window</label><input id="v3-vw" type="range" step="10" data-tip="Velocity range of the colour scale, km/s; beyond it colours saturate"><output id="v3-vw-o" for="v3-vw"></output></div>
       <div class="v3c-row" id="v3-weight-row" hidden><label for="v3-weight">weight</label><select id="v3-weight" data-tip="Density that weights the velocities: all gas or one ion"></select></div>
       <div class="v3c-row" id="v3-cmap-row"><label for="v3-cmap">colours</label><select id="v3-cmap" data-tip="Colour map of the field"></select></div></section>
-    <section class="v3c-card" data-group="view"><h2>View</h2>
+    <section class="v3c-card" data-group="view" data-tab="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select></div>
@@ -499,17 +515,17 @@ async function create(app, opts = {}) {
       ${(t => `<button type="button" class="v3c-btn v3c-wide" id="v3-head" data-testid="v3-head" aria-pressed="false" aria-expanded="false" data-tip="${t ? "Tilt your device to look around" : "Steer the view with your head, on device"}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">${t ? '<rect x="4.5" y="1.5" width="7" height="13" rx="1.6"/><path d="M7 12.2h2"/>' : '<circle cx="8" cy="7" r="4.6"/><path d="M6.2 6.2v.1M9.8 6.2v.1M6.3 8.8c1 .8 2.4.8 3.4 0M3 14.5c1.4-1.2 3-1.8 5-1.8s3.6.6 5 1.8"/>'}</svg><span>${t ? "Tilt control" : "Head control"}</span></button>`)(matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches)}
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
       <details id="v3-pv-more"><summary data-tip="Type an orbit centre in kpc, galaxy box axes">kpc</summary><form class="v3tf-g v3c-pvxyz" id="v3-pv-form"><input id="v3-pv-x" type="number" step="1" min="-400" max="400" aria-label="centre x, kpc" placeholder="x" data-tip="x in kpc from the galaxy centre"><input id="v3-pv-y" type="number" step="1" min="-400" max="400" aria-label="centre y, kpc" placeholder="y" data-tip="y in kpc from the galaxy centre"><input id="v3-pv-z" type="number" step="1" min="-400" max="400" aria-label="centre z, kpc" placeholder="z" data-tip="z in kpc from the galaxy centre"><button type="submit" class="v3c-btn" data-tip="Move the orbit centre there">go</button></form></details></section>
-    <section class="v3c-card" data-group="layers"><h2>Layers</h2>
+    <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
       <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
       <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase" title="Sightlines with several clean, unsaturated absorbers, plus rays you made">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
-      <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section>
-    <section class="v3c-card" data-group="mode"><h2>Mode</h2>
+      <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
+    <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
       <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
         <label><input type="radio" name="v3-mode" value="volume" data-testid="v3-mode-volume" data-tip="Ray-marched emission and absorption through a transfer function"><span>volume</span></label></div>
       <div class="v3c-row"><label for="v3-op">opacity</label><input id="v3-op" type="range" min="0" max="1" step="0.01" data-tip="Overall opacity of the volume rendering; volume mode only"><output id="v3-op-o" for="v3-op"></output></div></section>
-    <section class="v3c-card" data-group="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section>
+    <section class="v3c-card" data-group="pick" data-tab="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section></div></div>
     <div class="v3c-lod" id="v3-lod" aria-hidden="true"></div>`;
   ctlBox.querySelectorAll(".v3c-seg").forEach(initLiquidSeg);
   const q = s => el.querySelector(s) || ctlBox.querySelector(s), canvas = q("canvas"), stage = q(".v3d-stage"), msgEl = q(".v3d-msg");
@@ -522,6 +538,11 @@ async function create(app, opts = {}) {
   /* tf3d: the Transfer function card (tfeditor.js) follows the Mode card; shown in volume mode for the scalar fields */
   const tfEd = createTfEditor({onChange: (st, info) => onTfEdit(st, info)});
   ctlBox.querySelector('[data-group="mode"]').after(tfEd.el);
+  /* always in place (no reflow when the mode changes): inert and dimmed outside volume mode, with a small hint */
+  tfEd.el.hidden = false; tfEd.el.inert = true; tfEd.el.dataset.tab = "view"; tfEd.el.classList.add("v3c-off");
+  tfEd.el.querySelector("h2").insertAdjacentHTML("beforeend", '<span class="v3c-hint" aria-hidden="true">volume</span>');
+  ctlBox.querySelector(".v3c-tabs").addEventListener("change", ev => { ctlBox.dataset.tab = ev.target.value; });
+  ctlBox.querySelector(".v3c-done").addEventListener("click", () => document.getElementById("controls-open")?.click());
   let docked = null, spinRaf = 0, fullHost = null, thumbHost = null;   // Phase 3 docking state (see "docking" below)
   /* stage message; `transient` ones (a hint about the current selection or preset) are cleared by the next selection or preset */
   /* fix-ui FE-11: the stage message is not a live region (download progress rewrites it 5× a second); state changes are
@@ -1017,7 +1038,7 @@ async function create(app, opts = {}) {
     q("#v3-lo-row").hidden = q("#v3-hi-row").hidden = vs; q("#v3-vw-row").hidden = q("#v3-weight-row").hidden = !vs;
     const want = !vs ? "field" : v.signed ? "signed" : "unsigned", names = want === "field" ? CMAPS : VEL_NAMES[want];
     if (cmapSet !== want) { const sel = q("#v3-cmap"); sel.textContent = ""; for (const c of names) { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); } cmapSet = want; }
-    q("#v3-cmap").disabled = !manifest || names.length < 2; q("#v3-cmap-row").hidden = !!manifest && names.length < 2;   // a one-map list (signed views) is no choice: row hidden
+    q("#v3-cmap").disabled = !manifest || names.length < 2; q("#v3-cmap-row").style.visibility = manifest && names.length < 2 ? "hidden" : "";   // a one-map list (signed views) is no choice: row hidden, its space kept
     for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) { const off = !manifest || !modeOk(species, i.value); i.disabled = off;
       i.dataset.tip = off && manifest ? "Integral only: the dispersion belongs to the whole ray"
         : i.value === "integral" ? (vs ? `Weighted ${species === "sigmalos" ? "spread" : "mean"} velocity along each ray` : "Projected map: column or weighted mean along each ray")
@@ -1092,8 +1113,8 @@ async function create(app, opts = {}) {
     ts.win = [+a.toFixed(3), +b.toFixed(3)]; ts.preset = "custom"; tfCardKey = "";
     syncTfCard(); applyTfMode(); legend(); aria(); render(); tfUrl(); }
   function syncTfCard(soft = false) { tfWinUi();
-    const show = !!manifest && !!species && mode === "volume" && tfOk(species);
-    tfEd.el.hidden = !show; if (!show) { tfCardKey = ""; return; }
+    const ok = !!manifest && !!species && tfOk(species), show = ok && mode === "volume";
+    tfEd.el.inert = !show; tfEd.el.classList.toggle("v3c-off", !show); if (!ok) return;   // a velocity view keeps the last card, dimmed
     const st = tfState(species), f = fld(species), cm = fieldTf(species, "volume").cmap, it = tfLevel(species);
     const key = `${species}|${encodeTF(st)}|${cm}|${it ? (it.sub ? "s" : "c") + it.bytes : ""}|${WEIGHTS.join()}`;
     if (soft && key === tfCardKey) return; tfCardKey = key;
@@ -1111,11 +1132,13 @@ async function create(app, opts = {}) {
     if (info.commit) { tfUrl(); announce(tfWords()); } }
   const tfWords = () => { const st = tfs[species]; if (!tfOn()) return "transfer function: default ramp";
     return `transfer function: ${st.preset && st.preset !== "custom" ? st.preset : "custom"}, ${st.bands.length} band${st.bands.length === 1 ? "" : "s"}${st.twoD ? ", 2D" : ""}${st.shade ? `, shading ${st.shade.toFixed(2)}` : ""}${emisKey() ? `, emission weighted by ${wName(emisKey())} to the power ${st.gamma}` : ""}`; };
-  /* a preset for the current field; THOR's "Gas phases" is a T preset with n_H emissivity: it switches the field to T */
+  /* a preset for the current field; THOR's "Gas phases" and the Nelson+16 shells are T presets with n_H emissivity: they
+     switch the field to T */
   function tfApplyPreset(name) {
-    if (name === "thor" && species !== THOR.field) { if (!tfOk(THOR.field)) return false;
-      tfs[THOR.field] = tfPreset("thor", tfCtx(THOR.field));
-      setSpecies(THOR.field).then(ok => { if (ok) { syncTfCard(); tfUrl(); announce(tfWords()); } }); return true; }
+    const FP = {thor: THOR, nelson16: NELSON16}[name];
+    if (FP && species !== FP.field) { if (!tfOk(FP.field)) return false;
+      tfs[FP.field] = tfPreset(name, tfCtx(FP.field));
+      setSpecies(FP.field).then(ok => { if (ok) { syncTfCard(); tfUrl(); announce(tfWords()); } }); return true; }
     if (!tfOk(species)) return false;
     const was = emisKey(); tfs[species] = tfPreset(name, tfCtx(species)); tfCardKey = "";
     syncTfCard(); applyTfMode(); legend(); aria(); render(); if (emisKey() !== was) { ensure().catch(() => {}); bindAll(); }
@@ -1481,14 +1504,14 @@ async function create(app, opts = {}) {
     else if (k === "+" || k === "=") { camera.position.copy(tgt).add(off.multiplyScalar(0.87)); controls.update(); }
     else if (k === "-" || k === "_") { camera.position.copy(tgt).add(off.multiplyScalar(1.15)); controls.update(); }
     else if ((k === "F" || k === "f") && ev.shiftKey) toggleFullscreen();
-    else if (k === "f" || k === "F") setPreset("face-on"); else if (k === "e" || k === "E") setPreset("edge-on");
-    else if (k === "r" || k === "R") setPreset("reset"); else if (k === "a" || k === "A") setPreset("sightline");
+    else if (k === "f" || k === "F") { sfx("snap"); setPreset("face-on"); } else if (k === "e" || k === "E") { sfx("snap"); setPreset("edge-on"); }
+    else if (k === "r" || k === "R") { sfx("snap"); setPreset("reset"); } else if (k === "a" || k === "A") { sfx("snap"); setPreset("sightline"); }
     else if (k === "m" || k === "M") setMode(mode === "integral" ? "volume" : "integral");
     else if (k === "s" || k === "S") setStars({on: !layer.stars});
     else if (k === "g" || k === "G") setGuides({ring: !guides.visible});
     else if (k === "p" || k === "P") viewer.hooks.togglePick?.();
     else if ((k === "c" || k === "C") && !ev.shiftKey) recentre();
-    else if ((k === "o" || k === "O") && !ev.shiftKey) setOrbit(!fullOrbit);
+    else if ((k === "o" || k === "O") && !ev.shiftKey) { sfx(fullOrbit ? "pause" : "play"); setOrbit(!fullOrbit); }
     else if (k === "Escape") { if (fsEl() || performance.now() - fsExitAt < 400) return; viewer.hooks.exitPick?.(); }   // Esc that leaves fullscreen does not also leave pick mode
     else return;
     ev.preventDefault(); ev.stopPropagation(); render(); });
@@ -1499,8 +1522,8 @@ async function create(app, opts = {}) {
   for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.disabled = !manifest;
   for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
   if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0"]) q(id).disabled = true;
-  q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) setSpecies(ev.target.value); });
-  q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) setMode(ev.target.value); });
+  q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) { sfx("select"); setSpecies(ev.target.value); } });
+  q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) { sfx("select"); setMode(ev.target.value); } });
   q("#v3-lo").addEventListener("input", ev => tfWinMode() ? setTfWin(+ev.target.value, null) : setTransfer({lo: Math.min(+ev.target.value, fieldTf(species).hi - 0.1)}));
   q("#v3-hi").addEventListener("input", ev => tfWinMode() ? setTfWin(null, +ev.target.value) : setTransfer({hi: Math.max(+ev.target.value, fieldTf(species).lo + 0.1)}));
   q("#v3-op").addEventListener("input", ev => setTransfer({opacity: +ev.target.value}));
@@ -1514,10 +1537,10 @@ async function create(app, opts = {}) {
   q("#v3-guides").addEventListener("change", ev => setGuides({ring: ev.target.checked}));
   q("#v3-scale").addEventListener("change", ev => setGuides({scale: ev.target.checked}));
   q("#v3-lines").addEventListener("change", ev => setLines(ev.target.value));
-  ctlBox.querySelectorAll(".presets [data-p]").forEach(b => b.addEventListener("click", () => setPreset(b.dataset.p)));
+  ctlBox.querySelectorAll(".presets [data-p]").forEach(b => b.addEventListener("click", () => { sfx("snap"); setPreset(b.dataset.p); }));
   /* ux4 pivot controls: stage chip, View card galaxy | ray, kpc form, double-click on the stage */
   q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
-  q("#v3-orbit").addEventListener("click", () => setOrbit(!fullOrbit));
+  q("#v3-orbit").addEventListener("click", () => { sfx(fullOrbit ? "pause" : "play"); setOrbit(!fullOrbit); });
   q("#v3-orbit-axis").addEventListener("change", ev => { orbitAxis = ["auto", "spin", "major", "minor"].includes(ev.target.value) ? ev.target.value : "auto"; orbitAxisNow = null; orbitTip(); });
   q("#v3-orbit-speed").addEventListener("input", ev => { orbitDeg = Math.max(1, Math.min(30, +ev.target.value || 5)); q("#v3-orbit-speed-o").textContent = orbitDeg + "°/s"; });
   /* owner 2026-11-14: zooming, panning or turning the view no longer stops the orbit; only the stop button (or O) does */
@@ -1548,7 +1571,7 @@ async function create(app, opts = {}) {
   idEl?.addEventListener("click", ev => { ev.stopPropagation(); app.openCredits?.(idEl); });
   idEl?.addEventListener("pointerdown", ev => ev.stopPropagation());
   const onGal = () => idBadge(); addEventListener("tng:galaxy", onGal); idBadge();
-  /* tf3d API: setTf("ramp" | "thor" | "iso" | "clouds" | state) for the current field; tfState() a copy; tfOn() */
+  /* tf3d API: setTf("ramp" | "thor" | "nelson16" | "iso" | "clouds" | state) for the current field; tfState() a copy; tfOn() */
   function setTf(x) { if (typeof x === "string") return tfApplyPreset(x); if (!x || !tfOk(species)) return false;
     onTfEdit({...tfState(species), ...x, preset: x.preset || "custom"}, {commit: true, reason: "api"}); syncTfCard(); return true; }
   Object.assign(viewer, {setTf, tfState: () => (species && tfs[species] ? JSON.parse(JSON.stringify(tfs[species])) : null), tfOn: () => tfOn(), tfEditor: tfEd});

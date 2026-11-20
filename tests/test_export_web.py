@@ -4,7 +4,7 @@ only manifest_v2.json is copied, CFG.viz shape, invalid/missing manifest -> viz 
 docs/tng50), vol/vol_url gone, --prune removes data/vol; Phase 3: CFG v3 from the ion registry, catalog v2
 passthrough, check_bin v1/v2, --allow-v1 and the mixed v1/v2 refusal. Output always into tmp."""
 from __future__ import annotations
-import gzip, hashlib, importlib.util, json, struct, sys
+import gzip, hashlib, importlib.util, json, re, struct, sys
 from pathlib import Path
 
 import numpy as np
@@ -105,9 +105,12 @@ def test_fake_library_export(fake_lib, tmp_path, capsys):
         assert (out / "js" / name).read_bytes() == (ROOT / "docs" / "tng50" / "js" / name).read_bytes()
     assert {"app.js", "state.js", "spectra.js", "gallery.js", "instrument.js", "fit.js", "fitworker.js"} <= set(js)   # Phase-3 page modules
     css = sorted(p.name for p in (out / "css").glob("*.css"))
-    assert "page.css" in css and all((out / "css" / n).read_bytes() == (ROOT / "docs" / "tng50" / "css" / n).read_bytes() for n in css)
+    assert {"page.css", "tokens.css"} <= set(css) and all((out / "css" / n).read_bytes() == (ROOT / "docs" / "tng50" / "css" / n).read_bytes() for n in css)
+    fonts = sorted(p.relative_to(ROOT / "docs" / "tng50" / "fonts") for p in (ROOT / "docs" / "tng50" / "fonts").rglob("*.woff2"))
+    assert len(fonts) == 7 and all((out / "fonts" / f).read_bytes() == (ROOT / "docs" / "tng50" / "fonts" / f).read_bytes() for f in fonts)
     html = (out / "index.html").read_text(encoding="utf-8")
     assert 'href="css/page.css"' in html and 'src="js/app.js"' in html and "Interactive companion" not in html
+    assert html.index('href="css/tokens.css"') < html.index('href="css/page.css"') and 'href="fonts/space-grotesk-latin.woff2"' in html
     assert not (out / "data" / "vol").exists() and not (out / "data" / "viz").exists()
     luts = ROOT / "docs" / "tng50" / "data" / "luts" / "luts.json"       # U_view's file; copied when --out is elsewhere
     if luts.is_file():
@@ -506,3 +509,12 @@ def test_galaxy_hosting_index_and_failed_check(fake_lib, tmp_path, capsys):
     with pytest.raises(SystemExit):
         _run(fake_lib, tmp_path / "site3", "--viz-dir", str(tmp_path / "noviz"), "--galaxies-root", str(root),
              "--galaxies", "all", "--gal-index", str(bad))
+
+
+def test_no_google_fonts():
+    """The site self-hosts its fonts (docs/tng50/fonts, css/tokens.css): no page or template loads Google Fonts."""
+    pages = [ROOT / "docs" / "_template.html", ROOT / "docs" / "index.html", ROOT / "docs" / "tng50" / "_template.html",
+             ROOT / "docs" / "tng50" / "index.html", *(ROOT / "docs" / "tng50" / "learn").rglob("*.html"),
+             *(ROOT / "docs" / "tng50" / "css").glob("*.css"), *(ROOT / "docs" / "tng50" / "learn").rglob("*.css")]
+    bad = [str(p.relative_to(ROOT)) for p in pages if p.is_file() and re.search(r"fonts\.(googleapis|gstatic)\.com", p.read_text(encoding="utf-8"))]
+    assert not bad, bad

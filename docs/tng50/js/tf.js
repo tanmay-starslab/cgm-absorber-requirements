@@ -18,8 +18,8 @@
 // ((x·255 + 0.5) / 256, (g·63 + 0.5) / 64), i.e. exactly on texel centres at the ends.
 
 export const TF_W = 256, TF_H = 64, MAX_BANDS = 8;
-export const PRESETS = ["ramp", "thor", "iso", "clouds"];
-export const PRESET_LABELS = {ramp: "Default ramp", thor: "Gas phases (THOR)", iso: "Iso bands", clouds: "Clouds (2D)"};
+export const PRESETS = ["ramp", "thor", "nelson16", "iso", "clouds"];
+export const PRESET_LABELS = {ramp: "Default ramp", thor: "Gas phases (THOR)", nelson16: "Temperature shells (Nelson+16)", iso: "Iso bands", clouds: "Clouds (2D)"};
 
 /* THOR Fig. 11 / §5.5: three Gaussian peaks in log T at 2×10⁴ K (blue), 10⁵ K (orange) and 3×10⁵ K (red), brightness
    ("emissivity") weighted by gas density. The paper gives no widths or alpha heights, so they are our choice.
@@ -36,6 +36,24 @@ export const THOR = {field: "T", emis: "nH", gamma: 1, win: [3.9, 6.3],
   bands: [{c: Math.log10(2e4), w: 0.2, a: 0.8, rgb: [70, 140, 255]},
           {c: 5.0, w: 0.1, a: 0.3, rgb: [255, 160, 40]},
           {c: Math.log10(3e5), w: 0.1, a: 0.15, rgb: [235, 45, 35]}]};
+
+/* Nelson et al. 2016, MNRAS 460, 2881, Fig. 13 and §5.3 (arXiv:1503.02665): "four narrow alpha-channel gaussians at
+   log T_gas [K] = {4.5, 5.0, 5.5, 6.0} with widths of σ = {6, 6, 3, 3} × 10^-3 in log K", bounds 4.4 < log T < 6.3,
+   the blue-red colortable of their temperature maps (dark blue near the IGM temperature, light blue 10^5 K, yellow
+   10^5.5 K). The paper ray-traces an SPH-interpolated T every 0.25 kpc; our T is a 256³ mass-weighted voxel mean stored
+   in 8 bits (~0.015 dex per level) and the TF has 256 texels over the window (0.0075 dex), so the paper's σ would
+   render as speckle or nothing: NELSON16.bands keep the paper's σ as w0 and render w = max(w0, NELSON16_WMIN).
+   Colours: a blue-red table (dark blue, light blue, yellow, red) read at each centre. Heights are our choice (none
+   given): the cool outer shells faint, the hot inner ones stronger, brightness weighted by n_H as THOR, so the shells
+   read as nested surfaces and the dense disk stays visible. */
+export const NELSON16_WMIN = 0.03;   /* dex: about 4 texels and 2 data levels, the narrowest shell that renders stably */
+export const NELSON16_NOTE = "Temperature shells after Nelson et al. 2016 (MNRAS 460, 2881, Fig. 13): 4 Gaussians at 10^4.5, 10^5, "
+  + "10^5.5 and 10^6 K, blue to red. Widths widened from the paper's 0.003 to 0.006 dex to " + NELSON16_WMIN + " dex for voxel data.";
+export const NELSON16 = {field: "T", emis: "nH", gamma: 1, win: [4.4, 6.3],
+  bands: [{c: 4.5, w0: 0.006, a: 0.25, rgb: [35, 65, 175]},
+          {c: 5.0, w0: 0.006, a: 0.35, rgb: [100, 185, 255]},
+          {c: 5.5, w0: 0.003, a: 0.5, rgb: [255, 215, 50]},
+          {c: 6.0, w0: 0.003, a: 0.7, rgb: [225, 45, 35]}].map(b => ({...b, w: Math.max(b.w0, NELSON16_WMIN)}))};
 
 const clamp01 = x => (x < 0 ? 0 : x > 1 ? 1 : x);
 const sstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -83,11 +101,14 @@ export function buildTF(state, lut = null, win = state.win) {
 /* presets. ctx = {field, vmin, vmax, volWin: [lo, hi] (manifest vol_window), wRef?}; returns a fresh state.
    ramp   the current volume look (ramp over the field's volume window, colormap colours)
    thor   THOR Fig. 11 (switches the colour field to T and the emissivity weight to n_H, γ = 1)
+   nelson16 Nelson+16 Fig. 13 temperature shells (T field, n_H emissivity, like thor)
    iso    three narrow colormap bands at ¼, ½, ¾ of the volume window, shaded (0.6) so the iso-surfaces read in 3D
    clouds the ramp restricted to the upper ¾ of the gradient range, with shading: edges of clouds and filaments */
 export function preset(name, ctx) {
   const vw = ctx.volWin || [ctx.vmin, ctx.vmax], win = [ctx.vmin, ctx.vmax], base = {twoD: false, shade: 0, emis: "", gamma: 1, win, gmax: GMAX_DEFAULT, bands: [], ramp: null};
   if (name === "thor") return {...base, preset: "thor", field: THOR.field, win: THOR.win.slice(), emis: THOR.emis, gamma: THOR.gamma, bands: THOR.bands.map(b => ({...b, rgb: b.rgb.slice()}))};
+  if (name === "nelson16") return {...base, preset: "nelson16", field: NELSON16.field, win: NELSON16.win.slice(), emis: NELSON16.emis, gamma: NELSON16.gamma,
+    bands: NELSON16.bands.map(({c, w, a, rgb}) => ({c, w, a, rgb: rgb.slice()}))};
   if (name === "iso") { const s = vw[1] - vw[0];
     return {...base, preset: "iso", shade: 0.6, bands: [0.25, 0.5, 0.75].map((f, i) => ({c: vw[0] + f * s, w: 0.025 * s, a: [0.5, 0.7, 0.9][i], rgb: null}))}; }
   if (name === "clouds") return {...base, preset: "clouds", twoD: true, shade: 0.6, ramp: {lo: vw[0], hi: vw[1], a: 1, g: [0.25, 1]}};
