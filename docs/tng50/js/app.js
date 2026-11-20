@@ -127,10 +127,10 @@ function sorted() {
   return lib.concat(gen);
 }
 const gallery = createGallery({pop: $("#gal-pop"), cur: $("#gal-id"), search: $("#gal-search"), filter: $("#filter"), showcase: $("#showcase"), list: $("#gal-list"), count: $("#galcount")},
-  {entries: sorted, current: () => S.id, onPick: id => { closePops(); select(id, false, "gallery"); }, libSource: () => srcOf(SRC)});
+  {entries: sorted, current: () => S.id, onPick: id => { closePops(); sfx("select"); select(id, false, "gallery"); }, libSource: () => srcOf(SRC)});
 function catalogChanged() { gallery.render(); if (CATV !== catEmitted) { catEmitted = CATV; emit("tng:catalog", {n: CAT.size}); } }
 function step(d) { const list = gallery.visible.length ? gallery.visible : sorted(); if (!list.length) return;
-  let i = list.findIndex(e => e.id === S.id); i = i < 0 ? 0 : (i + d + list.length) % list.length; select(list[i].id, false, "gallery"); }
+  let i = list.findIndex(e => e.id === S.id); i = i < 0 ? 0 : (i + d + list.length) % list.length; sfx(d > 0 ? "forward" : "back"); select(list[i].id, false, "gallery"); }
 
 /* ---------------- IndexedDB cache for generated sightlines ---------------- */
 const IDB = (() => { let db = null, req = null, failed = false;
@@ -392,10 +392,12 @@ const inst = createInstrument({rsliders: $("#rsliders"), sn: [$("#sn-0"), $("#sn
     if (kind === "vhw") { clampView(S, vmax()); $("#vhw-out").textContent = "±" + S.vhw; $("#vhw").setAttribute("aria-valuetext", `±${S.vhw} km/s`); } draw(); writeHashSoon(); instEmit(); }});
 instEmit = debounce(() => emit("tng:instrument", {state: getState()}), 100);
 $("#vreset").addEventListener("click", () => { S.vc = 0; S.vhw = reg.DEF.vhw; clampView(S, vmax()); inst.syncV(); draw(); writeHashSoon(); instEmit(); });
-$("#intr").addEventListener("change", ev => { S.intr = ev.target.checked; draw(); writeHashSoon(); });
-$("#fit").addEventListener("change", ev => setFit(ev.target.checked));
+$("#intr").addEventListener("change", ev => { S.intr = ev.target.checked; sfx(S.intr ? "toggle-on" : "toggle-off"); draw(); writeHashSoon(); });
+$("#fit").addEventListener("change", ev => { sfx(ev.target.checked ? "toggle-on" : "toggle-off"); setFit(ev.target.checked); });
 function setFit(on) { S.fit = !!on; $("#fit").checked = S.fit; if (S.fit && S.id) ensureComps(S.id).then(() => draw()); draw(); fitStatus(); writeHashSoon(); instEmit(); }
-$("#reroll").addEventListener("click", () => { S.seed = (S.seed + 1) % 100000; draw(); writeHashSoon(); });
+/* the instrument sliders tick once on release ("change"), never while dragging ("input") */
+$("#side").addEventListener("change", ev => { if (ev.target.type === "range") sfx("snap"); });
+$("#reroll").addEventListener("click", () => { sfx("press"); S.seed = (S.seed + 1) % 100000; draw(); writeHashSoon(); });
 function syncLayoutUI() { for (const r of $$("input[name=layout]")) r.checked = r.value === S.layout;
   for (const s of $$(".sn1lab")) s.hidden = !(S.layout === "2SN" || S.layout === "4"); }
 for (const r of $$("input[name=layout]")) r.addEventListener("change", () => { if (!r.checked) return; sfx("select"); S.layout = r.value; syncLayoutUI(); inst.build(); draw(); writeHashSoon(); instEmit(); });
@@ -411,8 +413,8 @@ function buildIons() {
   $("#ion-open .n").textContent = S.ions.length;
 }
 $("#ion-list").addEventListener("change", ev => { const c = ev.target.closest("input[data-ion]"); if (!c) return;
-  const on = $$("#ion-list input:checked").map(x => x.dataset.ion); if (!on.length) { c.checked = true; return; } setIons(on); });
-$("#ion-chips").addEventListener("click", ev => { const b = ev.target.closest("button[data-ion]"); if (b && S.ions.length > 1) setIons(S.ions.filter(k => k !== b.dataset.ion)); });
+  const on = $$("#ion-list input:checked").map(x => x.dataset.ion); if (!on.length) { c.checked = true; return; } sfx(c.checked ? "select" : "deselect"); setIons(on); });
+$("#ion-chips").addEventListener("click", ev => { const b = ev.target.closest("button[data-ion]"); if (b && S.ions.length > 1) { sfx("deselect"); setIons(S.ions.filter(k => k !== b.dataset.ion)); } });
 $("#ion-all").addEventListener("click", () => setIons(reg.KEYS));
 $("#ion-none").addEventListener("click", () => setIons([S.ions[0]]));
 $("#ion-default").addEventListener("click", () => setIons(reg.DEF.ions));
@@ -448,7 +450,8 @@ $("#dl-menu").addEventListener("keydown", ev => { const items = $$("#dl-menu [ro
 function closePops(except) { for (const p of $$(".pop")) if (p !== except && !p.hidden) { p.hidden = true; for (const b of $$(`[aria-controls="${p.id}"]`)) b.setAttribute("aria-expanded", "false"); if (hoverOpen === p) hoverOpen = null; } }
 for (const btn of $$("[aria-controls]")) {
   const pop = document.getElementById(btn.getAttribute("aria-controls")); if (!pop || !pop.classList.contains("pop")) continue;
-  btn.addEventListener("click", ev => { ev.stopPropagation(); if (pop.hidden || hoverOpen === pop) { hoverOpen = null; openPop(btn, pop); } else closePops(); });
+  btn.addEventListener("click", ev => { ev.stopPropagation(); const info = btn.classList.contains("info");   /* info popovers: a soft open and close (never on the hover preview) */
+    if (pop.hidden || hoverOpen === pop) { if (info && pop.hidden) sfx("open"); hoverOpen = null; openPop(btn, pop); } else { if (info) sfx("close"); closePops(); } });
   if (btn.classList.contains("info")) {
     btn.addEventListener("mouseenter", () => { if (!matchMedia("(hover:hover)").matches) return; clearTimeout(hoverT);
       hoverT = setTimeout(() => { if (pop.hidden) { openPop(btn, pop, false); hoverOpen = pop; } }, 300); });
@@ -487,7 +490,7 @@ function barLabel() {
   const cp = $("#gal-copy"); if (cp && S.id) { cp.dataset.tip = `Copy the id ${S.id}`; cp.setAttribute("aria-label", `Copy the sightline id ${S.id}`); }
 }
 $("#gal-copy")?.addEventListener("click", async () => { const id = S.id, btn = $("#gal-copy"); if (!id) return;
-  const ok = await copyText(id); btn.dataset.state = ok ? "done" : "fail"; note(ok ? `copied ${id}` : "could not copy the id", ok ? "" : "bad");
+  const ok = await copyText(id); sfx(ok ? "copy" : "error"); btn.dataset.state = ok ? "done" : "fail"; note(ok ? `copied ${id}` : "could not copy the id", ok ? "" : "bad");
   setTimeout(() => { delete btn.dataset.state; }, 1400); });
 /* the spectra source of one row: its own tag, else (rays cast on the server: Trident) or the galaxy's library source */
 const rowSource = e => srcOf({src: e.spectra}) || (kindOf(e) !== "library" ? "trident" : srcOf(SRC) || "trident");
@@ -669,7 +672,7 @@ function track(j, kind = "geometry", fromBridge = false) {
 }
 
 /* ---------------- downloads ---------------- */
-function save(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+function save(blob, name) { sfx("success"); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
 /* C2 (code 3): the server figure gets the page layout ("1", "2R", "2SN" or "4", tngsight.figure.cases_for) and a
    window inside the server's caps. A server that announces them in /api/health ("figure": {layouts, v_max_kms}, the
    damped H I window) renders the page view, its renderer clamping the window to the lines' coverage as the page
@@ -769,7 +772,7 @@ function armThumb() { thumbArmed = true;
 
 /* ---------------- galaxy sample: picker and switching (js/galaxies.js) ---------------- */
 const GPICK = GIX ? createGalaxyPicker({pop: $("#gxy-pop"), cur: $("#gxy-cur"), search: $("#gxy-search"), filter: $("#gxy-filter"), head: $("#gxy-head"),
-  list: $("#gxy-list"), count: $("#gxy-count")}, {index: GIX, current: () => GAL, onPick: id => { closePops(); switchGalaxy(id, {source: "picker"}); }}) : null;
+  list: $("#gxy-list"), count: $("#gxy-count")}, {index: GIX, current: () => GAL, onPick: id => { closePops(); sfx("select"); switchGalaxy(id, {source: "picker"}); }}) : null;
 function galaxyUI() {
   const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
   const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");

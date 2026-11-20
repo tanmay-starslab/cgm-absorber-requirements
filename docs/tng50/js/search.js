@@ -5,6 +5,7 @@
 // logN_lo) (state.js; the page annotates every catalogue it loads). It meets logN_min when col does, and logN_max only
 // when logN_max is absent or at the ion's ceiling; score and reason use col and the reason counts the limits.
 import {isLowerLimit, columnOf} from "./state.js";
+import {sfx} from "./uisound.js";
 /* Generated from tngsight/ions.json and tngsight.search.QUERY_SCHEMA by `python -m server.make_chat_tools`.
    Do not edit between the markers. */
 /*__GEN:QUERY__*/
@@ -150,7 +151,7 @@ export function mountFind(root, app, opts = {}) {
       b.textContent = `${r.id}  ${r.reason}  score ${r.score.toFixed(2)}`; b.addEventListener("click", () => app.select(r.id, {source: "find"}));
       list.appendChild(h("li", {}, b)); } mark(); }
   form.addEventListener("submit", async ev => { ev.preventDefault(); await ready; if (!IX) return;
-    const q = query(); render(rankAll(q, app.entries(), IX.entries || {}), q); });
+    const q = query(); render(rankAll(q, app.entries(), IX.entries || {}), q); sfx("notification"); });
   form.addEventListener("reset", () => setTimeout(() => { list.textContent = ""; msg.className = "msg"; msg.textContent = IX ? "form reset" : msg.textContent; }, 0));
   list.addEventListener("keydown", ev => { const bs = [...list.querySelectorAll("button")], i = bs.indexOf(doc.activeElement); if (i < 0) return;
     const j = ev.key === "ArrowDown" ? i + 1 : ev.key === "ArrowUp" ? i - 1 : ev.key === "Home" ? 0 : ev.key === "End" ? bs.length - 1 : null;

@@ -534,7 +534,7 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
    the Save menu, keys l and ? still work), below 1100 px New ray and the server pill shrink to an icon and a dot */
 #top .pbtn.sq{flex:none}
 @media (min-width:1281px){#dllink{display:none}}
-@media (max-width:1280px){#top #share,#top #keys-open{display:none}}
+@media (max-width:1280px){#top #share,#top #keys-open{display:none}#top #share+.ib{background:none}}
 @media (max-width:1100px){#top #geo-open{font-size:0;gap:0;width:32px;padding:0;justify-content:center}#top #pill{font-size:0;gap:0}}
 @media (max-width:960px){#top #grp-sight .gl,#top .sep{display:none}#top{gap:6px}}
 @media (max-width:880px){#top #gal-open .chev,#top #chat-open .lbl{display:none}#top #chat-open{gap:0}#top #gal-open .slab{gap:6px}#top{gap:4px}#top #grp-sight{gap:4px}}
@@ -717,3 +717,17 @@ html.lmbg-fallback[data-theme="light"] body[data-tab="3d"],html.lmbg-fallback[da
   :is(#top,#mobslot) :is(.pbtn,.ib),#chat-open{transition:background-color .12s,border-color .12s,filter .12s}
   :is(#top,#mobslot) :is(.pbtn,.ib).lq-rip::after,#chat-open.lq-rip::after{animation:none}}
 /* ---- liquid buttons END ---- */
+/* ---- top-bar clusters (#cl-act, #cl-learn, #cl-share, #cl-prefs): and the sightline stepper (#grp-sight), related buttons share one glass pill with hairline
+   dividers; clusters run by how often they are used: find and ask, learn, share and source, preferences ---- */
+#top :is(.cl,#grp-sight){display:flex;align-items:center;gap:0;height:32px;box-sizing:border-box;padding:1px;border:1px solid var(--bline);border-radius:calc(var(--r-s) + 1px);
+  background:var(--mat-fill),var(--mat-thin);box-shadow:var(--mat-highlight),var(--mat-shadow-s)}
+#top :is(.cl,#grp-sight)>:is(.ib,.pbtn){height:28px;border-color:transparent;box-shadow:none}
+#top :is(.cl,#grp-sight)>:is(.ib,.pbtn.sq){width:30px}
+#top #grp-sight>.gl{padding:0 8px 0 9px}   /* the "Sightline" label (wide screens) opens the pill */
+#top :is(.cl,#grp-sight)>:is(.ib,.pbtn:not(.primary)){background:none}
+#top :is(.cl,#grp-sight)>:is(.ib,.pbtn:not(.primary))+:is(.ib,.pbtn:not(.primary)){background:linear-gradient(var(--gline),var(--gline)) 0 50%/1px 14px no-repeat}
+#top :is(.cl,#grp-sight)>:is(.ib,.pbtn:not(.primary)):hover{background:var(--hl)}
+#top :is(.cl,#grp-sight)>:is(.ib,.pbtn:not(.primary)):active:not(:disabled){background:var(--mat-press)}
+#top :is(.cl,#grp-sight)>:is(.ib,.pbtn)[aria-expanded=true],#top :is(.cl,#grp-sight)>.ib:is([aria-pressed=true],[aria-checked=true]){background:var(--hl);box-shadow:inset 0 0 0 1px var(--accent)}
+#top :is(.cl,#grp-sight)>.pbtn.primary{margin-left:1px;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 2px 8px -3px var(--accent-glow)}
+@media (max-width:480px){#top :is(.cl,#grp-sight)>.ib{width:28px}}

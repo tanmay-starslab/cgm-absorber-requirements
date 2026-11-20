@@ -117,7 +117,7 @@ check(!/<select\b[^>]*\bid=["']gallery["']/.test(htmlText) && /\bid="gal-pop"/.t
     check(ctl.length >= 10 && !unl.length, `3D TF card: ${ctl.length} inputs and selects, each labelled${unl.length ? "; unlabelled: " + unl.map(t => t.slice(0, 50)).join(" | ") : ""}`);
     check(/<canvas\b(?=[^>]*tabindex="0")(?=[^>]*aria-describedby=)(?=[^>]*aria-labelledby=)[^>]*>/.test(tpl) && /role="status"/.test(tpl), "3D TF editor canvas focusable, labelled and described; a status live region");
     const pre = tfm && (tfm.src.match(/PRESET_LABELS\s*=\s*\{([^}]*)\}/) || [])[1] || "";
-    check(["Default ramp", "Gas phases (THOR)", "Iso bands", "Clouds (2D)"].every(l => pre.includes(l)), `3D TF presets in js/tf.js: ${pre.replace(/\s+/g, " ").slice(0, 120)}`);
+    check(["Default ramp", "Gas phases (THOR)", "Temperature shells (Nelson+16)", "Iso bands", "Clouds (2D)"].every(l => pre.includes(l)), `3D TF presets in js/tf.js: ${pre.replace(/\s+/g, " ").slice(0, 120)}`);
     check(/\.v3tf[^{]*\{[^}]*var\(--mat-/.test(cssText), "3D TF card styled with the glass tokens (--mat-*)"); } }
 if (basename(PAGE) === "_template.html") {   // the exporter contract (scripts/export_tng50_web.py replaces the marker)
   check(html.split("/*__DATA__*/null").length === 2 && /const DATA = \/\*__DATA__\*\/null;\n/.test(html), "exactly one config marker, in the form the exporter test parses");

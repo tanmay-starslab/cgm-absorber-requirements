@@ -18,7 +18,8 @@ deploy/data/build_library.py and the server; writes
                                tngsight.vizpack; the cubes themselves are NOT copied: the page fetches them from the
                                public HF dataset (CFG.viz.base), falling back to data/viz/ (design-2b §5.10, §6.4)
   <out>/data/luts/luts.json    copy of docs/tng50/data/luts/luts.json (only when --out is not docs/tng50)
-  <out>/js/*.js, <out>/css/*.css  the page's modules and stylesheet (copied from docs/tng50 when --out is elsewhere)
+  <out>/js/*.js, <out>/css/*.css, <out>/fonts/  the page's modules, stylesheets and self-hosted fonts (copied from docs/tng50
+                               when --out is elsewhere)
   <out>/learn/**                  the Learn pages, copied recursively from docs/tng50/learn when --out is elsewhere,
                                   without build/ folders, media/*.mp4 (hosted elsewhere), dot files and *.tmp
 --viz-local also copies every cube into <out>/data/viz/ and points CFG.viz.base there (refused for docs/tng50:
@@ -620,11 +621,11 @@ def main(argv=None) -> int:
     if luts_src.is_file() and luts_src.resolve() != luts_dst.resolve():
         w = copy_if_changed(luts_src, luts_dst)
         msgs.append(f"luts: {'written' if w else 'unchanged'} -> {luts_dst}")
-    for sub, pat in (("js", "*.js"), ("css", "*.css")):             # the page's modules and stylesheets
+    for sub, pat in (("js", "*.js"), ("css", "*.css"), ("fonts", "**/*")):   # the page's modules, stylesheets and fonts
         src_d, dst_d = ROOT / "docs" / "tng50" / sub, a.out / sub
         if src_d.resolve() != dst_d.resolve() and src_d.is_dir():
-            files = sorted(src_d.glob(pat))
-            n_w = sum(copy_if_changed(p, dst_d / p.name) for p in files)
+            files = sorted(p for p in src_d.glob(pat) if p.is_file())
+            n_w = sum(copy_if_changed(p, dst_d / p.relative_to(src_d)) for p in files)
             msgs.append(f"{sub}: {len(files)} files ({n_w} written) -> {dst_d}")
     learn_src, learn_dst = DOCS_OUT / "learn", a.out / "learn"          # Learn pages (How a spectrum is made)
     if learn_src.is_dir() and learn_src.resolve() != learn_dst.resolve():
