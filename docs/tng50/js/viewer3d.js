@@ -261,7 +261,7 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c[hidden]{display:none}
 /* ux/3d-layout: the two card columns and the tab strip are the page's to lay out (page.css); here (fullscreen panel, the
    built layout) the columns are transparent and the strip is hidden. A card that does not apply stays in place, dimmed */
-.v3c-body,.v3c-col{display:contents}.v3c-tabbar{display:none}
+.v3c-body,.v3c-col{display:contents}.v3c-tabbar,.v3c-head{display:none}
 .v3c-off>:not(h2){opacity:.4}
 .v3c-hint{float:right;font:500 10px var(--mono,ui-monospace,monospace);letter-spacing:.04em;text-transform:none;color:var(--faint,#7a83a0)}
 .v3c-card:not(.v3c-off) .v3c-hint{visibility:hidden}
@@ -498,9 +498,11 @@ async function create(app, opts = {}) {
      card's tab in the one-column tab layouts, whose strip (.v3c-tabbar) stays hidden elsewhere and in fullscreen */
   const TABS = [["field", "Field"], ["view", "View"], ["layers", "Layers"], ["pick", "Pick"]];
   ctlBox.dataset.tab = "field";
-  ctlBox.innerHTML = `<div class="v3c-tabbar"><div class="v3c-seg v3c-tabs" role="radiogroup" aria-label="Settings group">${TABS.map(([k, t], i) =>
-      `<label><input type="radio" name="v3-tab" value="${k}" data-tab="${k}"${i ? "" : " checked"}><span>${t}</span></label>`).join("")}</div>
+  /* phone sheet (page.css <= 820 px): .v3c-head is its drag handle (app.js), with the Done button; hidden elsewhere */
+  ctlBox.innerHTML = `<div class="v3c-head"><button type="button" class="grab" aria-label="Resize the 3D settings"></button><span class="gl">3D settings</span>
       <button type="button" class="v3c-btn v3c-done" data-tip="Close the 3D settings">Done</button></div>
+    <div class="v3c-tabbar"><div class="v3c-seg v3c-tabs" role="radiogroup" aria-label="Settings group">${TABS.map(([k, t], i) =>
+      `<label><input type="radio" name="v3-tab" value="${k}" data-tab="${k}"${i ? "" : " checked"}><span>${t}</span></label>`).join("")}</div></div>
     <div class="v3c-body"><div class="v3c-col" data-col="a"><section class="v3c-card" data-group="field" data-tab="field"><h2>Field</h2>
       <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div>

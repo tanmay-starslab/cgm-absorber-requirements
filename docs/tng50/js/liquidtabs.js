@@ -92,7 +92,7 @@ export function initLiquidSeg(group) {
    matter; one rAF per frame at most), :active squishes the button (CSS), and a press leaves a ripple from the press
    point (--rx/--ry, class lq-rip). Delegated from the document, so buttons added later (share, keys) and the Ask
    button floating outside the bar on phones are covered. Reduced motion: the CSS keeps a still gloss only. */
-export const LIQUID_BTN = "#top .pbtn, #top .ib, #mobslot .pbtn, #mobslot .ib, #chat-open";   /* #mobslot: the phone drawer holds the top bar's groups */
+export const LIQUID_BTN = "#top .pbtn, #top .ib, #mobslot .pbtn, #mobslot .ib, #dock .pbtn, #chat-open";   /* #mobslot: the phone drawer holds the top bar's groups */
 export function initLiquidButtons(root = document) {
   if (!root || root.__liquidBtns) return; root.__liquidBtns = true;
   let hot = null, pend = null, raf = 0;
