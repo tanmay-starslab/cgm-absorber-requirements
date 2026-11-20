@@ -16,7 +16,7 @@ import {readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync, readdirSyn
 import {join, resolve, extname} from "node:path";
 import {tmpdir} from "node:os";
 import {execFileSync} from "node:child_process";
-import {gzipSync} from "node:zlib";
+import {gzipSync, gunzipSync} from "node:zlib";
 import {ROOT as REPO, parseArgs, checker, launch, BLOCK, sleep} from "./lib/browser.mjs";
 
 const {opt} = parseArgs(process.argv.slice(2));
@@ -55,6 +55,26 @@ const ship = build("ship");
 check(!ship.err, `shipped index (${IX.schema}, picker ${JSON.stringify(IX.picker || "off")}) builds${ship.err ? ": " + ship.err.slice(0, 300) : ""}`);
 if (!ship.err && IX.picker !== "cases") check(!casePages(ship.out).length, `shipped index emits no case path (found: ${casePages(ship.out).join(", ") || "none"})`);
 if (IX.picker === "cases") note("shipped index has picker \"cases\": its listed stories get paths (checked below with the test index)");
+/* perf R5 dist transforms: gzipped sightline bins that inflate to the repository's bytes, per-sightline component slices
+   announced as components_dir, and cache rules where no path gets two Cache-Control headers */
+if (!ship.err) {
+  const sd = join(REPO, "docs/tng50/data/s"), bins = existsSync(sd) ? readdirSync(sd).filter(f => f.endsWith(".bin")).slice(0, 3) : [];
+  for (const f of bins) { const b = readFileSync(join(ship.out, "data/s", f));
+    check(b[0] === 0x1f && b[1] === 0x8b && gunzipSync(b).equals(readFileSync(join(sd, f))), `dist data/s/${f} is gzip of the repository file (${b.length} B)`); }
+  const comp = join(REPO, "docs/tng50/data/components.json");
+  if (existsSync(comp)) { const full = JSON.parse(readFileSync(comp, "utf8")), id = Object.keys(full.entries)[0];
+    const one = JSON.parse(readFileSync(join(ship.out, "data/c", id + ".json"), "utf8"));
+    check(JSON.stringify(one.entries[id]) === JSON.stringify(full.entries[id]) && one.params_tag === full.params_tag && JSON.stringify(one.params) === JSON.stringify(full.params) && Object.keys(one.entries).length === 1,
+      `dist data/c/${id}.json holds that sightline's rows and the catalogue's params`);
+    check(readFileSync(join(ship.out, "index.html"), "utf8").includes('"components_dir":"data/c/"'), "dist index.html announces components_dir"); }
+  const H = readFileSync(join(ship.out, "_headers"), "utf8"), rules = H.split(/\n(?=\/)/).map(b => ({path: b.split("\n")[0], cc: (b.match(/Cache-Control: (.*)/) || [])[1]})).filter(r => r.cc);
+  const re = p => new RegExp("^" + p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/:[A-Za-z]\w*/g, "[^/]+").replace("*", ".*") + "$");
+  const hits = u => rules.filter(r => re(r.path).test(u)).map(r => r.cc);
+  for (const [u, want] of [["/js/app.js", /max-age=300, stale-while-revalidate/], ["/data/s/x.bin", /max-age=300/], ["/learn/how-a-spectrum-is-made/vendor/katex/katex.min.js", /immutable/],
+    ["/learn/how-a-spectrum-is-made/js/main.js", /max-age=300/], ["/", null], ["/learn/how-a-spectrum-is-made/", null], ["/index.html", null]]) {
+    const h = hits(u); check(want ? h.length === 1 && want.test(h[0]) : !h.length, `_headers: ${u} -> ${h.join(" | ") || "default (revalidate)"}`); }
+  check(rules.every(r => (r.path.match(/\*/g) || []).length <= 1), "_headers: at most one splat per rule");
+}
 
 const TIX = testIndex(), ids = TIX.stories.filter(e => e.case !== "full").map(e => e.id);
 check(ids.length > 0, `test index lists ${ids.length} stories (${ids.join(", ")})`);

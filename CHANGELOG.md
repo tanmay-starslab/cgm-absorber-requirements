@@ -6,6 +6,14 @@ Detailed notes for each release are on the [Releases](https://github.com/tanmay-
 
 ## [Unreleased]
 
+### Changed
+- **Explorer performance**: a device tier (`html[data-tier]` low, mid or high; `?tier=` overrides) from cheap signals and a
+  one-off WebGL probe. Low tier: solid panels without blur, infinite animations play once, no liquid background, and the
+  3D tab shows a still with a "Render 3D anyway" button. The Spectra tab's 3D thumbnail downloads cubes by itself only on
+  the high tier over 4g. Sightline binaries ship gzipped, the first fits read a few-kB per-sightline slice instead of the
+  whole components catalogue, the server catalogue loads on demand, app modules are preloaded, the phone story still is
+  preloaded, and js, css and data are cached for 5 minutes (vendor files for a year).
+
 ## [1.0.0] - 2026-11-16
 
 First tagged release of the site at https://galaxies.tanmaysingh.uk.

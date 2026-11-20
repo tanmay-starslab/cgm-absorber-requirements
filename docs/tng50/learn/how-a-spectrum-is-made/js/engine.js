@@ -518,10 +518,13 @@ export async function completeStoryData(base, data, get = fetchJson, getBin = fe
   return attachExtras(u, index, entry, data, get, getBin);
 }
 
+/* the built site ships the explorer's data/s/*.bin gzipped (scripts/build_site.mjs): gzip magic 1f 8b is inflated, anything else
+   (the repository's raw files) is returned as is */
 export async function fetchBin(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-  return r.arrayBuffer();
+  const b = await r.arrayBuffer(), u = new Uint8Array(b, 0, Math.min(2, b.byteLength));
+  return u[0] === 0x1f && u[1] === 0x8b ? new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer() : b;
 }
 /* browser loader: fetch JSON (rejects on HTTP errors) */
 export async function fetchJson(url) {

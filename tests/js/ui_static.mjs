@@ -123,6 +123,16 @@ if (basename(PAGE) === "_template.html") {   // the exporter contract (scripts/e
   check(html.split("/*__DATA__*/null").length === 2 && /const DATA = \/\*__DATA__\*\/null;\n/.test(html), "exactly one config marker, in the form the exporter test parses");
   check(/<script type="module" src="js\/app\.js"><\/script>/.test(html) && /href="css\/page\.css"/.test(html), "the template loads js/app.js and css/page.css");
 }
+/* perf R5: every module js/app.js imports statically (transitively) is modulepreloaded, nothing else, and after the import map */
+{ const want = new Set(), q = ["app.js"];
+  while (q.length) { const f = q.shift(); if (want.has(f)) continue; want.add(f); const x = srcs.find(s => basename(s.f) === f);
+    if (x) for (const m of x.src.matchAll(/^\s*import\s[^;]*?from\s+"\.\/([^"]+)"/gms)) q.push(m[1]); }
+  const pre = [...html.matchAll(/<link rel="modulepreload" href="js\/([^"]+)">/g)].map(m => m[1]);
+  const miss = [...want].filter(f => !pre.includes(f)), extra = pre.filter(f => !want.has(f));
+  check(!miss.length && !extra.length, `modulepreload = app.js's static import graph (${want.size} modules)${miss.length ? "; missing " + miss.join(", ") : ""}${extra.length ? "; extra " + extra.join(", ") : ""}`);
+  check(!pre.length || html.indexOf('<link rel="modulepreload"') > html.indexOf('<script type="importmap">'), "modulepreload links come after the import map");
+  check(/html\[data-tier=low\][^{]*\*[^{]*\{[^}]*backdrop-filter:none!important[^}]*animation-iteration-count:1!important/.test(cssText),
+    "the low device tier drops backdrop blur and plays infinite animations once"); }
 
 /* ---------------------------------------------------------------- tips: one-line help on every control (tips spec) */
 export const TIP_IDS = ["tab-spectra", "tab-3d", "prev", "gal-open", "next", "geo-open", "find-toggle", "chat-open", "info-read", "info-methods",
@@ -256,7 +266,7 @@ const srv = await serve({dir: DIR, page: SERVE, port: opt.port, viz: opt.viz || 
 const P = await launch({profile: opt.profile, edge: opt.edge, inject: readInjects(opt.inject), block: BLOCK});
 try {
   console.log(`serving ${SERVE.replace(ROOT + "/", "")} at ${srv.base}; Edge up in ${(P.startMs / 1000).toFixed(1)} s`);
-  await P.viewport(1440, 900); await P.scheme(false); await P.goto(srv.base + srv.query);
+  await P.viewport(1440, 900); await P.scheme(false); await P.goto(srv.base + (srv.query ? srv.query + "&" : "?") + "tier=high");   // perf R5: the live 3D view (software GL is otherwise the low tier's still)
   const tReady = await P.waitFor(READY, 180000, 250);
   if (!check(tReady >= 0, `page ready (tngApp v3 and a panel hit box) in ${(tReady / 1000).toFixed(1)} s`)) throw new Error("page never became ready");
   await P.eval(UI_LIB);

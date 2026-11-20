@@ -12,12 +12,14 @@
 //     showWhen()/pauseWhen() say so (the explorer shows it on the 3D tab, and on Spectra only with SPECTRA_BG), and on
 //     request (handle.pause / handle.destroy);
 //   - one static frame under prefers-reduced-motion, html.reduced, or the constrained GPU profile (viewer3d.js
-//     isMobile(): touch-only, mobile/tablet browsers, <= 4 GB, a context loss this session, ?gpu=lite);
+//     isMobile(): any device tier below high (js/tier.js), ?gpu=lite); on the low tier no context at all (the CSS gradient);
 //   - one static frame when the page's own frames slow down (median rAF interval > 20 ms) or opts.heavy() (the explorer:
 //     viewer3d's calibration put the 3D view on its fast path, i.e. its exact moving frame took > 33 ms);
 //   - on webglcontextlost the canvas is removed and a static CSS gradient (class lmbg-fallback) takes its place;
 //   - ?bg=off creates nothing.
 // Debug: window.__liquidBg[name].state() -> {mode, running, paused, fps, frames, theme, w, h, scale}.
+
+import {tier, tierReady} from "./tier.js";
 
 const MAX_FPS = 30, SCALE = 0.5, SPEED = 0.72, STATIC_T = 23.0, SLOW_MS = 20;
 
@@ -69,9 +71,11 @@ void main(){
   gl_FragColor = vec4(col, 1.0);
 }`;
 
-/* the constrained GPU profile; keep in sync with viewer3d.js isMobile() (not imported: that module pulls in the 3D stack) */
+/* the constrained GPU profile; keep in sync with viewer3d.js isMobile() (not imported: that module pulls in the 3D stack).
+   With the page's device tier (html[data-tier], js/tier.js) it is every tier below high; without it the old signals */
 export function gpuLite() {
   try { const q = new URLSearchParams(location.search).get("gpu"); if (q === "full") return false; if (q === "lite") return true; } catch { /* no URL */ }
+  const t = tier(); if (t) return t !== "high";
   try { if (sessionStorage.getItem("tng50.gpuLite") === "1") return true; } catch { /* private mode */ }
   if (matchMedia("(max-width: 720px)").matches) return true;
   if (matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches) return true;
@@ -96,7 +100,7 @@ const pageTheme = () => { const t = document.documentElement.dataset.theme; retu
 export function initLiquidBg(opts = {}) {
   if (bgOff()) return null;
   const host = opts.host || document.body, name = opts.name || "explorer", fixed = !opts.host;
-  const lite = gpuLite();
+  let lite = gpuLite();   // re-read once the device tier is final (start)
   const cv = document.createElement("canvas");
   cv.className = "lmbg" + (opts.className ? " " + opts.className : ""); cv.setAttribute("aria-hidden", "true"); cv.dataset.testid = "liquid-bg";
   if (fixed) Object.assign(cv.style, {position: "fixed", inset: "0", width: "100%", height: "100%", zIndex: "-1"});
@@ -201,11 +205,14 @@ export function initLiquidBg(opts = {}) {
   /* create lazily, after first paint, when the browser is idle */
   /* not shown yet (the explorer's Spectra tab with SPECTRA_BG off): no context at all until it is wanted */
   const start = () => { if (S.destroyed) return;
+    if (tier() === "low") { fallback(); return; }   // perf R5: the low tier keeps the static CSS gradient, no WebGL context
+    S.lite = lite = gpuLite();
     if (!shown()) { S.visible = false; const m = new MutationObserver(() => { if (shown()) { m.disconnect(); start(); } });
       m.observe(document.body, {attributes: true, attributeFilter: ["data-tab"]}); offs.push(() => m.disconnect()); return; }
     if (opts.before && opts.before.parentNode === host) host.insertBefore(cv, opts.before); else host.appendChild(cv); if (!setup()) return; listen(); kick(); };
   const idle = window.requestIdleCallback ? f => requestIdleCallback(f, {timeout: 1200}) : f => setTimeout(f, 200);
   const afterPaint = () => requestAnimationFrame(() => setTimeout(() => idle(start), 0));
-  if (document.readyState === "complete") afterPaint(); else addEventListener("load", afterPaint, {once: true});
+  const ready = () => tierReady().then(afterPaint, afterPaint);
+  if (document.readyState === "complete") ready(); else addEventListener("load", ready, {once: true});
   return H;
 }

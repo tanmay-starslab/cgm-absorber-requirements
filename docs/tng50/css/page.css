@@ -455,6 +455,13 @@ input[type=range]::-moz-range-thumb{background:#fff;box-shadow:0 0 0 .5px rgba(0
   :root:not(#_){--mat-thin:var(--mat-thin-o);--mat-regular:var(--mat-regular-o);--mat-thick:var(--mat-thick-o);--mat-blur-thin:none;--mat-blur-regular:none;--mat-blur-thick:none}}
 @media (prefers-contrast:more){
   :root:not(#_){--mat-thin:var(--mat-thin-o);--mat-regular:var(--mat-regular-o);--mat-thick:var(--mat-thick-o);--mat-edge-c:var(--mat-edge-hc);--bline:var(--bline-hc)}}
+/* perf R5: the low device tier (html[data-tier=low], set in the page head): solid tinted panels without backdrop blur (the
+   reduced-transparency materials), infinite animations (story pill, spinners, loading bars) play once, and the 3D tab
+   shows a still (js/app.js poster3d); the liquid background keeps its static CSS gradient (js/liquidbg.js) */
+html[data-tier=low]:not(#_){--mat-thin:var(--mat-thin-o);--mat-regular:var(--mat-regular-o);--mat-thick:var(--mat-thick-o);--mat-blur-thin:none;--mat-blur-regular:none;--mat-blur-thick:none;--s-blur:none;--glass:var(--mat-regular-o);--glass2:var(--mat-thick-o)}
+html[data-tier=low] *,html[data-tier=low] *::before,html[data-tier=low] *::after{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;animation-iteration-count:1!important}
+.v3d-poster{display:grid;justify-items:center;gap:12px;padding:16px;text-align:center}
+.v3d-poster img{display:block;width:100%;height:auto;max-height:min(70vh,640px);object-fit:cover;border-radius:var(--r-m,14px);border:var(--mat-edge,1px solid var(--gline))}
 /* tf3d: Transfer function card (3D volume mode; tfeditor.js): the plot is a well in the glass card, the colour swatch
    a small raised control */
 #v3d-controls .v3tf-plot canvas{background:var(--mat-well);box-shadow:inset 0 0 0 1px var(--mat-edge-c),inset 0 1px 2px rgba(0,0,0,.18);border-radius:var(--r-s)}

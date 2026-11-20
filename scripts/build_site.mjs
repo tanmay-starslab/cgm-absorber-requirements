@@ -8,7 +8,8 @@
 //   /learn/how-a-spectrum-is-made/<id>/ one page per listed Tier A story, only when data/index.json has picker "cases"
 // Used by Cloudflare Workers Builds (build command: node scripts/build_site.mjs) and locally.
 // Test hooks (tests/js/site_paths.mjs): BUILD_SITE_OUT (output dir), BUILD_SITE_INDEX (an index.json used as the shipped one).
-import {cpSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync} from "node:fs";
+import {cpSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, readdirSync} from "node:fs";
+import {gzipSync} from "node:zlib";
 import {join, basename, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
 
@@ -32,8 +33,45 @@ writeFileSync(join(OUT, "requirements", "index.html"), dr);
 const ix = join(OUT, "index.html");
 writeFileSync(ix, readFileSync(ix, "utf8").replaceAll('<a href="../">Detect and resolve', '<a href="/requirements/">Detect and resolve'));
 
+// perf R5, dist only (docs/ keeps the raw files the tests and the local server read):
+//  - data/s/*.bin gzipped in place (about 72 -> 9 kB each; js/app.js and the explainer's engine.js fetchBin inflate gzip magic);
+//  - data/components.json split into data/c/<id>.json (that sightline's rows and AOD plus the catalogue's params), announced
+//    to the page as CFG.components_dir, so the first fits load a few kB instead of the whole catalogue (Find and Ask still
+//    load the whole file).
+const SDIR = join(OUT, "data", "s");
+if (existsSync(SDIR)) for (const f of readdirSync(SDIR)) if (f.endsWith(".bin")) { const p = join(SDIR, f), b = readFileSync(p);
+  if (!(b[0] === 0x1f && b[1] === 0x8b)) writeFileSync(p, gzipSync(b, {level: 9})); }
+const COMP = join(OUT, "data", "components.json");
+if (existsSync(COMP)) {
+  const {entries = {}, aod = {}, ...meta} = JSON.parse(readFileSync(COMP, "utf8")), CDIR = join(OUT, "data", "c");
+  mkdirSync(CDIR, {recursive: true});
+  for (const [id, rows] of Object.entries(entries)) {
+    if (!/^[A-Za-z0-9_.-]+$/.test(id)) throw new Error(`build: component id ${JSON.stringify(id)} cannot be a file name`);
+    writeFileSync(join(CDIR, id + ".json"), JSON.stringify({...meta, entries: {[id]: rows}, aod: id in aod ? {[id]: aod[id]} : {}}));
+  }
+  const html = readFileSync(ix, "utf8"), key = '"components_url":"data/components.json"';
+  if (!html.includes(key)) throw new Error("build: the explorer config has no components_url; update the components_dir edit");
+  writeFileSync(ix, html.replace(key, key + ',"components_dir":"data/c/"'));
+}
+// perf R5 (mobile LCP): phones show the default sightline's story still in the first-visit card (js/app.js storyEntry); preload
+// it from the head at high priority instead of fetching it when the card opens
+{ const html = readFileSync(ix, "utf8"), cfg = JSON.parse((html.match(/const DATA = (\{.*?\});\nwindow\.TNG_DATA/s) || [0, "{}"])[1]);
+  const g = cfg.galaxy?.subhalo_id, id = cfg.defaults?.id, img = `learn/how-a-spectrum-is-made/img/poster_${g}_${id}_card.webp`, css = '<link rel="stylesheet" href="css/page.css">';
+  if (g && id && existsSync(join(OUT, img)) && html.includes(css))
+    writeFileSync(ix, html.replace(css, `<link rel="preload" as="image" href="${img}" fetchpriority="high" media="(max-width: 639px)">\n` + css)); }
+
 writeFileSync(join(OUT, "_redirects"), ["/tng50/* /:splat 301", "/tng50 / 301", ""].join("\n"));
-writeFileSync(join(OUT, "_headers"), ["/*", "  X-Content-Type-Options: nosniff", "  Referrer-Policy: strict-origin-when-cross-origin", ""].join("\n"));
+// Cache rules (Workers static assets _headers: one splat per rule, :placeholders match one path segment, and a header set by
+// two matching rules is joined with a comma, so no path matches two Cache-Control rules). Vendor files never change in
+// place: a year, immutable. js, css, data and images: 5 minutes, then served stale while revalidating for a day. HTML
+// (and anything unlisted) keeps the default revalidate-every-time.
+const SWR = "public, max-age=300, stale-while-revalidate=86400", IMM = "public, max-age=31536000, immutable";
+const rule = (path, cc) => [path, `  Cache-Control: ${cc}`];
+writeFileSync(join(OUT, "_headers"), [
+  "/*", "  X-Content-Type-Options: nosniff", "  Referrer-Policy: strict-origin-when-cross-origin",
+  ...rule("/vendor/*", IMM), ...rule("/learn/:story/vendor/*", IMM),
+  ...["js", "css", "data", "img"].flatMap(d => rule(`/${d}/*`, SWR)),
+  ...["js", "css", "data", "img", "eq", "media", "films"].flatMap(d => rule(`/learn/:story/${d}/*`, SWR)), ""].join("\n"));
 // Per-case story paths (DESIGN_tierA §7.3, behind the picker flag): a copy of the explainer page per listed story, with
 // <base href="../"> for its relative assets and the story id put into ?story= before any page script reads it.
 // shortcut: the shim rewrites the address to <id>/?story=<id> because js/main.js reads only ?story=; drop it once
