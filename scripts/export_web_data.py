@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from absreq.lines import cgm_lines
 from absreq import theory
+from absreq import instruments as instr
 
 
 def r(a, nd=4):
@@ -33,7 +34,8 @@ def main():
     S = np.logspace(np.log10(3), 3, 120)
     th = dict(S=r(S, 3), curves={k: [None if not np.isfinite(v) else round(float(v), 4) for v in theory.dvmin_over_fwhm(S, q)]
                                 for k, q in (("1:1", 0.5), ("1:2", 1 / 3), ("1:4", 0.2))})
-    data = json.dumps(dict(ions=ions, theory=th), separators=(",", ":"))
+    shown = [i for i in instr.validate(instr.load())["instruments"] if i["show"]]
+    data = json.dumps(dict(ions=ions, theory=th, instruments=shown), separators=(",", ":"))
     tpl = (ROOT / "docs" / "_template.html").read_text()
     (ROOT / "docs" / "index.html").write_text(tpl.replace("/*__DATA__*/null", data))
     print(f"docs/index.html written ({len(data) / 1e6:.2f} MB of data)")

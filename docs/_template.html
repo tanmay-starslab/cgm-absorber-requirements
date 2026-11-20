@@ -3,6 +3,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Detect &amp; Resolve: CGM Absorbers</title>
+<link rel="icon" href="tng50/favicon.ico" sizes="32x32">
+<link rel="icon" href="tng50/img/icon/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="tng50/img/icon/icon-180.png">
+<link rel="manifest" href="tng50/site.webmanifest">
+<meta name="description" content="The S/N and spectral resolution needed to detect and resolve circumgalactic absorbers in twelve transitions.">
+<link rel="canonical" href="https://galaxies.tanmaysingh.uk/requirements/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://galaxies.tanmaysingh.uk/requirements/">
+<meta property="og:title" content="Detect and resolve: CGM absorbers">
+<meta property="og:description" content="The S/N and spectral resolution needed to detect and resolve circumgalactic absorbers in twelve transitions.">
+<meta property="og:image" content="https://galaxies.tanmaysingh.uk/img/og/explorer.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://galaxies.tanmaysingh.uk/img/og/explorer.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
 <style>
@@ -193,7 +208,7 @@ section>p a{color:var(--accent);text-underline-offset:3px}
 
 <section>
   <h2>3 · Requirement maps for the selected ion</h2>
-  <p>Left: the weakest single absorber detectable at 3σ, for the current b. Right: the smallest separation at which two equal components (current log N, fiducial b) are resolved at 3σ. Click a map to move the spectrograph there; the ring marks the current setting and the dotted lines mark existing instruments.</p>
+  <p>Left: the weakest single absorber detectable at 3σ, for the current b. Right: the smallest separation at which two equal components (current log N, fiducial b) are resolved at 3σ. Click a map to move the spectrograph there; the ring marks the current setting; dotted lines and bands mark spectrographs that cover the line at z = 0 (open circle: typical COS-Halos S/N).</p>
   <div class="maps">
     <div class="fig"><canvas id="m1" height="330" aria-label="Map of minimum detectable column density over resolving power and S/N"></canvas><div class="tip" id="t1" hidden></div><p class="cap" id="mc1"></p></div>
     <div class="fig"><canvas id="m2" height="330" aria-label="Map of minimum resolvable separation over resolving power and S/N"></canvas><div class="tip" id="t2" hidden></div><p class="cap" id="mc2"></p></div>
@@ -219,7 +234,17 @@ section>p a{color:var(--accent);text-underline-offset:3px}
 <script>
 const DATA = /*__DATA__*/null;
 const C = 299792.458, FW2SIG = 1 / 2.3548200450309493, LN10 = Math.LN10;
-const INSTR = [["G140L", 2000], ["G130M", 17000], ["E140M", 45800], ["HIRES", 72000]];
+// spectrographs covering a rest wavelength (z = 0), from absreq/data/instruments.json: [{label, lo, hi, snr, proposed}]
+function instrFor(lam) {
+  const out = [];
+  for (const it of DATA.instruments || []) {
+    const ms = it.modes.filter(m => m.lam[0] <= lam && lam <= m.lam[1]);
+    if (!ms.length) continue;
+    const R = ms.flatMap(m => [].concat(m.R)), sm = ms.find(m => m.snr != null);
+    out.push({label: it.label, lo: Math.min(...R), hi: Math.max(...R), snr: sm ? sm.snr : null, proposed: !!it.proposed});
+  }
+  return out;
+}
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = s => document.querySelector(s);
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -554,9 +579,30 @@ function drawMap(cv, kind) {
   ctx.imageSmoothingEnabled = true; ctx.drawImage(off, box.x, box.y, box.w, box.h);
   const F = frame(ctx, box, {xr: [1e3, 1e5], yr: [3, 100], xlog: true, ylog: true, xticks: [1e3, 3e3, 1e4, 3e4, 1e5], yticks: [3, 5, 10, 20, 50, 100],
     xfmt: t => t >= 1e4 ? (t / 1e3) + "k" : fmt(t), xlabel: "resolving power R", ylabel: "S/N per res. element"});
-  ctx.setLineDash([2, 3]); ctx.strokeStyle = css("--ink"); ctx.globalAlpha = 0.6;
-  for (const [n, R] of INSTR) { const x = F.X(R); ctx.beginPath(); ctx.moveTo(x, box.y); ctx.lineTo(x, box.y + box.h); ctx.stroke(); }
-  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  const tags = [], pts = {};
+  for (const m of instrFor(o.lam).sort((a, b) => a.hi - b.hi)) {
+    if (m.lo > 1e5) continue;
+    const col = m.proposed ? ORANGES[5] : css("--ink"), x0 = F.X(m.lo), x1 = F.X(m.hi);
+    ctx.globalAlpha = 0.14; ctx.fillStyle = col; if (x1 - x0 > 1) ctx.fillRect(x0, box.y, x1 - x0, box.h);
+    ctx.globalAlpha = m.proposed ? 0.9 : 0.6; ctx.strokeStyle = col; ctx.lineWidth = m.proposed ? 1.6 : 1; ctx.setLineDash(m.proposed ? [] : [2, 3]);
+    for (const x of new Set([x0, x1])) { ctx.beginPath(); ctx.moveTo(x, box.y); ctx.lineTo(x, box.y + box.h); ctx.stroke(); }
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    if (m.snr != null) { const k = m.snr + col, p = pts[k] || (pts[k] = {snr: m.snr, col, a: x0, b: x1}); p.a = Math.min(p.a, x0); p.b = Math.max(p.b, x1); }
+    tags.push({x: x1, label: m.label, col});
+  }
+  for (const p of Object.values(pts)) {   // one point per S/N: COS G130M and G160M share the COS-Halos value
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = p.col; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc((p.a + p.b) / 2, F.Y(p.snr), 3.5, 0, 7); ctx.fill(); ctx.stroke();
+  }
+  ctx.font = `10px ${css("--mono")}`; ctx.textBaseline = "top"; ctx.textAlign = "left";
+  for (let i = 0; i < tags.length;) {   // labels of nearly coincident markers go side by side right of the group
+    let j = i; while (j + 1 < tags.length && tags[j + 1].x - tags[j].x < 14) j++;
+    for (let k = i; k <= j; k++) {
+      ctx.save(); ctx.translate(tags[j].x + 3 + 12 * (k - i), box.y + 4); ctx.rotate(Math.PI / 2);
+      ctx.fillStyle = tags[k].col; ctx.fillText(tags[k].label, 0, -12); ctx.restore();
+    }
+    i = j + 1;
+  }
+  ctx.lineWidth = 1;
   const cx = F.X(S.R), cy = F.Y(clamp(S.snr, 3, 100));
   ctx.lineWidth = 3; ctx.strokeStyle = "#ffffff"; ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke();
   ctx.lineWidth = 1.6; ctx.strokeStyle = "#0f151c"; ctx.beginPath(); ctx.arc(cx, cy, 7, 0, 7); ctx.stroke();

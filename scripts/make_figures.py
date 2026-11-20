@@ -25,13 +25,14 @@ from absreq.profiles import C_KMS, FW2SIG, velocity_grid, observed_flux
 from absreq.detection import logN_min
 from absreq.separation import dv_min, sparrow
 from absreq import theory
+from absreq import instruments as instr
 
 FIG = ROOT / "figures"
 INK, INK2 = style.INK, style.INK2
 HALO = [pe.withStroke(linewidth=2.0, foreground="white")]
 CASE = [pe.withStroke(linewidth=2.4, foreground="white")]
 GREY = "#b9b8b2"
-INSTR = [("COS G140L", 2000), ("COS G130M/G160M", 17000), ("STIS E140M", 45800), ("HIRES/UVES", 72000)]
+PROPOSED = style.ORANGES[5]
 
 
 def grid(line):
@@ -61,12 +62,37 @@ def snr_axis(ax, ylabel=True):
     if ylabel: ax.set_ylabel(r"S/N per resolution element")
 
 
-def instruments(ax, label):
-    for name, Rv in INSTR:
-        ax.axvline(Rv, color=INK, lw=0.5, ls=":")
-        if label:
-            ax.text(Rv * 1.07, 95, name, rotation=90, ha="left", va="top", fontsize=6.0, color=INK,
-                    bbox=dict(boxstyle="round,pad=0.12", fc="white", ec="none", alpha=0.85))
+def instruments(ax, marks, label):
+    """Spectrograph markers (absreq/data/instruments.json): dotted line at R, shaded band for an R range,
+    open circle at the reference S/N; labels in one panel only.  R beyond the axis is named in the legend."""
+    xmax = ax.get_xlim()[1]
+    tags, pts = [], {}
+    for m in marks:
+        col = PROPOSED if m["proposed"] else (INK2 if m["status"] == "retired" else INK)
+        lw, ls = (1.0, "-") if m["proposed"] else (0.5, ":")
+        if m["R_lo"] > xmax:
+            continue
+        if m["R_hi"] / m["R_lo"] > 1.01:
+            ax.axvspan(m["R_lo"], m["R_hi"], fc=col, alpha=0.10, lw=0, zorder=2.5)
+        for Rv in {m["R_lo"], m["R_hi"]}:
+            ax.axvline(Rv, color=col, lw=lw, ls=ls, zorder=2.6)
+        if m["snr"]:   # one point per (S/N, colour): COS G130M and G160M share the COS-Halos S/N
+            pts.setdefault((m["snr"], col), []).extend([m["R_lo"], m["R_hi"]])
+        tags.append([m["R_hi"] * 1.07, m["label"], col])
+    for (sn, col), Rs in pts.items():
+        ax.plot(np.sqrt(min(Rs) * max(Rs)), sn, "o", ms=3.6, mfc="white", mec=col, mew=0.9, zorder=4)
+    if not label:
+        return
+    tags.sort()
+    merged = []
+    for t in tags:   # stack labels whose positions nearly coincide
+        if merged and t[0] / merged[-1][0] < 1.3:
+            merged[-1] = [t[0], merged[-1][1] + "\n" + t[1], merged[-1][2]]
+        else:
+            merged.append(t)
+    for x, name, col in merged:
+        ax.text(x, 95, name, rotation=90, ha="left", va="top", fontsize=6.0, color=col, linespacing=1.1,
+                bbox=dict(boxstyle="round,pad=0.12", fc="white", ec="none", alpha=0.85), zorder=5)
 
 
 def label_low(ax, cs, fmt):
@@ -84,6 +110,7 @@ def label_low(ax, cs, fmt):
 # ------------------------------------------------------------------------- per-ion: instrument plane
 def ion_instrument_plane(line):
     g = grid(line)
+    marks = instr.markers(line.lam)
     snr = np.logspace(np.log10(3), 2, 60)
     fig, axes = plt.subplots(2, 3, figsize=(style.PAGE, 5.8), sharex=True, sharey=True,
                              gridspec_kw=dict(wspace=0.12, hspace=0.22, right=0.875, left=0.08, top=0.9, bottom=0.12))
@@ -100,8 +127,8 @@ def ion_instrument_plane(line):
         cs = ax.contour(R, snr, Z, levels=lev[::2], colors=INK, linewidths=0.6)
         if c == 0: label_low(ax, cs, "%.1f")
         else: ax.clabel(cs, fmt="%.1f", fontsize=6.8, inline_spacing=2)
-        instruments(ax, c == 0)
         snr_axis(ax, c == 0)
+        instruments(ax, marks, c == 0)
         ax.set_title(rf"single component, $b={b[j]:.0f}$ km\,s$^{{-1}}$", fontsize=8.5, pad=3)
     p = axes[0, 2].get_position(); cax = fig.add_axes([0.89, p.y0, 0.013, p.height])
     cb = fig.colorbar(cf, cax=cax, ticks=lev[::2]); cb.outline.set_linewidth(0.5)
@@ -125,8 +152,8 @@ def ion_instrument_plane(line):
         ratio = np.clip(Z / sparrow(Rf, line.b_fid)[None, :], 0, 5)
         ax.contour(Rf, snr, ratio, levels=[1.0], colors="white", linewidths=1.6)
         ax.contour(Rf, snr, ratio, levels=[1.0], colors=INK, linewidths=0.8, linestyles=[(0, (3, 1.5))])
-        instruments(ax, False)
         snr_axis(ax, c == 0)
+        instruments(ax, marks, False)
         ax.set_xlabel(r"resolving power $R$")
         ax.set_title(rf"two components, $\log N={logN[i]:.1f}$ each", fontsize=8.5, pad=3)
     p = axes[1, 2].get_position(); cax = fig.add_axes([0.89, p.y0, 0.013, p.height])
@@ -136,9 +163,19 @@ def ion_instrument_plane(line):
     p = axes[0, 0].get_position()
     fig.text(p.x0, p.y1 + 0.05, line.tex + rf"\quad{{\normalsize $f={line.f:.3g}$, $b_{{\rm fid}}={line.b_fid:.1f}$ km\,s$^{{-1}}$, "
              rf"$\tau_0=1$ at $\log N={n1:.2f}$}}", fontsize=10.5, ha="left", va="bottom")
-    fig.legend([Line2D([], [], color=INK, lw=0.8, ls=(0, (3, 1.5)), path_effects=CASE), Line2D([], [], color=INK, lw=0.5, ls=":")],
-               [r"$\Delta v_{\rm min}=\Delta v_{\rm S}$ (Sparrow); above: resolved below the classical limit",
-                r"existing spectrographs (nominal $R$)"], loc="lower center", ncol=2, fontsize=7, bbox_to_anchor=(0.48, -0.005))
+    hs = [Line2D([], [], color=INK, lw=0.8, ls=(0, (3, 1.5)), path_effects=CASE)]
+    ls = [r"$\Delta v_{\rm min}=\Delta v_{\rm S}$ (Sparrow); above: resolved below the classical limit"]
+    if any(not m["proposed"] for m in marks):
+        far = sorted({(m["R_lo"], m["label"]) for m in marks if m["R_lo"] > 1e5})
+        hs.append(Line2D([], [], color=INK, lw=0.5, ls=":"))
+        ls.append(r"spectrographs covering $\lambda$ at $z=0$ (shaded: $R$ range)"
+                  + "".join(rf"; off scale: {n} ($R={r:,.0f}$)".replace(",", "{,}", 1) for r, n in far))
+    if any(m["snr"] and not m["proposed"] for m in marks):
+        hs.append(Line2D([], [], ls="", marker="o", ms=3.6, mfc="white", mec=INK, mew=0.9)); ls.append(r"typical S/N of COS-Halos (Tumlinson et al.\ 2013)")
+    for m in marks:
+        if m["proposed"]:
+            hs.append(Line2D([], [], color=PROPOSED, lw=1.0)); ls.append(m["label"] + " (proposed)")
+    fig.legend(hs, ls, loc="lower center", ncol=min(len(hs), 2), fontsize=7, bbox_to_anchor=(0.48, -0.005))
     out = FIG / "ions" / f"{line.key}_instrument_plane"
     fig.savefig(f"{out}.pdf"); fig.savefig(f"{out}.png", dpi=220); plt.close(fig)
 

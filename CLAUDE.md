@@ -116,7 +116,9 @@ committing regenerated figures, confirm the content actually changed (e.g. a pix
 2. **Doublet partners** (O VI 1037, Mg II 2803, C IV 1550, Si IV 1393, N V 1242) used jointly to recover
    resolution and column density for saturated components.
 3. **Unequal components** (N ratio, different b) in the full numerical grids; currently thin-limit theory only.
-4. **'Proposed instrument' marker** (R, S/N) on the figures once the instrument concept is fixed.
+4. ~~**'Proposed instrument' marker**~~ done, proposed values pending: `absreq/data/instruments.json` (sourced R, coverage, S/N)
+   via `absreq/instruments.py`, drawn on `figures/ions/*_instrument_plane` and the Detect & Resolve maps. Fill the
+   `proposed` entry (name, label, lam, R, S/N, sources) and set `show: true`. Not on the requirements matrix (discrete R columns).
 5. **O VII** is shown on the UV R grid (10³–10⁵); real X-ray gratings have R ≲ 10³ at 21.6 Å.
 6. **Verify supplement oscillator strengths** (and γ, λ) against Morton (2003) / Verner et al. (1996).
 

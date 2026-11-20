@@ -1,0 +1,55 @@
+{
+  "_comment": "Spectrograph markers for the instrument-plane figures and the Detect & Resolve page. Each instrument has one or more modes; a mode applies to a line when its rest wavelength (z = 0) lies in mode.lam [A]. R is one number or [lo, hi] (FWHM of the LSF, as in the grids). snr is a typical S/N per resolution element of a reference CGM program (omit to draw only R). Every number names a key in references. show = false hides an entry.",
+  "references": {
+    "cos_ihb": {"cite": "COS Instrument Handbook, Cycle 34, Sec. 5.1, Table 5.1 (R = lambda/FWHM of the model LSF, PSA, LP1)",
+                "url": "https://hst-docs.stsci.edu/cosihb/chapter-5-spectroscopy-with-cos/5-1-the-capabilities-of-cos"},
+    "stis_ihb": {"cite": "STIS Instrument Handbook, Cycle 34, Sec. 4.1, Table 4.1 (resolving power lambda/2 dlambda)",
+                 "url": "https://hst-docs.stsci.edu/stisihb/chapter-4-spectroscopy/4-1-overview"},
+    "sahnow2000": {"cite": "Sahnow et al. 2000, ApJ 538, L7 (905-1187 A; after focus adjustment ~17 km/s SiC, ~13 km/s LiF, LWRS; R = c/dv)",
+                   "url": "https://arxiv.org/abs/astro-ph/0005531"},
+    "tumlinson2013": {"cite": "Tumlinson et al. 2013, ApJ 777, 59 (COS-Halos): S/N ~10-12 per COS resolution element (design S/N >= 8 over 1150-1700 A)",
+                      "url": "https://arxiv.org/abs/1309.6317"},
+    "france2017": {"cite": "France et al. 2017, Proc. SPIE 10397, 1039713 (LUMOS medium-resolution modes, centre of field)",
+                   "url": "https://arxiv.org/abs/1709.06141"}
+  },
+  "instruments": [
+    {"name": "HST/COS G130M", "label": "COS G130M", "status": "operating", "show": true,
+     "modes": [
+       {"setting": "G130M/1291", "lam": [1150, 1450], "R": [12000, 17000], "snr": 10,
+        "lsf": {"type": "cos", "setting": "G130M-1291-LP4"},
+        "sources": {"lam": "cos_ihb", "R": "cos_ihb", "snr": "tumlinson2013"}},
+       {"setting": "G130M/1055,1096", "lam": [900, 1236], "R": 13000, "R_note": "up to ~13,000",
+        "lsf": {"type": "cos", "setting": "G130M-1096-LP2"},
+        "sources": {"lam": "cos_ihb", "R": "cos_ihb"}}]},
+    {"name": "HST/COS G160M", "label": "COS G160M", "status": "operating", "show": true,
+     "modes": [
+       {"setting": "G160M", "lam": [1360, 1775], "R": [13000, 20000], "snr": 10,
+        "lsf": {"type": "cos", "setting": "G160M-1577-LP4"},
+        "sources": {"lam": "cos_ihb", "R": "cos_ihb", "snr": "tumlinson2013"}}]},
+    {"name": "HST/STIS E140M", "label": "STIS E140M", "status": "operating", "show": true,
+     "modes": [{"setting": "E140M", "lam": [1144, 1710], "R": 45800, "lsf": {"type": "gaussian"},
+                "sources": {"lam": "stis_ihb", "R": "stis_ihb"}}]},
+    {"name": "HST/STIS E140H", "label": "STIS E140H", "status": "operating", "show": true,
+     "modes": [{"setting": "E140H", "lam": [1140, 1700], "R": 114000, "lsf": {"type": "gaussian"},
+                "sources": {"lam": "stis_ihb", "R": "stis_ihb"}}]},
+    {"name": "HST/STIS E230M", "label": "STIS E230M", "status": "operating", "show": true,
+     "modes": [{"setting": "E230M", "lam": [1605, 3110], "R": 30000, "lsf": {"type": "gaussian"},
+                "sources": {"lam": "stis_ihb", "R": "stis_ihb"}}]},
+    {"name": "HST/STIS E230H", "label": "STIS E230H", "status": "operating", "show": true,
+     "modes": [{"setting": "E230H", "lam": [1620, 3150], "R": 114000, "lsf": {"type": "gaussian"},
+                "sources": {"lam": "stis_ihb", "R": "stis_ihb"}}]},
+    {"name": "FUSE", "label": "FUSE", "status": "retired", "show": true,
+     "modes": [{"setting": "SiC + LiF, LWRS", "lam": [905, 1187], "R": [17600, 23100], "R_note": "c/17 km/s (SiC) to c/13 km/s (LiF)",
+                "lsf": {"type": "gaussian"}, "sources": {"lam": "sahnow2000", "R": "sahnow2000"}}]},
+    {"name": "LUVOIR/LUMOS (concept)", "label": "LUMOS", "status": "concept", "show": false,
+     "modes": [
+       {"setting": "G120M", "lam": [1000, 1400], "R": 42000, "lsf": {"type": "gaussian"}, "sources": {"lam": "france2017", "R": "france2017"}},
+       {"setting": "G150M", "lam": [1300, 1700], "R": 54500, "lsf": {"type": "gaussian"}, "sources": {"lam": "france2017", "R": "france2017"}},
+       {"setting": "G180M", "lam": [1600, 2000], "R": 63200, "lsf": {"type": "gaussian"}, "sources": {"lam": "france2017", "R": "france2017"}},
+       {"setting": "G300M", "lam": [2000, 4000], "R": 40600, "lsf": {"type": "gaussian"}, "sources": {"lam": "france2017", "R": "france2017"}}]},
+    {"name": null, "label": null, "status": "proposed", "show": false, "proposed": true,
+     "comment": "fill R, S/N, name to show: set name, label, modes[0].lam, modes[0].R (and snr if fixed), a source for each, then show = true",
+     "modes": [{"setting": null, "lam": null, "R": null, "snr": null, "lsf": {"type": "gaussian"},
+                "sources": {"lam": null, "R": null, "snr": null}}]}
+  ]
+}
