@@ -19,7 +19,6 @@ export const ENTRIES = Object.freeze([
   {id: "text", label: "Read as text", hint: "the whole story, no motion"},
   {id: "share", label: "Copy link to this moment"},
   {id: "musicTrack", label: "Music", stay: true},                // label and hint from hooks.musicTrackLabel()
-  {id: "sfx", label: "Sound effects", toggle: true},             // docs/tng50/js/uisound.js binds the item (main.js)
   {id: "keys", label: "Keys and help"},
   {id: "credits", label: "Data and credits"},
   {id: "source", label: "Source code", href: "https://github.com/tanmay-starslab/cgm-absorber-requirements"},

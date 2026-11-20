@@ -14,7 +14,7 @@
   "eq": "4ddf1585463119cdbea5e1c87b2eab7a021e2dee7107ba8545ae90cd09e365ce",
   "vtt": "038bf60a5d7569d063c58bd2063aa7a7e5e7622b91ce58161ad92592b5b3a3d5",
   "index": "a0fdc0fe6ee7c8ec09dd2ac32c78dba61c55318bd2096ab67447fbe7b43566b8",
-  "dom": "c30ab138108f81bc9f4ad01ab2c541b24c0165fd572b335ee1ab7237328cc078"
+  "dom": "057d5317c19b7e429277afd5a0791762b79c5f5ccc5f0db6d33056fb53bd4e52"
  },
  "notes": [
   {
@@ -129,6 +129,20 @@
   {
    "note": "owner 2026-11-19: Sounds switch (uisfx)",
    "head": "7186dd3",
+   "worktree_dirty": [
+    "M docs/tng50/learn/how-a-spectrum-is-made/css/story2.css",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/main.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/ui/gate.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/ui/hud.js",
+    " M docs/tng50/learn/how-a-spectrum-is-made/js/ui/menu.js"
+   ],
+   "parts_changed": [
+    "dom"
+   ]
+  },
+  {
+   "note": "owner 2026-11-19: no sound effects on the explainer (Sounds switch and menu entry removed)",
+   "head": "907c5d5",
    "worktree_dirty": [
     "M docs/tng50/learn/how-a-spectrum-is-made/css/story2.css",
     " M docs/tng50/learn/how-a-spectrum-is-made/js/main.js",
