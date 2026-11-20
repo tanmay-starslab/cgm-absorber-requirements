@@ -24,7 +24,7 @@ const V = "window.tngViewer3d";
 const E = (x, t = 900000) => P.eval(x, t);   // software WebGL: a velocity view decodes 3 cubes (minutes on a GPU-less node)
 const settle = async (ms = 600) => { await sleep(ms); await P.waitFor(`${V} && Object.values(${V}.levels().gas).includes("bound") && !${V}.message.startsWith("loading")`, 900000, 1000); await E(`${V}.drawNow()`); await sleep(300); };
 try {
-  await P.goto(`${srv.base}${srv.query}#tab=3d`);
+  await P.goto(`${srv.base}${srv.query ? srv.query + "&" : "?"}tier=high#tab=3d`);   // perf R5: the live viewer (software GL is otherwise the low tier's still)
   const t = await P.waitFor(`${V} && ${V}.species`, 600000, 500);
   check(t >= 0, `viewer mounted with ${await E(`${V} && ${V}.species`)} (${(t / 1000).toFixed(0)} s)`);
   const menu = JSON.parse(await E(`JSON.stringify([...document.querySelectorAll('#v3-species .vel input')].map(i => [i.value, !i.disabled, i.nextElementSibling.innerHTML]))`));

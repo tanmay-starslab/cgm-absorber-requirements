@@ -86,7 +86,8 @@ const shot = async name => { if (!SHOTS) return; const r = await send("Page.capt
 const metrics = (w, h, mobile = false, dpr = 1) => send("Emulation.setDeviceMetricsOverride", {width: w, height: h, deviceScaleFactor: dpr, mobile});
 await send("Emulation.setEmulatedMedia", {features: [{name: "prefers-color-scheme", value: "dark"}]});
 await metrics(1440, 900);
-const URL3D = `http://127.0.0.1:${PORT}/tng50/?viz=${encodeURIComponent(`http://127.0.0.1:${PORT}/viz/`)}#tab=3d`;
+/* tier=high (perf R5): this test checks the live viewer and the self-mounting thumbnail; software GL would be the low tier */
+const URL3D = `http://127.0.0.1:${PORT}/tng50/?viz=${encodeURIComponent(`http://127.0.0.1:${PORT}/viz/`)}&tier=high#tab=3d`;
 const waitViewer = async (ms = 300000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) {
   const s = await ev(`(() => { const v = window.tngViewer3d; return v ? (v.species ? "ready" : v.webgl2 === false ? "stub" : "mounting") : "none"; })()`).catch(() => "none");
   if (s === "ready" || s === "stub") return s; await sleep(250); } return "timeout"; };

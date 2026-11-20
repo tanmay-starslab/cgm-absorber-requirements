@@ -71,7 +71,7 @@ try {
     await P.send("Emulation.setDeviceMetricsOverride", {width: w, height: h, deviceScaleFactor: dsf, mobile: !!mobile});
     await P.send("Emulation.setTouchEmulationEnabled", {enabled: !!mobile, maxTouchPoints: mobile ? 5 : 0});
     await P.scheme(theme === "dark");
-    await P.goto(`${srv.base}${srv.query}#tab=3d`);
+    await P.goto(`${srv.base}${srv.query ? srv.query + "&" : "?"}tier=high#tab=3d`);   // perf R5: the live viewer (software GL is otherwise the low tier's still)
     const t = await P.waitFor(`${V} && ${V}.species && !document.querySelector("[data-testid=v3-mode-volume]").disabled`, 240000, 250);
     if (!check(t >= 0, `${key}: viewer mounted`)) continue;
     await settle(await P.eval(`${V}.species`)); await sleep(600);

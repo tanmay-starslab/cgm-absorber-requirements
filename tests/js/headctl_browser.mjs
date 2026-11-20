@@ -43,7 +43,7 @@ async function run(w, h, mobileTag) {
       P.send("Network.enable", {}, sid).then(() => P.send("Runtime.runIfWaitingForDebugger", {}, sid)); } });
     await P.send("Target.setAutoAttach", {autoAttach: true, waitForDebuggerOnStart: true, flatten: true});
     await P.send("Page.addScriptToEvaluateOnNewDocument", {source: `window.__streams = []; { const md = navigator.mediaDevices; if (md) { const g = md.getUserMedia.bind(md); md.getUserMedia = async c => { const s = await g(c); __streams.push(s); return s; }; } }`});
-    await P.goto(srv.base + srv.query + "#tab=3d");
+    await P.goto(srv.base + (srv.query ? srv.query + "&" : "?") + "tier=high#tab=3d");   // perf R5: the live viewer (software GL is otherwise the low tier's still)
     await P.waitFor(READY, 60000, 200); await P.eval(UI_LIB);
     await P.eval(`tngApp.showTab("3d")`);
     if (await P.waitFor(`document.querySelector('[data-testid="v3-head"]')`, 90000, 250) < 0) { check(false, `${w}px: 3D viewer mounted with the head control button`); return; }

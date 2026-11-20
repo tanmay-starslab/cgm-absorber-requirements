@@ -17,6 +17,7 @@ import {initLiquidBg} from "./liquidbg.js";   /* liquid metal shader background 
 import {uiSound, sfx} from "./uisound.js";   /* optional UI sound effects (off by default; top-bar switch #sfx) */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
   nearestSightline, defaultSightline, srcOf, galaxySummary} from "./galaxies.js";
+import {tier, tierReady} from "./tier.js";   /* perf R5: device tier (html[data-tier]) and its one-off WebGL probe */
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
 /* ---------------- config ---------------- */
@@ -31,12 +32,13 @@ const reg = makeRegistry(CFG), {ION} = reg;
    galaxy shown. The default galaxy reads the legacy data/ paths (LEGACY); any other galaxy its pack (packFor), and the
    sightline server is asked with ?galaxy=<id> only when its /api/health says it serves several galaxies (health.galaxies) */
 const GIX = galaxyIndex(CFG);
-const LEGACY = {catalog_url: CFG.catalog_url, bin_dir: CFG.bin_dir, components_url: CFG.components_url, viz: CFG.viz, frame: CFG.frame,
+const LEGACY = {catalog_url: CFG.catalog_url, bin_dir: CFG.bin_dir, components_url: CFG.components_url, components_dir: CFG.components_dir, viz: CFG.viz, frame: CFG.frame,
   galaxy: CFG.galaxy, n_static: CFG.n_static};
 let GAL = GIX ? resolveGalaxy(GIX, location.hash, location.search) : (CFG.galaxy && +CFG.galaxy.subhalo_id) || null;
 const isDefGal = () => !GIX || GAL === GIX.default;
 function applyPack(pack, gj) {
-  Object.assign(CFG, {catalog_url: pack.catalog_url, bin_dir: pack.bin_dir, components_url: pack.components_url, viz: pack.viz});
+  Object.assign(CFG, {catalog_url: pack.catalog_url, bin_dir: pack.bin_dir, components_url: pack.components_url, viz: pack.viz,
+    components_dir: pack.legacy ? LEGACY.components_dir : null});   /* per-sightline slices: the default galaxy's built site only */
   if (pack.legacy) Object.assign(CFG, {frame: LEGACY.frame, galaxy: LEGACY.galaxy, n_static: LEGACY.n_static});
   else { const e = GIX.byId.get(pack.id) || {}, g = gj || {};
     CFG.galaxy = {sim: g.sim || "TNG50-1", snapshot: g.snapshot ?? 99, redshift: g.redshift ?? 0, subhalo_id: pack.id, central: g.central ?? e.central,
@@ -146,8 +148,11 @@ const IDB = (() => { let db = null, req = null, failed = false;
 })();
 
 /* ---------------- sightline data ---------------- */
+/* perf R5: the built site ships data/s/*.bin gzipped (scripts/build_site.mjs); gzip magic 1f 8b -> DecompressionStream, anything
+   else (the repository's raw files, a server's bins, an HTTP layer that already decoded) is used as is */
 async function fetchBin(url, ms = 20000) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
-  try { const r = await fetch(url, {signal: ac.signal}); if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`); return await r.arrayBuffer(); } finally { clearTimeout(t); } }
+  try { const r = await fetch(url, {signal: ac.signal}); if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`); const b = await r.arrayBuffer(), u = new Uint8Array(b, 0, Math.min(2, b.byteLength));
+    return u[0] === 0x1f && u[1] === 0x8b ? await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer() : b; } finally { clearTimeout(t); } }
 /* B_fix R1: least-recently-used cache. A hit refreshes the entry, and the selected sightline is never evicted (a
    neighbour prefetch used to drop it, leaving every panel on "loading"); concurrent loads of one id share a promise */
 const SIGHT_MAX = 30, SIGHT_LOAD = new Map(), SIGHT_FAIL = new Set();
@@ -224,14 +229,16 @@ function dictsOf(raw) {
     DICTS.set(raw, d); }
   return d;
 }
+const takeComps = (j, isStatic) => { const keys = j.comp_keys || DEF_KEYS;
+  if (isStatic || !compMeta.params_tag) compMeta = {params_tag: j.params_tag || null, fitter: j.fitter || null, params: j.params || null, comp_keys: keys};
+  for (const [id, c] of Object.entries(j.entries || {})) if (!COMPRAW.has(id) || isStatic) COMPRAW.set(id, normComps(c, keys, (j.aod || {})[id], j.params_tag)); };
+/* the whole catalogue (about 0.8 MB): only Find, Ask and a sightline without its own file (below) load it. perf R5: the
+   server's /api/components is asked only for what the static file lacks: rays cast on the server, or no static file */
 function componentsIndex() {
   if (CIX) return CIX;
   CIX = (async () => { let ok = false;
-    const take = (j, isStatic) => { const keys = j.comp_keys || DEF_KEYS;
-      if (isStatic || !compMeta.params_tag) compMeta = {params_tag: j.params_tag || null, fitter: j.fitter || null, params: j.params || null, comp_keys: keys};
-      for (const [id, c] of Object.entries(j.entries || {})) if (!COMPRAW.has(id) || isStatic) COMPRAW.set(id, normComps(c, keys, (j.aod || {})[id], j.params_tag)); };
-    try { const r = await fetch(CFG.components_url); if (r.ok) { take(await r.json(), true); ok = true; } } catch { /* offline file */ }
-    if (SRV()) try { const r = await fetch(gq(API + "/api/components")); if (r.ok) { take(await r.json(), false); ok = true; } } catch { /* server optional */ }
+    try { const r = await fetch(CFG.components_url); if (r.ok) { takeComps(await r.json(), true); ok = true; } } catch { /* offline file */ }
+    if (SRV() && (!ok || [...CAT.values()].some(e => !e._static))) try { const r = await fetch(gq(API + "/api/components")); if (r.ok) { takeComps(await r.json(), false); ok = true; } } catch { /* server optional */ }
     if (!ok) { CIX = null; throw new Error("no components catalogue is available"); }
     return {get params() { return compMeta.params; }, get fitter() { return compMeta.fitter; }, get params_tag() { return compMeta.params_tag; }, comp_keys: compMeta.comp_keys,
       get entries() { return Object.fromEntries([...COMPRAW].map(([id, raw]) => [id, dictsOf(raw)])); },
@@ -242,6 +249,10 @@ async function ensureComps(id) {
   if (COMPRAW.has(id)) return COMPRAW.get(id); const e = CAT.get(id); if (!e) return null;
   if (!e._static && SRV()) try { const r = await fetch(gq(`${API}/api/components/${encodeURIComponent(id)}.json`)); if (r.ok) { const j = await r.json();
     const raw = normComps(j.components, j.comp_keys || DEF_KEYS, j.aod, j.params_tag); if (raw) { COMPRAW.set(id, raw); return raw; } } } catch { /* fall through */ }
+  /* perf R5: a library sightline's own few-kB slice of the catalogue (data/c/<id>.json, written by scripts/build_site.mjs and
+     announced by CFG.components_dir), so the fits of the first sightline never wait for the whole file */
+  if (e._static && CFG.components_dir && !CIX) try { const r = await fetch(CFG.components_dir + encodeURIComponent(id) + ".json");
+    if (r.ok) { takeComps(await r.json(), true); if (COMPRAW.has(id)) return COMPRAW.get(id); } } catch { /* fall back to the whole catalogue */ }
   try { await componentsIndex(); } catch { return null; }
   return COMPRAW.get(id) || null;
 }
@@ -433,6 +444,7 @@ function place(btn, pop) {
   pop.style.left = x + "px"; pop.style.top = y + "px"; }
 function openPop(btn, pop, focus = true) {
   closePops(pop); pop.hidden = false; btn.setAttribute("aria-expanded", "true"); lastOpener = btn; place(btn, pop);
+  if (pop.id === "gal-pop" || pop.id === "find-pop") backendCatalog();
   if (pop.id === "gal-pop") gallery.onOpen(); if (pop.id === "gxy-pop") GPICK?.onOpen(); if (pop.id === "find-pop") mountFind(); if (pop.id === "geo-pop") renderBackends();
   if (focus) {
     /* B_fix F2: an info popover takes the focus itself (its links are next in the Tab order), and closes once the focus
@@ -539,7 +551,8 @@ function discover(ms = 8000, fresh = false) { if (probing && !fresh) return prob
     pill(); renderBackends(); setGeoEnabled(); banner();
     if (API !== prev) { NOCOMP.clear(); emit("tng:backend", {api: API, warm: !!(HEALTH && HEALTH.warm)}); }
     clearTimeout(retryT); if (API) retryN = 0; else if (retryN < RETRY_MS.length) retryT = setTimeout(() => discover(), RETRY_MS[retryN++]);
-    if (API && API !== prev) await mergeBackendCatalog();
+    if (API !== prev) bcatFor = null;
+    if (API && (pendingId || !staticOk)) await backendCatalog();
   })().finally(() => { if (probing === run) probing = null; });
   probing = run; return run; }
 function backendFailed() { HEALTH = null; setTimeout(discover, 0); }
@@ -554,7 +567,12 @@ function renderBackends() { $("#backends").innerHTML = PROBES.length ? PROBES.ma
 async function mergeBackendCatalog() { if (!SRV()) return; const g0 = GAL;
   try { const r = await fetch(gq(API + "/api/catalog")); if (g0 !== GAL) return; if (!r.ok) throw new Error(); const c = await r.json();
     for (const e of c.entries || []) upsert(e, false); catalogChanged(); status();
-    if (pendingId && CAT.has(pendingId)) select(pendingId, true, "hash"); } catch { backendFailed(); } }
+    if (pendingId && CAT.has(pendingId)) select(pendingId, true, "hash"); } catch { bcatFor = null; backendFailed(); } }
+/* perf R5: the server's catalogue (rays cast by visitors, about 150 kB) merges on demand: when the sightline gallery, Find
+   or Ask opens, a linked id is not in the library, or the static catalogue failed; never on a plain page load. Once per
+   server and galaxy. */
+let bcatFor = null, staticOk = false;
+function backendCatalog() { const k = SRV() && SRV() + "|" + GAL; if (!k || bcatFor === k) return Promise.resolve(); bcatFor = k; return mergeBackendCatalog(); }
 const DEFAULTS = new Set((CFG.backends || []).map(normUrl));
 const PUBLIC = [...DEFAULTS].some(u => /^https:\/\//.test(u));
 function overrides() { const q = new URLSearchParams(location.search).get("api"), ls = store.get("tngsight.api");
@@ -741,9 +759,29 @@ function vizCfg() {
 /* one viewer3d engine per page: the full square stage (mount) on the 3D tab and the live thumbnail (mountThumb) in the side
    column; viewer3d docks the canvas where it is on screen and builds the grouped controls (#v3-ctl) in #v3d-controls */
 const loadV3 = () => Promise.all([import(modUrl("viewer3d.js")), import(modUrl("picker.js"))]);
+/* perf R5: warm the connection to the cube host when the 3D tab or the thumbnail is hovered or opened */
+let hfHint = false;
+function hintCubes() { if (hfHint || !CFG.viz) return; hfHint = true;
+  let o = "https://huggingface.co"; try { o = new URL(vizCfg().base, location.href).origin; } catch { /* default host */ }
+  for (const [rel, href] of [["preconnect", o], ["dns-prefetch", "https://us.aws.cdn.hf.co"]]) { if (href === location.origin) continue;
+    const l = document.createElement("link"); l.rel = rel; l.href = href; if (rel === "preconnect") l.crossOrigin = "anonymous"; document.head.appendChild(l); } }
+for (const el of [$("#tab-3d"), $("#v3d-mini")]) el.addEventListener("pointerenter", hintCubes, {passive: true});
+/* perf R5: on the low device tier (software or weak GL, little memory, slow network) the 3D tab shows a still and a button
+   instead of starting the engine (which could hold the main thread for minutes on software GL); FORCE3D is the button,
+   or a programmatic request (tngApp.show3d) */
+let FORCE3D = false;
+function poster3d() {
+  const root = $("#v3d-root"); $("#v3d-wait").hidden = true; if (root.querySelector(".v3d-poster")) return;
+  root.innerHTML = `<div class="v3d-poster" data-testid="v3d-poster"><img src="img/og/explorer.jpg" alt="A TNG50 galaxy's gas in purple and orange, crossed by a quasar sightline" width="1200" height="630" decoding="async">
+    <p class="msg">This device looks slow for the live 3D view, so it shows a still.</p><button type="button" class="pbtn" data-testid="v3d-anyway">Render 3D anyway</button></div>`;
+  root.querySelector("button").addEventListener("click", () => { FORCE3D = true; root.replaceChildren(); $("#v3d-wait").hidden = false; open3d().catch(() => {}); });
+}
 function open3d() {
   if (V3P) return V3P;
-  V3P = (async () => { try { await GAL_READY; const [V, Pk] = await loadV3();
+  hintCubes();
+  V3P = (async () => { try { await GAL_READY; await tierReady();
+      if (tier() === "low" && !FORCE3D) { poster3d(); V3P = null; return null; }
+      const [V, Pk] = await loadV3();
       const v = await V.mount($("#v3d-root"), window.tngApp, {viz: vizCfg(), controls: $("#v3d-controls")}); V3 = v; window.tngViewer3d = v; $("#v3d-wait").hidden = true;
       $("#v3d-status").textContent = !v.webgl2 ? "The interactive 3D view is not available here; type a ray's endpoints under Pick ray to generate it."
         : matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches ? "drag to orbit, pinch to zoom, tap a line" : "drag to orbit, scroll to zoom, click a line, double-click to re-centre";
@@ -763,12 +801,16 @@ function openThumb() {
 $("#v3d-mini").addEventListener("click", () => showTab("3d"));
 $("#v3d-mini").addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); showTab("3d"); } });
 function build3dField() { /* viewer3d draws its own field buttons (in the ion colours) */ }
-/* the live thumbnail mounts once the spectra are up and the page has been idle, only where the side column shows it */
+/* the live thumbnail, only where the side column shows it. perf R5: it fetches megabytes of cubes, so it mounts by itself
+   (once the spectra are up and the page has been idle) only on the high device tier over a 4g connection; elsewhere the
+   static art stays until the thumbnail is hovered (mid and high) or the 3D tab is opened */
 let thumbArmed = false;
 const thumbOk = () => CFG.viz && !mqMobile.matches && !document.body.classList.contains("side-off") && !(navigator.connection && navigator.connection.saveData);
+const thumbAuto = () => tier() === "high" && navigator.connection?.effectiveType === "4g";
 function armThumb() { thumbArmed = true;
-  const go = () => { if (thumbOk()) openThumb(); };
-  setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(go, {timeout: 4000}) : go()), 1500); }
+  const go = () => { if (thumbOk() && thumbAuto()) openThumb(); };
+  setTimeout(() => tierReady().then(() => (window.requestIdleCallback ? requestIdleCallback(go, {timeout: 4000}) : go())), 1500); }
+$("#v3d-mini").addEventListener("pointerenter", () => { if (thumbOk() && tier() !== "low") openThumb(); }, {passive: true});
 
 /* ---------------- galaxy sample: picker and switching (js/galaxies.js) ---------------- */
 const GPICK = GIX ? createGalaxyPicker({pop: $("#gxy-pop"), cur: $("#gxy-cur"), search: $("#gxy-search"), filter: $("#gxy-filter"), head: $("#gxy-head"),
@@ -858,7 +900,7 @@ async function switchGalaxy(id, {want = null, source = "picker"} = {}) {
   reset3d();
   if (first) await select(first, true, "galaxy"); else { status(); draw(); }
   writeHash(); emit("tng:galaxy", {id, source, n: CAT.size});
-  note(`subhalo ${id}: ${CAT.size} sightlines`); mergeBackendCatalog();
+  note(`subhalo ${id}: ${CAT.size} sightlines`); bcatFor = null;
   if (source === "picker" && document.activeElement === document.body) $("#gxy-open")?.focus({preventScroll: true});   /* S4: keep keyboard focus */
   return true;
 }
@@ -878,7 +920,7 @@ function mountFind() { if (FINDP) return; FINDP = import(modUrl("search.js")).th
   .catch(x => { FINDP = null; $("#find-body").insertAdjacentHTML("beforeend", `<p class="msg bad">Search failed to load: ${esc(x.message)}</p>`); }); }
 let CHAT = null;
 $("#chat-open").hidden = !(CFG.chat && CFG.chat.enabled);
-$("#chat-open").addEventListener("click", async () => { try { if (!CHAT) { const m = await import(modUrl("chat.js")), root = $("#chat-root"); root.hidden = false;
+$("#chat-open").addEventListener("click", async () => { backendCatalog(); try { if (!CHAT) { const m = await import(modUrl("chat.js")), root = $("#chat-root"); root.hidden = false;
     CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); initLiquidSeg(root.querySelector(".chat-mode")); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
 
 /* ---------------- side column (collapsible, remembered) and the phone drawer ---------------- */
@@ -985,7 +1027,7 @@ addEventListener("hashchange", () => {
   const prev = S.id, tab = S.tab, N = parseHash(location.hash, reg, S), want = N.id;
   Object.assign(S, N, {id: prev, tab}); clampView(S, vmax()); syncAll();
   if (N.tab !== tab) showTab(N.tab);
-  if (want && want !== prev) { if (CAT.has(want)) { select(want, false, "hash"); return; } pendingId = want; writeHash(); }
+  if (want && want !== prev) { if (CAT.has(want)) { select(want, false, "hash"); return; } pendingId = want; writeHash(); backendCatalog(); }
   draw(); });
 function syncAll() { $("#fit").checked = S.fit; $("#intr").checked = S.intr; syncLayoutUI(); buildIons(); inst.build(); }
 
@@ -1046,7 +1088,7 @@ window.tngApp = {
     return r.offline ? fail("generating a custom ray needs a sightline server (none is online)") : r; },
   components, componentsIndex, showTab: t => showTab(t),
   /* mode: "integral" | "volume" (viewer.setMode); tf: a tf.js preset (viewer.setTf), drawn in volume mode only, so it implies it */
-  async show3d({species, preset, mode, tf} = {}) { showTab("3d"); let v; try { v = await open3d(); } catch (x) { return {ok: false, webgl2: false, message: x.message}; }
+  async show3d({species, preset, mode, tf} = {}) { FORCE3D = true; showTab("3d"); let v; try { v = await open3d(); } catch (x) { return {ok: false, webgl2: false, message: x.message}; }
     if (!v.webgl2) return {ok: false, webgl2: false, species: null, preset: null, message: v.message};
     if (species && !(await v.setSpecies(species))) return {ok: false, webgl2: true, species: v.species, preset: preset || null, mode: v.mode, message: v.loadError && v.loadError.key === species ? `the ${species} volume could not be loaded: ${v.loadError.message}` : v.wanted !== species ? "superseded by a later 3D request" : `the ${species} volume is not available`};
     const m = tf ? "volume" : mode;
@@ -1090,11 +1132,11 @@ initTips();
   if (asked != null) note(`subhalo ${asked} is not in this sample; showing subhalo ${GAL}`, "bad");   /* S2: never silently */
   sourceUI();
   const loadCat = async () => { const r = await fetch(CFG.catalog_url); if (!r.ok) throw new Error("HTTP " + r.status); const c = await r.json(); for (const e of c.entries || []) upsert(e, true); setSource(c); };
-  try { await loadCat(); }
+  try { await loadCat(); staticOk = true; }
   catch (x) {
     if (!isDefGal()) { const g = GAL; GAL = GIX.default; applyPack(packFor(GIX, GAL, LEGACY), null); GAL_READY = Promise.resolve(); galaxyUI(); aboutText();   /* a listed pack that is not there: back to the default galaxy */
       note(`subhalo ${g} could not be loaded (${x.message}); showing subhalo ${GAL}`, "bad");
-      try { await loadCat(); } catch (y) { $("#galcount").textContent = `catalogue unavailable (${y.message})`; } }
+      try { await loadCat(); staticOk = true; } catch (y) { $("#galcount").textContent = `catalogue unavailable (${y.message})`; } }
     else $("#galcount").textContent = `catalogue unavailable (${x.message})`; }
   const cached = await IDB.all(); if (Array.isArray(cached)) for (const c of cached) if (c && c.entry && (!GIX || (c.galaxy ?? GIX.default) === GAL) && !CAT.has(c.entry.id)) upsert(c.entry, false);
   catalogChanged();
@@ -1105,6 +1147,7 @@ initTips();
   if (first) select(first, true, hashId === first ? "hash" : "init"); else draw();
   emit("tng:ready", {version: 3});
   await disc;
+  if (pendingId || !staticOk) await backendCatalog();
   if (pendingId && CAT.has(pendingId)) select(pendingId, true, "hash");
   else if (!S.id && CAT.size) select(sorted()[0].id, true, "init");
 })();

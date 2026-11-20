@@ -389,10 +389,14 @@ const pretty = u => String(u || "").replace("cm^-3", "cm⁻³").replace("cm^-2",
 /* "mobile" = the constrained GPU profile (192 MB texture budget, pixel ratio 1, no stars, serial loads). Width alone missed
    large tablets (Galaxy Tab S8 Ultra, iPad Pro: desktop-width screens, mobile-browser GPU memory limits), which then lost the
    WebGL context. A touch-only device, a mobile/tablet browser, a reported device memory <= 4 GB, or a context loss earlier
-   in this session (sessionStorage) all select it; ?gpu=full forces the desktop profile, ?gpu=lite the constrained one. */
+   in this session (sessionStorage) all select it; ?gpu=full forces the desktop profile, ?gpu=lite the constrained one.
+   perf R5: with the page's device tier (html[data-tier], js/tier.js, which folds in all of the above) it is every tier
+   below high, and the low tier adds pixel ratio 0.75, a 128 MB budget and gas only (lowTier). */
 const LITE_KEY = "tng50.gpuLite";
+const pageTier = () => document.documentElement.dataset.tier || null;
 const isMobile = () => {
   try { const q = new URLSearchParams(location.search).get("gpu"); if (q === "full") return false; if (q === "lite") return true; } catch { /* no URL */ }
+  if (pageTier()) return pageTier() !== "high";
   try { if (sessionStorage.getItem(LITE_KEY) === "1") return true; } catch { /* private mode */ }
   if (matchMedia("(max-width: 720px)").matches) return true;
   if (matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches) return true;
@@ -453,7 +457,7 @@ async function create(app, opts = {}) {
   const V3 = a => new T.Vector3(a[0], a[1], a[2]);
   const Lv = V3(frame.Lhat).normalize(), Xv = V3(frame.xhat).normalize(), Yv = V3(frame.yhat).normalize();
   T.ColorManagement.enabled = false;                       // LUT and CSS colours are sRGB values: pass them straight through
-  const mobile = isMobile(), deviceMemory = navigator.deviceMemory ?? 8;
+  const mobile = isMobile(), lowTier = mobile && pageTier() === "low", deviceMemory = navigator.deviceMemory ?? 8;
 
   /* ---- DOM: the stage (el, moved between the full host and the thumbnail) and the control column (ctlBox) ---- */
   const SPEC = [...speciesList(cfg.ions, manifest), ...velocityList(manifest)], specOf = k => SPEC.find(x => x.key === k);
@@ -572,7 +576,7 @@ async function create(app, opts = {}) {
   /* the page's CSS zoom on <html> (112 % on large screens) stretches the canvas: render that many more pixels so the 3D view
      stays sharp; the per-device cap (1.0 phones, 1.5 desktop) still bounds the cost */
   const cssZoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
-  const calcPR = () => Math.min(devicePixelRatio || 1, mobile ? 1.0 : 1.5) * cssZoom();
+  const calcPR = () => Math.min(devicePixelRatio || 1, lowTier ? 0.75 : mobile ? 1.0 : 1.5) * cssZoom();
   let PR = calcPR(), exactPR = PR, accMax = 8;
   const EXACT_MS = 100;
   renderer.setPixelRatio(PR);
@@ -731,7 +735,7 @@ async function create(app, opts = {}) {
   /* ---- textures, LOD, GPU budget ---- */
   const loader = manifest ? makeLoader({manifest, base: viz.base, fallbackBase: viz.fallback_base, cache: viz.cache !== false}) : null;
   const TEX = new Map(), PEND = new Map(), FADE = new Map(), PROG = new Map();   // PROG: key -> {got, total} bytes (tune2)   // key "gas|nH|L1" / "stars||S1" -> {tex, bytes, used}
-  let BUDGET = (mobile ? 192 : 448) * 1e6;
+  let BUDGET = (lowTier ? 128 : mobile ? 192 : 448) * 1e6;
   let hostErr = null, useMovingExact = true, calibrated = "";
   const keyOf = (kind, k, L) => `${kind}|${k || ""}|${L}`;
   const hVis = () => camera.position.distanceTo(controls.target) * Math.tan(camera.fov * Math.PI / 360);
@@ -946,6 +950,7 @@ async function create(app, opts = {}) {
   canvas.addEventListener("webglcontextlost", ev => { ev.preventDefault(); ctxLost = true; losses++;
     /* the next viewer in this session (reload, galaxy switch) starts in the constrained profile */
     try { sessionStorage.setItem(LITE_KEY, "1"); } catch { /* private mode */ }
+    window.tngTier?.apply();   // perf R5: a context loss puts the page on the low tier for the rest of the session
     if (losses >= 2) { giveUp(); return; }
     say("The 3D view ran short of graphics memory. Restoring it with lighter settings…", true);
     clearTimeout(restoreTimer); restoreTimer = setTimeout(giveUp, 4000); });

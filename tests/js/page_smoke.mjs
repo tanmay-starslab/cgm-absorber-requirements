@@ -412,6 +412,37 @@ try {
       await P.eval(`tngApp.showTab("spectra")`); await sleep(200); }
   });
 
+  /* ---- perf R5: device tiers and lazy loads ---- */
+  await section('device tiers, lazy loads', async () => {
+    const tq = t => srv.base + (srv.query ? srv.query + "&" : "?") + "tier=" + t + (api ? "&api=" + encodeURIComponent(api) : "");
+    /* low: solid panels, no liquid background, the 3D tab is a still with a button, no cube request until it is pressed */
+    P.requests.length = 0; await P.goto(tq("low")); check(await P.waitFor(READY, 180000, 250) >= 0, "tier=low: page ready"); await P.eval(UI_LIB); await sleep(2500);
+    const lo = await P.eval(`({tier: document.documentElement.dataset.tier, bf: getComputedStyle(document.getElementById("top")).backdropFilter, canvas: !!document.querySelector("canvas.lmbg"),
+      fb: document.documentElement.classList.contains("lmbg-fallback"), anim: getComputedStyle(document.querySelector(".story-cta") || document.body).animationIterationCount})`);
+    check(lo.tier === "low" && (lo.bf === "none" || !lo.bf) && !lo.canvas && lo.fb, `tier=low: html[data-tier=low], #top backdrop-filter ${lo.bf}, no liquid canvas (${lo.canvas}), CSS gradient (${lo.fb})`);
+    check(lo.anim === "1" || lo.anim === "", `tier=low: the story pill animates once (animation-iteration-count ${lo.anim})`);
+    await P.eval(`tngApp.showTab("3d")`); const tp = await P.waitFor(`!!document.querySelector('[data-testid="v3d-poster"]') && __ui.vis(document.querySelector('[data-testid="v3d-poster"] img'))`, 15000, 100);
+    const lo3 = await P.eval(`({viewer: !!window.tngViewer3d, btn: !!document.querySelector('[data-testid="v3d-anyway"]')})`);
+    check(tp >= 0 && !lo3.viewer && lo3.btn && !P.requests.some(r => /viewer3d\.js|three\.module/.test(r)),
+      `tier=low: the 3D tab shows the still and "Render 3D anyway" in ${(tp / 1000).toFixed(1)} s, no viewer module or three.js requested`);
+    await P.eval(`tngApp.showTab("spectra")`);
+    /* mid (and an unprobed desktop): the thumbnail stays a still, no cube request; nothing reads the whole components file or the server catalogue */
+    P.requests.length = 0; await P.goto(tq("mid")); check(await P.waitFor(READY, 180000, 250) >= 0, "tier=mid: page ready"); await sleep(7000);
+    const mid = await P.eval(`({tier: document.documentElement.dataset.tier, live: document.getElementById("v3d-mini").classList.contains("live"), thumb: !!window.tngThumb})`);
+    const hf = P.requests.filter(r => /huggingface\.co|hf\.co|\/viz\//.test(r) && !/manifest/.test(r));
+    check(mid.tier === "mid" && !mid.live && !mid.thumb && !hf.length, `tier=mid: the 3D thumbnail is not mounted after 7 s (live ${mid.live}) and no cube was requested${hf.length ? ": " + hf.slice(0, 3).join(", ") : ""}`);
+    const cat = P.requests.filter(r => /\/api\/catalog\b|\/api\/components$/.test(r));
+    check(!cat.length, `no /api/catalog or /api/components on a plain load${cat.length ? ": " + cat.join(", ") : ""}`);
+    const mp = P.requests.filter(r => /\/js\/[a-z0-9_]+\.js$/.test(r)).length;
+    check(mp >= 10, `modulepreload: ${mp} explorer modules requested`);
+    /* tngApp.show3d is an explicit request: it starts the live view on any tier */
+    await P.goto(tq("low")); await P.waitFor(READY, 180000, 250);
+    const s3 = await P.eval(`tngApp.show3d().then(r => ({ok: r.ok, webgl2: r.webgl2, msg: r.message || ""}))`);
+    check(s3 && (s3.ok || s3.webgl2 === false || /three|unreachable|volume/i.test(s3.msg)) && !(await P.eval(`!!document.querySelector('[data-testid="v3d-poster"]')`)),
+      `tier=low: tngApp.show3d() starts the live view anyway (${JSON.stringify(s3)})`);
+    await load("", "after the tier checks");
+  });
+
   /* ---- offline geometry (no backend) ---- */
   await section('offline geometry (no backend)', async () => {
     if (!api) {

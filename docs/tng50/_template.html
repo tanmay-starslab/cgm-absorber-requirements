@@ -94,6 +94,31 @@
 body:has(>#chat-open.fab:not([hidden])) #bar{padding-right:104px}
 </style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js":"sha384-eCdgjbMm+jekI8fyaeCZ4Pnyg5k4Jn45w2qs3lfnAd5ES5IO4hKOXNisVBTyUzDO","https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/controls/OrbitControls.js":"sha384-aJoe4qqS/DgF2jh9njAuvA6QIveJYoCuYOfYjdFY8P3eawzmc9bEQ40jq2TvOyuP"}}</script>
+<script id="tier-gate">/* device tier (perf R5): html[data-tier] = low | mid | high from cheap signals before first paint; js/tier.js adds
+   the WebGL probe (gl) once per session after first paint. ?tier= overrides; ?gpu= and ?bg= keep their own meaning.
+   decide() is pure (tests/js/tier_unit.mjs). An unknown GPU (no probe yet) is mid, never low. */
+(function (w) {
+  var K = "tng50.tier", WEAK = /mali|adreno|powervr|videocore|tegra|apple gpu|intel.*\b(hd|uhd) graphics/i;
+  function decide(s) {
+    if (s.lost || s.saveData || /2g|3g/.test(s.net || "") || (s.mem > 0 && s.mem <= 2) || (s.cores > 0 && s.cores <= 2) || (s.gl && s.gl.stills)) return "low";
+    if (s.mobile || !s.gl || (s.mem > 0 && s.mem <= 4) || (s.cores > 0 && s.cores <= 4) || WEAK.test(s.gl.renderer || "")) return "mid";
+    return "high";
+  }
+  function ss(k, v) { try { return v === undefined ? w.sessionStorage.getItem(k) : w.sessionStorage.setItem(k, v); } catch (e) { return null; } }
+  function signals(gl) { var n = w.navigator || {}, c = n.connection || {}, ua = n.userAgent || "", mm = function (q) { return !!(w.matchMedia && w.matchMedia(q).matches); };
+    return {mem: n.deviceMemory, cores: n.hardwareConcurrency, saveData: !!c.saveData, net: c.effectiveType || "", lost: ss("tng50.gpuLite") === "1", gl: gl,
+      mobile: !!(n.userAgentData && n.userAgentData.mobile) || /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(ua) || (/Macintosh/.test(ua) && n.maxTouchPoints > 1) ||
+        (mm("(pointer: coarse)") && !mm("(any-pointer: fine)")) || mm("(max-width: 720px)")}; }
+  var q = null, gl = null; try { q = new URLSearchParams(location.search).get("tier"); } catch (e) { /* no URL */ }
+  try { gl = JSON.parse(ss(K) || "null"); } catch (e) { gl = null; }
+  var T = w.tngTier = {decide: decide, signals: signals, forced: /^(low|mid|high)$/.test(q || ""), gl: gl,
+    apply: function () { var t = T.forced ? q : decide(signals(T.gl)); document.documentElement.dataset.tier = t; return t; },
+    probed: function (g) { T.gl = g; ss(K, JSON.stringify(g)); return T.apply(); }};
+  T.apply();
+})(window);
+</script>
+<!-- perf R5: js/app.js and its static imports, fetched in parallel (after the import map; tests/js/ui_static.mjs keeps the list) -->
+<link rel="modulepreload" href="js/app.js"><link rel="modulepreload" href="js/state.js"><link rel="modulepreload" href="js/spectra.js"><link rel="modulepreload" href="js/gallery.js"><link rel="modulepreload" href="js/instrument.js"><link rel="modulepreload" href="js/fit.js"><link rel="modulepreload" href="js/tips.js"><link rel="modulepreload" href="js/features.js"><link rel="modulepreload" href="js/liquidtabs.js"><link rel="modulepreload" href="js/liquidbg.js"><link rel="modulepreload" href="js/uisound.js"><link rel="modulepreload" href="js/galaxies.js"><link rel="modulepreload" href="js/tier.js">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Seeing the Circumgalactic Medium","url":"https://galaxies.tanmaysingh.uk/","applicationCategory":"EducationalApplication","operatingSystem":"Any (web browser)","description":"Explore mock quasar absorption spectra through the circumgalactic medium of 198 TNG50 Milky Way and M31 analogues: twelve ions, any resolving power and S/N, a 3D view of the gas, and guided stories of how an absorption spectrum is made.","author":{"@type":"Person","name":"Tanmay Singh","url":"https://tanmaysingh.uk/"},"isAccessibleForFree":true,"codeRepository":"https://github.com/tanmay-starslab/cgm-absorber-requirements"}</script>
 </head>
 <body data-tab="spectra">
