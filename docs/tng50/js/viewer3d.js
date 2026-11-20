@@ -258,6 +258,13 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 /* the grouped control column (B look, A's explicit labels); page tokens with dark fallbacks */
 .v3c{display:flex;flex-direction:column;gap:12px;min-width:0;font:13px/1.4 var(--sans,system-ui,sans-serif);color:var(--ink,#eef0f7)}
 .v3c[hidden]{display:none}
+/* ux/3d-layout: the two card columns and the tab strip are the page's to lay out (page.css); here (fullscreen panel, the
+   built layout) the columns are transparent and the strip is hidden. A card that does not apply stays in place, dimmed */
+.v3c-body,.v3c-col{display:contents}.v3c-tabbar{display:none}
+.v3c-off>:not(h2){opacity:.4}
+.v3c-hint{float:right;font:500 10px var(--mono,ui-monospace,monospace);letter-spacing:.04em;text-transform:none;color:var(--faint,#7a83a0)}
+.v3c-card:not(.v3c-off) .v3c-hint{visibility:hidden}
+.v3c-card[data-group=field] .v3c-row{height:28px}   /* the log rows and the velocity rows swap two for two: same height */
 .v3c{--cg-hi:var(--mat-highlight,inset 0 1px 0 rgba(255,255,255,.12));--cg-thin:var(--mat-thin,rgba(127,127,160,.10));--cg-edge:var(--mat-edge-c,var(--gline,rgba(160,175,220,.14)));
   --cg-sheen:var(--mat-fill,linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,0) 70%));--cg-sheen-h:var(--mat-fill-hover,linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04)));
   --cg-press:var(--mat-press,linear-gradient(180deg,rgba(0,0,0,.14),rgba(0,0,0,.06)));--cg-gloss:var(--mat-gloss,linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,0) 55%));
@@ -481,7 +488,15 @@ async function create(app, opts = {}) {
     `<input type="radio" name="${name}" value="${x.key}" data-testid="v3-species-${x.key}"${x.available ? "" : " disabled"} aria-label="${escH(x.spoken || x.label)}" data-tip="${escH(fieldTip(x))}">` +
     `<span>${x.group === "ion" ? "<i></i>" : ""}${x.group === "vel" ? x.html : escH(x.label)}</span></label>`;   // vel html: our own constant (vizdata VEL_VIEWS)
   const ctlBox = document.createElement("div"); ctlBox.className = "v3c"; ctlBox.id = "v3-ctl"; ctlBox.setAttribute("role", "group"); ctlBox.setAttribute("aria-label", "3D view settings");
-  ctlBox.innerHTML = `<section class="v3c-card" data-group="field"><h2>Field</h2>
+  /* ux/3d-layout: fixed card places. Column A holds Field, View, Layers; column B holds Mode, Transfer function, Pick ray, so
+     what opens with Volume sits below the clicked button. The page lays the columns out (page.css); data-tab names each
+     card's tab in the one-column tab layouts, whose strip (.v3c-tabbar) stays hidden elsewhere and in fullscreen */
+  const TABS = [["field", "Field"], ["view", "View"], ["layers", "Layers"], ["pick", "Pick"]];
+  ctlBox.dataset.tab = "field";
+  ctlBox.innerHTML = `<div class="v3c-tabbar"><div class="v3c-seg v3c-tabs" role="radiogroup" aria-label="Settings group">${TABS.map(([k, t], i) =>
+      `<label><input type="radio" name="v3-tab" value="${k}" data-tab="${k}"${i ? "" : " checked"}><span>${t}</span></label>`).join("")}</div>
+      <button type="button" class="v3c-btn v3c-done" data-tip="Close the 3D settings">Done</button></div>
+    <div class="v3c-body"><div class="v3c-col" data-col="a"><section class="v3c-card" data-group="field" data-tab="field"><h2>Field</h2>
       <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Velocity</span><div class="v3c-seg vel">${SPEC.filter(x => x.group === "vel").map(x => radio(x, "v3-species")).join("")}</div></div>
@@ -490,7 +505,7 @@ async function create(app, opts = {}) {
       <div class="v3c-row" id="v3-vw-row" hidden><label for="v3-vw">window</label><input id="v3-vw" type="range" step="10" data-tip="Velocity range of the colour scale, km/s; beyond it colours saturate"><output id="v3-vw-o" for="v3-vw"></output></div>
       <div class="v3c-row" id="v3-weight-row" hidden><label for="v3-weight">weight</label><select id="v3-weight" data-tip="Density that weights the velocities: all gas or one ion"></select></div>
       <div class="v3c-row" id="v3-cmap-row"><label for="v3-cmap">colours</label><select id="v3-cmap" data-tip="Colour map of the field"></select></div></section>
-    <section class="v3c-card" data-group="view"><h2>View</h2>
+    <section class="v3c-card" data-group="view" data-tab="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select></div>
@@ -498,17 +513,17 @@ async function create(app, opts = {}) {
       <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
       <details id="v3-pv-more"><summary data-tip="Type an orbit centre in kpc, galaxy box axes">kpc</summary><form class="v3tf-g v3c-pvxyz" id="v3-pv-form"><input id="v3-pv-x" type="number" step="1" min="-400" max="400" aria-label="centre x, kpc" placeholder="x" data-tip="x in kpc from the galaxy centre"><input id="v3-pv-y" type="number" step="1" min="-400" max="400" aria-label="centre y, kpc" placeholder="y" data-tip="y in kpc from the galaxy centre"><input id="v3-pv-z" type="number" step="1" min="-400" max="400" aria-label="centre z, kpc" placeholder="z" data-tip="z in kpc from the galaxy centre"><button type="submit" class="v3c-btn" data-tip="Move the orbit centre there">go</button></form></details></section>
-    <section class="v3c-card" data-group="layers"><h2>Layers</h2>
+    <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
       <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
       <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase" title="Sightlines with several clean, unsaturated absorbers, plus rays you made">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
-      <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section>
-    <section class="v3c-card" data-group="mode"><h2>Mode</h2>
+      <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
+    <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
       <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
         <label><input type="radio" name="v3-mode" value="volume" data-testid="v3-mode-volume" data-tip="Ray-marched emission and absorption through a transfer function"><span>volume</span></label></div>
       <div class="v3c-row"><label for="v3-op">opacity</label><input id="v3-op" type="range" min="0" max="1" step="0.01" data-tip="Overall opacity of the volume rendering; volume mode only"><output id="v3-op-o" for="v3-op"></output></div></section>
-    <section class="v3c-card" data-group="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section>
+    <section class="v3c-card" data-group="pick" data-tab="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section></div></div>
     <div class="v3c-lod" id="v3-lod" aria-hidden="true"></div>`;
   ctlBox.querySelectorAll(".v3c-seg").forEach(initLiquidSeg);
   const q = s => el.querySelector(s) || ctlBox.querySelector(s), canvas = q("canvas"), stage = q(".v3d-stage"), msgEl = q(".v3d-msg");
@@ -521,6 +536,11 @@ async function create(app, opts = {}) {
   /* tf3d: the Transfer function card (tfeditor.js) follows the Mode card; shown in volume mode for the scalar fields */
   const tfEd = createTfEditor({onChange: (st, info) => onTfEdit(st, info)});
   ctlBox.querySelector('[data-group="mode"]').after(tfEd.el);
+  /* always in place (no reflow when the mode changes): inert and dimmed outside volume mode, with a small hint */
+  tfEd.el.hidden = false; tfEd.el.inert = true; tfEd.el.dataset.tab = "view"; tfEd.el.classList.add("v3c-off");
+  tfEd.el.querySelector("h2").insertAdjacentHTML("beforeend", '<span class="v3c-hint" aria-hidden="true">volume</span>');
+  ctlBox.querySelector(".v3c-tabs").addEventListener("change", ev => { ctlBox.dataset.tab = ev.target.value; });
+  ctlBox.querySelector(".v3c-done").addEventListener("click", () => document.getElementById("controls-open")?.click());
   let docked = null, spinRaf = 0, fullHost = null, thumbHost = null;   // Phase 3 docking state (see "docking" below)
   /* stage message; `transient` ones (a hint about the current selection or preset) are cleared by the next selection or preset */
   /* fix-ui FE-11: the stage message is not a live region (download progress rewrites it 5× a second); state changes are
@@ -1016,7 +1036,7 @@ async function create(app, opts = {}) {
     q("#v3-lo-row").hidden = q("#v3-hi-row").hidden = vs; q("#v3-vw-row").hidden = q("#v3-weight-row").hidden = !vs;
     const want = !vs ? "field" : v.signed ? "signed" : "unsigned", names = want === "field" ? CMAPS : VEL_NAMES[want];
     if (cmapSet !== want) { const sel = q("#v3-cmap"); sel.textContent = ""; for (const c of names) { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); } cmapSet = want; }
-    q("#v3-cmap").disabled = !manifest || names.length < 2; q("#v3-cmap-row").hidden = !!manifest && names.length < 2;   // a one-map list (signed views) is no choice: row hidden
+    q("#v3-cmap").disabled = !manifest || names.length < 2; q("#v3-cmap-row").style.visibility = manifest && names.length < 2 ? "hidden" : "";   // a one-map list (signed views) is no choice: row hidden, its space kept
     for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) { const off = !manifest || !modeOk(species, i.value); i.disabled = off;
       i.dataset.tip = off && manifest ? "Integral only: the dispersion belongs to the whole ray"
         : i.value === "integral" ? (vs ? `Weighted ${species === "sigmalos" ? "spread" : "mean"} velocity along each ray` : "Projected map: column or weighted mean along each ray")
@@ -1091,8 +1111,8 @@ async function create(app, opts = {}) {
     ts.win = [+a.toFixed(3), +b.toFixed(3)]; ts.preset = "custom"; tfCardKey = "";
     syncTfCard(); applyTfMode(); legend(); aria(); render(); tfUrl(); }
   function syncTfCard(soft = false) { tfWinUi();
-    const show = !!manifest && !!species && mode === "volume" && tfOk(species);
-    tfEd.el.hidden = !show; if (!show) { tfCardKey = ""; return; }
+    const ok = !!manifest && !!species && tfOk(species), show = ok && mode === "volume";
+    tfEd.el.inert = !show; tfEd.el.classList.toggle("v3c-off", !show); if (!ok) return;   // a velocity view keeps the last card, dimmed
     const st = tfState(species), f = fld(species), cm = fieldTf(species, "volume").cmap, it = tfLevel(species);
     const key = `${species}|${encodeTF(st)}|${cm}|${it ? (it.sub ? "s" : "c") + it.bytes : ""}|${WEIGHTS.join()}`;
     if (soft && key === tfCardKey) return; tfCardKey = key;
