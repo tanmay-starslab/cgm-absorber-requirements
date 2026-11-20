@@ -44,7 +44,7 @@ export const STATIC_IDS = ["top", "title", "theme", "sfx", "pill", "tabs", "tab-
 export const STATIC_TESTIDS = ["topbar", "title", "gallery-open", "gallery-search", "ion-select", "layout-1", "layout-2R", "layout-2SN", "layout-4",
   "sn-0", "sn-1", "vhw", "view-reset", "fit-toggle", "spectra", "fit-status", "geo-open", "v3d-stage", "v3d-controls", "info-read", "info-methods", "info-licence"];
 export const REMOVED_IDS = ["lede", "cap", "h-about", "aboutgal", "rlo", "rhi", "snhi", "snlo", "vwin", "comps", "gallery"];
-const VIEWER_IDS = ["v3-species", "v3-fs", "v3-ctl"];
+const VIEWER_IDS = ["v3-species", "v3-fs", "v3-ctl", "v3-head"];
 
 /* ---------------------------------------------------------------- node part */
 const html = readFileSync(PAGE, "utf8"), parts = htmlParts(html);
@@ -158,6 +158,7 @@ export const tipWords = s => String(s).replace(/\$\{[^}]*\}/g, "X").split(/\s+/)
     "Lines menu rows and chips (app.js)": /data-testid="ion-\$\{i\.key\}" data-tip=/.test(src("app.js")) && /class="chip"[^>]*data-tip=/.test(src("app.js")),
     "3D field buttons (viewer3d.js radio)": /name="\$\{name\}"[^>]*data-tip="\$\{escH\(fieldTip\(x\)\)\}"/.test(src("viewer3d.js")),
     "3D mode radios": ["integral", "volume"].every(v => new RegExp(`<input type="radio" name="v3-mode" value="${v}"[^>]*data-tip=`).test(src("viewer3d.js"))),
+    "3D head control button (viewer3d.js), lazy headctl.js": /id="v3-head"[^>]*data-tip="/.test(src("viewer3d.js")) && /import\("\.\/headctl\.js"\)/.test(src("viewer3d.js")) && !/^\s*import\b[^(]*headctl/m.test(src("viewer3d.js")),
     "3D view buttons (4)": ["face-on", "edge-on", "sightline", "reset"].every(p => new RegExp(`data-p="${p}" data-tip="`).test(src("viewer3d.js"))),
     "Pick ray endpoint inputs (picker.js inp)": /const inp = \(id, lab\)[\s\S]{0,400}"data-tip":/.test(src("picker.js")),
     "Ask backend radios and New, Close (chat.js)": /const mode = \(value, label, id, tip\)[^\n]*"data-tip": tip/.test(src("chat.js")) && (src("chat.js").match(/mode\("(claude|local)", "[^"]+", "chat-be-\w+", "[^"]+"\)/g) || []).length === 2

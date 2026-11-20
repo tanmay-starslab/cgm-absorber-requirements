@@ -135,6 +135,14 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
      beside it. The runtime synthesises the optional UI sound effects in the browser; no audio files
      are shipped. Loaded only once a visitor turns Sounds on.
 
+13. MediaPipe Tasks Vision 1.2.3 and the Face Landmarker model (Apache-2.0, Google LLC),
+    https://github.com/google-ai-edge/mediapipe, npm @mediapipe/tasks-vision
+   - docs/tng50/vendor/mediapipe/: vision_bundle.js (modified: the usage logger never sends and its
+     URL and the source-map comment are removed), wasm/vision_wasm_internal.js and .wasm
+     (unmodified) and face_landmarker.task (the float16 model, unmodified); LICENSE is the Apache-2.0
+     text and README.md gives the versions, source URLs, sha256 values and the changes. Loaded only
+     once a visitor starts head control in the 3D tab; it runs on their device.
+
 ------------------------------------------------------------------------------------------------
 Trident licence (verbatim from trident 1.4.2)
 ------------------------------------------------------------------------------------------------
