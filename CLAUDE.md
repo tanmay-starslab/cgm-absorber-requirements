@@ -24,7 +24,9 @@ Do not change physics, grids or published numbers without being asked; results f
 
 - **Profiles** (`profiles.py`, `lines.py`): Doppler cores only, τ0 = 1.4975e-15 · N f λ[Å] / b[km/s].
   Damping wings neglected.
-- **LSF**: Gaussian, FWHM = c/R (σ_LSF = FWHM/2.3548). Convolution by FFT.
+- **LSF**: Gaussian, FWHM = c/R (σ_LSF = FWHM/2.3548). Convolution by FFT. Optional tabulated HST/COS LSF
+  (`lsf.py`: `gaussian(R)` is bit-identical to the old path, `cos(grating, cenwave, lp, lam)`); for COS the
+  resolution element is the FWHM of the LSF core.
 - **Noise**: constant continuum noise; **S/N is per resolution element** (integrals are divided by FWHM_LSF).
 - **Detection** (`detection.py`): matched filter, S_det = (S/N)·K, K(logN, b, R) = sqrt(∫D² dv / FWHM),
   D = 1 − F_obs. Computed via Parseval on a fixed grid (2¹⁴ points, 0.25 km/s).
@@ -54,7 +56,7 @@ Do not change physics, grids or published numbers without being asked; results f
 ```
 absreq/   lines.py (atomic data, CGM_IONS, b_fid) · profiles.py (τ, LSF, FFT convolution)
           detection.py (K cube, logN_min) · separation.py (G, dv_min, sparrow)
-          theory.py (thin-limit ρ, dvmin_over_fwhm) · style.py (matplotlib usetex; AAS widths 3.35/7.1 in)
+          lsf.py (Gaussian / tabulated COS kernels) · theory.py (thin-limit ρ, dvmin_over_fwhm) · style.py (matplotlib usetex; AAS widths 3.35/7.1 in)
 scripts/  build_grids.py → grids/          make_figures.py → figures/, figures/ions/
           make_tables.py → paper/requirements_table.tex
           export_web_data.py → docs/index.html (template docs/_template.html; data replace /*__DATA__*/null)
@@ -85,6 +87,9 @@ Ion keys: `Line.key` = ion without spaces + label wavelength with `.`→`p` (e.g
 .venv/bin/python scripts/make_figures.py matrix lsf       # summary figures only
 .venv/bin/python scripts/make_figures.py ions "O VI"      # one ion (~20 s)
 .venv/bin/python scripts/make_tables.py                   # paper/requirements_table.tex
+.venv/bin/python scripts/build_cos_grids.py               # COS-LSF option → grids/cos/ (~2 min, all settings)
+.venv/bin/python scripts/build_cos_grids.py --table       # grids/cos/summary.csv, paper/cos_lsf_table.tex
+.venv/bin/python scripts/make_figures.py cos              # figures/cos_lsf
 (cd paper && pdflatex detectability_note.tex)             # run twice for references
 .venv/bin/python scripts/export_web_data.py               # docs/index.html
 ```
@@ -105,7 +110,9 @@ committing regenerated figures, confirm the content actually changed (e.g. a pix
 
 ## Open to-do list (recorded; not started)
 
-1. **Tabulated HST/COS LSF** (non-Gaussian wings) for COS-like configurations — most important realism upgrade.
+1. ~~**Tabulated HST/COS LSF**~~ — done as an option (`absreq/lsf.py`, `absreq/data/cos_lsf/`,
+   `scripts/build_cos_grids.py` → `grids/cos/`, `make_figures.py cos`, note appendix). Published Gaussian numbers
+   unchanged. Open: LP7/LP10 tables (not yet published), NUV model LSF narrower than the IHB R, explorer (JS) LSF.
 2. **Doublet partners** (O VI 1037, Mg II 2803, C IV 1550, Si IV 1393, N V 1242) used jointly to recover
    resolution and column density for saturated components.
 3. **Unequal components** (N ratio, different b) in the full numerical grids; currently thin-limit theory only.
