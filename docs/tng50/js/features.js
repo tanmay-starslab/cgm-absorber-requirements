@@ -10,6 +10,7 @@
 //   7 loading feedback: a thin running bar on the spectra while a sightline loads
 // The pure parts (createHistory, keyAction, pickRandom, csvCell, spectraCSV, fitCSV) need no DOM and are node-tested in
 // tests/js/features_unit.mjs.
+import {sfx} from "./uisound.js";   /* copy and random echo a cue when sounds are on */
 
 /* ---------------- pure parts ---------------- */
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -118,11 +119,12 @@ export function initFeatures(ctx) {
     try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(url); ok = true; } } catch { ok = false; }
     if (!ok) { const ta = document.createElement("textarea"); ta.value = url; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;left:-9999px;top:0";
       document.body.appendChild(ta); ta.select(); try { ok = document.execCommand("copy"); } catch { ok = false; } ta.remove(); }
+    sfx(ok ? "copy" : "error");
     ctx.note(ok ? "link to this view copied" : "copy failed; the address bar holds the link", ok ? "good" : "bad");
     const b = $("#share"); if (b && ok) { b.classList.add("done"); setTimeout(() => b.classList.remove("done"), 1200); }
     return ok;
   }
-  const icons = $("#top .icons"), theme = $("#theme");
+  const learn = $("#cl-learn"), shareCl = $("#cl-share");   /* top-bar clusters: keys goes with the help, copy link with the source */
   const share = btn("ib hide-m", "share", "Copy a link to this view", "Copy a link to this exact view (l)", ICON.share);
   share.addEventListener("click", copyLink);
 
@@ -136,11 +138,12 @@ export function initFeatures(ctx) {
   document.body.appendChild(pop);
   const toggleKeys = () => { if (pop.hidden) ctx.openPop(keysBtn, pop); else ctx.closePops(); };
   keysBtn.addEventListener("click", ev => { ev.stopPropagation(); toggleKeys(); });
-  if (icons) { icons.insertBefore(share, theme && theme.parentNode === icons ? theme : icons.firstChild); icons.insertBefore(keysBtn, share); }
+  if (shareCl) shareCl.prepend(share);
+  if (learn) learn.append(keysBtn);
 
   /* 3 random sightline */
   const next = $("#next"), rand = btn("pbtn sq", "rand", "Random sightline", "Jump to a random sightline from the list (d)", ICON.dice);
-  function random() { const id = pickRandom(ctx.pool(), ctx.S.id); if (id) ctx.select(id); return id; }
+  function random() { const id = pickRandom(ctx.pool(), ctx.S.id); if (id) { sfx("swipe"); ctx.select(id); } return id; }
   rand.addEventListener("click", random);
   if (next) next.after(rand);
 

@@ -41,9 +41,10 @@ import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, 
   VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity} from "./vizdata.js";
 import {makeMaterial} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
-import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, TF_W, TF_H} from "./tf.js";
+import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, NELSON16, TF_W, TF_H} from "./tf.js";
 import {createTfEditor, histCodes, histWindow} from "./tfeditor.js";
 import {initTips} from "./tips.js";
+import {sfx} from "./uisound.js";
 
 export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList};
 
@@ -1110,11 +1111,13 @@ async function create(app, opts = {}) {
     if (info.commit) { tfUrl(); announce(tfWords()); } }
   const tfWords = () => { const st = tfs[species]; if (!tfOn()) return "transfer function: default ramp";
     return `transfer function: ${st.preset && st.preset !== "custom" ? st.preset : "custom"}, ${st.bands.length} band${st.bands.length === 1 ? "" : "s"}${st.twoD ? ", 2D" : ""}${st.shade ? `, shading ${st.shade.toFixed(2)}` : ""}${emisKey() ? `, emission weighted by ${wName(emisKey())} to the power ${st.gamma}` : ""}`; };
-  /* a preset for the current field; THOR's "Gas phases" is a T preset with n_H emissivity: it switches the field to T */
+  /* a preset for the current field; THOR's "Gas phases" and the Nelson+16 shells are T presets with n_H emissivity: they
+     switch the field to T */
   function tfApplyPreset(name) {
-    if (name === "thor" && species !== THOR.field) { if (!tfOk(THOR.field)) return false;
-      tfs[THOR.field] = tfPreset("thor", tfCtx(THOR.field));
-      setSpecies(THOR.field).then(ok => { if (ok) { syncTfCard(); tfUrl(); announce(tfWords()); } }); return true; }
+    const FP = {thor: THOR, nelson16: NELSON16}[name];
+    if (FP && species !== FP.field) { if (!tfOk(FP.field)) return false;
+      tfs[FP.field] = tfPreset(name, tfCtx(FP.field));
+      setSpecies(FP.field).then(ok => { if (ok) { syncTfCard(); tfUrl(); announce(tfWords()); } }); return true; }
     if (!tfOk(species)) return false;
     const was = emisKey(); tfs[species] = tfPreset(name, tfCtx(species)); tfCardKey = "";
     syncTfCard(); applyTfMode(); legend(); aria(); render(); if (emisKey() !== was) { ensure().catch(() => {}); bindAll(); }
@@ -1479,14 +1482,14 @@ async function create(app, opts = {}) {
     else if (k === "+" || k === "=") { camera.position.copy(tgt).add(off.multiplyScalar(0.87)); controls.update(); }
     else if (k === "-" || k === "_") { camera.position.copy(tgt).add(off.multiplyScalar(1.15)); controls.update(); }
     else if ((k === "F" || k === "f") && ev.shiftKey) toggleFullscreen();
-    else if (k === "f" || k === "F") setPreset("face-on"); else if (k === "e" || k === "E") setPreset("edge-on");
-    else if (k === "r" || k === "R") setPreset("reset"); else if (k === "a" || k === "A") setPreset("sightline");
+    else if (k === "f" || k === "F") { sfx("snap"); setPreset("face-on"); } else if (k === "e" || k === "E") { sfx("snap"); setPreset("edge-on"); }
+    else if (k === "r" || k === "R") { sfx("snap"); setPreset("reset"); } else if (k === "a" || k === "A") { sfx("snap"); setPreset("sightline"); }
     else if (k === "m" || k === "M") setMode(mode === "integral" ? "volume" : "integral");
     else if (k === "s" || k === "S") setStars({on: !layer.stars});
     else if (k === "g" || k === "G") setGuides({ring: !guides.visible});
     else if (k === "p" || k === "P") viewer.hooks.togglePick?.();
     else if ((k === "c" || k === "C") && !ev.shiftKey) recentre();
-    else if ((k === "o" || k === "O") && !ev.shiftKey) setOrbit(!fullOrbit);
+    else if ((k === "o" || k === "O") && !ev.shiftKey) { sfx(fullOrbit ? "pause" : "play"); setOrbit(!fullOrbit); }
     else if (k === "Escape") { if (fsEl() || performance.now() - fsExitAt < 400) return; viewer.hooks.exitPick?.(); }   // Esc that leaves fullscreen does not also leave pick mode
     else return;
     ev.preventDefault(); ev.stopPropagation(); render(); });
@@ -1497,8 +1500,8 @@ async function create(app, opts = {}) {
   for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.disabled = !manifest;
   for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
   if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0"]) q(id).disabled = true;
-  q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) setSpecies(ev.target.value); });
-  q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) setMode(ev.target.value); });
+  q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) { sfx("select"); setSpecies(ev.target.value); } });
+  q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) { sfx("select"); setMode(ev.target.value); } });
   q("#v3-lo").addEventListener("input", ev => tfWinMode() ? setTfWin(+ev.target.value, null) : setTransfer({lo: Math.min(+ev.target.value, fieldTf(species).hi - 0.1)}));
   q("#v3-hi").addEventListener("input", ev => tfWinMode() ? setTfWin(null, +ev.target.value) : setTransfer({hi: Math.max(+ev.target.value, fieldTf(species).lo + 0.1)}));
   q("#v3-op").addEventListener("input", ev => setTransfer({opacity: +ev.target.value}));
@@ -1512,10 +1515,10 @@ async function create(app, opts = {}) {
   q("#v3-guides").addEventListener("change", ev => setGuides({ring: ev.target.checked}));
   q("#v3-scale").addEventListener("change", ev => setGuides({scale: ev.target.checked}));
   q("#v3-lines").addEventListener("change", ev => setLines(ev.target.value));
-  ctlBox.querySelectorAll(".presets [data-p]").forEach(b => b.addEventListener("click", () => setPreset(b.dataset.p)));
+  ctlBox.querySelectorAll(".presets [data-p]").forEach(b => b.addEventListener("click", () => { sfx("snap"); setPreset(b.dataset.p); }));
   /* ux4 pivot controls: stage chip, View card galaxy | ray, kpc form, double-click on the stage */
   q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
-  q("#v3-orbit").addEventListener("click", () => setOrbit(!fullOrbit));
+  q("#v3-orbit").addEventListener("click", () => { sfx(fullOrbit ? "pause" : "play"); setOrbit(!fullOrbit); });
   q("#v3-orbit-axis").addEventListener("change", ev => { orbitAxis = ["auto", "spin", "major", "minor"].includes(ev.target.value) ? ev.target.value : "auto"; orbitAxisNow = null; orbitTip(); });
   q("#v3-orbit-speed").addEventListener("input", ev => { orbitDeg = Math.max(1, Math.min(30, +ev.target.value || 5)); q("#v3-orbit-speed-o").textContent = orbitDeg + "°/s"; });
   /* owner 2026-11-14: zooming, panning or turning the view no longer stops the orbit; only the stop button (or O) does */
@@ -1546,7 +1549,7 @@ async function create(app, opts = {}) {
   idEl?.addEventListener("click", ev => { ev.stopPropagation(); app.openCredits?.(idEl); });
   idEl?.addEventListener("pointerdown", ev => ev.stopPropagation());
   const onGal = () => idBadge(); addEventListener("tng:galaxy", onGal); idBadge();
-  /* tf3d API: setTf("ramp" | "thor" | "iso" | "clouds" | state) for the current field; tfState() a copy; tfOn() */
+  /* tf3d API: setTf("ramp" | "thor" | "nelson16" | "iso" | "clouds" | state) for the current field; tfState() a copy; tfOn() */
   function setTf(x) { if (typeof x === "string") return tfApplyPreset(x); if (!x || !tfOk(species)) return false;
     onTfEdit({...tfState(species), ...x, preset: x.preset || "custom"}, {commit: true, reason: "api"}); syncTfCard(); return true; }
   Object.assign(viewer, {setTf, tfState: () => (species && tfs[species] ? JSON.parse(JSON.stringify(tfs[species])) : null), tfOn: () => tfOn(), tfEditor: tfEd});
