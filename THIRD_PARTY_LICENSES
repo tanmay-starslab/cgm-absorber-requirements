@@ -118,7 +118,17 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
      repository's MIT licence.
    - The story data, chapter images and film show TNG50 data and fall under item 3.
 
-11. uisfx 0.4.0 (code MIT, audio CC0 1.0), https://uisfx.com, https://github.com/romainsimon/uisfx
+11. HST/COS line-spread-function tables (STScI), absreq/data/cos_lsf/
+   - Optical-model LSF tables from
+     https://www.stsci.edu/hst/instrumentation/cos/performance/spectral-resolution (retrieved
+     2026-11-19), stored gzipped and otherwise unmodified; dispersion coefficients copied from the
+     CRDS DISPTAB references 97h1820cl_disp.fits and 63p1559jl_disp.fits into absreq/lsf.py.
+   - Terms: STScI Content Use Policy (https://www.stsci.edu/copyright): material produced by STScI
+     for NASA (contracts NAS5-03127, NAS5-26555, 80GSFC19C0054) carries no copyright claim and may
+     be used freely as public domain; NASA and STScI ask to be acknowledged. Not covered by this
+     repository's MIT licence.
+
+12. uisfx 0.4.0 (code MIT, audio CC0 1.0), https://uisfx.com, https://github.com/romainsimon/uisfx
    - docs/tng50/vendor/uisfx/uisfx.js is the package's dist/index.js, unmodified apart from the removed
      source-map comment; LICENSE (MIT, Copyright (c) 2026 Yuki Capital) and LICENSE-AUDIO (CC0) sit
      beside it. The runtime synthesises the optional UI sound effects in the browser; no audio files
