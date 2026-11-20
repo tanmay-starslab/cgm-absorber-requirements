@@ -12,8 +12,9 @@
 //   C9  #spectra >= 70 % of the viewport width and >= 60 % of its height at >= 1024 px (>= 75 % width at 1440 with
 //       the side column open, pick.md 4), the top bar <= 48 px high; at 390 px #spectra spans the width minus the
 //       16 px gutters, #controls-open is shown and opens the controls, and there is no horizontal scroll;
-//   C13 on the 3D tab #v3d-stage is square within 1 px, never full-bleed (<= 60 vw and <= 900 px at >= 1024 px),
-//       with #v3d-controls beside it (>= 280 px wide) at >= 1024 px and below it otherwise.
+//   C13 on the 3D tab #v3d-stage is square within 1 px, never full-bleed (<= 980 px and room for the card column beside
+//       it at >= 1024 px), with the control cards (#v3-ctl, else #v3d-controls) beside it (>= 280 px wide) at >= 1024 px;
+//       on phones they open from #controls-open as a bottom sheet inside the viewport (ux/3d-layout).
 // Once, at 1440 light: the side-column toggle (#side-toggle, or a button with aria-controls="side") widens the
 // spectra, and the separator scan is repeated with the fit overlay on and a hover readout shown.
 // Without TNG_BROWSER=1 it prints "skipped".
@@ -74,20 +75,22 @@ try {
       // C13: the 3D tab
       await P.eval(`tngApp.showTab("3d")`); await P.waitFor(`__ui.vis(document.getElementById("v3d-stage"))`, 15000);
       const tMount = await P.waitFor("!!window.tngViewer3d", 30000, 250); await sleep(1200);
-      { const c = await P.eval(`(() => { const e = document.getElementById("v3d-controls"); if (!e) return null;
-          const heads = [...e.querySelectorAll("h2, h3, legend, .grp-k")].filter(h => __ui.vis(h)).map(h => h.innerText.trim()).filter(Boolean);
+      if (mobile) { await P.click("#controls-open"); await sleep(500); }   // ux/3d-layout: the phone's 3D settings are a bottom sheet
+      { const c = await P.eval(`(() => { const e = document.getElementById("v3-ctl") || document.getElementById("v3d-controls"); if (!e) return null;
+          const heads = [...e.querySelectorAll("h2, h3, legend, .grp-k, .v3c-tabs span")].filter(h => __ui.vis(h)).map(h => h.innerText.trim()).filter(Boolean);
           const ctl = [...e.querySelectorAll("button, input, select")].filter(x => __ui.vis(x)).length;
           const st = getComputedStyle(e); return {vis: __ui.vis(e), op: st.opacity, visib: st.visibility, heads, ctl}; })()`);
         check(c && c.vis && c.heads.length >= 3 && c.ctl >= 3, `${tag}: C13 #v3d-controls is shown with labelled groups and controls (${c ? `${c.heads.length} visible headings [${c.heads.slice(0, 6).join(", ")}], ${c.ctl} visible controls, opacity ${c.op}, visibility ${c.visib}` : "absent"})`);
         if (tMount < 0) note(`${tag}: the 3D viewer did not mount within 30 s (three.js from the CDN or WebGL2 unavailable here)`); }
-      const s = await P.eval(`({st: __ui.rect("#v3d-stage"), ct: __ui.rect("#v3d-controls"), top: __ui.rect("#top"), sw: document.documentElement.scrollWidth, ar: getComputedStyle(document.getElementById("v3d-stage")).aspectRatio,
+      const s = await P.eval(`({st: __ui.rect("#v3d-stage"), ct: __ui.rect(document.getElementById("v3-ctl") ? "#v3-ctl" : "#v3d-controls"), top: __ui.rect("#top"), sw: document.documentElement.scrollWidth, ar: getComputedStyle(document.getElementById("v3d-stage")).aspectRatio,
         sep: __ui.sepScan()})`);
       const sq = s.st && Math.abs(s.st.w - s.st.h) <= 1;
       check(sq && s.st.w > 100, `${tag}: C13 #v3d-stage ${s.st ? s.st.w.toFixed(1) + " x " + s.st.h.toFixed(1) : "absent"} is square within 1 px (aspect-ratio ${s.ar})`);
       if (w >= 1024) {
-        check(s.st && s.st.w <= Math.min(0.6 * w, 900) + 1 && s.st.w < w - 32, `${tag}: C13 stage ${s.st ? s.st.w.toFixed(0) : "?"} px is not full-bleed (<= min(60 vw, 900 px), viewport ${w})`);
+        check(s.st && s.st.w <= 980 * 1.12 + 1 && s.st.w <= w - 32 - 280, `${tag}: C13 stage ${s.st ? s.st.w.toFixed(0) : "?"} px is not full-bleed (<= 980 CSS px, room for a 280 px column, viewport ${w})`);
         check(s.ct && s.ct.x >= s.st.right - 1 && s.ct.w >= 280, `${tag}: C13 #v3d-controls beside the stage (x ${s.ct ? s.ct.x.toFixed(0) : "?"} >= ${s.st ? s.st.right.toFixed(0) : "?"}), ${s.ct ? s.ct.w.toFixed(0) : "?"} px wide (>= 280)`);
-      } else check(s.ct && s.ct.y >= s.st.bottom - 1 && s.st.right <= w && s.sw <= w, `${tag}: C13 #v3d-controls below the stage, stage inside the viewport, no horizontal scroll (scrollWidth ${s.sw})`);
+      } else { check(s.ct && s.ct.bottom <= h + 1 && s.ct.x >= -1 && s.ct.right <= w + 1 && s.st.right <= w && s.sw <= w, `${tag}: C13 the 3D settings sheet and the stage inside the viewport, no horizontal scroll (sheet ${JSON.stringify(s.ct)}, scrollWidth ${s.sw})`);
+        if (mobile) { await P.click("#controls-open"); await sleep(400); } }
       { if (tMount >= 0) await P.waitFor(`!window.tngViewer3d.levels || !JSON.stringify(tngViewer3d.levels()).includes("loading")`, 60000, 500);   // the transient download note settles first
         const w3 = await P.eval(`__ui.words()`), down = await P.eval(`document.body.innerText.includes("is unreachable")`);   // B_fix F8: C14 covers the 3D tab as well
         /* a 3D data host that does not answer (a load-dependent environment failure) adds its error text twice; that is

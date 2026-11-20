@@ -94,7 +94,7 @@ export function createTfEditor({onChange = () => {}} = {}) {
     /* band-only controls (width, colour) are off for the ramp; with nothing selectable, everything but + band is off */
     for (const s of ["#v3-tf-w", "#v3-tf-col"]) q(s).disabled = !has;
     for (const s of ["#v3-tf-a", "#v3-tf-del", "#v3-tf-g0", "#v3-tf-g1"]) q(s).disabled = !I;
-    q("#v3-tf-w-row").hidden = R;
+    q("#v3-tf-w-row").style.visibility = R ? "hidden" : "";   // space kept: the card keeps its height when the ramp is selected
     q("#v3-tf-add").disabled = st.bands.length >= MAX_BANDS;
     if (has) { q("#v3-tf-w").value = B.w; q("#v3-tf-col").value = hex(bandCol(B)); }
     if (I) { q("#v3-tf-a").value = I.a; q("#v3-tf-g0").value = I.g?.[0] ?? 0; q("#v3-tf-g1").value = I.g?.[1] ?? 1; }

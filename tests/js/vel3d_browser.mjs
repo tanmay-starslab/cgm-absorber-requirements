@@ -100,7 +100,7 @@ try {
   check(L.ends.join() === "toward you,away from you" && /km\/s/.test(L.ttl) && L.lo && !L.vw && !L.w && L.wv === "±200",
     `legend "${L.ttl}" ticks ${L.ticks.join(" ")} with words ${L.ends.join(" / ")}; window ${L.wv} km/s and Weight rows shown, log rows hidden`);
   check(/line-of-sight velocity/.test(L.aria) && /toward you to away from you/.test(L.aria), "canvas label describes the view and its sign");
-  const U2 = JSON.parse(await E(`JSON.stringify({cm: document.querySelector("#v3-cmap-row").hidden, ttl: [...document.querySelectorAll('#v3-mode input')].map(i => i.closest("label").title),
+  const U2 = JSON.parse(await E(`JSON.stringify({cm: document.querySelector("#v3-cmap-row").style.visibility === "hidden", ttl: [...document.querySelectorAll('#v3-mode input')].map(i => i.closest("label").title),
     desc: document.querySelector("#v3-vw").hasAttribute("aria-describedby")})`));
   check(U2.cm && /weighted mean along each ray/.test(U2.ttl.join()) && /colour from the velocity/.test(U2.ttl.join()) && !U2.desc,
     `signed view: one-map colours row hidden; mode tooltips "${U2.ttl.join(" | ")}"; window value read once`);
