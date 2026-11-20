@@ -4,7 +4,7 @@
 // The gate is the first screen: a still of this galaxy's gas and starlight (img/poster_<g>_<ray>.webp, landscape, and
 // _p.webp, portrait; scripts/story_posters.mjs), the title, and two equal choices: "Hold to fly" (hold the button or
 // Space for HOLD_MS; one press under reduced motion; Enter on the focused button starts at once, so a keyboard never needs
-// to hold) and "Watch (<length>)". Below them "Skip intro", "Read as text" and the music and sound switches, then a one-line credit for the still.
+// to hold) and "Watch (<length>)". Below them "Skip intro", "Read as text" and the music switch, then a one-line credit for the still.
 // Top left, where the story's back arrow sits, an arrow back to the explorer (opts.backHref, default ../../).
 // When the live volume is ready the integrator calls liveReady(): the gate's sky turns transparent; the poster stays until close.
 // While the gate is open it owns Space (capture phase), so the story's input layer does not fly before the flight starts;
@@ -189,7 +189,7 @@ function injectCss(doc) {
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 
 /* host: the stage element. opts = {copy, vars: {galaxy, ...}, g, ray, posterBase ("img/"), watchSeconds, reduced,
-     credit (string; default from vars), stories ([{id, title, blurb, img, href}], picker.js gateCards), onRide({via, holding}), onWatch(), onSkip(), onText(), music, sfx, autofocus (default true),
+     credit (string; default from vars), stories ([{id, title, blurb, img, href}], picker.js gateCards), onRide({via, holding}), onWatch(), onSkip(), onText(), autofocus (default true),
      focusAfter (element or () => element; default host: where focus goes on close), backHref, backViaHistory (() => bool)}
    -> {el, open(), close({instant}), isOpen(), liveReady(), rects(), setWatch(seconds), destroy()} */
 export function createGate(host, opts = {}) {
@@ -232,8 +232,6 @@ export function createGate(host, opts = {}) {
         `<button type="button" class="sg-a" data-g1="gate.text" data-testid="gate-text">${esc(fill(ui.read_as_text || "Read as text", vars))}</button>` +
         (opts.music ? `<button type="button" class="sg-sw msw" role="switch" aria-checked="false" data-g1="gate.music" data-testid="gate-music">` +
           `<span class="msw-l">Music</span><span class="msw-t" aria-hidden="true"><span class="msw-bars"><i></i><i></i><i></i></span><span class="msw-k"><svg viewBox="0 0 20 20"><path d="M8 14.2V5.6l7-1.6v8.4"/><circle cx="6" cy="14.4" r="2.2"/><circle cx="13" cy="12.6" r="2.2"/></svg></span></span></button>` : "") +
-        (opts.sfx ? `<button type="button" class="sg-sw msw sfx" role="switch" aria-checked="false" data-g1="gate.sfx" data-testid="gate-sfx">` +
-          `<span class="msw-l">Sounds</span><span class="msw-t" aria-hidden="true"><span class="msw-bars"><i></i><i></i><i></i></span><span class="msw-k"><svg viewBox="0 0 20 20"><path d="M3.6 8h2.6l3.6-3v10l-3.6-3H3.6z"/><path d="M13 7.6a3.2 3.2 0 0 1 0 4.8M15.2 5.6a6 6 0 0 1 0 8.8"/></svg></span></span></button>` : "") +
       `</div>` +
       (stories.length ? `<nav class="sg-st" aria-labelledby="sg-sl" data-g1="gate.stories"><p class="sg-sl" id="sg-sl">${esc(ui.gate_stories || "Or pick a story")}</p><ul class="sg-sr">` +
         stories.map(c => `<li><a class="sg-sc" href="${esc(c.href)}" data-story="${esc(c.id)}" aria-label="${esc(c.title)}: ${esc(c.blurb)}">` +
@@ -281,8 +279,6 @@ export function createGate(host, opts = {}) {
   el.querySelector(".sg-back").addEventListener("click", e => { if (opts.backViaHistory && opts.backViaHistory()) { e.preventDefault(); win.history.back(); } });
   // the music toggle: opts.music = createSound() (js/ui/sound.js) binds the click and keeps the label in step
   const musicB = el.querySelector('[data-testid="gate-music"]'); if (musicB && opts.music) opts.music.bind(musicB);
-  // the sound effects switch: opts.sfx = uiSound() (docs/tng50/js/uisound.js), same binding contract
-  const sfxB = el.querySelector('[data-testid="gate-sfx"]'); if (sfxB && opts.sfx) opts.sfx.bind(sfxB);
 
   /* Space belongs to the gate while it is open: hold to fly from anywhere except the other buttons (where Space
      activates them, as a button should) */
