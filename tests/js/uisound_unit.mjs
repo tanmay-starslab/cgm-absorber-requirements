@@ -79,6 +79,12 @@ check(VOLUME > 0 && VOLUME <= 0.5 && DUCK > 0 && DUCK < 1, `volume kept low (${V
 /* the vendored runtime is a plain ES module with the API the wrapper uses */
 { const m = await import("../../docs/tng50/vendor/uisfx/uisfx.js");
   check(typeof m.createUISFX === "function" && m.packNames.includes(PACK), "vendored uisfx exports createUISFX and the glass pack");
-  for (const c of ["select", "success", "error", "receive", "toggle-on", "toggle-off", "start", "play", "complete"]) check(m.cueNames.includes(c), `cue ${c} exists`); }
+  for (const c of ["select", "success", "error", "receive", "toggle-on", "toggle-off", "start", "play", "complete"]) check(m.cueNames.includes(c), `cue ${c} exists`);
+  /* every literal cue the pages play (sfx("x"), with ternaries) is a uisfx cue name */
+  const {readdirSync, readFileSync} = await import("node:fs"), dir = new URL("../../docs/tng50/js/", import.meta.url), used = new Set();
+  for (const f of readdirSync(dir).filter(f => f.endsWith(".js"))) for (const call of readFileSync(new URL(f, dir), "utf8").matchAll(/\bsfx\(([^()]*)\)/g))
+    for (const q of call[1].matchAll(/"([a-z-]+)"/g)) used.add(q[1]);
+  const bad = [...used].filter(c => !m.cueNames.includes(c));
+  check(used.size >= 15 && !bad.length, `the ${used.size} cues the explorer plays all exist${bad.length ? ": missing " + bad.join(", ") : ""}`); }
 
 process.exit(C.finish());

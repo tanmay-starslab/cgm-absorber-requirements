@@ -4,7 +4,7 @@
 // (The float-exact identity of every non-TF mode against the previous shader was checked in a WebGL2 harness; this file
 // pins the text-level guarantees: TF code runs only under uTFOn with uMode 1 outside velocity views.)
 // Usage: node tests/js/tf_unit.mjs
-import {TF_W, TF_H, MAX_BANDS, PRESETS, PRESET_LABELS, THOR, GMAX_DEFAULT, evalTF, buildTF, preset, encodeTF, decodeTF,
+import {TF_W, TF_H, MAX_BANDS, PRESETS, PRESET_LABELS, THOR, NELSON16, NELSON16_WMIN, GMAX_DEFAULT, evalTF, buildTF, preset, encodeTF, decodeTF,
   histogram, histogram2D, gradAt, gradMask, tfUniforms, defaultWRef} from "../../docs/tng50/js/tf.js";
 import {lut} from "../../docs/tng50/js/colormaps.js";
 import {FRAG, makeMaterial} from "../../docs/tng50/js/raymarch.js";
@@ -56,6 +56,19 @@ const L = lut("inferno");
   check(px(tex, 255, 0)[3] === 0 && px(tex, 255, 63)[3] === 255, "Clouds (2D): flat regions (row 0) transparent, steep ones (row 63) opaque");
   const iso = preset("iso", ctxNH); check(iso.bands.length === 3 && iso.bands.every(b => b.rgb === null && b.w < 0.2), "Iso bands: three narrow colormap bands");
   check(PRESETS.every(p => PRESET_LABELS[p]) && PRESET_LABELS.thor === "Gas phases (THOR)", "preset labels for the editor"); }
+
+/* Nelson et al. 2016 Fig. 13 / §5.3: shells at log T = 4.5, 5.0, 5.5, 6.0 with σ = 6, 6, 3, 3 × 10^-3 dex, window 4.4-6.3;
+   rendered widths are at least the paper's (widened for voxel data), the texture builds with a peak at each centre */
+{ const st = preset("nelson16", ctxT), P = [[4.5, 0.006], [5.0, 0.006], [5.5, 0.003], [6.0, 0.003]];
+  check(st.field === "T" && st.emis === "nH" && st.win[0] === 4.4 && st.win[1] === 6.3 && PRESET_LABELS.nelson16 === "Temperature shells (Nelson+16)",
+    "Nelson+16: T field, n_H emissivity, window [4.4, 6.3], labelled");
+  check(st.bands.length === 4 && st.bands.every((b, i) => near(b.c, P[i][0]) && near(NELSON16.bands[i].w0, P[i][1])), "Nelson+16: band centres and reference widths are the paper's");
+  check(st.bands.every((b, i) => b.w >= P[i][1] && b.w >= NELSON16_WMIN && b.w <= 0.05), `Nelson+16: rendered widths ${st.bands.map(b => b.w)} >= the paper's`);
+  const tex = buildTF(st), at = v => Math.round((v - 4.4) / 1.9 * 255);
+  check(tex.length === TF_W * TF_H * 4 && P.every(([c], i) => Math.abs(px(tex, at(c))[3] - 255 * st.bands[i].a) <= 3 && px(tex, at(c) + 12)[3] < 10)
+    && px(tex, at(5.25))[3] === 0, "Nelson+16: texture peaks at each shell's height, empty between shells");
+  check([0, 1, 2, 3].every(i => st.bands[i].rgb.length === 3) && st.bands[0].rgb[2] > st.bands[0].rgb[0] && st.bands[2].rgb[0] > st.bands[2].rgb[2]
+    && st.bands[3].rgb[0] > 200 && st.bands[3].rgb[2] < 80, "Nelson+16: blue to red colours (dark blue, light blue, yellow, red)"); }
 
 /* URL encode/decode */
 { for (const p of PRESETS) { const st = preset(p, ctxNH), s = encodeTF(st, ctxNH);

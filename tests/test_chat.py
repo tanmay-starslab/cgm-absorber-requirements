@@ -559,7 +559,7 @@ def test_tools_and_prompt_cover_the_galaxy_sample():
     assert sg["required"] == ["id"] and sg["properties"]["id"]["type"] == "integer"
     assert t["set_view"]["input_schema"]["properties"]["tab"]["enum"] == ["spectra", "3d"]
     s3 = t["show_3d"]["input_schema"]["properties"]
-    assert s3["mode"]["enum"] == ["integral", "volume"] and s3["tf"]["enum"] == ["ramp", "thor", "iso", "clouds"]
+    assert s3["mode"]["enum"] == ["integral", "volume"] and s3["tf"]["enum"] == ["ramp", "thor", "nelson16", "iso", "clouds"]
     p = chat.SYSTEM_PROMPT
     assert "198 simulated" in p and "[page ...] snapshot" in p and "select_galaxy first" in p and "list_galaxies" in p
     assert '"In general,"' in p and "never invent citations" in p and "THOR" in p and "FG11" in p and "HM2012" in p
