@@ -15,8 +15,9 @@
 //   editor.state                       a copy of the shown state;  editor.select(i) selects band i (-1: the ramp)
 // The ramp (Default ramp, Clouds) is an editable item like a band: two handles on the canvas (low end, high end at its
 // opacity), the alpha and gradient rows act on it while it is selected, and remove drops it.
-import {buildTF, PRESETS, PRESET_LABELS, MAX_BANDS, TF_W, TF_H, THOR_NOTE} from "./tf.js";
+import {buildTF, PRESETS, PRESET_LABELS, MAX_BANDS, TF_W, TF_H, THOR_NOTE, NELSON16_NOTE} from "./tf.js";
 import {pixelRatio} from "./state.js";
+import {sfx} from "./uisound.js";
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const r3 = x => Math.round(x * 1000) / 1000;
@@ -43,7 +44,7 @@ export function createTfEditor({onChange = () => {}} = {}) {
   el.className = "v3c-card v3tf"; el.dataset.group = "tf"; el.id = "v3-tf"; el.hidden = true;
   const opts = PRESETS.map(p => `<option value="${p}">${PRESET_LABELS[p]}</option>`).join("") + `<option value="custom" disabled>custom</option>`;
   el.innerHTML = `<h2 id="${uid}-h">Transfer function</h2>
-    <div class="v3c-row"><label for="v3-tf-preset">preset</label><select id="v3-tf-preset" data-testid="v3-tf-preset" data-tip="Starting look: default ramp, THOR gas phases, iso bands or clouds">${opts}</select></div>
+    <div class="v3c-row"><label for="v3-tf-preset">preset</label><select id="v3-tf-preset" data-testid="v3-tf-preset" data-tip="Starting look: ramp, THOR phases, temperature shells, iso bands or clouds">${opts}</select></div>
     <div class="v3tf-plot"><canvas id="v3-tf-cv" data-testid="v3-tf-canvas" tabindex="0" role="application" aria-roledescription="transfer function editor"
       aria-labelledby="${uid}-h" aria-describedby="${uid}-help" data-tip="Drag a band to move it, shift-drag for width, double-click adds"></canvas>
       <div class="v3tf-ax" aria-hidden="true"><span class="lo"></span><span class="u"></span><span class="hi"></span></div></div>
@@ -86,8 +87,10 @@ export function createTfEditor({onChange = () => {}} = {}) {
   const g2 = x => String(+(+x).toFixed(2));
   function syncInputs() { const B = band(), I = item(), has = !!B, R = !B && !!I;
     const p = q("#v3-tf-preset"); p.value = PRESETS.includes(st.preset) ? st.preset : "custom";
-    p.dataset.tip = st.preset === "thor" ? "THOR phases: 2×10⁴ K blue, 10⁵ K orange, 3×10⁵ K red" : "Starting look: default ramp, THOR gas phases, iso bands or clouds";
-    p.setAttribute("aria-description", st.preset === "thor" ? THOR_NOTE : "");
+    p.dataset.tip = st.preset === "thor" ? "THOR phases: 2×10⁴ K blue, 10⁵ K orange, 3×10⁵ K red"
+      : st.preset === "nelson16" ? "Nelson+16 shells: 10^4.5, 10^5, 10^5.5, 10^6 K, blue to red; widened for voxel data"
+      : "Starting look: ramp, THOR phases, temperature shells, iso bands or clouds";
+    p.setAttribute("aria-description", st.preset === "thor" ? THOR_NOTE : st.preset === "nelson16" ? NELSON16_NOTE : "");
     /* band-only controls (width, colour) are off for the ramp; with nothing selectable, everything but + band is off */
     for (const s of ["#v3-tf-w", "#v3-tf-col"]) q(s).disabled = !has;
     for (const s of ["#v3-tf-a", "#v3-tf-del", "#v3-tf-g0", "#v3-tf-g1"]) q(s).disabled = !I;
@@ -216,7 +219,7 @@ export function createTfEditor({onChange = () => {}} = {}) {
     ev.preventDefault(); ev.stopPropagation(); });
 
   /* ---- inputs ---- */
-  q("#v3-tf-preset").addEventListener("change", ev => { sel = 0; onChange(copy(st), {commit: true, reason: "preset", preset: ev.target.value}); });
+  q("#v3-tf-preset").addEventListener("change", ev => { sfx("select"); sel = 0; onChange(copy(st), {commit: true, reason: "preset", preset: ev.target.value}); });
   q("#v3-tf-reset").addEventListener("click", () => { sel = 0; onChange(copy(st), {commit: true, reason: "reset"}); });
   q("#v3-tf-add").addEventListener("click", () => add());
   q("#v3-tf-del").addEventListener("click", () => del());
