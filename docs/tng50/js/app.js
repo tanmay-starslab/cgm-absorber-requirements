@@ -14,6 +14,7 @@ import {initTips, ION_TIPS} from "./tips.js";
 import {initFeatures} from "./features.js";   /* ux4 features: share, keys, random, undo, solo, CSV, loading */
 import {initLiquidTabs, initLiquidSeg, initLiquidButtons} from "./liquidtabs.js";   /* CSS-only liquid drop (tabs, segmented rows) and glossy top-bar buttons */
 import {initLiquidBg} from "./liquidbg.js";   /* liquid metal shader background (3D tab; Spectra only with SPECTRA_BG) */
+import {uiSound, sfx} from "./uisound.js";   /* optional UI sound effects (off by default; top-bar switch #sfx) */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
   nearestSightline, defaultSightline, srcOf, galaxySummary} from "./galaxies.js";
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
@@ -107,7 +108,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { ap
 /* ---------------- notes and status ---------------- */
 let noteT = 0;
 function note(t, cls = "") { const n = $("#note"); n.textContent = t || ""; n.className = cls; clearTimeout(noteT); if (t) noteT = setTimeout(() => { n.textContent = ""; }, 8000); }
-function geomsg(t, cls = "", code = "info") { const m = $("#geomsg"); m.className = "msg " + cls; m.textContent = t; m.dataset.code = code; }
+function geomsg(t, cls = "", code = "info") { const m = $("#geomsg"); m.className = "msg " + cls; m.textContent = t; m.dataset.code = code;
+  if (cls === "good") sfx("success"); else if (cls === "bad") sfx("error"); }   /* request outcomes echo the visible message */
 
 /* ---------------- catalogue ---------------- */
 function upsert(e, isStatic) { if (!e || !e.id || !ID_RE.test(e.id)) return;
@@ -396,7 +398,7 @@ function setFit(on) { S.fit = !!on; $("#fit").checked = S.fit; if (S.fit && S.id
 $("#reroll").addEventListener("click", () => { S.seed = (S.seed + 1) % 100000; draw(); writeHashSoon(); });
 function syncLayoutUI() { for (const r of $$("input[name=layout]")) r.checked = r.value === S.layout;
   for (const s of $$(".sn1lab")) s.hidden = !(S.layout === "2SN" || S.layout === "4"); }
-for (const r of $$("input[name=layout]")) r.addEventListener("change", () => { if (!r.checked) return; S.layout = r.value; syncLayoutUI(); inst.build(); draw(); writeHashSoon(); instEmit(); });
+for (const r of $$("input[name=layout]")) r.addEventListener("change", () => { if (!r.checked) return; sfx("select"); S.layout = r.value; syncLayoutUI(); inst.build(); draw(); writeHashSoon(); instEmit(); });
 
 /* ---------------- lines: popover checklist and labelled removable chips ---------------- */
 function presentLines() { const e = CAT.get(S.id), s = SIGHT.get(S.id); return s ? Object.keys(s.lines) : Array.isArray(e?.lines) ? e.lines : null; }
@@ -707,9 +709,11 @@ function showTab(t, focus) { if (!TABS.includes(t)) return; const prev = S.tab; 
   writeHashSoon();
   if (t === "3d") open3d().catch(() => {}); else draw();
   if (prev !== t) emit("tng:tab", {tab: t}); }
-for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", () => showTab(k));
+const tabSfx = k => { if (S.tab !== k) sfx("select"); };
+for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", () => { tabSfx(k); showTab(k); });
   b.addEventListener("keydown", ev => { const i = TABS.indexOf(S.tab), n = {ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1}[ev.key];
-    if (n == null) return; ev.preventDefault(); showTab(TABS[(n + TABS.length) % TABS.length], true); }); }
+    if (n == null) return; ev.preventDefault(); const t = TABS[(n + TABS.length) % TABS.length]; tabSfx(t); showTab(t, true); }); }
+uiSound().bind($("#sfx"));
 initLiquidTabs($("#tabs")); initLiquidSeg($("#layout")); initLiquidButtons();
 /* liquid metal background (owner 2026-11-16): on both tabs, behind the 3D stage, the spectra and the control cards (it sits
    under the page at z-index -1, so it never draws over the volume render or a spectrum; the spectra panel is its calm

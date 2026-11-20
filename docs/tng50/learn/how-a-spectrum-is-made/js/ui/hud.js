@@ -22,6 +22,7 @@ import {createMenu, createKeyHelp, createCredits, keyAction} from "./menu.js";
 import {createNarrative} from "./narrative.js";
 import {beatSkip, activeText, storyCase, caseChip, attachCases} from "../copy/derive.js";
 import {createPicker} from "./picker.js";
+import {sfx} from "../../../../js/uisound.js";
 
 /* act chip labels (UI words, not data); copy.json[beat].chip overrides. Act titles that are z-planes on the ray: */
 export const ACT_LABELS = Object.freeze({B0: "Start", B1: "The light", B2: "The halo", B5: "Cloud A", B7a: "Cloud B", B9: "Cloud C",
@@ -413,7 +414,7 @@ export function createShell(els, opts = {}) {
   const menu = createMenu(els.menuButton, els.menuSheet, {watch: H.watch, explore: H.explore, physics: H.physics,
     picker: H.picker || (picker && (() => picker.open(opts.index, opts.current))), text: () => narrative.open(), share: H.share, keys: H.keys || (keyHelp && keyHelp.open),
     credits: openCredits ? () => openCredits(els.menuButton) : null, explorerHref: H.explorerHref,
-    watchHint: H.watchHint, musicTrack: H.musicTrack, musicTrackLabel: H.musicTrackLabel});
+    watchHint: H.watchHint, musicTrack: H.musicTrack, musicTrackLabel: H.musicTrackLabel, sfx: H.sfx});
   const narrative = createNarrative({list: els.narrativeList, live: els.live, overlay: els.textOverlay, canvas: els.canvas},
                                     {jump: H.jump, quiet: H.quiet});
   narrative.build(opts.beats, opts.copy, opts.lookup, opts.honesty || [], flags, {caseId: copyCtx.caseId});
@@ -544,7 +545,7 @@ export function createShell(els, opts = {}) {
       place(els.phasePill, B["hud:phase"]);
     }
     if (els.hint) { if (els.hint.textContent !== hintText) els.hint.textContent = hintText; place(els.hint, B.hint); }
-    if (endEl) { const b = B.end; place(endEl, b); if (b) { endEl.dataset.mode = END_MODES[b.variant] || "row"; endEl.style.opacity = String(env.end ? env.end.opacity : 1); } }
+    if (endEl) { const b = B.end, was = endEl.hidden; place(endEl, b); if (was && !endEl.hidden) sfx("complete"); if (b) { endEl.dataset.mode = END_MODES[b.variant] || "row"; endEl.style.opacity = String(env.end ? env.end.opacity : 1); } }
 
     // rail
     const rb = B.rail;

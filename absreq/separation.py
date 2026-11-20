@@ -16,7 +16,17 @@ NSIG = 3.0
 
 def separation_G(line, logN, b, dv_sep, R):
     v, step, T = velocity_grid(dv_sep, b, R)
-    w = np.sqrt(step / (C_KMS / R))
+    return _best_single(line, logN, b, dv_sep, v, step, T, C_KMS / R)
+
+
+def separation_G_lsf(line, logN, b, dv_sep, kernel):
+    """G for any LSF kernel (absreq.lsf); with lsf.gaussian(R) it equals separation_G(..., R)."""
+    v, step, T = kernel.grid(dv_sep, b)
+    return _best_single(line, logN, b, dv_sep, v, step, T, kernel.fwhm)
+
+
+def _best_single(line, logN, b, dv_sep, v, step, T, fwhm):
+    w = np.sqrt(step / fwhm)
     Ft = observed_flux(v, T, line, [(logN, b, -dv_sep / 2), (logN, b, dv_sep / 2)])
 
     def resid(x):
