@@ -8,6 +8,7 @@
    MIT licence (see the repository LICENSE). */
 import {isLowerLimit, limitLogN} from "./state.js";
 import {sortGalaxies, matchGalaxy, srcOf, galaxySummary} from "./galaxies.js";
+import {sfx} from "./uisound.js";
 
 export const WEBLLM_VERSION = "0.2.85";
 /* Third-party code for the local model is pinned AND hash-checked (Subresource Integrity), in the page and in the worker:
@@ -846,7 +847,7 @@ export async function mount(root, app, opts = {}) {
     pending.length = 0;
     busy = false; refresh();
     if (res.answer) {
-      const n = renderAnswer(add("chat-bot"), res.answer, app);
+      const n = renderAnswer(add("chat-bot"), res.answer, app); sfx("receive");
       if (res.unverified.length) n.append(el("span", {class: "chat-badge", text: "unverified: " + res.unverified.join(", ")}));
     }
     if (res.note) add("chat-note", res.note);
