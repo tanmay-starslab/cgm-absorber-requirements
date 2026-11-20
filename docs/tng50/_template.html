@@ -180,7 +180,7 @@ body:has(>#chat-open.fab:not([hidden])) #bar{padding-right:104px}
     <div id="bar"><span id="statusline" data-id="" aria-live="polite"></span><span id="readouts" hidden></span><span id="note" role="status" aria-live="polite"></span><span id="fitstatus" data-testid="fit-status" data-state="idle"></span></div>
   </section>
   <aside id="side" aria-label="Controls">
-    <div id="side-head"><span class="grab" aria-hidden="true"></span><span class="gl">Controls</span><button class="pbtn" id="side-done" type="button">Done</button></div>
+    <div id="side-head"><button class="grab" id="side-grab" type="button" aria-label="Resize the controls" aria-controls="side"></button><span class="gl">Controls</span><button class="pbtn" id="side-done" type="button">Done</button></div>
     <div id="mobslot"></div>
     <div id="v3d-mini" role="button" tabindex="0" aria-label="Open the 3D view" data-tip="Open the full 3D view of this galaxy"><span class="mini-art"></span><div id="v3d-mini-host"></div></div>
     <section class="glass card" aria-labelledby="h-inst"><h2 id="h-inst">Instrument</h2>
@@ -204,6 +204,8 @@ body:has(>#chat-open.fab:not([hidden])) #bar{padding-right:104px}
     <div id="v3d-controls" data-testid="v3d-controls"><p id="v3d-wait" class="msg" role="status">Loading the 3D view</p><div id="picker-root"></div><div id="v3d-status" aria-live="polite"></div></div>
   </section>
 </div>
+<!-- phone (<= 820 px) controls dock: live readouts that open the controls sheet, and Ask (app.js placeControls moves #chat-open here) -->
+<div id="dock" class="glass" role="toolbar" aria-label="Quick controls" data-testid="dock"><button class="pbtn" id="dock-open" type="button" aria-haspopup="dialog" aria-controls="side" aria-expanded="false" data-testid="dock-open"><span class="dk-read" id="dock-read" aria-hidden="true"></span><span class="dk-go"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2 4.5h12M2 11.5h12"/><circle cx="5.5" cy="4.5" r="1.7" fill="currentColor"/><circle cx="10.5" cy="11.5" r="1.7" fill="currentColor"/></svg><span class="lbl">Controls</span></span></button></div>
 
 <div class="pop" id="pop-read" role="dialog" aria-label="How to read" hidden><h3>How to read</h3><ul class="plain">
   <li>Rows are lines, cool to hot. Columns are instrument cases (Layout).</li>

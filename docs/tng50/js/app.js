@@ -393,7 +393,7 @@ const spectra = createSpectra({box: $("#spectra"), cv: $("#cv"), hitboxes: $("#h
     if (v && v.reset) { S.vc = 0; S.vhw = reg.DEF.vhw; } else { S.vc = Math.round(v.vc * 10) / 10; S.vhw = v.vhw; }
     clampView(S, vmax()); inst.syncV(); spectra.schedule(); writeHashSoon(); instEmit(); },
   afterDraw() { if (S.fit) { const sig = JSON.stringify([S.id, S.ions, S.layout, S.R, S.sn, S.seed, COMPRAW.has(S.id), SIGHT.has(S.id)]); if (sig !== fitSig) { fitSig = sig; fitPump(); } } else fitSig = "";
-    fitStatus(); spectra.refreshReadout(); ensureSight(); if (!thumbArmed) armThumb(); }
+    fitStatus(); spectra.refreshReadout(); ensureSight(); if (!thumbArmed) armThumb(); dockRead(); }
 });
 const draw = () => spectra.schedule();
 
@@ -728,7 +728,8 @@ function showTab(t, focus) { if (!TABS.includes(t)) return; const prev = S.tab; 
   for (const k of TABS) { const on = k === t, b = $("#tab-" + k); b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1; $("#panel-" + k).hidden = !on; }
   document.body.dataset.tab = t; closePops(); if (focus) $("#tab-" + t).focus();
   writeHashSoon();
-  if (t === "3d") open3d().catch(() => {}); else draw();
+  if (t === "3d") open3d().then(autoSheet, () => {}); else draw();
+  autoSheet();
   if (prev !== t) emit("tng:tab", {tab: t}); }
 const tabSfx = k => { if (S.tab !== k) sfx("select"); };
 for (const k of TABS) { const b = $("#tab-" + k); b.addEventListener("click", () => { tabSfx(k); showTab(k); });
@@ -929,23 +930,88 @@ function setSide(on) { document.body.classList.toggle("side-off", !on); const b 
   store.set("tngsight.side", on ? "1" : "0"); draw(); if (on && thumbArmed) armThumb(); }
 $("#side-toggle").addEventListener("click", () => setSide(document.body.classList.contains("side-off")));
 /* B_fix F3: opening the drawer moves the focus into it (its Done button); closing it with Esc or Done returns the focus
-   to the Controls button */
-function toggleDrawer(on, focus = false) { const was = document.body.classList.contains("ctl-open"), o = document.body.classList.toggle("ctl-open", on);
-  $("#controls-open").setAttribute("aria-expanded", String(o));
-  if (focus && o && !was) setTimeout(() => $("#side-done").focus({preventScroll: true}), 0);
-  else if (focus && !o && was) $("#controls-open").focus({preventScroll: true}); }
-$("#controls-open").addEventListener("click", ev => { ev.stopPropagation(); toggleDrawer(undefined, true); });
-$("#side-done").addEventListener("click", () => { toggleDrawer(false); $("#controls-open").focus({preventScroll: true}); });
+   to the button that opened it (the dock's Controls on phones).
+   Phones (<= 820 px): the drawer is a non-modal bottom sheet, #side on the Spectra tab and the viewer's #v3-ctl on the 3D
+   tab. It opens to "peek" (Spectra 40 % of the height; 3D the room under the full-width stage, 28-50 %), where the content
+   above stays visible, scrollable and live, and snaps to "full" (85 %) by a drag or a tap on its head. The 3D tab opens it
+   to peek by default, so the half under the stage is never empty, until the user closes it. */
+const BODY = document.body;
+const sheetEl = () => (S.tab === "3d" && $("#v3-ctl")) || $("#side");
+const doneEl = () => (S.tab === "3d" && $("#v3-ctl .v3c-done")) || $("#side-done");
+let snap = "peek", closed3d = false, sheetOpener = null;
+const peekH = () => { const ih = innerHeight; if (S.tab !== "3d") return Math.round(ih * 0.4);
+  return Math.round(Math.min(ih * 0.5, Math.max(ih * 0.28, ih - 98 - $("#panel-3d").clientWidth))); };   // 98: the bar, the shell padding and the status row (page.css)
+const fullH = () => Math.round(innerHeight * 0.85);
+function setSheet(h) { BODY.style.setProperty("--sheet-h", h + "px");
+  if (S.tab === "3d") BODY.style.setProperty("--fit-h", peekH() + "px");   // the stage keeps its peek size under an expanded sheet: covered, never moved
+  else BODY.style.setProperty("--spec-pad", Math.max(0, Math.round(h - (innerHeight - $("#spectra").getBoundingClientRect().bottom)) + 8) + "px"); }
+function snapTo(s) { snap = s; BODY.dataset.sheet = s; setSheet(s === "full" ? fullH() : peekH());
+  for (const g of $$(".grab")) g.setAttribute("aria-expanded", String(s === "full")); }
+function toggleDrawer(on, focus = false, opener = null) { const was = BODY.classList.contains("ctl-open"), o = BODY.classList.toggle("ctl-open", on);
+  for (const b of [$("#controls-open"), $("#dock-open")]) b.setAttribute("aria-expanded", String(o));
+  if (o && !was) { sheetOpener = opener; if (mqMobile.matches) snapTo("peek"); }
+  else if (o && mqMobile.matches) snapTo(snap);     // the tab changed under an open sheet
+  if (!o) delete BODY.dataset.sheet;
+  if (focus && was && !o && S.tab === "3d") closed3d = true;
+  if (focus && o) { store.set(DOCK_SEEN, "1"); $("#dock").classList.remove("hint"); }
+  if (!o) dockRead();
+  if (focus && o && !was) setTimeout(() => doneEl().focus({preventScroll: true}), 0);
+  else if (focus && !o && was) { const b = sheetOpener && sheetOpener.getClientRects().length ? sheetOpener : mqMobile.matches ? $("#dock-open") : $("#controls-open"); b.focus({preventScroll: true}); } }
+$("#controls-open").addEventListener("click", ev => { ev.stopPropagation(); toggleDrawer(undefined, true, ev.currentTarget); });
+$("#dock-open").addEventListener("click", ev => { ev.stopPropagation(); toggleDrawer(true, true, ev.currentTarget); });
+$("#side-done").addEventListener("click", () => toggleDrawer(false, true));
+/* drag a sheet by its head (pointer events): it follows the finger, then snaps to the nearer of peek and full, or closes
+   below 60 % of peek; a tap toggles peek and full; the head's .grab button does the same from the keyboard */
+function sheetHandle(head) {
+  if (!head || head.__sheet) return; head.__sheet = true;
+  head.addEventListener("pointerdown", ev => {
+    if (!mqMobile.matches || ev.button > 0 || ev.target.closest("button:not(.grab),input,select,a")) return;
+    const y0 = ev.clientY, h0 = sheetEl().getBoundingClientRect().height, f = fullH(); let moved = false;
+    head.setPointerCapture(ev.pointerId); BODY.classList.add("sheet-drag");
+    const move = e => { if (Math.abs(e.clientY - y0) > 6) moved = true; if (moved) BODY.style.setProperty("--sheet-h", Math.round(Math.min(f, Math.max(60, h0 + y0 - e.clientY))) + "px"); };
+    const up = e => { head.removeEventListener("pointermove", move); head.removeEventListener("pointerup", up); head.removeEventListener("pointercancel", up);
+      BODY.classList.remove("sheet-drag"); const h = h0 + y0 - e.clientY, p = peekH();
+      if (!moved) snapTo(snap === "full" ? "peek" : "full");
+      else if (h < p * 0.6) toggleDrawer(false, true); else snapTo(h > (p + f) / 2 ? "full" : "peek"); };
+    head.addEventListener("pointermove", move); head.addEventListener("pointerup", up); head.addEventListener("pointercancel", up); });
+  head.querySelector(".grab").addEventListener("click", ev => { if (ev.detail === 0) snapTo(snap === "full" ? "peek" : "full"); });   // keyboard only: a pointer tap is handled above
+}
+sheetHandle($("#side-head"));
+/* the 3D tab: peek by default once the viewer's controls exist (after mount, or on coming back), until the user closes it */
+function autoSheet() { if (!mqMobile.matches) return; const c = $("#v3-ctl");
+  if (c) { sheetHandle(c.querySelector(".v3c-head")); c.setAttribute("role", "dialog"); c.setAttribute("aria-modal", "false"); }
+  if (S.tab === "3d") { if (c && !closed3d) toggleDrawer(true); else if (!c) toggleDrawer(false); } else toggleDrawer(false);
+  dockRead(); }
+addEventListener("resize", debounce(() => { if (mqMobile.matches && BODY.classList.contains("ctl-open")) snapTo(snap); }, 120));
+/* the dock: what the controls are set to now, as small stat pairs (value over its name), and a one-time hint */
+const DOCK_SEEN = "tngsight.dock.seen";
+const fmtK = R => (!Number.isFinite(R) ? "–" : R >= 1e4 ? Math.round(R / 1e3) + "k" : R >= 1e3 ? +(R / 1e3).toFixed(1) + "k" : String(Math.round(R)));
+let dockHtml = "";
+function dockRead() { if (!mqMobile.matches) return; let items;
+  if (S.tab === "3d") { const f = $("#v3-species input:checked+span"), m = $('input[name="v3-mode"]:checked');
+    items = [[f ? f.innerHTML.replace("<i></i>", "") : "–", "field"], [m ? esc(m.value) : "–", "mode"]]; }   // f: our own label markup (viewer3d radio)
+  else { const ion = S.ions[0], band = ion && ION[ion] ? ION[ion].band : "uv", R = (S.R?.[band] || S.R?.uv || [])[0], sn = S.sn?.[0], n = (S.ions || []).length;
+    items = [[n, n === 1 ? "line" : "lines"], [fmtK(R), "R"], [Number.isFinite(sn) ? Math.round(sn) : "–", "S/N"]]; }
+  const h = items.map(([v, k]) => `<span class="dk-i"><b>${v}</b><small>${k}</small></span>`).join("");
+  if (h !== dockHtml) $("#dock-read").innerHTML = dockHtml = h;
+  $("#dock-open").hidden = S.tab === "3d" && !$("#v3-ctl");   // the low-tier 3D still has no settings to open
+  $("#dock-open").setAttribute("aria-controls", sheetEl().id); }
+if (!store.get(DOCK_SEEN)) $("#dock").classList.add("hint");
+document.addEventListener("change", () => dockRead());
+setInterval(() => { if (!document.hidden && !BODY.classList.contains("ctl-open")) dockRead(); }, 1000);   // shortcut: catches chat-driven 3D changes; an event from the viewer would be exact
 const mqMobile = matchMedia("(max-width:820px)");
 const HOME = ["#grp-gal", "#grp-sight", "#grp-lines", "#grp-layout"].filter(s => $(s)).map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });   /* #grp-gal is absent from pages exported before the galaxy picker */
 const tools = document.createElement("div"); tools.className = "grp"; tools.id = "grp-tools"; tools.innerHTML = '<span class="gl">Tools</span><div class="row"></div>';
 const ASK = (el => ({el, parent: el.parentNode, next: el.nextSibling}))($("#chat-open"));
+const INST = $("#side>section[aria-labelledby=h-inst]");
 const TOOL_HOME = ["#find-toggle"].map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
 function placeControls() {
   if (mqMobile.matches) { const slot = $("#mobslot"); for (const h of HOME) slot.appendChild(h.el); slot.appendChild(tools); for (const h of TOOL_HOME) { h.el.classList.remove("hide-m"); tools.lastChild.appendChild(h.el); }
-    document.body.appendChild(ASK.el); ASK.el.classList.add("fab"); }     // Ask floats bottom-right on phones (outside #top: its backdrop-filter would pin a fixed child to the bar)
+    $("#dock").appendChild(ASK.el);       // Ask lives in the phone dock, so it never covers the spectra or the status bar
+    $("#side").insertBefore(INST, $("#mobslot")); $("#side").setAttribute("role", "dialog"); $("#side").setAttribute("aria-modal", "false"); autoSheet(); }   // Instrument first: R and S/N in the peek sheet
   else { for (const h of HOME) h.parent.insertBefore(h.el, h.next); for (const h of TOOL_HOME) h.parent.insertBefore(h.el, h.next); TOOL_HOME[0].el.classList.add("hide-m"); tools.remove(); toggleDrawer(false);
-    ASK.el.classList.remove("fab"); ASK.parent.insertBefore(ASK.el, ASK.next); }
+    ASK.parent.insertBefore(ASK.el, ASK.next); $("#side").insertBefore(INST, $("#v3d-mini").nextSibling); $("#side").removeAttribute("role"); $("#side").removeAttribute("aria-modal");
+    const c = $("#v3-ctl"); if (c) { c.setAttribute("role", "group"); c.removeAttribute("aria-modal"); } }
   draw(); }
 mqMobile.addEventListener("change", placeControls);
 
