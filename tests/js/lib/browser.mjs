@@ -154,19 +154,19 @@ export function findBrowser({env = process.env, platform = process.platform, exe
 export const HOVER_FLAG = "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4";
 /** The command-line flags of a headless launch (reducedMotion: TNG_REDUCED_MOTION=1 unless given; hover: true adds
  *  HOVER_FLAG). */
-export function browserArgs({profile, width = 1440, height = 900, reducedMotion, hover = false} = {}, env = process.env) {
+export function browserArgs({profile, width = 1440, height = 900, reducedMotion, hover = false, args = []} = {}, env = process.env) {
   const rm = reducedMotion ?? env.TNG_REDUCED_MOTION === "1";
   return ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check",
     "--disable-component-update", "--disable-background-networking", "--no-proxy-server", "--hide-scrollbars", "--mute-audio",
     "--disable-features=msSmartScreenProtection,msEdgeEnhancedSecurityMode,msEnhancedSecurityMode",
-    ...(rm ? ["--force-prefers-reduced-motion"] : []), ...(hover ? [HOVER_FLAG] : []), `--window-size=${width},${height}`, "about:blank"];
+    ...(rm ? ["--force-prefers-reduced-motion"] : []), ...(hover ? [HOVER_FLAG] : []), ...args, `--window-size=${width},${height}`, "about:blank"];
 }
 
 /* ---------------------------------------------------------------- Edge + CDP */
 const KEYS = {ArrowLeft: 37, ArrowRight: 39, ArrowUp: 38, ArrowDown: 40, Home: 36, End: 35, Enter: 13, Escape: 27, Tab: 9, "+": 187, "=": 187, "-": 189};
 /**
  * Launch the headless browser (opts.edge, else findBrowser(): TNG_EDGE or a per-platform default) and attach to its
- * first page. opts: {profile, edge, width, height, block: [url patterns], inject: [js source], reducedMotion, hover}.
+ * first page. opts: {profile, edge, width, height, block: [url patterns], inject: [js source], reducedMotion, hover, args: [extra flags]}.
  * Returns a page object (see the methods below); P.browser is the binary. Call close() at the end (kills only this browser).
  */
 export async function launch(opts = {}) {
@@ -177,7 +177,7 @@ export async function launch(opts = {}) {
   const profile = resolve(opts.profile || process.env.TNG_EDGE_PROFILE || join(tmpdir(), `tng-edge-${process.pid}`)) + `/edge-${process.pid}-${Date.now()}`;
   mkdirSync(profile, {recursive: true});
   const W = opts.width || 1440, H = opts.height || 900;
-  const proc = spawn(EDGE, browserArgs({profile, width: W, height: H, reducedMotion: opts.reducedMotion, hover: !!opts.hover}), {stdio: "ignore"});
+  const proc = spawn(EDGE, browserArgs({profile, width: W, height: H, reducedMotion: opts.reducedMotion, hover: !!opts.hover, args: opts.args}), {stdio: "ignore"});
   let spawnErr = null; proc.on("error", e => { spawnErr = e; });     // e.g. ENOENT: report it instead of crashing the test
   let port = null; const tStart = Date.now();
   for (let i = 0; i < 1200 && !port && !spawnErr; i++) { await sleep(150); try { port = +readFileSync(join(profile, "DevToolsActivePort"), "utf8").split("\n")[0] || null; } catch {} }
@@ -195,7 +195,8 @@ export async function launch(opts = {}) {
     if (m.method === "Runtime.consoleAPICalled" && m.params.type === "error") P.consoleErrors.push(m.params.args.map(a => a.value ?? a.description).join(" ").slice(0, 300));
     if (m.method === "Network.requestWillBeSent") P.requests.push((m.params.request.method || "GET") + " " + m.params.request.url);
     for (const f of listeners) f(m); });
-  P.send = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({id: i, method, params})); });
+  P.send = (method, params = {}, sessionId) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({id: i, method, params, ...(sessionId ? {sessionId} : {})})); });
+  P.on = f => listeners.push(f);   // every CDP message, flattened child sessions (workers) included
   await P.send("Runtime.enable"); await P.send("Page.enable"); await P.send("Network.enable");
   if (opts.block?.length) await P.send("Network.setBlockedURLs", {urls: opts.block});
   await P.send("Page.addScriptToEvaluateOnNewDocument", {source: INIT_SCRIPT});
