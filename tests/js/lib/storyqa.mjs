@@ -301,12 +301,16 @@ export function evalA11y(s, {maxAnimMs = 300} = {}) {
 }
 
 /* ---------------------------------------------------------------- budget gate G6 */
-export const G6 = {shellKB: 120, fontsKB: 250, liveS: 1.5, firstS: 4, desktopMB: 40, mobileMB: 12, gpuDesktopMB: 448, gpuMobileMB: 192, pillFrac: 0.03};
+// first-frame shell baseline (issue #74, 2026-11-19): the shell may grow at most shellGrowthKB over it; lower it when the
+// shell shrinks, raise it only with a reason in the commit message
+export const SHELL_BASE_KB = 292;
+export const G6 = {shellKB: 300, shellBaseKB: SHELL_BASE_KB, shellGrowthKB: 3, fontsKB: 250, liveS: 1.5, firstS: 4, desktopMB: 40, mobileMB: 12, gpuDesktopMB: 448, gpuMobileMB: 192, pillFrac: 0.03};
 /** s = {shellGz, fontsBytes, liveMs?, first3dMs?, desktopBytes?, mobileBytes?, gpuDesktop?, gpuMobile?, banned: [..],
  *  videoOutsideMedia: [..], backdropFrac?} */
 export function evalBudget(s, B = G6) {
   const fails = [], notes = [], f = msg => fails.push({gate: "G6", msg: `${s.name || "budget"}: ${msg}`}), KB = 1024, MB = KB * KB;
   if (s.shellGz !== undefined && s.shellGz > B.shellKB * KB) f(`shell JS+CSS ${(s.shellGz / KB).toFixed(1)} kB gz > ${B.shellKB} kB`);
+  if (s.shellGz !== undefined && B.shellBaseKB && s.shellGz > (B.shellBaseKB + B.shellGrowthKB) * KB) f(`shell JS+CSS ${(s.shellGz / KB).toFixed(1)} kB gz grew more than ${B.shellGrowthKB} kB over its ${B.shellBaseKB} kB baseline (SHELL_BASE_KB)`);
   if (s.fontsBytes !== undefined && s.fontsBytes > B.fontsKB * KB) f(`fonts ${(s.fontsBytes / KB).toFixed(1)} kB > ${B.fontsKB} kB`);
   if (s.liveMs !== undefined && s.liveMs > B.liveS * 1000) f(`first live frame ${s.liveMs.toFixed(0)} ms > ${B.liveS * 1000} ms at 20 Mbps`);
   if (s.first3dMs !== undefined && s.first3dMs > B.firstS * 1000) f(`first 3D frame ${s.first3dMs.toFixed(0)} ms > ${B.firstS * 1000} ms at 50 Mbps`);
@@ -646,7 +650,7 @@ export function walk(d, skip = new Set(["node_modules"]), out = []) {
 export const gzSize = f => gzipSync(readFileSync(f), {level: 9}).length;
 /** Static module graph from an HTML page: module scripts, stylesheets, static and dynamic imports, workers,
  *  CSS @import. Returns absolute file paths under docsDir (URLs off the site are listed in `external`). */
-export function moduleGraph(page, docsDir) {
+export function moduleGraph(page, docsDir, {dynamic = true} = {}) {   // dynamic: false = the first-frame shell (no import(), no workers)
   const seen = new Set(), external = new Set(), missing = new Set(), q = [];
   const add = (spec, from, html = false) => {
     if (!spec || /^(data|blob|mailto|#)/.test(spec)) return;
@@ -664,6 +668,7 @@ export function moduleGraph(page, docsDir) {
     /* comments are not imports (equations.js documents its own import line); a `//` after ":" (URLs in strings) stays */
     const src = stripJsComments(src0);
     for (const m of src.matchAll(/\bimport\s*(?:[\w*{}\s,$]+from\s*)?["']([^"']+)["']/g)) add(m[1], from);
+    if (!dynamic) return;
     for (const m of src.matchAll(/\bimport\(\s*["'`]([^"'`$]+)["'`]\s*\)/g)) add(m[1], from);
     for (const m of src.matchAll(/\bimport\(\s*new\s+URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url/g)) add(m[1], from);
     /* template dynamic import (`./scenes/${name}.js`): every matching file of that directory can load */
