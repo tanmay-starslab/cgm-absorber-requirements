@@ -245,6 +245,9 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 body.v3d-noscroll #panel-3d{container-type:normal}   /* the CSS fullscreen fallback is position:fixed: no containing block here */
 #v3d-stage{grid-area:1/1;position:relative;width:var(--st);aspect-ratio:1/1;border-radius:16px;overflow:hidden;background:#05070b;border:1px solid var(--gline);box-shadow:var(--shadow)}
 #v3d-root{position:absolute;inset:0}
+/* the WebGL canvas gets the stage's inner radius itself: clipped only by the rounded #v3d-stage, Chromium drew its composited
+   layer's rounded-corner mask about 28 px above the stage (a light strip across the stage top at every size) */
+#v3d-stage .v3d:not(.v3d-fs):not(:fullscreen) .v3d-stage canvas{border-radius:15px}
 #v3d-root>p{margin:0;padding:14px;color:#b3bdc9;font-size:12.5px}
 #v3d-controls{display:contents}
 #v3d-controls>.v3c{grid-area:1/2/2/4;height:var(--st);min-height:0;display:flex;flex-direction:column}

@@ -66,7 +66,7 @@ async function open(P, w, h, mobile, query) {
 const press = async P => {
   if (P.mobile && !(await P.eval(`document.body.classList.contains("ctl-open")`))) { await P.click("#dock-open"); await sleep(600); }   // phones: the controls sheet,
   if (P.mobile) { await P.click('input[name="v3-tab"][value="view"] + span'); await sleep(300); }                                        // then its View tab
-  await P.click('[data-testid="v3-head"]'); return P.waitFor(`document.querySelector(".v3c-hc")`, 15000, 100); };
+  await P.click('[data-testid="v3-head"]'); return P.waitFor(`document.querySelector(".v3d-hc")`, 15000, 100); };
 async function browser(w, h) {
   const P = await launch({edge: opt.edge, block: BLOCK, width: w, height: h, args: ARGS, reducedMotion: false, inject: NOGL});
   P.on(m => { if (m.method === "Target.attachedToTarget" && m.params.targetInfo.type === "worker") { const sid = m.params.sessionId;
@@ -152,7 +152,7 @@ async function desktop() {
     check(!P.exceptions.length, `${tag}: no page exceptions${P.exceptions.length ? ": " + P.exceptions.slice(0, 3).join(" | ") : ""}`);
     /* a low tier says the camera may be slow */
     await P.eval(`document.documentElement.dataset.tier = "low"`); await press(P); await sleep(500);   // a low tier mounts no live viewer: the tier the quick check reads
-    const lowMsg = await P.eval(`document.querySelector(".v3c-hc .hc-st")?.textContent || ""`);
+    const lowMsg = await P.eval(`document.querySelector(".v3d-hc .hc-st")?.textContent || ""`);
     check(/may be slow/i.test(lowMsg), `${tag}: a low-tier desktop is told camera control may be slow ("${lowMsg}")`);
     await shot("capability_low");
     await P.click('[data-testid="v3-head"]'); await sleep(300);
@@ -178,7 +178,7 @@ async function touch() {
     check(!off.length, `${tag}: nothing fetched off-origin after Start${off.length ? ": " + off.join(", ") : ""}`);
     await shot("pill");
     await P.fn(`const H = await ${HC}; for (let i = 0; i < 300; i++) H._rate(400);`); await sleep(400);
-    const fb = await P.fn(`const H = await ${HC}; return {on: H.state().on, st: document.querySelector(".v3c-hc .hc-st")?.textContent};`);
+    const fb = await P.fn(`const H = await ${HC}; return {on: H.state().on, st: document.querySelector(".v3d-hc .hc-st")?.textContent};`);
     const lv = await live(P);
     check(!fb.on && lv === 0 && /Tilt/.test(fb.st || ""), `${tag}: a slow tracker stops the camera with a message pointing to Tilt (${JSON.stringify(fb)}, live ${lv})`);
     await shot("fallback");

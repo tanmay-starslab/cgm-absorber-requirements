@@ -63,7 +63,7 @@ async function run(w, h, mobileTag) {
     note(`${tag}: page idle after ${((Date.now() - tq) / 1000).toFixed(0)} s`);
     const viewCard = async () => { const vb = await P.fn(`const b = document.querySelector('[data-testid="v3-head"]'), f = document.querySelector("#v3-fs"), r = e => e.getBoundingClientRect();
       return {lbl: b.textContent.trim(), tip: b.dataset.tip, side: Math.abs(r(b).top - r(f).top) < 1 && r(b).left > r(f).right - 1, w: Math.round(r(b).width), h: Math.round(r(b).height), card: Math.round(r(b.closest("section")).width)};`);
-    check(vb.lbl === "Hands-free" && /No video leaves your computer/.test(vb.tip) && vb.side && vb.w < vb.card * 0.6 && vb.h >= (mobileTag ? 44 : 28),
+    check(vb.lbl === "Hands-free" && /Your camera video stays on your device/.test(vb.tip) && vb.side && vb.w < vb.card * 0.6 && vb.h >= (mobileTag ? 44 : 28),
       `${tag}: Hands-free and Fullscreen side by side, half width, privacy line in the tip (${JSON.stringify(vb)})`); };
     if (!mobileTag) await viewCard();
     await shot("button");
@@ -82,7 +82,7 @@ async function run(w, h, mobileTag) {
       await viewCard(); await shot("button_sheet");
       await P.eval(`document.documentElement.dataset.tier = "low"`);
       await P.click('[data-testid="v3-head"]'); await sleep(2800);
-      const st = await P.eval(`document.querySelector(".v3c-hc .hc-st")?.textContent`);
+      const st = await P.eval(`document.querySelector(".v3d-hc .hc-st")?.textContent`);
       check(/tilt sensor|permission/i.test(st || ""), `${tag}: Tilt without a sensor shows a clear error: "${st}"`); await shot("error");
       await P.send("DeviceOrientation.setDeviceOrientationOverride", {alpha: 0, beta: 30, gamma: 0});
       await P.click('[data-testid="v3-head"]');
@@ -102,7 +102,7 @@ async function run(w, h, mobileTag) {
     check(before === 0, `${tag}: no tracker file fetched before the click`);
     const n0 = P.requests.length, t0 = Date.now();
     await P.click('[data-testid="v3-head"]');
-    await P.waitFor(`document.querySelector(".v3c-hc")`, 15000, 100);
+    await P.waitFor(`document.querySelector(".v3d-hc")`, 15000, 100);
     const one = await P.eval(`({sel: document.querySelectorAll('[name="hc-track"], [name="hc-src"], [name="hc-mode"], .v3c-hc [data-a=start]').length, pressed: document.querySelector('[data-testid="v3-head"]').getAttribute("aria-pressed")})`);
     check(one.sel === 0 && one.pressed === "true", `${tag}: one click starts it: no mode selector, no Start step (${JSON.stringify(one)})`);
     const tc = await until(P, `${HC}.then(H => H.state().calibrated && !!H.state().pose)`, 240000, 500);
@@ -123,13 +123,13 @@ async function run(w, h, mobileTag) {
       const gone = await until(P, `${HC}.then(H => H.state().guide === false)`, 15000, 250);
       const vis = () => P.eval(`(() => { const g = document.querySelector(".v3d-hg"); return !!g && getComputedStyle(g).visibility === "visible"; })()`);
       const hid = !(await vis());
-      await P.click(".v3d-hc button"); await sleep(400); const back = await vis(), ex = await P.eval(`document.querySelector(".v3d-hc button").getAttribute("aria-expanded")`);
+      await P.click(".v3d-hc .hc-q"); await sleep(400); const back = await vis(), ex = await P.eval(`document.querySelector(".v3d-hc .hc-q").getAttribute("aria-expanded")`);
       await shot("guide");
-      await P.click(".v3d-hc button"); await sleep(400); const again = await vis();
+      await P.click(".v3d-hc .hc-q"); await sleep(400); const again = await vis();
       const txt = await P.eval(`document.querySelector(".v3d-hg").textContent`);
-      check(g0 !== null && gone >= 0 && hid && back && ex === "true" && !again && /Pinch, pull/.test(txt) && /No video leaves/.test(txt),
+      check(g0 !== null && gone >= 0 && hid && back && ex === "true" && !again && /Pinch, pull/.test(txt) && /Your camera video stays on your device/.test(txt),
         `${tag}: the guide card hides itself after about 6 s and the pill's "?" toggles it (${JSON.stringify({g0, gone, hid, back, again})})`); }
-    await P.eval(`document.querySelector('.v3c-hc [data-c="window"]').click()`);
+    await P.eval(`document.querySelector('.v3d-ho [data-c="window"]').click()`);
     // the face pans about 6 cm either way in the fake video: wait for the frustum to go off-axis
     const tw = await until(P, `Math.abs(tngViewer3d.camera.projectionMatrix.elements[8]) > 1e-3`, 60000);
     const sw = await P.eval(`${HC}.then(H => ({s: H.state(), m: tngViewer3d.camera.projectionMatrix.elements.slice()}))`);
