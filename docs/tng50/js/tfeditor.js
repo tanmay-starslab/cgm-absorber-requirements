@@ -15,7 +15,7 @@
 //   editor.state                       a copy of the shown state;  editor.select(i) selects band i (-1: the ramp)
 // The ramp (Default ramp, Clouds) is an editable item like a band: two handles on the canvas (low end, high end at its
 // opacity), the alpha and gradient rows act on it while it is selected, and remove drops it.
-import {buildTF, PRESETS, PRESET_LABELS, MAX_BANDS, TF_W, TF_H, THOR_NOTE, NELSON16_NOTE} from "./tf.js";
+import {buildTF, wPos, posW, fmtW, W_MIN, W_MAX, PRESETS, PRESET_LABELS, MAX_BANDS, TF_W, TF_H, THOR_NOTE, NELSON16_NOTE} from "./tf.js";
 import {pixelRatio} from "./state.js";
 import {sfx} from "./uisound.js";
 
@@ -50,7 +50,7 @@ export function createTfEditor({onChange = () => {}} = {}) {
       <div class="v3tf-ax" aria-hidden="true"><span class="lo"></span><span class="u"></span><span class="hi"></span></div></div>
     <p class="v3d-sr" id="${uid}-help">Histogram of the field (log counts) under the transfer function: height is opacity, fill is colour. Drag a band or a ramp end to move it, shift-drag to change a band's width, double-click to add a band. Keys: left and right move the selected band or ramp, up and down change its opacity, plus and minus its width, page up and page down select another band or the ramp, Insert adds, Delete removes.</p>
     <p class="v3d-sr" id="v3-tf-live" role="status" aria-live="polite"></p>
-    <div class="v3c-row" id="v3-tf-w-row"><label for="v3-tf-w">width</label><input id="v3-tf-w" data-testid="v3-tf-w" type="range" min="0.01" max="2" step="0.01" data-tip="Width of the selected band: Gaussian sigma in dex"><output for="v3-tf-w" id="v3-tf-w-o"></output></div>
+    <div class="v3c-row" id="v3-tf-w-row"><label for="v3-tf-w">width</label><input id="v3-tf-w" data-testid="v3-tf-w" type="range" min="${wPos(W_MIN)}" max="${wPos(W_MAX)}" step="0.001" data-tip="Width of the selected band: Gaussian sigma in dex, log scale"><output for="v3-tf-w" id="v3-tf-w-o"></output></div>
     <div class="v3c-row"><label for="v3-tf-a">alpha</label><input id="v3-tf-a" data-testid="v3-tf-a" type="range" min="0" max="1" step="0.01" data-tip="Peak opacity of the selected band or ramp"><output for="v3-tf-a" id="v3-tf-a-o"></output></div>
     <div class="v3tf-bands"><input type="color" id="v3-tf-col" aria-label="band colour" data-tip="Colour of the selected band">
       <button type="button" class="v3c-btn" id="v3-tf-add" data-testid="v3-tf-add" data-tip="Add a Gaussian opacity band (Insert in the editor)">+ band</button>
@@ -81,7 +81,7 @@ export function createTfEditor({onChange = () => {}} = {}) {
   function select(i) { const L = items(); if (!L.length) return; sel = L.includes(i) ? i : L[clamp(i, 0, L.length - 1)]; syncInputs(); draw(); say(); }
   const step = d => { const L = items(); if (!L.length) return; select(L[(L.indexOf(sel) + d + L.length) % L.length]); };
   function say() { const B = band(), R = ramp();
-    live.textContent = B ? `band ${sel + 1} of ${st.bands.length}: centre ${B.c.toFixed(2)}, width ${B.w.toFixed(2)} dex, opacity ${B.a.toFixed(2)}`
+    live.textContent = B ? `band ${sel + 1} of ${st.bands.length}: centre ${B.c.toFixed(2)}, width ${fmtW(B.w)} dex, opacity ${B.a.toFixed(2)}`
       : R ? `ramp from ${R.lo.toFixed(2)} to ${R.hi.toFixed(2)}, opacity ${R.a.toFixed(2)}${st.twoD && R.g ? `, gradient ${R.g[0].toFixed(2)} to ${R.g[1].toFixed(2)}` : ""}`
       : "empty: double-click or + band to add a band"; }
   const g2 = x => String(+(+x).toFixed(2));
@@ -96,10 +96,10 @@ export function createTfEditor({onChange = () => {}} = {}) {
     for (const s of ["#v3-tf-a", "#v3-tf-del", "#v3-tf-g0", "#v3-tf-g1"]) q(s).disabled = !I;
     q("#v3-tf-w-row").style.visibility = R ? "hidden" : "";   // space kept: the card keeps its height when the ramp is selected
     q("#v3-tf-add").disabled = st.bands.length >= MAX_BANDS;
-    if (has) { q("#v3-tf-w").value = B.w; q("#v3-tf-col").value = hex(bandCol(B)); }
+    if (has) { q("#v3-tf-w").value = wPos(B.w); q("#v3-tf-col").value = hex(bandCol(B)); }
     if (I) { q("#v3-tf-a").value = I.a; q("#v3-tf-g0").value = I.g?.[0] ?? 0; q("#v3-tf-g1").value = I.g?.[1] ?? 1; }
-    q("#v3-tf-w-o").textContent = has ? B.w.toFixed(2) : ""; q("#v3-tf-a-o").textContent = I ? I.a.toFixed(2) : "";
-    q("#v3-tf-w").setAttribute("aria-valuetext", has ? `${B.w.toFixed(2)} dex` : "");
+    q("#v3-tf-w-o").textContent = has ? fmtW(B.w) : ""; q("#v3-tf-a-o").textContent = I ? I.a.toFixed(2) : "";
+    q("#v3-tf-w").setAttribute("aria-valuetext", has ? `${fmtW(B.w)} dex` : "");
     q("#v3-tf-g-o").textContent = I ? `${g2(I.g?.[0] ?? 0)}–${g2(I.g?.[1] ?? 1)}` : "";
     q("#v3-tf-2d").checked = !!st.twoD; q("#v3-tf-g-row").hidden = !st.twoD;
     q("#v3-tf-shade").value = st.shade; q("#v3-tf-shade-o").textContent = (+st.shade).toFixed(2);
@@ -227,7 +227,7 @@ export function createTfEditor({onChange = () => {}} = {}) {
   const onIn = (s, get, f) => { q(s).addEventListener("input", ev => { const B = get(); if (!B) return; custom(); f(B, ev.target.value); emit(false, "input"); });
     q(s).addEventListener("change", () => { if (get()) emit(true, "input"); }); };
   const bandIn = (s, f) => onIn(s, band, f), itemIn = (s, f) => onIn(s, item, f);
-  bandIn("#v3-tf-w", (B, v) => { B.w = r3(+v); });
+  bandIn("#v3-tf-w", (B, v) => { B.w = posW(+v); });
   itemIn("#v3-tf-a", (B, v) => { B.a = r3(+v); });
   bandIn("#v3-tf-col", (B, v) => { if (/^#[0-9a-f]{6}$/i.test(v)) B.rgb = rgbOf(v); });
   itemIn("#v3-tf-g0", (B, v) => { const g = B.g || [0, 1]; B.g = [r3(Math.min(+v, g[1] - 0.02)), g[1]]; });

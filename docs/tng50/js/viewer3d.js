@@ -318,6 +318,18 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-btn[aria-pressed=true]{background:linear-gradient(var(--hl,rgba(143,168,255,.16)),var(--hl,rgba(143,168,255,.16))),var(--cg-sheen),var(--cg-thin);border-color:var(--accent,#8fa8ff);color:var(--ink,#eef0f7)}
 .v3c-wide{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:6px}
 .v3c-wide svg{width:14px;height:14px;flex:none}
+.v3c-pair{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.v3c-pair .v3c-wide{margin-top:0;min-width:0}
+.v3c-pair .v3c-wide span{overflow:hidden;text-overflow:ellipsis}
+@media (pointer:coarse){.v3c-pair .v3c-wide{height:44px}}
+.v3d-fsb{position:absolute;top:10px;right:10px;z-index:3;display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid var(--s-edge,rgba(200,215,240,.16));border-radius:50%;cursor:pointer;color:var(--s-ink,#e9eef4);
+  background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,0) 70%),var(--s-mat,rgba(12,16,22,.74));box-shadow:var(--s-hi,inset 0 1px 0 rgba(255,255,255,.10)),0 4px 14px rgba(0,0,0,.30);
+  backdrop-filter:var(--s-blur,blur(24px) saturate(1.5));-webkit-backdrop-filter:var(--s-blur,blur(24px) saturate(1.5))}
+.v3d-fsb::after{content:"";position:absolute;inset:-8px}
+.v3d-fsb svg{width:14px;height:14px}
+.v3d-fsb:focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
+.v3d:fullscreen .v3d-fsb,.v3d.v3d-fs .v3d-fsb{top:48px}
+.v3d-thumb .v3d-fsb{display:none}
 .v3c-sw{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--muted,#98a0b8)}
 .v3c-sw label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}.v3c-sw input{margin:0}
 .v3c details{margin-top:2px}.v3c summary{cursor:pointer;font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);padding:3px 0}
@@ -467,6 +479,7 @@ async function create(app, opts = {}) {
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
     <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the galaxy: tilt it if face-on, else spin it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
+    <button type="button" class="v3d-fsb" id="v3-fs-stage" data-testid="v3-fs-stage" aria-pressed="false" aria-label="Fullscreen" data-tip="Fullscreen (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
     <button type="button" class="v3d-pv" id="v3-pivot" hidden aria-label="Re-centre on the galaxy" data-tip="Orbit centre moved; return to the galaxy (C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg><span>re-centre</span></button>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
     <div class="v3d-ov v3d-scale" aria-hidden="true"><i></i><span>100 kpc</span></div>
@@ -517,8 +530,8 @@ async function create(app, opts = {}) {
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="30" step="1" value="5" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">5°/s</output></div>
-      <button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
-      ${(t => `<button type="button" class="v3c-btn v3c-wide" id="v3-head" data-testid="v3-head" aria-pressed="false" aria-expanded="false" data-tip="${t ? "Tilt or camera control, on device" : "Steer the view with your head or hand, on device"}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">${t ? '<rect x="4.5" y="1.5" width="7" height="13" rx="1.6"/><path d="M7 12.2h2"/>' : '<circle cx="8" cy="7" r="4.6"/><path d="M6.2 6.2v.1M9.8 6.2v.1M6.3 8.8c1 .8 2.4.8 3.4 0M3 14.5c1.4-1.2 3-1.8 5-1.8s3.6.6 5 1.8"/>'}</svg><span>${t ? "Motion control" : "Head and hands"}</span></button>`)(matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches)}
+      <div class="v3c-pair"><button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
+      ${(t => `<button type="button" class="v3c-btn v3c-wide" id="v3-head" data-testid="v3-head" aria-pressed="false" data-tip="${t ? "Head, hands or tilt." : "Head steers, hands act."} Runs on your device. No video leaves your computer."><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 8.5V3.6a1.1 1.1 0 0 1 2.2 0V7.5M7.7 7V2.6a1.1 1.1 0 0 1 2.2 0V7.3M9.9 7.3V3.6a1.1 1.1 0 0 1 2.2 0v5.6c0 3-1.9 5.3-4.6 5.3-2 0-3.1-1-4.2-2.7L2 9.4a1.1 1.1 0 0 1 1.8-1.2l1.7 1.7"/></svg><span>Hands-free</span></button>`)(matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches)}</div>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
       <details id="v3-pv-more"><summary data-tip="Type an orbit centre in kpc, galaxy box axes">kpc</summary><form class="v3tf-g v3c-pvxyz" id="v3-pv-form"><input id="v3-pv-x" type="number" step="1" min="-400" max="400" aria-label="centre x, kpc" placeholder="x" data-tip="x in kpc from the galaxy centre"><input id="v3-pv-y" type="number" step="1" min="-400" max="400" aria-label="centre y, kpc" placeholder="y" data-tip="y in kpc from the galaxy centre"><input id="v3-pv-z" type="number" step="1" min="-400" max="400" aria-label="centre z, kpc" placeholder="z" data-tip="z in kpc from the galaxy centre"><button type="submit" class="v3c-btn" data-tip="Move the orbit centre there">go</button></form></details></section>
     <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
@@ -1458,6 +1471,8 @@ async function create(app, opts = {}) {
     if (!on && fsScroll) { const [x, y] = fsScroll; fsScroll = null;   // back to where the page was (after the layout settles)
       requestAnimationFrame(() => requestAnimationFrame(() => scrollTo({left: x, top: y, behavior: "instant"}))); }
     q("#v3-fs span").textContent = on ? "Exit fullscreen" : "Fullscreen"; q("#v3-fs").setAttribute("aria-pressed", String(on));
+    { const b = q("#v3-fs-stage"); b.setAttribute("aria-pressed", String(on)); b.setAttribute("aria-label", on ? "Exit fullscreen" : "Fullscreen"); b.dataset.tip = on ? "Exit fullscreen (Esc)" : "Fullscreen (Shift+F)";
+      b.querySelector("path").setAttribute("d", on ? "M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" : "M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"); }
     /* Phase 3: the control column lives beside the stage; in fullscreen it moves onto it as the closable panel, and back */
     if (on && ctlBox.parentNode !== el) { ctlHome = [ctlBox.parentNode, ctlBox.nextSibling]; el.appendChild(ctlBox); }
     else if (!on && ctlBox.parentNode === el) { const [pa, nx] = ctlHome || []; if (pa) pa.insertBefore(ctlBox, nx && nx.parentNode === pa ? nx : null); else ctlBox.remove(); ctlHome = null; }
@@ -1497,6 +1512,7 @@ async function create(app, opts = {}) {
   el.addEventListener("pointerdown", () => el.classList.remove("v3d-pf"), true);
   document.addEventListener("fullscreenchange", fsChanged); document.addEventListener("webkitfullscreenchange", fsChanged);
   q("#v3-fs").addEventListener("click", () => toggleFullscreen());
+  q("#v3-fs-stage").addEventListener("click", () => toggleFullscreen());
   q("#v3-head").addEventListener("click", () => import("./headctl.js").then(H => H.toggle(viewer, q("#v3-head"))));   /* head, hand and tilt control, loaded on first use */
   q("#v3-fs-exit").addEventListener("click", () => toggleFullscreen(false));
   q("#v3-ctl-toggle").addEventListener("click", () => setPanel(ctlBox.hidden));

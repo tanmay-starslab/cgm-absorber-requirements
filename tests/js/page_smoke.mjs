@@ -396,19 +396,16 @@ try {
       await P.eval(`tngApp.showTab("spectra")`); await sleep(300);
       const b = await P.fn(`return {tab: tngApp.getState().tab, p3: __ui.vis(document.getElementById("panel-3d")), ps: __ui.vis(document.getElementById("panel-spectra")), sel: document.getElementById("tab-spectra").getAttribute("aria-selected")};`);
       check(a.tab === "3d" && a.p3 && !a.ps && a.sel === "true" && /tab=3d/.test(a.h) && b.tab === "spectra" && !b.p3 && b.ps && b.sel === "true", `showTab 3d then spectra: ${JSON.stringify(a)} ${JSON.stringify(b)}`); }
-    /* head control: the View card's button opens the on-device consent popover (Start, Cancel) and loads nothing else
-       until Start; Cancel closes it. Needs the viewer (three.js from the CDN): noted when it does not mount. */
+    /* Hands-free: one View-card button (one click starts it, so it is not clicked here: no camera in this test) whose tip
+       carries the privacy line, beside Fullscreen; nothing of the tracker loads with the page. Needs the viewer (three.js
+       from the CDN): noted when it does not mount. */
     { await P.eval(`tngApp.showTab("3d")`);
-      if (await P.waitFor(`document.querySelector('[data-testid="v3-head"]')`, 60000, 250) < 0) note("3D viewer did not mount: head control button not checked");
-      else { const n0 = P.requests.filter(r => /mediapipe|headworker/.test(r)).length;
-        await P.click('[data-testid="v3-head"]'); await P.waitFor(`document.querySelector(".v3c-hc [data-a=start]")`, 10000, 100);
-        const h = await P.fn(`const b = document.querySelector('[data-testid="v3-head"]'), box = document.querySelector(".v3c-hc");
-          return {tip: !!b.dataset.tip, exp: b.getAttribute("aria-expanded"), role: box?.getAttribute("role"), start: !!box?.querySelector("[data-a=start]"), cancel: !!box?.querySelector("[data-a=cancel]"), focus: document.activeElement?.dataset.a};`);
-        const loaded = P.requests.filter(r => /mediapipe|headworker/.test(r)).length - n0;
-        await P.click(".v3c-hc [data-a=cancel]"); await sleep(200);
-        const gone = await P.eval(`!document.querySelector(".v3c-hc") && document.querySelector('[data-testid="v3-head"]').getAttribute("aria-expanded") === "false"`);
-        check(h.tip && h.exp === "true" && h.role === "dialog" && h.start && h.cancel && h.focus === "start" && !loaded && gone,
-          `head control: button opens the consent popover (${JSON.stringify(h)}), no tracker fetched before Start (${loaded}), Cancel closes it (${gone})`); }
+      if (await P.waitFor(`document.querySelector('[data-testid="v3-head"]')`, 60000, 250) < 0) note("3D viewer did not mount: Hands-free button not checked");
+      else { const h = await P.fn(`const b = document.querySelector('[data-testid="v3-head"]');
+          return {label: b.textContent.trim(), tip: b.dataset.tip, pair: b.parentElement.classList.contains("v3c-pair") && !!b.parentElement.querySelector("#v3-fs"), stage: !!document.querySelector("#v3-fs-stage[data-tip]")};`);
+        const loaded = P.requests.filter(r => /mediapipe|headworker|headctl/.test(r)).length;
+        check(h.label === "Hands-free" && /No video leaves your computer/.test(h.tip) && h.pair && h.stage && !loaded,
+          `Hands-free button beside Fullscreen with the privacy line in its tip, stage fullscreen icon, nothing of the tracker loaded (${JSON.stringify(h)}, ${loaded})`); }
       await P.eval(`tngApp.showTab("spectra")`); await sleep(200); }
   });
 

@@ -82,8 +82,8 @@ export function arbiter({handbackMs = 1000} = {}) {
 }
 
 /** The whole hand controller, one call per hand result. frame: {lm, g (MediaPipe category), score} or null (no hand).
- *  Returns {state: "none" | "rotate" | "zoom" | "paused", yaw, pitch, zoom, action: null | "recentre" | "mode" | "orbit"
- *  | "next" | "prev"}. A fist pauses everything; a pinch zooms; an open palm drags or swipes; holds fire actions. */
+ *  Returns {state: "none" | "rotate" | "zoom" | "paused" | "hold", yaw, pitch, zoom, action: null | "recentre" | "mode"
+ *  | "orbit" | "next" | "prev", sign (the held label while state is "hold")}. A fist pauses everything; a pinch zooms; an open palm drags or swipes; holds fire actions. */
 export function handController(o = {}) {
   const lab = labelSmoother(o.label), pin = pinchGate(o.pinch), hold = holdGate(o.hold), sw = swipeDetector(o.swipe);
   const fx = oneEuro({minCutoff: 1.5, beta: 0.5}), fy = oneEuro({minCutoff: 1.5, beta: 0.5});
@@ -97,7 +97,7 @@ export function handController(o = {}) {
     if (l === "fist") { pin.reset(); sw.reset(); hold.update(l, tMs); return out("paused"); }
     const action = hold.update(l, tMs);
     if (pin.update(f.pinch) && l !== "victory" && l !== "point") return out("zoom", {zoom: p ? pinchZoom(p.size, f.size, o.zoom) : 1, action});
-    if (l !== "palm" && l !== "none") { sw.reset(); return out("rotate", {action}); }   // holding a sign: the view stays
+    if (l !== "palm" && l !== "none") { sw.reset(); return out(HOLDS[l] ? "hold" : "rotate", {action, sign: l}); }   // holding a sign: the view stays
     const s = sw.update(f.cx, f.cy, tMs);   // raw positions: the filter would blunt the flick
     if (s) return out("rotate", {action: s === "right" ? "next" : "prev"});
     if (!p || l !== "palm") return out("rotate", {action});
@@ -121,11 +121,11 @@ export function decideQuick({touch = false, tier = "mid", cores = 4, mem, w = 10
 }
 
 /** Step 2, after a few tracker frames: the median ms per frame -> a plan. full: both trackers at full rate; reduced: a lower
- *  rate (and the hint to try Hands only when both run); tilt: too slow, Tilt is the better control (touch) or the lowest
+ *  rate; tilt: too slow, Tilt is the better control (touch) or the lowest
  *  rate with a warning (desktop). */
 export function decideBench(ms, {touch = false, both = true, tier = "mid"} = {}) {
   if (ms < 30 && tier !== "low") return {plan: "full", fps: 24, hint: ""};
-  if (ms < 60) return {plan: "reduced", fps: 12, hint: both ? "Slow here: Hands only is smoother" : ""};
+  if (ms < 60) return {plan: "reduced", fps: 12, hint: ""};
   return touch ? {plan: "tilt", fps: 6, hint: "Camera control is slow here: Tilt is smoother"} : {plan: "reduced", fps: 6, hint: "Camera control may be slow on this device"};
 }
 
