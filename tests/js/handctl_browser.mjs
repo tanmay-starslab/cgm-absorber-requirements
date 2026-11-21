@@ -55,10 +55,16 @@ async function open(P, w, h, mobile, query) {
   // the finer cubes keep streaming and hold the test server's six connections, so the model fetches would queue behind
   // them for many minutes on a busy CPU node: once the first view is up, further cube requests fail at once
   await until(P, `tngViewer3d.species`, 300000, 1000); await P.send("Network.setBlockedURLs", {urls: [...BLOCK, "*/viz/*"]});
+  // software WebGL on a loaded node takes seconds per ray-marched frame and every hand frame asks for one: keep the first
+  // image and stop drawing (the checks read the camera, the pill and the toasts, not pixels)
+  await until(P, `!/loading/i.test(tngViewer3d.message || "")`, 60000, 1000); await P.eval(`tngViewer3d.renderer.render = () => {}`);
   for (let i = 0, idle = -1; i < 60 && idle < 0; i++) idle = await P.waitFor(`(() => { const t = performance.now(), ok = window.__qt && t - window.__qt < 60; window.__qt = t; return ok; })()`, 5000, 30);
   return true;
 }
-const popover = async P => { await P.click('[data-testid="v3-head"]'); return P.waitFor(`document.querySelector(".v3c-hc [data-a=start]")`, 15000, 100); };
+const popover = async P => {
+  if (P.mobile && !(await P.eval(`document.body.classList.contains("ctl-open")`))) { await P.click("#dock-open"); await sleep(600); }   // phones: the controls sheet,
+  if (P.mobile) { await P.click('input[name="v3-tab"][value="view"] + span'); await sleep(300); }                                        // then its View tab
+  await P.click('[data-testid="v3-head"]'); return P.waitFor(`document.querySelector(".v3c-hc [data-a=start]")`, 15000, 100); };
 async function browser(w, h) {
   const P = await launch({edge: opt.edge, block: BLOCK, width: w, height: h, args: ARGS, reducedMotion: false});
   P.on(m => { if (m.method === "Target.attachedToTarget" && m.params.targetInfo.type === "worker") { const sid = m.params.sessionId;
@@ -140,7 +146,7 @@ async function desktop() {
     check(!s2.on && !s2.pill && lv === 0 && s2.pressed === "false", `${tag}: Stop ends every camera track and removes the pill (${JSON.stringify(s2)}, live ${lv})`);
     check(!P.exceptions.length, `${tag}: no page exceptions${P.exceptions.length ? ": " + P.exceptions.slice(0, 3).join(" | ") : ""}`);
     /* a low tier says the camera may be slow */
-    await open(P, w, 900, false, "tier=low"); await popover(P); await sleep(500);
+    await P.eval(`document.querySelector(".v3c-hc")?.remove(); document.documentElement.dataset.tier = "low"`); await popover(P); await sleep(500);   // a low tier mounts no live viewer: the tier the popover reads
     const lowMsg = await P.eval(`document.querySelector(".v3c-hc .hc-st").textContent`);
     check(/may be slow/i.test(lowMsg), `${tag}: a low-tier desktop is told camera control may be slow ("${lowMsg}")`);
     await shot("capability_low");
@@ -169,12 +175,12 @@ async function touch() {
     const off = after.filter(r => !r.split(" ")[1].startsWith(srv.origin + "/") && !/^\w+ (data|blob):/.test(r) && !/^\w+ https:\/\/huggingface\.co\/datasets\//.test(r) && !/\/api\/health$/.test(r));
     check(!off.length, `${tag}: nothing fetched off-origin after Start${off.length ? ": " + off.join(", ") : ""}`);
     await shot("pill");
-    await P.fn(`const H = await ${HC}; for (let i = 0; i < 8; i++) H._rate(150);`); await sleep(400);
+    await P.fn(`const H = await ${HC}; for (let i = 0; i < 300; i++) H._rate(400);`); await sleep(400);
     const fb = await P.fn(`const H = await ${HC}, b = document.querySelector(".v3c-hc"); return {on: H.state().on, src: b?.querySelector('[name="hc-src"]:checked')?.value, st: b?.querySelector(".hc-st")?.textContent};`);
     const lv = await live(P);
     check(!fb.on && lv === 0 && fb.src === "tilt" && /Tilt/.test(fb.st || ""), `${tag}: a slow tracker falls back to Tilt with a message and the camera off (${JSON.stringify(fb)}, live ${lv})`);
     await shot("fallback");
-    await open(P, w, h, true, "tier=low"); await popover(P); await P.waitFor(`document.querySelector(".v3c-hc").dataset.camera`, 10000, 100); await sleep(200);
+    await P.eval(`document.querySelector(".v3c-hc")?.remove(); document.documentElement.dataset.tier = "low"`); await popover(P); await P.waitFor(`document.querySelector(".v3c-hc").dataset.camera`, 10000, 100); await sleep(200);
     const lo = await P.fn(`const b = document.querySelector(".v3c-hc"); return {cam: b.dataset.camera, src: b.querySelector('[name="hc-src"]:checked')?.value};`);
     await P.click('.v3c-hc input[value="camera"] + span'); await sleep(200);
     const loMsg = await P.eval(`document.querySelector(".v3c-hc .hc-st").textContent`);

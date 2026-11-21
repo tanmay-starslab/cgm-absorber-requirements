@@ -56,6 +56,8 @@ async function run(w, h, mobileTag) {
     check(lbl === (mobileTag ? "Motion control" : "Head and hands"), `${tag}: button label "${lbl}"`);
     await shot("button");
     if (mobileTag) {   // touch: first no sensor (an error state), then CDP's device-orientation override as the sensor
+      if (!(await P.eval(`document.body.classList.contains("ctl-open")`))) { await P.click("#dock-open"); await sleep(600); }   // the phone controls sheet
+      await P.click('input[name="v3-tab"][value="view"] + span'); await sleep(300);                                                   // and its View tab
       await P.click('[data-testid="v3-head"]'); await P.waitFor(`document.querySelector(".v3c-hc [data-a=start]")`, 15000, 100); await shot("popover");
       await P.waitFor(`document.querySelector(".v3c-hc")?.dataset.camera`, 10000, 100);   // the quick check shows Camera and Tilt
       await P.click('.v3c-hc input[value="tilt"] + span'); await P.click(".v3c-hc [data-a=start]"); await sleep(2600);

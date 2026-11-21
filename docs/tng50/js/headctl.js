@@ -55,6 +55,7 @@ const CSS = `.v3c-hc{margin-top:8px;padding:9px 10px;border:1px solid var(--cg-e
 .v3d-hc b{position:absolute;left:50%;top:calc(100% + 6px);transform:translateX(-50%);padding:5px 10px;border-radius:999px;font-weight:600;background:inherit;box-shadow:inherit;
   backdrop-filter:inherit;-webkit-backdrop-filter:inherit;opacity:0;transition:opacity .2s}
 .v3d-hc b.on{opacity:1}
+@media (max-width:820px){.v3d-hc{top:48px}.v3d-hc video{width:40px;height:30px;border-radius:8px}}   /* phones: below the scale bar and orbit button */
 .v3d-thumb .v3d-hc{display:none}`;
 
 let S = null;   // the one live session
