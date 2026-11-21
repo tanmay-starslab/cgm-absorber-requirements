@@ -1,10 +1,10 @@
 <p align="center">
-  <a href="https://galaxies.tanmaysingh.uk"><img src="docs/readme/hero.webp" width="100%" alt="A TNG50 galaxy glowing in gas density, crossed by a single beam of quasar light"></a>
+  <a href="https://galaxies.tanmaysingh.uk"><img src="docs/readme/hero.webp" width="100%" alt="Gas around a TNG50 galaxy rendered in 3D as nested temperature shells, cool blue outside and hot gold inside, crossed by one sightline"></a>
 </p>
 
 <h1 align="center">Seeing the Circumgalactic Medium</h1>
 
-<p align="center"><b>The vast halo of gas around galaxies, revealed by the light it absorbs: in simulations, and for the telescopes that will observe it.</b></p>
+<p align="center"><b>Shine a beam of light through a simulated galaxy's halo and read what the gas leaves behind.</b></p>
 
 <p align="center">
   <a href="https://galaxies.tanmaysingh.uk"><img alt="Live site" src="https://img.shields.io/badge/live-galaxies.tanmaysingh.uk-7c8cff?style=flat-square"></a>
@@ -21,89 +21,52 @@
   <a href="#technical-details"><b>Technical details</b></a>
 </p>
 
-Every galaxy sits inside a vast halo of thin gas, the circumgalactic medium (CGM). It holds much of a galaxy's raw
-material, yet it is far too faint to photograph. We see it only when a distant quasar shines through it: each kind of
-atom takes its own small bite out of the light, and those dips, the absorption spectrum, tell us how much gas there
-is, how hot it is and how it moves.
+Every galaxy sits inside a vast halo of thin gas, the circumgalactic medium (CGM), which holds much of the raw
+material it will turn into stars. The halo is far too faint to photograph, so we see it only when a distant quasar
+shines through it: each kind of atom takes its own small bite out of the light, and those dips tell us how much gas
+there is, how hot it is and how it moves.
 
-This project lets you explore the CGM of simulated galaxies from TNG50. Point a beam through any of 198 Milky Way and Andromeda
-look-alikes, read the spectrum it makes, change the telescope, and see what a real instrument would be able to tell.
+This site lets you do that with 198 Milky Way and Andromeda look-alikes from the TNG50 simulation, in your browser.
 
 ## What you can do
 
-### Read the light from 198 simulated galaxies
+### Read the light
 
-<p align="center"><a href="https://galaxies.tanmaysingh.uk/"><img src="docs/readme/spectra.webp" width="100%" alt="The explorer: five absorption spectra with fitted components and the instrument controls"></a></p>
-<p align="center"><sub>Twelve ions, from cool hydrogen to million-degree oxygen, along one sightline. Fits run in your browser.</sub></p>
+<p align="center"><a href="https://galaxies.tanmaysingh.uk/"><img src="docs/readme/spectra.webp" width="100%" alt="The explorer comparing five absorption lines at two resolving powers, with fitted components"></a></p>
+<p align="center"><sub>Twelve ions along any sightline, from cool hydrogen to million-degree oxygen, seen through the telescope you choose and fitted in your browser.</sub></p>
 
-### Change the telescope
+### Fly through the gas
 
-<p align="center"><img src="docs/readme/compare.webp" width="100%" alt="The same sightline at two resolving powers and two signal-to-noise ratios"></p>
-<p align="center"><sub>Set the resolving power and the signal-to-noise, side by side, and watch the detail survive or vanish.</sub></p>
-
-### Fly through the gas in 3D
-
-<table>
-  <tr>
-    <td width="45%"><img src="docs/readme/gas-3d.webp" alt="The 3D view: gas density around galaxy 488530 with the sightline crossing it"></td>
-    <td>Turn the galaxy around and see the gas your beam passes through: density, temperature, metals, each of the
-    twelve ions, the gas velocities and the starlight, with the sightline drawn in place. Pick a point to cast a new
-    beam. Optional head control (or tilt, on a phone) steers the view or turns the screen into a window onto the
-    galaxy. It runs on your device: no camera frame is stored, uploaded or logged.</td>
-  </tr>
-</table>
-
-### Pick any galaxy, any sightline
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/readme/picker.webp" alt="The galaxy picker listing TNG50 Milky Way and M31 analogues by stellar mass, SFR and halo mass"></td>
-    <td width="50%"><img src="docs/readme/gallery.webp" alt="The sightline gallery: face-on, edge-on and random beams by impact parameter and azimuth"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Filter 198 galaxies by mass, star formation or type.</sub></td>
-    <td align="center"><sub>Choose a beam by orientation, distance and angle, or cast a new one.</sub></td>
-  </tr>
-</table>
+<p align="center"><img src="docs/readme/gas-3d.webp" width="100%" alt="Six 3D views of the same galaxy: THOR gas phases, O VI column, line-of-sight velocity, gas density, face-on and edge-on"></p>
+<p align="center"><sub>Turn the galaxy in 3D and colour its gas by temperature phase, any of the twelve ions, velocity or density, with your sightline drawn in place. Top: gas phases, O VI, line-of-sight velocity. Bottom: gas density, face-on, edge-on.</sub></p>
 
 ### Watch a spectrum being made
 
-<p align="center"><a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><img src="docs/readme/learn-gate.webp" width="100%" alt="The opening of How an absorption spectrum is made: a beam of light crossing the galaxy"></a></p>
-
 <table>
   <tr>
-    <td width="50%"><img src="docs/readme/learn-heat.webp" alt="A story step: heat widens an absorption line"></td>
-    <td width="50%"><img src="docs/readme/learn-fit.webp" alt="A story step: fitting a few components to the noisy spectrum"></td>
+    <td width="50%"><a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><img src="docs/readme/learn.webp" alt="The story's welcome screen: the title, the galaxy with its sightline, and five story cards"></a></td>
+    <td width="50%"><img src="docs/readme/learn-step.webp" alt="A step of the story, midway from gas cells to a fitted spectrum"></td>
   </tr>
 </table>
-<p align="center"><sub>Follow one sightline cell by cell, from the gas to a fitted spectrum. Scroll at your own pace or watch the film. Five shorter stories start from the same welcome screen.</sub></p>
+<p align="center"><sub>Follow one beam cell by cell, from the gas to a fitted spectrum, as a scroll story or a short film.</sub></p>
 
-### Ask in plain language
+### Ask what a telescope can see
 
-A chat panel answers questions about what is on screen and drives the page for you. It can only act through the
-page's own tools, and any number it did not get from a tool is marked as unverified.
-
-### Design an instrument
-
-<p align="center"><a href="https://galaxies.tanmaysingh.uk/requirements/"><img src="docs/readme/requirements.webp" width="100%" alt="Detect & Resolve: what it takes to detect an absorber and split it into components"></a></p>
-<p align="center"><sub>Detect & Resolve, where the project began: the signal-to-noise and resolving power needed to detect an absorber and split it into components.</sub></p>
+<p align="center"><a href="https://galaxies.tanmaysingh.uk/requirements/"><img src="docs/readme/requirements.webp" width="100%" alt="Detect & Resolve: maps of the weakest detectable absorber and the smallest resolvable separation, with real spectrographs marked"></a></p>
+<p align="center"><sub>Detect & Resolve maps the signal-to-noise and resolving power it takes to detect an absorber and split it into components, with real spectrographs marked.</sub></p>
 
 ### Take it with you
 
-<table>
-  <tr>
-    <td width="34%" align="center"><img src="docs/readme/mobile.webp" width="260" alt="The explorer on a phone"></td>
-    <td>The explorer and the story work on a phone, with the same spectra and fits. Nothing to install: it all runs in the browser.</td>
-  </tr>
-</table>
+<p align="center"><img src="docs/readme/mobile.webp" width="560" alt="The explorer on a phone: the spectra with the glass dock, and the control sheet pulled up"></p>
+<p align="center"><sub>Everything works on a phone, with nothing to install.</sub></p>
 
 ## The three pages
 
-| Page | Link | What it is |
-|---|---|---|
-| **Explorer** | [galaxies.tanmaysingh.uk](https://galaxies.tanmaysingh.uk/) | Sightlines, spectra, fits, 3D gas and chat for 198 TNG50 galaxies |
-| **How an absorption spectrum is made** | [/learn/how-a-spectrum-is-made/](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A cinematic story from gas cells to a fitted spectrum |
-| **Detect & Resolve** | [/requirements/](https://galaxies.tanmaysingh.uk/requirements/) | The instrument study: what S/N and resolution it takes to detect and resolve an absorber |
+| Page | What it is |
+|---|---|
+| [**Explorer**](https://galaxies.tanmaysingh.uk/) | Sightlines, spectra, fits, 3D gas and a chat helper for 198 TNG50 galaxies |
+| [**How an absorption spectrum is made**](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A cinematic story from gas cells to a fitted spectrum |
+| [**Detect & Resolve**](https://galaxies.tanmaysingh.uk/requirements/) | The instrument study: the S/N and resolving power it takes to detect and resolve an absorber |
 
 ## Credit
 
@@ -113,7 +76,7 @@ builds on have their own citation requests, listed under [Credits](#credits).
 
 ## Feedback and contributing
 
-Found a bug, spotted a number that looks wrong, or have an idea? We would love to hear it. Open an
+Found a bug, spotted a number that looks wrong, or have an idea? Open an
 [issue](https://github.com/tanmay-starslab/cgm-absorber-requirements/issues), or read
 [CONTRIBUTING.md](CONTRIBUTING.md) to send a pull request.
 
@@ -121,17 +84,15 @@ Found a bug, spotted a number that looks wrong, or have an idea? We would love t
 
 ## Technical details
 
-What began as a requirements study for a NASA proposal (what S/N and resolving power it takes to **detect** a
-circumgalactic absorber and to **resolve** it into velocity components) has grown into a public website for exploring
-the circumgalactic medium (CGM) of simulated galaxies. The three pages map to these sources:
-
 | Page | Source |
 |---|---|
 | Explorer | `docs/tng50/` ([below](#tng50-sightline-explorer)) |
 | How an absorption spectrum is made | `docs/tng50/learn/` ([below](#learn-page-how-an-absorption-spectrum-is-made)) |
 | Detect & Resolve | `docs/index.html`, `absreq/`, `paper/` |
 
-Old `tanmay-starslab.github.io/cgm-absorber-requirements/...` links redirect to the new site.
+Detect & Resolve asks what S/N and resolving power it takes to **detect** a circumgalactic absorber and to
+**resolve** it into velocity components. Old `tanmay-starslab.github.io/cgm-absorber-requirements/...` links
+redirect to the new site.
 
 <details>
 <summary><b>Detect &amp; Resolve: method, transitions and figures</b></summary>
