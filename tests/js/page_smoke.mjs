@@ -404,7 +404,7 @@ try {
       else { const h = await P.fn(`const b = document.querySelector('[data-testid="v3-head"]');
           return {label: b.textContent.trim(), tip: b.dataset.tip, pair: b.parentElement.classList.contains("v3c-pair") && !!b.parentElement.querySelector("#v3-fs"), stage: !!document.querySelector("#v3-fs-stage[data-tip]")};`);
         const loaded = P.requests.filter(r => /mediapipe|headworker|headctl/.test(r)).length;
-        check(h.label === "Hands-free" && /No video leaves your computer/.test(h.tip) && h.pair && h.stage && !loaded,
+        check(h.label === "Hands-free" && /Your camera video stays on your device/.test(h.tip) && h.pair && h.stage && !loaded,
           `Hands-free button beside Fullscreen with the privacy line in its tip, stage fullscreen icon, nothing of the tracker loaded (${JSON.stringify(h)}, ${loaded})`); }
       await P.eval(`tngApp.showTab("spectra")`); await sleep(200); }
   });

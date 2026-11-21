@@ -24,7 +24,7 @@ export const isTilt = () => matchMedia("(pointer: coarse)").matches && !matchMed
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const VENDOR = new URL("../vendor/mediapipe/", import.meta.url).href;
 const NO_FACE_MS = 60000, CAL_MS = 600, CAP_W = 256;
-export const PRIVACY = "Runs on your device. No video leaves your computer.";
+export const PRIVACY = "Your camera video stays on your device.";
 const GUIDE_MS = 6000;
 const GUIDE = [["🙂", "Turn head", "look around"], ["✋", "Move hand", "rotate"], ["🤏", "Pinch, pull", "zoom"], ["👋", "Swipe", "next sightline"],
   ["👍", "Hold", "recentre"], ["✌️", "Hold", "volume"], ["☝️", "Hold", "orbit"], ["✊", "Fist", "pause"]];
@@ -36,47 +36,52 @@ const MSG = {unsupported: "This browser cannot run camera control", denied: "Cam
 const PILL = {rotate: "Hand ✋ rotate", zoom: "Hand 🤏 zoom", paused: "Hand ✊ paused"};
 const HOLD = {thumb: "👍", victory: "✌️", point: "☝️"};
 
-const CSS = `.v3c-hc{margin-top:8px;padding:9px 10px;border:1px solid var(--cg-edge,rgba(200,215,240,.16));border-radius:10px;
-  background:var(--mat-thick,rgba(20,24,40,.8));box-shadow:var(--cg-hi,inset 0 1px 0 rgba(255,255,255,.08));font-size:12px}
-.v3c-hc summary{cursor:pointer;color:var(--muted,#98a0b8)}
-.v3c-hc details[open] summary{margin-bottom:4px}
-.v3c-hc .v3c-row{margin-top:6px;grid-template-columns:auto minmax(0,1fr) 30px}
-.v3c-hc .v3c-row label{overflow:visible;white-space:nowrap}
-.v3c-hc .hc-checks{display:flex;gap:14px;margin-top:6px}
-.v3c-hc .hc-checks label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
-.v3c-hc .hc-st{margin:6px 0 0;min-height:15px;line-height:1.35;color:var(--muted,#98a0b8)}
-.v3c-hc .hc-st:empty{display:none}
-.v3c-hc .hc-st.bad{color:var(--s-bad,#ff8a8a)}
-.v3c-hc [hidden]{display:none}
+/* Stage slots while Hands-free is on: nothing in the page flow changes (the View card gets no new box) and no stage overlay
+   moves. The pill sits bottom centre, 8 px above the colour key (--hc-bot, kept in step with the key's height), clear of
+   the scale bar, the message, the orbit and fullscreen buttons (top), and the lines key and ID badge (right). The guide and
+   the options share one panel slot above the pill, one at a time; while one is open the stage message is hidden. */
+const CSS = `.v3d-stage{--hc-h:56px;--hc-b:32px;--hc-bot:110px}
+@media (pointer:coarse){.v3d-stage{--hc-h:52px;--hc-b:44px}}
+.v3d-stage.hc-panel .v3d-msg{visibility:hidden}
 #v3-head[aria-pressed=true]{border-color:var(--s-accent,#7db2f0)}
-.v3d-hc{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;border-radius:14px;
+.v3d-hc,.v3d-hp{position:absolute;left:50%;transform:translateX(-50%);z-index:3;box-sizing:border-box;color:var(--s-ink,#eef0f7);
   background:var(--s-mat,rgba(12,16,22,.74));box-shadow:inset 0 0 0 1px var(--s-edge,rgba(200,215,240,.16)),var(--s-hi,none),0 6px 20px rgba(0,0,0,.3);
-  backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));-webkit-backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));pointer-events:none;
-  color:var(--s-ink,#eef0f7);font:600 12px/1.2 system-ui,sans-serif;white-space:nowrap}
-.v3d-hc i{width:8px;height:8px;margin:0 3px 0 6px;border-radius:50%;background:#5ad19a;box-shadow:0 0 6px #5ad19a;flex:none}
-.v3d-hc.off i{background:#d9a35a;box-shadow:none}
-.v3d-hc button{pointer-events:auto;width:20px;height:20px;margin-left:4px;padding:0;border:0;border-radius:50%;cursor:pointer;font:600 12px/20px system-ui,sans-serif;
-  color:inherit;background:rgba(255,255,255,.12);position:relative}
-.v3d-hc button::after{content:"";position:absolute;inset:-12px}
+  backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));-webkit-backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));border-radius:14px}
+.v3d-hc{bottom:var(--hc-bot);width:min(280px,calc(100% - 24px));height:var(--hc-h);display:flex;align-items:center;gap:8px;padding:4px;font:600 12px/16px system-ui,sans-serif}
+.v3d-hc .hc-cam{flex:none;height:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:rgba(255,255,255,.06)}
+.v3d-hc.tilt .hc-cam{display:none}
+.v3d-hc video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+.v3d-hc video[hidden]{display:none}
+.v3d-hc .hc-txt{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:1px;padding-left:4px}
+.v3d-hc .hc-m{display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden}
+.v3d-hc .hc-m i{width:8px;height:8px;border-radius:50%;background:#5ad19a;box-shadow:0 0 6px #5ad19a;flex:none}
+.v3d-hc.off .hc-m i{background:#d9a35a;box-shadow:none}
+.v3d-hc .hc-st{margin:0;font:500 11px/14px system-ui,sans-serif;color:var(--s-ink2,#a9b2c3);max-height:28px;overflow:hidden;overflow-wrap:anywhere}
+.v3d-hc .hc-st.bad{color:var(--s-bad,#ff8a8a)}
+.v3d-hc button{flex:none;width:var(--hc-b);height:var(--hc-b);padding:0;border:0;border-radius:50%;cursor:pointer;display:grid;place-items:center;
+  font:600 13px/1 system-ui,sans-serif;color:inherit;background:rgba(255,255,255,.12)}
+.v3d-hc button:hover{background:rgba(255,255,255,.2)}
+.v3d-hc button svg{width:15px;height:15px}
 .v3d-hc button[aria-expanded=true]{background:var(--s-accent,#7db2f0);color:#0c1016}
-.v3d-hc button:focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
-.v3d-hg{position:absolute;left:50%;top:100px;transform:translateX(-50%);z-index:3;padding:9px 12px 8px;border-radius:14px;pointer-events:none;
-  background:var(--s-mat,rgba(12,16,22,.74));box-shadow:inset 0 0 0 1px var(--s-edge,rgba(200,215,240,.16)),var(--s-hi,none),0 6px 20px rgba(0,0,0,.3);
-  backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));-webkit-backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));color:var(--s-ink,#eef0f7);
-  font:500 12px/1.25 system-ui,sans-serif;transition:opacity .25s}
-.v3d-hg[hidden]{display:block;opacity:0;visibility:hidden}
-.v3d-hg ul{display:grid;grid-template-columns:auto auto;gap:5px 16px;margin:0;padding:0;list-style:none;white-space:nowrap}
+.v3d-hc button:focus-visible,.v3d-hp :focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
+.v3d-hc.idle button{visibility:hidden}
+.v3d-hp{bottom:calc(var(--hc-bot) + var(--hc-h) + 8px);max-width:calc(100% - 24px);max-height:calc(100% - var(--hc-bot) - var(--hc-h) - 60px);overflow:auto;padding:10px 14px;font:500 12px/1.3 system-ui,sans-serif;transition:opacity .25s}
+.v3d-hp[hidden]{display:block;opacity:0;visibility:hidden}
+.v3d-hg{pointer-events:none}
+.v3d-hg ul{display:grid;grid-template-columns:auto auto;gap:6px 18px;margin:0;padding:0;list-style:none;white-space:nowrap}
 .v3d-hg li span{display:inline-block;width:1.5em}
 .v3d-hg li b{font-weight:600}
-.v3d-hg p{margin:7px 0 0;font-size:11px;color:var(--s-ink2,#a9b2c3);text-align:center}
-.v3d-hc video{width:64px;height:48px;border-radius:10px;object-fit:cover;transform:scaleX(-1);display:block;order:-1}
-.v3d-hc video[hidden]{display:none}
-.v3d-hc b{position:absolute;left:50%;top:calc(100% + 6px);transform:translateX(-50%);padding:5px 10px;border-radius:999px;font-weight:600;background:inherit;box-shadow:inherit;
-  backdrop-filter:inherit;-webkit-backdrop-filter:inherit;opacity:0;transition:opacity .2s}
-.v3d-hc b.on{opacity:1}
-@media (max-width:820px){.v3d-hc{top:48px}.v3d-hc video{width:40px;height:30px;border-radius:8px}.v3d-hg{top:124px;max-width:calc(100% - 20px)}.v3d-hg ul{gap:5px 10px}}   /* phones: below the scale bar and orbit button */
-@media (prefers-reduced-motion:reduce){.v3d-hg{transition:none}}
-.v3d-thumb .v3d-hc,.v3d-thumb .v3d-hg{display:none}`;
+.v3d-hg p{margin:8px 0 0;font-size:11px;color:var(--s-ink2,#a9b2c3);text-align:center}
+.v3d-ho{width:min(280px,calc(100% - 24px))}
+.v3d-ho .hc-row{display:grid;grid-template-columns:auto minmax(0,1fr) 2.6em;align-items:center;gap:10px;min-height:var(--hc-b)}
+.v3d-ho label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;min-height:var(--hc-b)}
+.v3d-ho input[type=range]{width:100%;margin:0;accent-color:var(--s-accent,#7db2f0)}
+.v3d-ho input[type=checkbox]{margin:0;accent-color:var(--s-accent,#7db2f0)}
+.v3d-ho output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right}
+.v3d-ho .hc-checks{display:flex;justify-content:space-between;gap:12px}
+@container (max-width:479px){.v3d-hp{padding:8px 10px;font-size:11px}.v3d-hg ul{gap:4px 10px}.v3d-hg li span{width:1.3em}}   /* phones: two columns still fit 334 px */
+@media (prefers-reduced-motion:reduce){.v3d-hp{transition:none}}
+.v3d-thumb .v3d-hc,.v3d-thumb .v3d-hp{display:none}`;
 
 let S = null;   // the one live session
 
@@ -87,16 +92,28 @@ export function toggle(viewer, btn) {
   if (!document.getElementById("hc-css")) { const st = document.createElement("style"); st.id = "hc-css"; st.textContent = CSS; document.head.appendChild(st); }
   if (S) { stop(); return; }
   if (pending) return;   // the quick check is still running
-  host(btn).parentNode.querySelector(".v3c-hc")?.remove();
+  clearFlash();
   go(viewer, btn);
 }
 
 function el(html) { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; }
-const host = btn => btn.closest(".v3c-pair") || btn;   // the Fullscreen and Hands-free buttons share a row: the panel goes under it
-function panelAfter(btn, node) { host(btn).parentNode.querySelector(".v3c-hc")?.remove(); host(btn).after(node); return node; }
-function flash(btn, msg) {   // a short message under the button that clears itself
-  const box = panelAfter(btn, el(`<div class="v3c-hc" role="status"><p class="hc-st bad"></p></div>`)); box.querySelector("p").textContent = msg;
-  setTimeout(() => { if (!S && box.isConnected) box.remove(); }, 6000); }
+const ICON_OPT = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"/><circle cx="10.5" cy="4.5" r="1.5"/><circle cx="5.5" cy="11.5" r="1.5"/></svg>`;
+/* the stage pill: preview, status dot, who is in control, a status line, and the options and guide buttons */
+function makePill(viewer, tilt) {
+  const ind = el(`<div class="v3d-hc${tilt ? " tilt" : ""}" role="group" aria-label="Hands-free"><div class="hc-cam"></div><div class="hc-txt"><div class="hc-m"><i></i><span role="status" aria-live="polite"></span></div>
+    <p class="hc-st" role="status" aria-live="polite"></p></div><button type="button" class="hc-o" aria-expanded="false" aria-label="Hands-free options" data-tip="Window view, sensitivity and preview">${ICON_OPT}</button>
+    <button type="button" class="hc-q" aria-expanded="false" aria-label="Show the gestures" data-tip="Show the gestures">?</button></div>`);
+  const stage = viewer.el, leg = viewer.el.querySelector(".v3d-leg");
+  const place = () => { const h = leg && !leg.hidden ? leg.offsetHeight : 0; stage.style.setProperty("--hc-bot", `${Math.round(10 + h + 8)}px`); };
+  place(); const ro = typeof ResizeObserver === "function" && leg ? new ResizeObserver(place) : null; ro?.observe(leg);
+  stage.append(ind); return {ind, off: () => { ro?.disconnect(); }};
+}
+let flashBox = null;
+function clearFlash() { if (flashBox) { flashBox.off(); flashBox.ind.remove(); flashBox = null; } }
+function flash(viewer, msg) {   // a short message in the stage pill that clears itself (no session: no buttons)
+  clearFlash(); if (!viewer?.el?.isConnected) return;
+  const f = flashBox = makePill(viewer, true); f.ind.classList.add("idle", "off"); f.ind.querySelector(".hc-m span").textContent = "Hands-free";
+  say(f.ind, msg, true); setTimeout(() => { if (flashBox === f) clearFlash(); }, 6000); }
 /** Step 1 of the capability check: no permission prompt (enumerateDevices lists kinds even without labels). */
 const quick = () => (navigator.mediaDevices?.enumerateDevices ? navigator.mediaDevices.enumerateDevices().then(L => L.some(d => d.kind === "videoinput")).catch(() => null) : Promise.resolve(false))
   .then(hasCam => decideQuick({touch: isTilt(), tier: tier() || "mid", cores: navigator.hardwareConcurrency || 4, mem: navigator.deviceMemory, w: innerWidth, h: innerHeight, hasCam}));
@@ -109,25 +126,29 @@ async function go(viewer, btn) {
   btn.setAttribute("aria-pressed", "true");
   pending = true; const q = await quick().finally(() => { pending = false; });
   if (S) return;
-  if (!touch && q.camera === "none") { btn.setAttribute("aria-pressed", "false"); flash(btn, MSG.nocam); return; }
+  if (!touch && q.camera === "none") { btn.setAttribute("aria-pressed", "false"); flash(viewer, MSG.nocam); return; }
   start(viewer, btn, touch && q.def === "tilt", q.camera === "slow" && !(touch && q.def === "tilt"));
 }
 
-function say(box, t, bad = false) { const s = box?.querySelector(".hc-st"); if (s) { s.textContent = t; s.classList.toggle("bad", bad); } }
+function say(box, t, bad = false) {
+  if (S?.box === box && S.toasting) { S.keep = [t, bad]; return; }   // shown once the toast ends
+  const s = box?.querySelector(".hc-st"); if (s) { s.textContent = t; s.classList.toggle("bad", bad); } }
 
 async function start(viewer, btn, tilt, slow = false) {
-  btn.setAttribute("aria-pressed", "true");
-  const box = panelAfter(btn, el(`<div class="v3c-hc" role="group" aria-label="Hands-free"><p class="hc-st" role="status" aria-live="polite"></p></div>`));
+  btn.setAttribute("aria-pressed", "true"); clearFlash();
+  const pl = makePill(viewer, tilt), box = pl.ind;
   const T = tilt ? {face: true, hands: false} : {face: true, hands: true};
   const s = {viewer, btn, box, tilt, track: tilt ? "tilt" : "both", T, slow, mode: "orbit", sens: 1, invert: false, preview: true, ref: null, cal: [], calT: 0, base: null, set: null,
     last: null, lastSeen: performance.now(), filt: ["yaw", "pitch", "x", "y", "z"].map(() => oneEuro(reduced() ? {minCutoff: 0.4, beta: 0.004} : {minCutoff: 1, beta: 0.01})),
     hc: handController(), arb: arbiter(), ctrl: T.face ? "head" : "hand", hand: "none", fps: 24, bench: null,
-    stream: null, video: null, worker: null, busy: false, offs: []};
-  S = s; s.starting = true; watch(s);   // watched while it loads too: leaving the tab mid-start still turns the camera off
+    stream: null, video: null, worker: null, busy: false, offs: [pl.off]};
+  S = s; s.starting = true; ui(s); watch(s);   // watched while it loads too: leaving the tab mid-start still turns the camera off
   try { tilt ? await startTilt(s) : await startCam(s); }
-  catch (x) { if (S !== s) return; S = null; if (!x?.hc) console.warn("head control:", x); release(s); btn.setAttribute("aria-pressed", "false"); flash(btn, x?.hc || MSG.unsupported); return; }
+  catch (x) { if (S !== s) return; S = null; if (!x?.hc) console.warn("head control:", x); release(s); btn.setAttribute("aria-pressed", "false"); flash(viewer, x?.hc || MSG.unsupported); return; }
   if (S !== s) { release(s); return; }
-  s.starting = false; livePanel(s);
+  s.starting = false;
+  if (s.video) { s.video.hidden = !s.preview; box.querySelector(".hc-cam").appendChild(s.video); }
+  if (!s.ref && !s.slow) say(box, tilt ? MSG.tiltCentre : MSG.centre);
 }
 
 /* ---- sources ---- */
@@ -258,9 +279,11 @@ function act(s, a) {
 function recentre(s) { restoreProj(s); s.ref = null; s.cal = []; s.calT = 0; s.base = null; s.set = null; s.pose = null; }
 const pillText = s => (s.tilt ? "Tilt" : s.ctrl !== "hand" ? "Head" : s.hand === "hold" && HOLD[s.sign] ? `${HOLD[s.sign]} hold…` : PILL[s.hand] || "Hand");
 function pill(s) { const t = s.pillT; if (t && t.textContent !== pillText(s)) t.textContent = pillText(s); }
-function toast(s, text) {
-  const b = s.toastEl; if (!b) return; b.textContent = text; b.classList.add("on"); s.lastToast = text;
-  clearTimeout(s.toastT); s.toastT = setTimeout(() => b.classList.remove("on"), 1600);
+function toast(s, text) {   // an action's confirmation in the pill's status line for 1.6 s, then the status comes back
+  const st = s.box?.querySelector(".hc-st"); if (!st) return; s.lastToast = text;
+  if (!s.toasting) s.keep = [st.textContent, st.classList.contains("bad")];
+  s.toasting = true; st.textContent = text; st.classList.remove("bad");
+  clearTimeout(s.toastT); s.toastT = setTimeout(() => { s.toasting = false; if (s.keep) say(s.box, ...s.keep); }, 1600);
 }
 
 const camState = c => [c.position.x, c.position.y, c.position.z, c.up.x, c.up.y, c.up.z, c.quaternion.x, c.quaternion.y, c.quaternion.z, c.quaternion.w];
@@ -311,28 +334,28 @@ function restoreProj(s, back = true) {   // back: return the camera to the windo
   s.proj = null; c.updateProjectionMatrix = s.origUPM; s.origUPM = null; c.updateProjectionMatrix();
 }
 
-/* ---- options, the stage pill and the guide card ---- */
-function livePanel(s) {
-  const {box} = s, tilt = s.tilt;
-  box.prepend(el(`<details><summary data-tip="Window view, sensitivity and preview">options</summary>
-    <div class="v3c-row"><label for="hc-sens">sensitivity</label><input id="hc-sens" type="range" min="0.25" max="3" step="0.05" value="1" data-tip="How strongly ${tilt ? "tilt" : "motion"} moves the view"><output>1.0</output></div>
-    <div class="hc-checks"><label><input type="checkbox" data-c="window" data-tip="The screen becomes a window onto the galaxy">window</label><label><input type="checkbox" data-c="invert" data-tip="Reverse the direction">invert</label>${tilt ? "" : '<label><input type="checkbox" data-c="preview" checked data-tip="Show the small camera preview">preview</label>'}</div></details>`));
-  if (!s.ref && !s.slow) say(box, tilt ? MSG.tiltCentre : MSG.centre);
-  box.querySelector('[data-c="window"]').addEventListener("change", ev => { const m = ev.target.checked ? "window" : "orbit"; if (s.mode === m) return;
+/* ---- the stage pill, the options and the guide card (built on the click, before the camera answers) ---- */
+function ui(s) {
+  const {box: ind, tilt} = s, V = s.viewer;
+  s.dot = ind; s.pillT = ind.querySelector(".hc-m span"); pill(s); say(ind, s.slow ? MSG.slow : "Loading");
+  const g = s.guide = el(`<div class="v3d-hp v3d-hg" role="note" aria-label="Hands-free gestures" hidden><ul>${(tilt ? TILT_GUIDE : GUIDE).map(([i, a, b]) =>
+    `<li><span aria-hidden="true">${i}</span><b>${a}:</b> ${b}</li>`).join("")}</ul><p>${PRIVACY}</p></div>`);
+  const o = s.opts = el(`<div class="v3d-hp v3d-ho" role="group" aria-label="Hands-free options" hidden>
+    <div class="hc-row"><label for="hc-sens">sensitivity</label><input id="hc-sens" type="range" min="0.25" max="3" step="0.05" value="1" data-tip="How strongly ${tilt ? "tilt" : "motion"} moves the view"><output>1.0</output></div>
+    <div class="hc-checks"><label><input type="checkbox" data-c="window" data-tip="The screen becomes a window onto the galaxy">window</label><label><input type="checkbox" data-c="invert" data-tip="Reverse the direction">invert</label>${tilt ? "" : '<label><input type="checkbox" data-c="preview" checked data-tip="Show the small camera preview">preview</label>'}</div></div>`);
+  o.querySelector('[data-c="window"]').addEventListener("change", ev => { const m = ev.target.checked ? "window" : "orbit"; if (s.mode === m) return;
     restoreProj(s); s.mode = m; s.base = null; s.set = null; s.last = null; if (s.pose) s.ref = {...s.ref, ...pick(s.pose)}; });
-  const sens = box.querySelector("#hc-sens"); sens.addEventListener("input", () => { s.sens = +sens.value; sens.nextElementSibling.textContent = s.sens.toFixed(1); s.last = null; });
-  box.querySelector('[data-c="invert"]').addEventListener("change", ev => { s.invert = ev.target.checked; s.last = null; });
-  box.querySelector('[data-c="preview"]')?.addEventListener("change", ev => { s.preview = ev.target.checked; if (s.video) s.video.hidden = !s.preview; });
-  const ind = s.ind = el(`<div class="v3d-hc"><i></i><span role="status" aria-live="polite"></span><b aria-hidden="true"></b><button type="button" aria-expanded="true" aria-label="Show the gestures" data-tip="Show the gestures">?</button></div>`);
-  s.dot = ind; s.pillT = ind.querySelector("span"); s.toastEl = ind.querySelector("b"); pill(s);
-  if (s.video) { s.video.hidden = !s.preview; ind.appendChild(s.video); }
-  const g = s.guide = el(`<div class="v3d-hg" role="note" aria-label="Hands-free gestures"><ul>${(tilt ? TILT_GUIDE : GUIDE).map(([i, a, b]) =>
-    `<li><span aria-hidden="true">${i}</span><b>${a}:</b> ${b}</li>`).join("")}</ul><p>${tilt ? "Runs on your device." : PRIVACY}</p></div>`);
-  const q = ind.querySelector("button");
-  const show = on => { clearTimeout(s.guideT); g.hidden = !on; q.setAttribute("aria-expanded", String(on)); };
-  q.addEventListener("click", () => show(g.hidden));
-  s.viewer.el.append(ind, g);
-  show(true); s.guideT = setTimeout(() => show(false), GUIDE_MS);
+  const sens = o.querySelector("#hc-sens"); sens.addEventListener("input", () => { s.sens = +sens.value; sens.nextElementSibling.textContent = s.sens.toFixed(1); s.last = null; });
+  o.querySelector('[data-c="invert"]').addEventListener("change", ev => { s.invert = ev.target.checked; s.last = null; });
+  o.querySelector('[data-c="preview"]')?.addEventListener("change", ev => { s.preview = ev.target.checked; if (s.video) s.video.hidden = !s.preview; });
+  const qb = ind.querySelector(".hc-q"), ob = ind.querySelector(".hc-o");
+  /* one panel at a time in the slot above the pill */
+  const show = which => { clearTimeout(s.guideT); g.hidden = which !== "guide"; o.hidden = which !== "opts";
+    qb.setAttribute("aria-expanded", String(which === "guide")); ob.setAttribute("aria-expanded", String(which === "opts")); V.el.classList.toggle("hc-panel", !!which); };
+  qb.addEventListener("click", () => show(g.hidden ? "guide" : null));
+  ob.addEventListener("click", () => show(o.hidden ? "opts" : null));
+  V.el.append(g, o);
+  show("guide"); s.guideT = setTimeout(() => { if (!g.hidden) show(null); }, GUIDE_MS);
 }
 
 function watch(s) {
@@ -352,7 +375,7 @@ function release(s) {
   if (s.stream) { for (const t of s.stream.getTracks()) t.stop(); s.stream = null; }
   if (s.video) { s.video.srcObject = null; s.video.remove(); s.video = null; }
   if (s.worker) { s.worker.terminate(); s.worker = null; }
-  clearTimeout(s.toastT); clearTimeout(s.guideT); s.ind?.remove(); s.guide?.remove();
+  clearTimeout(s.toastT); clearTimeout(s.guideT); s.box?.remove(); s.guide?.remove(); s.opts?.remove(); s.viewer.el.classList.remove("hc-panel");
 }
 function fail(s, msg) { if (S === s) stop(msg); }
 
@@ -361,7 +384,7 @@ export function stop(msg = "") {
   const s = S; if (!s) return; S = null;   // a start still loading sees S !== s and releases what it opened after this
   restoreProj(s); release(s);
   s.btn.setAttribute("aria-pressed", "false");
-  if (msg && s.btn.isConnected) flash(s.btn, msg); else s.box?.remove();
+  if (msg && s.btn.isConnected) flash(s.viewer, msg);
   s.viewer.controls.dispatchEvent({type: "change"});
 }
 
