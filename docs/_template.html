@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Detect &amp; Resolve: CGM Absorbers</title>
+<title>Detect &amp; Resolve: CGM absorbers</title>
 <link rel="icon" href="tng50/favicon.ico" sizes="32x32">
 <link rel="icon" href="tng50/img/icon/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="tng50/img/icon/icon-180.png">
@@ -21,214 +22,220 @@
 <link rel="preload" href="tng50/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="tng50/fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="tng50/css/tokens.css">
+<link rel="stylesheet" href="tng50/css/page.css">
 <style>
-/* Layout: one reading column; a control strip that stays in reach on wide screens; each concept is a figure + caption pair.
-   Materials (Apple-style glass): thin = buttons, chips, cards inside panels; regular = control strip, figure frames;
-   thick = popovers (map tooltips). Plot surfaces (--panel, painted by every canvas) stay opaque. */
-:root{
-  --bg:#eef2f7; --panel:#ffffff; --ink:#0f151c; --ink2:#4b5563; --muted:#5d6773; --rule:#d6dce4; --grid:#e3e8ee;
-  --accent:#1c5cab; --accent-ink:#ffffff; --truth:#1c5cab; --fit:#d4572a; --intr:#0f151c; --noise:#5b6573;
-  --good:#0a7a37; --warn:#9a5c00; --bad:#b4232a;
-  --display:var(--font-display); --body:var(--font-ui); --mono:var(--font-mono);   /* the site's self-hosted fonts (tng50/css/tokens.css) */
-  --mat-thin:rgba(255,255,255,.52); --mat-regular:rgba(255,255,255,.62); --mat-thick:rgba(255,255,255,.80);
-  --mat-blur-thin:blur(14px) saturate(1.7); --mat-blur-regular:blur(24px) saturate(1.8); --mat-blur-thick:blur(40px) saturate(1.9);
-  --mat-edge-c:rgba(15,21,28,.10); --mat-edge-top:rgba(255,255,255,.95);
-  --mat-highlight:inset 0 1px 0 rgba(255,255,255,.85); --mat-sheen:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0) 60%);
-  --mat-shadow:0 1px 2px rgba(15,21,28,.05),0 12px 36px -10px rgba(25,45,80,.18);
-  --mat-fill:linear-gradient(180deg,rgba(255,255,255,.80),rgba(255,255,255,.42)); --mat-fill-hover:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,255,255,.60));
-  --mat-press:rgba(15,21,28,.07); --mat-row:rgba(28,92,171,.07);
-  --glow1:rgba(28,92,171,.20); --glow2:rgba(212,87,42,.13); --glow3:rgba(27,175,122,.13);
-  --r-s:10px; --r-m:16px; --r-l:22px;
-  --mat-bar:rgba(255,255,255,.76); --mat-blur-bar:blur(24px) saturate(1.3); --mat-track:rgba(15,21,28,.16);
-  --mat-edge:1px solid var(--mat-edge-c); --mat-thick-o:color-mix(in srgb,var(--panel) 96%,transparent);
-}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --bg:#0b0f14; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#8a95a3; --rule:#2a323d; --grid:#222a33;
-  --accent:#6da7ec; --accent-ink:#0b1016; --truth:#6da7ec; --fit:#f08f62; --intr:#e9eef4; --noise:#9aa5b2;
-  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark;
-  --mat-thin:rgba(40,48,60,.42); --mat-regular:rgba(26,32,42,.55); --mat-thick:rgba(30,37,48,.78); --mat-bar:rgba(22,27,35,.86); --mat-track:rgba(255,255,255,.20);
-  --mat-edge-c:rgba(255,255,255,.09); --mat-edge-top:rgba(255,255,255,.20);
-  --mat-highlight:inset 0 1px 0 rgba(255,255,255,.10); --mat-sheen:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0) 60%);
-  --mat-shadow:0 1px 2px rgba(0,0,0,.30),0 16px 40px -12px rgba(0,0,0,.55);
-  --mat-fill:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.04)); --mat-fill-hover:linear-gradient(180deg,rgba(255,255,255,.17),rgba(255,255,255,.07));
-  --mat-press:rgba(0,0,0,.28); --mat-row:rgba(109,167,236,.10);
-  --glow1:rgba(56,120,220,.26); --glow2:rgba(240,143,98,.13); --glow3:rgba(40,190,140,.12) } }
-:root[data-theme="dark"]{
-  --bg:#0b0f14; --panel:#161b22; --ink:#e9eef4; --ink2:#a7b1bd; --muted:#8a95a3; --rule:#2a323d; --grid:#222a33;
-  --accent:#6da7ec; --accent-ink:#0b1016; --truth:#6da7ec; --fit:#f08f62; --intr:#e9eef4; --noise:#9aa5b2;
-  --good:#3fbf6b; --warn:#e3a33a; --bad:#ef6b6b; color-scheme:dark;
-  --mat-thin:rgba(40,48,60,.42); --mat-regular:rgba(26,32,42,.55); --mat-thick:rgba(30,37,48,.78); --mat-bar:rgba(22,27,35,.86); --mat-track:rgba(255,255,255,.20);
-  --mat-edge-c:rgba(255,255,255,.09); --mat-edge-top:rgba(255,255,255,.20);
-  --mat-highlight:inset 0 1px 0 rgba(255,255,255,.10); --mat-sheen:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,0) 60%);
-  --mat-shadow:0 1px 2px rgba(0,0,0,.30),0 16px 40px -12px rgba(0,0,0,.55);
-  --mat-fill:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.04)); --mat-fill-hover:linear-gradient(180deg,rgba(255,255,255,.17),rgba(255,255,255,.07));
-  --mat-press:rgba(0,0,0,.28); --mat-row:rgba(109,167,236,.10);
-  --glow1:rgba(56,120,220,.26); --glow2:rgba(240,143,98,.13); --glow3:rgba(40,190,140,.12) }
-*{box-sizing:border-box}
-body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;margin:0;position:relative;isolation:isolate}
-/* static colour glows behind the glass; fixed so the blur has something to refract at every scroll position */
-body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background:radial-gradient(42vmax 34vmax at 8% 6%,var(--glow1),transparent 70%),
-    radial-gradient(38vmax 30vmax at 96% 22%,var(--glow2),transparent 70%),
-    radial-gradient(46vmax 36vmax at 70% 104%,var(--glow3),transparent 70%),
-    radial-gradient(30vmax 26vmax at 12% 78%,var(--glow1),transparent 72%)}
-.wrap{max-width:1080px;margin:0 auto;padding-inline:18px;padding-block:28px 64px;display:flex;flex-direction:column;gap:30px}
-h1{font-family:var(--display);font-weight:400;font-size:clamp(28px,4.4vw,42px);line-height:1.08;margin:0;text-wrap:balance}
-h2{font-family:var(--display);font-weight:400;font-size:clamp(21px,2.6vw,26px);line-height:1.15;margin:0;text-wrap:balance}
-p{margin:0;max-width:72ch} .lede{color:var(--ink2);font-size:16px}
-.mono,.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
-.label{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);font-weight:500}
-header{display:flex;flex-direction:column;gap:10px}
-/* page switcher: a thin glass segmented control */
-.seg{align-self:flex-start;display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--mat-thin);border:var(--mat-edge);border-top-color:var(--mat-edge-top);box-shadow:var(--mat-highlight),var(--mat-shadow);-webkit-backdrop-filter:var(--mat-blur-thin);backdrop-filter:var(--mat-blur-thin)}
-.seg a{padding:4px 12px;border-radius:999px;color:var(--ink2);text-decoration:none;transition:background .15s,color .15s}
-.seg a:hover{color:var(--ink);background:var(--mat-thin)}
-.seg a[aria-current="page"]{color:var(--ink);background:var(--mat-fill-hover);box-shadow:var(--mat-highlight),0 1px 3px rgba(15,21,28,.12)}
-.seg a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.ions{display:flex;flex-wrap:wrap;gap:14px 18px}
-.ions .grp{display:flex;flex-direction:column;gap:6px}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-/* chips and buttons: thin material by tint, gradient and highlight only (no per-chip backdrop blur) */
-.chip,.btn{border:var(--mat-edge);border-top-color:var(--mat-edge-top);background:var(--mat-thin) var(--mat-fill);color:var(--ink);box-shadow:var(--mat-highlight),0 1px 2px rgba(15,21,28,.06);cursor:pointer;transition:background .15s,box-shadow .15s,transform .1s}
-.chip{border-radius:var(--r-s);padding:5px 9px;font:500 13.5px var(--body);white-space:nowrap}
-.chip small{font-family:var(--mono);color:var(--ink2);font-size:11.5px;margin-left:3px}
-.chip:hover,.btn:hover{background:var(--mat-thin) var(--mat-fill-hover)}
-.chip:active,.btn:active{background:var(--mat-press);box-shadow:inset 0 1px 2px rgba(0,0,0,.12)}
-.chip[aria-pressed="true"],.btn.primary{background:var(--accent) linear-gradient(180deg,rgba(255,255,255,.26),rgba(255,255,255,0) 55%);border-color:var(--accent);color:var(--accent-ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 2px 8px -2px color-mix(in srgb,var(--accent) 60%,transparent)}
-.chip[aria-pressed="true"]:hover,.btn.primary:hover{background:color-mix(in srgb,var(--accent) 90%,#fff) linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,0) 55%)}
-.chip[aria-pressed="true"]:active,.btn.primary:active{background:color-mix(in srgb,var(--accent) 82%,#000);box-shadow:inset 0 1px 2px rgba(0,0,0,.25)}
-.chip[aria-pressed="true"] small{color:var(--accent-ink);opacity:.85}
-.chip:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-/* control strip: regular material, floats over the page when sticky */
-.controls{background:var(--mat-bar) var(--mat-sheen);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-l);box-shadow:var(--mat-highlight),var(--mat-shadow);-webkit-backdrop-filter:var(--mat-blur-bar);backdrop-filter:var(--mat-blur-bar);padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 18px;z-index:5}
-@media (min-width:900px){.controls{position:sticky;top:max(8px,env(safe-area-inset-top,0px))}}
-.ctl{display:flex;flex-direction:column;gap:2px;min-width:0}
-.ctl .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.ctl output{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:16px;margin:0;background:transparent;cursor:pointer;--pc:50%}
-input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--accent) var(--pc),var(--mat-track) var(--pc))}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 1px 3px rgba(0,0,0,.30)}
-input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--mat-track)}
-input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--accent)}
-input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 1px 3px rgba(0,0,0,.30)}
-.presets{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.btn{border-radius:var(--r-s);padding:5px 10px;font:500 13px var(--body)}
-.btn[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent),var(--mat-highlight)}
-section{display:flex;flex-direction:column;gap:12px}
-/* figure: a glass frame around an opaque plot surface (the canvas paints var(--panel)) */
-.fig{background:var(--mat-regular) var(--mat-sheen);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-m);box-shadow:var(--mat-highlight),var(--mat-shadow);-webkit-backdrop-filter:var(--mat-blur-regular);backdrop-filter:var(--mat-blur-regular);overflow:hidden}
-.fig canvas{display:block;width:100%;background:var(--panel)}
-.figbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:var(--mat-edge)}
-.stages{display:flex;flex-wrap:wrap;gap:6px}
-.readouts{display:flex;flex-wrap:wrap;gap:6px 20px;padding:10px 14px;border-top:var(--mat-edge);font-size:13.5px}
-.readouts div{display:flex;gap:6px;align-items:baseline} .readouts b{font-weight:500;color:var(--ink2)}
-.cap{padding:10px 14px 14px;color:var(--ink2);font-size:14px;border-top:var(--mat-edge);min-height:3.2em}
-.cap strong{color:var(--ink);font-weight:600}
-.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600;border:1px solid currentColor;background:var(--mat-thin)}
-.pill.good{color:var(--good)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)}
+/* Detect & Resolve: the explorer's shell (tng50/css/page.css: top bar, glass clusters, side cards, phone dock and sheet)
+   on a page that scrolls. The plots are glass panels in a fluid grid; the controls sit in the explorer's side column. */
+:root{--truth:var(--accent);--intr:var(--muted);--noise:var(--data)}
+html,body.req{height:auto}
+body.req{overflow-x:hidden;overflow-y:auto;min-height:100dvh}
+body.req #top{position:sticky;top:10px}
+#title a{color:inherit;text-decoration:none}
+/* page navigation: the explorer's tab well, with links */
+#tabs a{display:inline-flex;align-items:center;padding:5px 12px;border-radius:8px;color:var(--muted);font-weight:500;text-decoration:none;white-space:nowrap}
+#tabs a:hover{color:var(--ink);background:var(--mat-tint)}
+#tabs a[aria-current=page]{background:var(--mat-raised);color:var(--ink);box-shadow:var(--mat-highlight),0 0 0 1px var(--mat-edge-c),0 2px 8px rgba(0,0,0,.18)}
+#tabs .s{display:none}
+body.req #shell{height:auto;align-items:start}
+#stage{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;min-width:0;align-content:start}
+#stage>*{grid-column:span 3;min-width:0}
+#stage>#p-law{grid-column:span 2}#stage>#p-table{grid-column:span 4}
+@media (min-width:1600px){#stage>#p-det,#stage>#p-sep{grid-column:span 2}#stage>#p-table{grid-column:1/-1}}
+#intro{grid-column:1/-1;margin:2px 4px 0;font-size:var(--fs-m);color:var(--muted)}
+#intro b{color:var(--ink);font-weight:500}
+@media (max-width:1279px){#stage{grid-template-columns:repeat(2,minmax(0,1fr))}#stage>*,#stage>#p-law,#stage>#p-table{grid-column:1/-1}#stage>#p-det,#stage>#p-sep{grid-column:span 1}}
+@media (max-width:640px){#stage{grid-template-columns:minmax(0,1fr)}#stage>#p-det,#stage>#p-sep{grid-column:1/-1}
+  .cap{min-height:7.5em}.ro{min-height:70px}
+  .ph h2{flex:1 1 calc(100% - 64px)}.ph .sp{display:none}.ph .seg span{padding:0 5px}#reroll1{margin-left:auto}.ph .info{order:1}.ph>:not(h2):not(.info){order:2}.ph .lbl{display:none}}
+body.req #side{position:sticky;top:70px;max-height:calc(100dvh - 82px)}
+.pnl{display:flex;flex-direction:column;padding:8px 10px 10px;position:relative}
+.ph{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:36px;padding:0 0 6px 6px}
+.ph .ib{width:30px;height:30px}
+.ph .seg span{padding:0 8px}
+.cvw{position:relative}
+.cvw #verdict{position:absolute;top:8px;right:8px}.cvw #verdict .pill{background:var(--mat-thin-o)}
+@media (max-width:1599px){#reroll1 .lbl{display:none}}
+#side .ctl{grid-template-columns:40px 1fr 76px}
+.ph h2{margin:0 6px 0 0;font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.ph .sp{flex:1}
+.ph .pbtn{height:30px;padding:0 10px;font-size:12.5px}
+.pnl canvas{display:block;width:100%;border-radius:10px}
+.ro{display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px 16px;padding:8px 6px 0;min-height:48px;font:500 11.5px var(--mono);color:var(--muted)}
+.ro div{display:flex;gap:6px;align-items:baseline;white-space:nowrap}.ro b{font-weight:500}.ro .num{color:var(--ink)}
+.cap{margin:6px 6px 0;font-size:12.5px;line-height:1.5;color:var(--muted);min-height:4.5em}   /* 3 lines held, so a longer caption moves nothing */
+.cap strong{color:var(--ink);font-weight:500}
+#cap2{min-height:7.5em}@media (min-width:1600px){#cap2{min-height:4.5em}}@media (max-width:1279px){#cap2{min-height:6em}}@media (max-width:640px){#cap2{min-height:10.5em}#cap4{min-height:9em}}
+.pill{display:inline-flex;align-items:center;gap:6px;height:24px;border-radius:99px;padding:0 10px;font:500 11.5px var(--sans);border:1px solid currentColor;white-space:nowrap}
+.pill.good{color:var(--good)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}
 .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
-.maps{display:grid;grid-template-columns:1fr 1fr;gap:14px} @media (max-width:760px){.maps{grid-template-columns:1fr}}
-.maps .fig{position:relative}
-/* map tooltip: thick material, near-opaque and unblurred because it sits inside a blurred .fig (no nested backdrop-filter) */
-.tip{position:absolute;pointer-events:none;background:var(--mat-thick-o);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-s);padding:5px 8px;font:12px var(--mono);color:var(--ink);white-space:nowrap;box-shadow:var(--mat-highlight),var(--mat-shadow)}
-.tablebox{overflow-x:auto;border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-m);background:var(--mat-regular) var(--mat-sheen);box-shadow:var(--mat-highlight),var(--mat-shadow);-webkit-backdrop-filter:var(--mat-blur-regular);backdrop-filter:var(--mat-blur-regular)}
-table{border-collapse:collapse;width:100%;font-size:13px}
-th,td{padding:6px 10px;text-align:right;white-space:nowrap;border-bottom:var(--mat-edge)}
-th:first-child,td:first-child{text-align:left}
-thead th{font-weight:500;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);background:transparent}
-tbody tr{cursor:pointer} tbody tr:hover{background:var(--mat-row)} tbody tr.on{box-shadow:inset 3px 0 0 var(--accent)}
-tbody tr:last-child td{border-bottom:0}
-td .a{font-family:var(--mono);font-variant-numeric:tabular-nums} td .d{font-family:var(--mono);color:var(--ink2);font-size:12px;margin-left:6px}
-td.col-on{background:color-mix(in srgb,var(--accent) 10%,transparent)}
-.eq{font-family:var(--display);font-size:17px;background:var(--mat-thin) var(--mat-sheen);border:var(--mat-edge);border-top-color:var(--mat-edge-top);border-radius:var(--r-m);box-shadow:var(--mat-highlight);-webkit-backdrop-filter:var(--mat-blur-thin);backdrop-filter:var(--mat-blur-thin);padding:10px 14px;overflow-x:auto;white-space:nowrap}
-.foot{color:var(--muted);font-size:13px}
-.foot a{color:var(--accent)}
-section>p a{color:var(--accent);text-underline-offset:3px}
-/* fallbacks: no backdrop blur, or the user asks for less transparency -> near-opaque fills */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
-  :root:not(#_){--mat-thin:color-mix(in srgb,var(--panel) 92%,transparent);--mat-regular:color-mix(in srgb,var(--panel) 96%,transparent);--mat-bar:color-mix(in srgb,var(--panel) 96%,transparent);--mat-thick:var(--panel)} }
-@media (prefers-reduced-transparency: reduce){
-  :root:not(#_){--mat-thin:color-mix(in srgb,var(--panel) 94%,transparent);--mat-regular:var(--panel);--mat-bar:var(--panel);--mat-thick:var(--panel)}
-  .controls,.fig,.tablebox,.eq,.seg{-webkit-backdrop-filter:none;backdrop-filter:none} }
-@media (prefers-contrast: more){
-  :root:not(#_){--mat-edge-c:var(--ink2);--mat-edge-top:var(--ink2);--mat-regular:var(--panel);--mat-bar:var(--panel);--mat-thick:var(--panel);--mat-track:var(--ink2)} }
-@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+.pbtn[aria-pressed=true]{background:var(--hl);border-color:var(--accent)}
+.mapw{position:relative}
+.tip{position:absolute;pointer-events:none;z-index:2;background:var(--mat-thick-o);border:var(--mat-edge);border-radius:8px;padding:4px 8px;font:500 11px var(--mono);color:var(--ink);white-space:nowrap;box-shadow:var(--mat-shadow-m)}
+.tablebox{overflow-x:auto}
+#tbl{border-collapse:collapse;width:100%;font:500 11px var(--mono)}
+#tbl th,#tbl td{padding:6px 7px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--gline)}
+#tbl th:first-child,#tbl td:first-child{text-align:left;font-family:var(--sans)}
+#tbl thead th{font:500 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#tbl tbody tr{cursor:pointer}#tbl tbody tr:hover{background:var(--hl)}
+#tbl tbody tr.on{box-shadow:inset 3px 0 0 var(--truth)}#tbl tbody tr:last-child td{border-bottom:0}
+#tbl td .d{color:var(--muted);margin-left:6px;font-size:10.5px}
+#tbl td .sw{margin-right:7px;vertical-align:1px}
+#tbl .col-on{background:var(--hl)}
+/* side: ion chips in the explorer's colours, presets, links */
+#ions{display:flex;flex-wrap:wrap;gap:5px}
+#ions .chip{height:28px;padding:0 9px 0 8px}
+#ions .chip[aria-pressed=true]{border-color:var(--ic);background:color-mix(in srgb,var(--ic) 22%,transparent);box-shadow:inset 0 0 0 1px var(--ic)}
+.links{display:flex;flex-direction:column;gap:6px;padding-top:2px}
+.links a{display:flex;align-items:center;gap:8px;font:500 12px var(--sans);color:var(--ink);text-decoration:none;min-height:24px}
+.links a:hover{color:var(--accent)}
+.links a svg{width:14px;height:14px;color:var(--muted);flex:none}
+.links a[aria-disabled=true]{visibility:hidden}
+#presets{display:flex;flex-wrap:wrap;gap:5px}
+#presets .pbtn{height:28px;padding:0 9px;font:500 11px var(--mono)}
+#presets .pbtn.off{color:var(--muted);border-style:dashed;box-shadow:none}
+.card .k sub{font-size:.75em}
+#credits-foot{display:flex;flex-direction:column;gap:2px;padding:4px 6px 10px;font-size:12px;color:var(--muted)}
+.pop{width:min(420px,calc(100vw - 24px))}
+.pop .eq{font:500 11.5px/1.7 var(--mono);color:var(--ink);margin:8px 0}
+.pop h4{margin:10px 0 4px;font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+#dock .dk-i b.ion{font-family:var(--sans)}
+@media (max-width:820px){
+  body.req #shell{padding:10px 12px calc(var(--dock-h) + 24px)}
+  body.req #side{position:fixed;top:auto;max-height:none}
+  body.req[data-sheet=full]{--sheet-h:86dvh}
+  #stage{gap:10px}
+}
+@media (max-width:480px){#tabs a{padding:4px 8px}#tabs .l{display:none}#tabs .s{display:inline}.pnl{padding:6px 6px 8px}}
+@media (pointer:coarse){#ions .chip,#presets .pbtn,.ph .pbtn,.ph .ib,.links a,#reset{min-height:44px}.ph .ib,.ph .pbtn,#reset{min-width:44px}#credits-foot .lk{min-height:44px;text-align:left}.seg span{height:44px}#side input[type=range]{height:44px}}
 </style>
-
-<div class="wrap">
-<header>
-  <span class="label">Interactive companion to <span class="mono">cgm-absorber-requirements</span></span>
-  <nav class="label seg" aria-label="Pages"><a href="./" aria-current="page">Detect &amp; resolve</a><a href="tng50/">TNG50 sightlines</a></nav>
-  <h1>What does it take to detect an absorber, and to split it into components?</h1>
-  <p class="lede">Every number here is computed from real atomic data (Trident line list, plus Morton 2003 and Verner et al. 1996 where Trident has no entry) and the same model as the paper figures: Doppler profiles, a Gaussian line-spread function, and matched-filter statistics with S/N quoted per resolution element.</p>
+</head>
+<body class="req">
+<header id="top" class="glass">
+  <h1 id="title"><a href="tng50/">TNG50 sightlines</a></h1>
+  <nav id="tabs" aria-label="Pages"><a href="tng50/" data-tip="Mock spectra and 3D gas of TNG50 galaxies">Explorer</a><a href="tng50/learn/how-a-spectrum-is-made/" data-tip="How an absorption spectrum is made">Stories</a><a href="./" aria-current="page"><span class="l">Detect &amp; Resolve</span><span class="s">Detect</span></a></nav>
+  <span class="sp"></span>
+  <div class="cl" id="cl-learn" role="group" aria-label="Learn">
+    <button class="ib info" type="button" data-info="read" aria-controls="pop-read" aria-expanded="false" aria-label="How to read"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button>
+    <button class="ib info" type="button" data-info="methods" aria-controls="pop-methods" aria-expanded="false" aria-label="Model and methods"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></svg></button>
+    <button class="ib info" type="button" data-info="licence" aria-controls="pop-licence" aria-expanded="false" aria-label="Data and credits"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M10.2 6.3a2.6 2.6 0 1 0 0 3.4" stroke-linecap="round"/></svg></button>
+  </div>
+  <div class="cl hide-m" id="cl-share" role="group" aria-label="Source">
+    <a class="ib" id="gh-link" href="https://github.com/tanmay-starslab/cgm-absorber-requirements" target="_blank" rel="noopener" aria-label="Source code on GitHub"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38l-.01-1.49c-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48l-.01 2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+  </div>
+  <div class="cl" id="cl-prefs" role="group" aria-label="Preferences">
+    <button class="ib" id="theme" type="button" aria-label="Theme: auto" data-mode="auto"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 1.7v12.6A6.3 6.3 0 0 0 8 1.7z" fill="currentColor"/></svg></button>
+  </div>
 </header>
+<div id="shell">
+  <main id="stage">
+    <p id="intro">The S/N and resolving power that <b>detect</b> one absorber and <b>resolve</b> two, for twelve CGM transitions.</p>
 
-<div class="ions" id="ions"></div>
+    <section class="glass pnl" id="p-chain" aria-labelledby="h-chain">
+      <div class="ph"><h2 id="h-chain">Spectrum</h2>
+        <div class="seg" id="stages" role="radiogroup" aria-label="Stage">
+          <label><input type="radio" name="stage" value="0"><span>τ</span></label><label><input type="radio" name="stage" value="1"><span>Flux</span></label><label><input type="radio" name="stage" value="2"><span>LSF</span></label><label><input type="radio" name="stage" value="3"><span>Noise</span></label>
+        </div>
+        <span class="sp"></span>
+        <button class="pbtn primary" id="play1" type="button">Play</button><button class="pbtn" id="reroll1" type="button" aria-label="New noise"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v2.5h-2.5"/></svg><span class="lbl">New noise</span></button>
+        <button class="ib info" type="button" data-info="chain" aria-controls="pop-chain" aria-expanded="false" aria-label="About this panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button>
+      </div>
+      <canvas id="cv1" data-ar="0.58" aria-label="Absorption profile through the observing chain"></canvas>
+      <div class="ro" id="ro1"></div>
+      <p class="cap" id="cap1"></p>
+    </section>
 
-<div class="controls" id="controls">
-  <div class="ctl"><div class="row"><label for="cR" class="label">Resolving power R</label><output id="oR"></output></div><input id="cR" type="range" min="3" max="5" step="0.005"></div>
-  <div class="ctl"><div class="row"><label for="cS" class="label">S/N per res. element</label><output id="oS"></output></div><input id="cS" type="range" min="0.4771" max="2" step="0.005"></div>
-  <div class="ctl"><div class="row"><label for="cN" class="label">log N (per component)</label><output id="oN"></output></div><input id="cN" type="range" step="0.01"></div>
-  <div class="ctl"><div class="row"><label for="cB" class="label">Doppler b</label><output id="oB"></output></div><input id="cB" type="range" step="0.005"></div>
-  <div class="ctl"><div class="row"><label for="cV" class="label">Separation Δv</label><output id="oV"></output></div><input id="cV" type="range" step="0.005"></div>
-  <div class="presets"><span class="label">R presets</span>
-    <button class="btn" data-r="2000">COS G140L · 2,000</button><button class="btn" data-r="17000">COS G130M · 17,000</button>
-    <button class="btn" data-r="45800">STIS E140M · 45,800</button><button class="btn" data-r="72000">HIRES/UVES · 72,000</button>
-    <button class="btn" id="reset">Reset to ion defaults</button></div>
+    <section class="glass pnl" id="p-pair" aria-labelledby="h-pair">
+      <div class="ph"><h2 id="h-pair">Two components</h2>
+        <button class="pbtn" id="sweepR" type="button">Sweep R</button><button class="pbtn" id="sweepV" type="button">Sweep Δv</button><button class="pbtn" id="noise2" type="button" aria-pressed="false">Noise</button>
+        <span class="sp"></span>
+        <button class="ib info" type="button" data-info="pair" aria-controls="pop-pair" aria-expanded="false" aria-label="About this panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="cvw"><canvas id="cv2" data-ar="0.58" aria-label="Two-component profile with the best single-component fit and residuals"></canvas><span id="verdict" aria-live="polite"></span></div>
+      <div class="ro" id="ro2"></div>
+      <p class="cap" id="cap2"></p>
+    </section>
+
+    <section class="glass pnl" id="p-det" aria-labelledby="h-det">
+      <div class="ph"><h2 id="h-det">Detect: minimum log N</h2><span class="sp"></span>
+        <button class="ib info" type="button" data-info="maps" aria-controls="pop-maps" aria-expanded="false" aria-label="About the maps"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button></div>
+      <div class="mapw"><canvas id="m1" data-ar="0.64" aria-label="Map of minimum detectable column density over resolving power and S/N"></canvas><div class="tip" id="t1" hidden></div></div>
+      <p class="cap" id="mc1"></p>
+    </section>
+
+    <section class="glass pnl" id="p-sep" aria-labelledby="h-sep">
+      <div class="ph"><h2 id="h-sep">Resolve: minimum Δv</h2><span class="sp"></span>
+        <button class="ib info" type="button" data-info="maps" aria-controls="pop-maps" aria-expanded="false" aria-label="About the maps"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button></div>
+      <div class="mapw"><canvas id="m2" data-ar="0.64" aria-label="Map of minimum resolvable separation over resolving power and S/N"></canvas><div class="tip" id="t2" hidden></div></div>
+      <p class="cap" id="mc2"></p>
+    </section>
+
+    <section class="glass pnl" id="p-law" aria-labelledby="h-law">
+      <div class="ph"><h2 id="h-law">One law for every ion</h2><span class="sp"></span>
+        <button class="ib info" type="button" data-info="law" aria-controls="pop-law" aria-expanded="false" aria-label="About this panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button></div>
+      <canvas id="cv4" data-ar="0.66" aria-label="Universal resolution curves with the current setting"></canvas>
+      <p class="cap" id="cap4"></p>
+    </section>
+
+    <section class="glass pnl" id="p-table" aria-labelledby="h-table">
+      <div class="ph"><h2 id="h-table">All transitions at this S/N</h2><span class="sp"></span>
+        <button class="ib info" type="button" data-info="table" aria-controls="pop-table" aria-expanded="false" aria-label="About the table"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.8v.2" stroke-linecap="round"/></svg></button></div>
+      <div class="tablebox"><table id="tbl"></table></div>
+    </section>
+  </main>
+
+  <aside id="side" aria-label="Controls">
+    <div id="side-head"><button class="grab" id="side-grab" type="button" aria-label="Expand or shrink the controls" aria-controls="side"></button><span class="gl">Controls</span><button class="pbtn" id="side-done" type="button">Done</button></div>
+    <section class="glass card" aria-labelledby="h-line"><h2 id="h-line">Line</h2>
+      <div id="ions" role="group" aria-label="Transition"></div>
+      <div class="links">
+        <a id="go-explorer" href="tng50/"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 8h13"/><circle cx="8" cy="8" r="2.6"/></svg><span>See <b id="go-ion">O VI</b> in a sightline</span></a>
+        <a id="go-story" href="tng50/learn/how-a-spectrum-is-made/"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 8h9.5" opacity=".6"/><circle cx="13" cy="8" r="2.4" fill="currentColor"/></svg><span>How a spectrum is made</span></a>
+      </div>
+    </section>
+    <section class="glass card" aria-labelledby="h-inst"><h2 id="h-inst">Instrument</h2>
+      <label class="ctl"><span class="k">R</span><input id="cR" type="range" min="3" max="5" step="0.005" aria-label="Resolving power R"><output id="oR" for="cR"></output></label>
+      <label class="ctl"><span class="k">S/N</span><input id="cS" type="range" min="0.4771" max="2" step="0.005" aria-label="S/N per resolution element"><output id="oS" for="cS"></output></label>
+      <div id="presets" role="group" aria-label="Spectrograph presets"></div>
+    </section>
+    <section class="glass card" aria-labelledby="h-abs"><div class="hd"><h2 id="h-abs">Absorber</h2><button class="lk" id="reset" type="button">Reset</button></div>
+      <label class="ctl"><span class="k">log N</span><input id="cN" type="range" step="0.01" aria-label="log N per component"><output id="oN" for="cN"></output></label>
+      <label class="ctl"><span class="k">b</span><input id="cB" type="range" step="0.005" aria-label="Doppler b, km/s"><output id="oB" for="cB"></output></label>
+      <label class="ctl"><span class="k">Δv</span><input id="cV" type="range" step="0.005" aria-label="Separation Δv, km/s"><output id="oV" for="cV"></output></label>
+    </section>
+    <footer id="credits-foot"><button class="lk" type="button" data-info="licence" aria-controls="pop-licence" aria-expanded="false">Data and credits</button><span>Atomic data: Trident line list</span></footer>
+  </aside>
 </div>
+<div id="dock" role="group" aria-label="Controls summary"><button class="pbtn" id="dock-open" type="button" aria-controls="side" aria-expanded="false">
+  <span class="dk-read"><span class="dk-i"><b class="ion" id="dk-ion">O VI</b><small>line</small></span><span class="dk-i"><b id="dk-R">17k</b><small>R</small></span><span class="dk-i"><b id="dk-S">10</b><small>S/N</small></span></span>
+  <span class="dk-go"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>Controls</span></button></div>
 
-<section>
-  <h2>1 · From gas to spectrum</h2>
-  <p>A cloud imprints an optical depth τ(v) on the background light. The spectrograph blurs the absorbed flux with its line-spread function (LSF) of width c/R, then samples it with noise. Play the sequence, or step through it. The same chain on a simulated galaxy, from its gas cells to a fitted spectrum, is told step by step in <a href="tng50/learn/how-a-spectrum-is-made/">How an absorption spectrum is made</a>, including <a href="tng50/learn/how-a-spectrum-is-made/#s=lsf-1">the blur</a> and <a href="tng50/learn/how-a-spectrum-is-made/#s=noise-1">the noise</a>.</p>
-  <div class="fig">
-    <div class="figbar"><div class="stages" id="stages">
-      <button class="btn" data-s="0">① Optical depth</button><button class="btn" data-s="1">② Absorbed flux</button>
-      <button class="btn" data-s="2">③ Blur by the LSF</button><button class="btn" data-s="3">④ Sample with noise</button></div>
-      <div style="display:flex;gap:6px"><button class="btn primary" id="play1">▶ Play</button><button class="btn" id="reroll1" title="New noise realisation">New noise</button></div></div>
-    <canvas id="cv1" height="300" aria-label="Absorption profile through the observing chain"></canvas>
-    <div class="readouts" id="ro1"></div>
-    <p class="cap" id="cap1"></p>
-  </div>
-</section>
-
-<section>
-  <h2>2 · Two components, one blurred trough</h2>
-  <p>Two components separated by Δv blend when Δv is comparable to the effective width, FWHM<sub>eff</sub> = [(c/R)² + (1.665 b)²]<sup>1/2</sup>. The dip between them vanishes below the Sparrow separation Δv<sub>S</sub> = 0.85 FWHM<sub>eff</sub>. A fit can still tell two from one if the noise is low enough. The orange dashed curve is the best single-component impostor, refit live; the lower strip shows what it cannot reproduce, against the noise per pixel.</p>
-  <div class="fig">
-    <div class="figbar"><div class="stages">
-      <button class="btn primary" id="sweepR">▶ Sweep R</button><button class="btn" id="sweepV">▶ Sweep Δv</button>
-      <button class="btn" id="noise2" aria-pressed="false">Show noise</button></div>
-      <span id="verdict"></span></div>
-    <canvas id="cv2" height="360" aria-label="Two-component profile with the best single-component fit and residuals"></canvas>
-    <div class="readouts" id="ro2"></div>
-    <p class="cap" id="cap2"></p>
-  </div>
-</section>
-
-<section>
-  <h2>3 · Requirement maps for the selected ion</h2>
-  <p>Left: the weakest single absorber detectable at 3σ, for the current b. Right: the smallest separation at which two equal components (current log N, fiducial b) are resolved at 3σ. Click a map to move the spectrograph there; the ring marks the current setting; dotted lines and bands mark spectrographs that cover the line at z = 0 (open circle: typical COS-Halos S/N).</p>
-  <div class="maps">
-    <div class="fig"><canvas id="m1" height="330" aria-label="Map of minimum detectable column density over resolving power and S/N"></canvas><div class="tip" id="t1" hidden></div><p class="cap" id="mc1"></p></div>
-    <div class="fig"><canvas id="m2" height="330" aria-label="Map of minimum resolvable separation over resolving power and S/N"></canvas><div class="tip" id="t2" hidden></div><p class="cap" id="mc2"></p></div>
-  </div>
-</section>
-
-<section>
-  <h2>4 · One law for every ion</h2>
-  <p>For optically thin components the problem collapses to a single curve. Measure the separation in units of FWHM<sub>eff</sub> and the noise through S<sub>det</sub>, the significance with which the whole blend is detected. Equal pairs follow Δv<sub>min</sub> ≈ 1.98 FWHM<sub>eff</sub> S<sub>det</sub><sup>−1/4</sup>, so halving the separation costs 16× in S/N. The dot is your current setting.</p>
-  <div class="fig"><canvas id="cv4" height="320" aria-label="Universal resolution curves with the current setting"></canvas><p class="cap" id="cap4"></p></div>
-  <div class="eq">ρ = S<sub>res</sub>/S<sub>det</sub> ≈ (√6 / 384)(Δv/σ<sub>eff</sub>)<sup>4</sup> (equal pair) &nbsp;·&nbsp; ≈ q(1−q)|1−2q|(Δv/σ<sub>eff</sub>)<sup>3</sup>/(4√3) (unequal) &nbsp;·&nbsp; σ<sub>eff</sub><sup>2</sup> = b²/2 + σ<sub>LSF</sub><sup>2</sup></div>
-</section>
-
-<section>
-  <h2>5 · All twelve transitions at the current S/N</h2>
-  <p>Each cell gives the minimum detectable log N for one component at the fiducial b, then (smaller) the minimum resolvable Δv in km/s for two equal components each at τ<sub>0</sub> = 1. Click a row to switch ion.</p>
-  <div class="tablebox"><table id="tbl"></table></div>
-</section>
-
-<p class="foot">Model: Doppler cores (damping wings neglected), Gaussian LSF, constant continuum noise, 3 pixels per resolution element for the noise illustration. Fiducial b combines the thermal width at a representative temperature with 5 km/s of turbulence; the TNG50 pages instead use Voigt profiles with thermal b only. Significances are expected (median) values. Source and paper-quality figures: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements">github.com/tanmay-starslab/cgm-absorber-requirements</a>. Companion page: <a href="tng50/">mock quasar sightlines through a TNG50 galaxy</a> (O VI, H I Ly&beta;, C III), degraded live to any resolution and S/N.</p>
-</div>
+<div class="pop" id="pop-read" role="dialog" aria-label="How to read" hidden><h3>How to read</h3><ul class="plain">
+  <li>Pick a line, then set the spectrograph (R, S/N) and the absorber (log N per component, Doppler b, separation Δv). Every panel follows.</li>
+  <li>S/N is per resolution element (one FWHM = c/R). Significances are expected (median) values; 3σ is the threshold throughout.</li>
+  <li>Spectrum: one component through the observing chain. Two components: the pair and the best single-component fit, with the residual it leaves against the noise per pixel.</li>
+  <li>Maps: click to move the spectrograph; the ring is the current setting. Table: click a row to switch line.</li></ul></div>
+<div class="pop" id="pop-methods" role="dialog" aria-label="Model and methods" hidden><h3>Model and methods</h3>
+  <p>Every number is computed from atomic data (Trident line list, plus Morton 2003 and Verner et al. 1996 where Trident has no entry) and the same model as the published figures: Doppler cores (damping wings neglected), a Gaussian line-spread function of FWHM c/R, constant continuum noise, and matched-filter statistics.</p>
+  <p>Detection: S<sub>det</sub> = (S/N) K with K² = ∫D² dv / FWHM. Resolution: Δχ² of the best single-component fit (free N, b, v) to two equal components, S<sub>res</sub> = (S/N)√G. Both are precomputed grids; the profiles and the single-component fit on this page are recomputed live in your browser.</p>
+  <p>Fiducial b combines the thermal width at a representative temperature with 5 km/s of turbulence. The explorer instead uses Voigt profiles with thermal b only. The noise illustration uses 3 pixels per resolution element.</p>
+  <p>Spectrograph markers: modes covering the line at z = 0, from a sourced table (COS, STIS, FUSE); the open circle is the typical COS-Halos S/N. Variants with the tabulated HST/COS line-spread function are in the repository.</p></div>
+<div class="pop" id="pop-licence" role="dialog" aria-label="Data and credits" hidden><h3>Data and credits</h3>
+  <h4>Atomic data</h4><p>Trident line list (BSD-3); Morton 2003; Verner et al. 1996.</p>
+  <h4>Code and figures</h4><p>Publication-quality figures, grids and code: <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements" rel="noopener">github.com/tanmay-starslab/cgm-absorber-requirements</a> (MIT).</p></div>
+<div class="pop" id="pop-chain" role="dialog" aria-label="Spectrum" hidden><h3>From gas to spectrum</h3>
+  <p>A cloud imprints an optical depth τ(v) on the background light. The spectrograph blurs the absorbed flux with its line-spread function (LSF) of width c/R, then samples it with noise. Play the sequence, or step through it.</p>
+  <p class="story-in">The same chain on a simulated galaxy, from its gas cells to a fitted spectrum: <a href="tng50/learn/how-a-spectrum-is-made/">How an absorption spectrum is made</a>, including <a href="tng50/learn/how-a-spectrum-is-made/#s=lsf-1">the blur</a> and <a href="tng50/learn/how-a-spectrum-is-made/#s=noise-1">the noise</a>.</p></div>
+<div class="pop" id="pop-pair" role="dialog" aria-label="Two components" hidden><h3>Two components, one blurred trough</h3>
+  <p>Two components separated by Δv blend when Δv is comparable to the effective width, FWHM<sub>eff</sub> = [(c/R)² + (1.665 b)²]<sup>1/2</sup>. The dip between them vanishes below the Sparrow separation Δv<sub>S</sub> = 0.85 FWHM<sub>eff</sub>. A fit can still tell two from one if the noise is low enough.</p>
+  <p>The dashed curve is the best single-component impostor, refit live; the lower strip shows what it cannot reproduce, against the noise per pixel.</p></div>
+<div class="pop" id="pop-maps" role="dialog" aria-label="Requirement maps" hidden><h3>Requirement maps</h3>
+  <p>Detect: the weakest single absorber detectable at 3σ, for the current b. Resolve: the smallest separation at which two equal components (current log N, fiducial b) are resolved at 3σ.</p>
+  <p>Click a map to move the spectrograph there; the ring marks the current setting. Dotted lines and bands mark spectrographs that cover the line at z = 0 (open circle: typical COS-Halos S/N).</p></div>
+<div class="pop" id="pop-law" role="dialog" aria-label="One law for every ion" hidden><h3>One law for every ion</h3>
+  <p>For optically thin components the problem collapses to a single curve. Measure the separation in units of FWHM<sub>eff</sub> and the noise through S<sub>det</sub>, the significance with which the whole blend is detected. Equal pairs follow Δv<sub>min</sub> ≈ 1.98 FWHM<sub>eff</sub> S<sub>det</sub><sup>−1/4</sup>, so halving the separation costs 16× in S/N. The dot is the current setting.</p>
+  <div class="eq">ρ = S<sub>res</sub>/S<sub>det</sub> ≈ (√6 / 384)(Δv/σ<sub>eff</sub>)<sup>4</sup> (equal pair)<br>ρ ≈ q(1−q)|1−2q|(Δv/σ<sub>eff</sub>)<sup>3</sup>/(4√3) (unequal)<br>σ<sub>eff</sub><sup>2</sup> = b²/2 + σ<sub>LSF</sub><sup>2</sup></div></div>
+<div class="pop" id="pop-table" role="dialog" aria-label="All transitions" hidden><h3>All twelve transitions</h3>
+  <p>Each cell gives the minimum detectable log N for one component at the fiducial b, then (smaller) the minimum resolvable Δv in km/s for two equal components each at τ<sub>0</sub> = 1, at the current S/N. Click a row to switch line.</p></div>
 
 <script>
 const DATA = /*__DATA__*/null;
@@ -371,18 +378,35 @@ const sparrow = (R, b) => 2 * Math.sqrt(b * b / 2 + (C / R * FW2SIG) ** 2);
 const fwhmEff = (R, b) => Math.sqrt((C / R) ** 2 + (1.6651 * b) ** 2);
 
 /* ---------------- state & controls ---------------- */
+const EXPLORER = $("#go-explorer").getAttribute("href");
 const ions = DATA.ions;
+// line colours [light, dark] from tngsight/ions.json (the explorer's registry; tests/test_export_web.py keeps them equal).
+// S II is not in the explorer, so it takes a neutral slate.
+const ION_COLORS = {HI: ["#4338CA", "#9293F8"], MgII: ["#1D4ED8", "#6EA8FE"], SiII: ["#0369A1", "#4FB3E8"], CII: ["#0E7490", "#3CC5D9"],
+  SiIII: ["#0F766E", "#34C4B0"], SiIV: ["#4D7C0F", "#A3D63F"], CIV: ["#8A6A00", "#E5C33A"], NV: ["#B45309", "#F5A524"], OVI: ["#C2410C", "#FB7A3C"],
+  NeVIII: ["#B91C1C", "#F26363"], OVII: ["#7F1D1D", "#E07A7A"]};
+const SLATE = ["#475569", "#A3AEC2"];
+const regKey = o => o.ion.replace(/ /g, "");          // explorer key: "O VI" -> "OVI"
+const isDark = () => (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+const ionCol = o => (ION_COLORS[regKey(o)] || SLATE)[isDark() ? 1 : 0];
 const S = {i: ions.findIndex(o => o.ion === "O VI"), R: 17000, snr: 10, logN: 0, b: 0, dv: 30, seed: 7};
 const ion = () => ions[S.i];
 function defaults() { const o = ion(); S.logN = +o.logN_tau1.toFixed(2); S.b = o.b_fid; S.dv = Math.max(o.sep.dv[0] * 2, Math.round(1.6 * fwhmEff(S.R, o.b_fid))); warm = null; }
 function buildIonChips() {
-  const groups = {}; ions.forEach((o, i) => (groups[o.phase] ||= []).push(i));
-  const names = {neutral: "Neutral", low: "Low ions", intermediate: "Intermediate", high: "High ions", "X-ray": "X-ray"};
-  $("#ions").innerHTML = Object.entries(groups).map(([ph, idx]) => `<div class="grp"><span class="label">${names[ph] || ph}</span><div class="chips">${
-    idx.map(i => { const o = ions[i]; return `<button class="chip" id="ion-${o.key}" data-i="${i}" aria-pressed="${i === S.i}">${o.ion}<small>λ${o.label}</small></button>`; }).join("")}</div></div>`).join("");
+  $("#ions").innerHTML = ions.map((o, i) => `<button class="chip" type="button" id="ion-${o.key}" data-i="${i}" aria-pressed="${i === S.i}" style="--ic:${ionCol(o)}"><span class="sw"></span>${o.ion} ${o.label}</button>`).join("");
   $("#ions").querySelectorAll(".chip").forEach(b => b.onclick = () => selectIon(+b.dataset.i));
 }
-function selectIon(i) { S.i = i; defaults(); $("#ions").querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", +b.dataset.i === i)); syncControls(); update(true); }
+function paintIon() {   // the line colour drives the profile curves, the chips and the selected table row
+  const o = ion(); document.documentElement.style.setProperty("--truth", ionCol(o));
+  $("#ions").querySelectorAll(".chip").forEach(b => { b.style.setProperty("--ic", ionCol(ions[+b.dataset.i])); b.setAttribute("aria-pressed", +b.dataset.i === S.i); });
+  const k = regKey(o), inExplorer = k in ION_COLORS, a = $("#go-explorer");
+  a.href = EXPLORER + (inExplorer ? `#ions=${k}&lay=1` : ""); a.setAttribute("aria-disabled", !inExplorer); a.tabIndex = inExplorer ? 0 : -1;
+  $("#go-ion").textContent = o.ion; $("#dk-ion").textContent = o.ion;
+  const cover = new Set(instrFor(o.lam).map(m => m.label));
+  $("#presets").querySelectorAll("[data-r]").forEach(b => { const on = cover.has(b.dataset.label); b.classList.toggle("off", !on);
+    b.dataset.tip = b.title = `${b.dataset.label}: R ${fmt(+b.dataset.r)}${on ? "" : `, does not cover ${o.ion} ${o.label} at z = 0`}`; });
+}
+function selectIon(i) { S.i = i; defaults(); paintIon(); syncControls(); update(true); }
 function syncControls() {
   const o = ion();
   $("#cN").min = o.sep.logN[0]; $("#cN").max = o.sep.logN[o.sep.logN.length - 1];
@@ -394,17 +418,26 @@ function syncControls() {
 function writeOutputs() {
   $("#oR").textContent = fmt(S.R); $("#oS").textContent = fmt(S.snr, S.snr < 10 ? 1 : 0);
   $("#oN").textContent = S.logN.toFixed(2); $("#oB").textContent = S.b.toFixed(1) + " km/s"; $("#oV").textContent = S.dv.toFixed(1) + " km/s";
-  document.querySelectorAll(".controls input[type=range]").forEach(el => { const lo = +el.min, hi = +el.max; el.style.setProperty("--pc", (hi > lo ? 100 * (+el.value - lo) / (hi - lo) : 0) + "%"); });
+  $("#dk-R").textContent = S.R >= 1e4 ? fmt(S.R / 1e3, S.R < 1e5 ? 1 : 0).replace(/\.0$/, "") + "k" : fmt(S.R); $("#dk-S").textContent = $("#oS").textContent;
+  $("#presets").querySelectorAll("[data-r]").forEach(b => b.setAttribute("aria-pressed", Math.abs(S.R - +b.dataset.r) < 0.5));
+  document.querySelectorAll("#side input[type=range]").forEach(el => { const lo = +el.min, hi = +el.max; el.style.setProperty("--pc", (hi > lo ? 100 * (+el.value - lo) / (hi - lo) : 0) + "%"); });
 }
 [["#cR", v => S.R = Math.pow(10, v)], ["#cS", v => S.snr = Math.pow(10, v)], ["#cN", v => S.logN = v], ["#cB", v => S.b = Math.pow(10, v)], ["#cV", v => S.dv = Math.pow(10, v)]]
   .forEach(([id, set]) => $(id).addEventListener("input", e => { set(+e.target.value); writeOutputs(); update(); }));
-document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { S.R = +b.dataset.r; syncControls(); update(); });
+// spectrograph presets: every shown instrument of absreq/data/instruments.json at its highest R inside the grid (10^3 to 10^5);
+// ones that do not cover the selected line at z = 0 are dimmed, never removed, so nothing moves when the line changes
+{ const seen = new Set(), P = [];
+  for (const it of DATA.instruments || []) { const R = Math.max(...it.modes.flatMap(m => [].concat(m.R)).filter(r => r <= 1e5));
+    if (Number.isFinite(R) && !seen.has(it.label + R)) { seen.add(it.label + R); P.push({label: it.label, R}); } }
+  $("#presets").innerHTML = P.map(p => `<button class="pbtn" type="button" data-r="${p.R}" data-label="${p.label}" aria-pressed="false">${p.label.replace(/ /g, "\u00a0")}</button>`).join("");
+  $("#presets").querySelectorAll("[data-r]").forEach(b => b.onclick = () => { S.R = +b.dataset.r; syncControls(); update(); }); }
 $("#reset").onclick = () => { defaults(); syncControls(); update(true); };
 
 /* ---------------- canvas helpers ---------------- */
 function setup(cv) {
-  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = +cv.getAttribute("height");
-  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + "px"; }
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = Math.round(clamp(w * +cv.dataset.ar, 240, 460));
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + "px"; }
+  cv.setAttribute("height", h);
   const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = css("--panel"); ctx.fillRect(0, 0, w, h); return {ctx, w, h};
 }
@@ -442,6 +475,7 @@ function draw1() {
   const {X, Y} = frame(ctx, box, {xr, yr: [-0.05, 1.12], yticks: [0, 0.25, 0.5, 0.75, 1], yfmt: t => t.toFixed(2),
     xticks: niceTicks(-span, span), xlabel: "velocity [km/s]", ylabel: "normalized flux"});
   const v = g.v, t0 = tau0(o, S.logN, S.b), st = stage1;
+  ctx.save(); ctx.beginPath(); ctx.rect(box.x, box.y, box.w, box.h); ctx.clip();   // curves stay inside the frame
   const a0 = clamp(1 - Math.abs(st - 0), 0, 1), a1 = clamp(st, 0, 1), a2 = clamp(st - 1, 0, 1), a3 = clamp(st - 2, 0, 1);
   if (a0 > 0) {   // optical depth on its own scale (right axis)
     const tmax = Math.max(t0, 1) * 1.1; ctx.globalAlpha = a0;
@@ -470,17 +504,18 @@ function draw1() {
       ctx.fillRect(X(x) - 1.6, Y(y) - 1.6, 3.2, 3.2); }
     ctx.globalAlpha = 1;
   }
+  ctx.restore();
   const K = sdetK(g, pr.F), Sd = S.snr * K, W = (() => { let s = 0; for (let i = 0; i < g.n; i++) s += 1 - pr.Fint[i]; return s * g.step / C * o.lam * 1000; })();
   $("#ro1").innerHTML = [["τ₀", t0 < 100 ? t0.toFixed(2) : t0.toExponential(1)], ["W<sub>λ</sub>", fmt(W, 1) + " mÅ"], ["FWHM<sub>LSF</sub>", fmt(g.fwhm, 1) + " km/s"],
     ["FWHM<sub>eff</sub>", fmt(fwhmEff(S.R, S.b), 1) + " km/s"], ["S<sub>det</sub>", fmt(Sd, 1) + "σ"]].map(([k, v]) => `<div><b>${k}</b><span class="num">${v}</span></div>`).join("") +
     ` <div>${Sd >= 3 ? '<span class="pill good">detected at ≥3σ</span>' : '<span class="pill bad">below 3σ</span>'}</div>`;
   const caps = [
-    `<strong>Optical depth.</strong> ${o.ion} λ${o.label} with f = ${o.f}, log N = ${S.logN.toFixed(2)} and b = ${S.b.toFixed(1)} km/s gives a Doppler core τ(v) = τ₀ exp(−v²/b²) with τ₀ = ${t0.toFixed(2)}${t0 > 1 ? ", so the line centre is saturated" : ""}.`,
+    `<strong>Optical depth.</strong> ${o.ion} ${o.label} with f = ${o.f}, log N = ${S.logN.toFixed(2)} and b = ${S.b.toFixed(1)} km/s gives a Doppler core τ(v) = τ₀ exp(−v²/b²) with τ₀ = ${t0.toFixed(2)}${t0 > 1 ? ", so the line centre is saturated" : ""}.`,
     `<strong>Absorbed flux</strong> e<sup>−τ</sup>. The intrinsic equivalent width is ${fmt(W, 1)} mÅ${t0 > 1.5 ? "; past τ₀ ≈ 1 it grows only logarithmically with N (flat part of the curve of growth)" : "; it still grows in proportion to N"}.`,
     `<strong>The LSF slides across the line</strong> and replaces every point by a weighted average over ${fmt(g.fwhm, 1)} km/s (FWHM = c/R). ${g.fwhm > 1.665 * S.b ? "The instrument is wider than the line, so the trough gets shallower and wider while its area is conserved." : "The line is already resolved, so its shape barely changes."}`,
     `<strong>Sampling and noise.</strong> At S/N = ${fmt(S.snr, 0)} per resolution element the matched filter detects this line at ${fmt(Sd, 1)}σ. The minimum detectable column here is log N = ${(() => { const m = logNmin(o, detColumn(o, S.b, S.R), S.snr); return Number.isFinite(m) ? m.toFixed(2) : (m > 0 ? "above the grid" : "below the grid"); })()}.`];
   $("#cap1").innerHTML = caps[Math.min(3, Math.round(st - 0.49) < 0 ? 0 : Math.floor(st + 0.001))];
-  document.querySelectorAll("#stages [data-s]").forEach(b => b.setAttribute("aria-pressed", Math.floor(st + 0.001) === +b.dataset.s));
+  const sv = String(Math.min(3, Math.floor(st + 0.001))); document.querySelectorAll("#stages input").forEach(r => { if (r.checked !== (r.value === sv)) r.checked = r.value === sv; });
 }
 function niceTicks(a, b) { const span = b - a, raw = span / 6, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
   const st = (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p, out = []; for (let t = Math.ceil(a / st) * st; t <= b + 1e-9; t += st) out.push(Math.round(t)); return out; }
@@ -493,7 +528,7 @@ function play1() {
 }
 $("#play1").onclick = play1;
 $("#reroll1").onclick = () => { S.seed = (S.seed * 7919 + 13) % 100003; draw1(); draw2(); };
-document.querySelectorAll("#stages [data-s]").forEach(b => b.onclick = () => { if (anim1) cancelAnimationFrame(anim1); anim1 = null; stage1 = +b.dataset.s + (b.dataset.s === "2" ? 0.999 : 0); draw1(); });
+document.querySelectorAll("#stages input").forEach(r => r.onchange = () => { if (anim1) cancelAnimationFrame(anim1); anim1 = null; stage1 = +r.value + (r.value === "2" ? 0.999 : 0); draw1(); });
 
 /* ---------------- section 2: two components ---------------- */
 let sep2 = null, noise2 = false, anim2 = null;
@@ -505,15 +540,17 @@ function draw2() {
   const top = {x: 58, y: 14, w: w - 74, h: h * 0.62 - 20}, bot = {x: 58, y: h * 0.62 + 12, w: w - 74, h: h * 0.38 - 58};
   const A = frame(ctx, top, {xr, yr: [-0.05, 1.12], yticks: [0, 0.5, 1], yfmt: t => t.toFixed(1), xticks: [], ylabel: "flux"});
   const v = g.v;
+  ctx.save(); ctx.beginPath(); ctx.rect(top.x, top.y, top.w, top.h); ctx.clip();
   ctx.globalAlpha = 0.35; line(ctx, v, Array.from(truth.Fint), A.X, A.Y, css("--intr"), 1.2, [3, 3]); ctx.globalAlpha = 1;
   if (noise2) { const r = rng(S.seed + 1), pix = g.fwhm / 3, sp = Math.sqrt(3) / S.snr; ctx.fillStyle = css("--noise");
     for (let x = xr[0] + pix / 2; x < xr[1]; x += pix) { const y = interpArr(v, truth.F, x) + sp * gauss(r); ctx.fillRect(A.X(x) - 1.5, A.Y(y) - 1.5, 3, 3); } }
   line(ctx, v, Array.from(truth.F), A.X, A.Y, css("--truth"), 2.2);
   line(ctx, v, Array.from(fit.F), A.X, A.Y, css("--fit"), 1.8, [7, 4]);
   for (const s of [-1, 1]) { ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(A.X(s * S.dv / 2), A.Y(1.04)); ctx.lineTo(A.X(s * S.dv / 2), A.Y(1.1)); ctx.stroke(); }
-  ctx.font = `12px ${css("--body")}`; ctx.textAlign = "left"; ctx.fillStyle = css("--truth"); ctx.fillText("two components (truth, observed)", top.x + 8, top.y + 14);
-  ctx.fillStyle = css("--fit"); ctx.fillText("best single component", top.x + 8, top.y + 30);
-  ctx.fillStyle = css("--ink2"); ctx.fillText("dashed grey: intrinsic", top.x + 8, top.y + 46);
+  ctx.restore();
+  ctx.font = `12px ${css("--body")}`; ctx.textAlign = "left"; ctx.fillStyle = css("--truth"); ctx.fillText("two components (truth, observed)", top.x + 8, top.y + top.h - 38);
+  ctx.fillStyle = css("--fit"); ctx.fillText("best single component", top.x + 8, top.y + top.h - 22);
+  ctx.fillStyle = css("--ink2"); ctx.fillText("dashed grey: intrinsic", top.x + 8, top.y + top.h - 6);
   // residuals vs per-pixel noise
   const sp = Math.sqrt(3) / S.snr, res = Array.from(truth.F).map((f, i) => f - fit.F[i]);
   let rmax = 0; for (let i = 0; i < g.n; i++) if (v[i] > xr[0] && v[i] < xr[1]) rmax = Math.max(rmax, Math.abs(res[i]));
@@ -522,7 +559,7 @@ function draw2() {
     xticks: niceTicks(-span, span), xlabel: "velocity [km/s]", ylabel: "residual"});
   ctx.fillStyle = css("--noise"); ctx.globalAlpha = 0.12;
   const bandTop = B.Y(Math.min(sp, yl)), bandBot = B.Y(-Math.min(sp, yl)); ctx.fillRect(bot.x, bandTop, bot.w, bandBot - bandTop); ctx.globalAlpha = 1;
-  line(ctx, v, res, B.X, B.Y, css("--fit"), 1.6);
+  ctx.save(); ctx.beginPath(); ctx.rect(bot.x, bot.y, bot.w, bot.h); ctx.clip(); line(ctx, v, res, B.X, B.Y, css("--fit"), 1.6); ctx.restore();
   ctx.font = `11px ${css("--mono")}`; ctx.fillStyle = css("--ink2"); ctx.textAlign = "right";
   ctx.fillText(sp < yl ? "shaded: ±1σ noise per pixel" : `±1σ noise per pixel = ±${sp.toFixed(3)} (off scale)`, bot.x + bot.w - 6, bot.y + 12);
   const Sres = S.snr * Math.sqrt(Math.max(sep2.G, 0)), Sd = S.snr * sep2.Kblend, fe = fwhmEff(S.R, S.b), vs = sparrow(S.R, S.b);
@@ -537,18 +574,18 @@ function draw2() {
   draw4();
 }
 function sweep2(kind) {
-  if (anim2) { cancelAnimationFrame(anim2); anim2 = null; $("#sweepR").textContent = "▶ Sweep R"; $("#sweepV").textContent = "▶ Sweep Δv"; return; }
-  const btn = kind === "R" ? $("#sweepR") : $("#sweepV"); btn.textContent = "■ Stop";
+  if (anim2) { cancelAnimationFrame(anim2); anim2 = null; $("#sweepR").textContent = "Sweep R"; $("#sweepV").textContent = "Sweep Δv"; return; }
+  const btn = kind === "R" ? $("#sweepR") : $("#sweepV"); btn.textContent = "Stop";
   const lo = kind === "R" ? 3 : Math.log10(ion().sep.dv[0] * 1.5), hi = kind === "R" ? 5 : Math.log10(Math.min(300, 3 * fwhmEff(S.R, S.b)));
   const t0 = performance.now(), dur = reduced ? 1 : 7000;
   const stepf = now => { const u = Math.min(1, (now - t0) / dur), x = lerp(lo, hi, 0.5 - 0.5 * Math.cos(Math.PI * u));
     if (kind === "R") S.R = Math.pow(10, x); else S.dv = Math.pow(10, x);
     syncControls(); compute2(70); draw2(); drawMaps(); drawTable();
-    if (u < 1) anim2 = requestAnimationFrame(stepf); else { anim2 = null; btn.textContent = kind === "R" ? "▶ Sweep R" : "▶ Sweep Δv"; compute2(); draw2(); } };
+    if (u < 1) anim2 = requestAnimationFrame(stepf); else { anim2 = null; btn.textContent = kind === "R" ? "Sweep R" : "Sweep Δv"; compute2(); draw2(); } };
   anim2 = requestAnimationFrame(stepf);
 }
 $("#sweepR").onclick = () => sweep2("R"); $("#sweepV").onclick = () => sweep2("V");
-$("#noise2").onclick = e => { noise2 = !noise2; e.target.setAttribute("aria-pressed", noise2); draw2(); };
+$("#noise2").onclick = e => { noise2 = !noise2; e.currentTarget.setAttribute("aria-pressed", noise2); draw2(); };
 
 /* ---------------- section 3: maps ---------------- */
 const BLUES = ["#eaf2fd", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"];
@@ -616,19 +653,19 @@ function drawMap(cv, kind) {
   const here = kind === "det" ? logNmin(o, detColumn(o, S.b, S.R), S.snr) : dvmin(o, sepColumn(o, S.logN, S.R), S.snr);
   const capEl = kind === "det" ? $("#mc1") : $("#mc2");
   capEl.innerHTML = kind === "det"
-    ? `<strong>${o.ion} λ${o.label}, b = ${S.b.toFixed(1)} km/s.</strong> At the ring: log N<sub>min</sub> = <span class="num">${Number.isFinite(here) ? here.toFixed(2) : (here > 0 ? "&gt; " + hi.toFixed(1) : "&lt; " + lo.toFixed(1))}</span>. Grey: above the computed range.`
+    ? `<strong>${o.ion} ${o.label}, b = ${S.b.toFixed(1)} km/s.</strong> At the ring: log N<sub>min</sub> = <span class="num">${Number.isFinite(here) ? here.toFixed(2) : (here > 0 ? "&gt; " + hi.toFixed(1) : "&lt; " + lo.toFixed(1))}</span>. Grey: above the computed range.`
     : `<strong>Two components, log N = ${S.logN.toFixed(2)} each, b = ${o.b_fid.toFixed(1)} km/s.</strong> At the ring: Δv<sub>min</sub> = <span class="num">${Number.isFinite(here) ? here.toFixed(1) + " km/s" : "&gt; 300 km/s"}</span> (Sparrow ${sparrow(S.R, o.b_fid).toFixed(1)}). Grey: not resolved below 300 km/s.`;
 }
 function niceTicksF(a, b) { const out = []; for (let t = Math.ceil(a * 2) / 2; t <= b + 1e-9; t += 0.5) out.push(t); return out; }
 function drawMaps() { drawMap($("#m1"), "det"); drawMap($("#m2"), "sep"); }
 for (const [id, tid, kind] of [["#m1", "#t1", "det"], ["#m2", "#t2", "sep"]]) {
   const cv = $(id), tip = $(tid);
-  const pick = e => { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, b = cv._box;
+  const pick = e => { const r = cv.getBoundingClientRect(), s = r.width / cv.clientWidth || 1, x = (e.clientX - r.left) / s, y = (e.clientY - r.top) / s, b = cv._box;   // s: page.css CSS zoom
     if (!b || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return null;
     return {x, y, R: Math.pow(10, 3 + 2 * (x - b.x) / b.w), snr: Math.pow(10, Math.log10(3) + (2 - Math.log10(3)) * (1 - (y - b.y) / b.h))}; };
   cv.addEventListener("mousemove", e => { const p = pick(e); if (!p) { tip.hidden = true; return; } const o = ion();
     const v = kind === "det" ? logNmin(o, detColumn(o, S.b, p.R), p.snr) : dvmin(o, sepColumn(o, S.logN, p.R), p.snr);
-    tip.textContent = `R ${fmt(p.R)} · S/N ${p.snr.toFixed(1)} → ` + (kind === "det" ? `log N ${Number.isFinite(v) ? v.toFixed(2) : "out of range"}` : `Δv ${Number.isFinite(v) ? v.toFixed(1) + " km/s" : "> 300"}`);
+    tip.textContent = `R ${fmt(p.R)}\u2003S/N ${p.snr.toFixed(1)}\u2003→ ` + (kind === "det" ? `log N ${Number.isFinite(v) ? v.toFixed(2) : "out of range"}` : `Δv ${Number.isFinite(v) ? v.toFixed(1) + " km/s" : "> 300"}`);
     tip.hidden = false; tip.style.left = Math.min(p.x + 12, cv.clientWidth - tip.offsetWidth - 4) + "px"; tip.style.top = (p.y + 12) + "px"; });
   cv.addEventListener("mouseleave", () => tip.hidden = true);
   cv.addEventListener("click", e => { const p = pick(e); if (!p) return; S.R = p.R; S.snr = p.snr; syncControls(); update(); });
@@ -640,7 +677,7 @@ function draw4() {
   const {ctx, w, h} = setup($("#cv4")), box = {x: 58, y: 14, w: w - 80, h: h - 62}, th = DATA.theory;
   const F = frame(ctx, box, {xr: [3, 1000], yr: [0.2, 3.2], xlog: true, ylog: true, xticks: [3, 10, 30, 100, 300, 1000], yticks: [0.2, 0.3, 0.5, 1, 2, 3],
     xlabel: "detection significance of the whole blend, S_det", ylabel: "Δv_min / FWHM_eff (3σ)"});
-  const cols = [css("--truth"), css("--fit"), "#1baf7a"];
+  const cols = [css("--accent"), css("--warn"), css("--good")];
   ctx.setLineDash([2, 3]); ctx.strokeStyle = css("--ink2");
   for (const y of [1, 0.8493]) { ctx.beginPath(); ctx.moveTo(box.x, F.Y(y)); ctx.lineTo(box.x + box.w, F.Y(y)); ctx.stroke(); }
   ctx.setLineDash([]); ctx.font = `11px ${css("--body")}`; ctx.fillStyle = css("--ink2"); ctx.textAlign = "right";
@@ -660,9 +697,9 @@ function draw4() {
 const TR = [2000, 5000, 10000, 17000, 45800, 100000];
 function drawTable() {
   const near = TR.reduce((a, r, i) => Math.abs(Math.log(r / S.R)) < Math.abs(Math.log(TR[a] / S.R)) ? i : a, 0);
-  let h = `<thead><tr><th>Transition</th><th>f</th><th>b<sub>fid</sub></th>${TR.map((r, i) => `<th class="${i === near ? "col-on" : ""}">R = ${fmt(r)}</th>`).join("")}</tr></thead><tbody>`;
+  let h = `<thead><tr><th>Transition</th><th>f</th><th>b<sub>fid</sub></th>${TR.map((r, i) => `<th class="${i === near ? "col-on" : ""}">R ${r >= 1e4 ? fmt(r / 1e3, r % 1e3 ? 1 : 0) + "k" : fmt(r)}</th>`).join("")}</tr></thead><tbody>`;
   ions.forEach((o, i) => {
-    h += `<tr data-i="${i}" class="${i === S.i ? "on" : ""}"><td>${o.ion} λ${o.label}</td><td class="num">${o.f}</td><td class="num">${o.b_fid.toFixed(1)}</td>` +
+    h += `<tr data-i="${i}" class="${i === S.i ? "on" : ""}"><td><span class="sw" style="--ic:${ionCol(o)}"></span>${o.ion} ${o.label}</td><td class="num">${o.f}</td><td class="num">${o.b_fid.toFixed(1)}</td>` +
       TR.map((R, k) => { const n = logNmin(o, detColumn(o, o.b_fid, R), S.snr), d = dvmin(o, sepColumn(o, o.logN_tau1, R), S.snr);
         return `<td class="${k === near ? "col-on" : ""}"><span class="a">${Number.isFinite(n) ? n.toFixed(1) : (n > 0 ? "&gt;" : "&lt;")}</span><span class="d">${Number.isFinite(d) ? d.toFixed(0) : "–"}</span></td>`; }).join("") + "</tr>";
   });
@@ -676,9 +713,49 @@ function update(full) {
   if (pending) return; pending = true;
   requestAnimationFrame(() => { pending = false; if (!anim1) draw1(); else draw1(); compute2(full ? 220 : 120); draw2(); drawMaps(); drawTable(); });
 }
-buildIonChips(); defaults(); syncControls();
+buildIonChips(); defaults(); paintIon(); syncControls();
 stage1 = 3; update(true);
 window.addEventListener("resize", () => update());
-new MutationObserver(() => update()).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => update());
+new MutationObserver(() => { paintIon(); update(); }).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { applyTheme(theme); paintIon(); update(); });
+
+/* ---------------- page chrome: theme, popovers, phone sheet (the explorer's behaviour, tng50/js/app.js) ---------------- */
+const store = {get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* private mode */ } }};
+const THEMES = ["auto", "light", "dark"];
+let theme = THEMES.includes(store.get("tngsight.theme")) ? store.get("tngsight.theme") : "auto";   // shared with the explorer
+const shown = t => (t === "auto" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : t);
+function applyTheme(t) { if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  const b = $("#theme"), cur = shown(t), nx = cur === "dark" ? "light" : "dark"; b.dataset.mode = t;
+  b.setAttribute("aria-label", `Theme: ${cur}${t === "auto" ? " (system)" : ""}. Switch to ${nx}`); b.title = `${cur === "dark" ? "Dark" : "Light"} theme; click for ${nx}`; }
+applyTheme(theme);
+$("#theme").addEventListener("click", () => { theme = shown(theme) === "dark" ? "light" : "dark"; store.set("tngsight.theme", theme); applyTheme(theme); });
+
+let popOpen = null;
+function closePop() { if (!popOpen) return; popOpen.pop.hidden = true; popOpen.btn.setAttribute("aria-expanded", "false"); const b = popOpen.btn; popOpen = null; return b; }
+function openPop(btn) {
+  const same = popOpen && popOpen.btn === btn; closePop(); if (same) return;
+  const pop = $("#pop-" + btn.dataset.info); pop.hidden = false; btn.setAttribute("aria-expanded", "true"); popOpen = {pop, btn};
+  // page.css zooms the page to 112 % on wide screens: rects are viewport px, offsets and styles CSS px
+  const z = document.documentElement.currentCSSZoom || 1, r = btn.getBoundingClientRect();
+  pop.style.top = "0px"; const w = pop.offsetWidth * z; pop.style.left = clamp(r.right - w, 12, innerWidth - w - 12) / z + "px";
+  const h = pop.offsetHeight * z, below = r.bottom + 8 + h <= innerHeight - 12;   // below the button, else above it, else pinned under the bar
+  pop.style.top = (below ? r.bottom + 8 : r.top - h - 8 >= 66 * z ? r.top - h - 8 : 66 * z) / z + "px";
+}
+document.querySelectorAll("[data-info]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); openPop(b); }));
+document.addEventListener("click", e => { if (popOpen && !popOpen.pop.contains(e.target)) closePop(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { const b = closePop(); if (b) b.focus(); else if (document.body.classList.contains("ctl-open")) sheet(false); } });
+addEventListener("scroll", () => closePop(), {passive: true});
+
+// phones (<= 820 px): the side column is the explorer's bottom sheet, opened from the dock; tap its head to expand
+function sheet(open) { document.body.classList.toggle("ctl-open", open); $("#dock-open").setAttribute("aria-expanded", open); if (!open) delete document.body.dataset.sheet; }
+$("#dock-open").onclick = () => sheet(true);
+$("#side-done").onclick = () => sheet(false);
+$("#side-grab").onclick = () => { if (document.body.dataset.sheet === "full") delete document.body.dataset.sheet; else document.body.dataset.sheet = "full"; };
 </script>
+<script type="module">
+import {initLiquidSeg, initLiquidButtons} from "tng50/js/liquidtabs.js";   // the explorer's liquid segmented control and glossy buttons
+initLiquidSeg(document.getElementById("stages")); initLiquidButtons();
+</script>
+
+</body>
+</html>

@@ -60,6 +60,9 @@ if (!ship.err) {   // ux(a): the shared tokens.css and self-hosted fonts resolve
       .filter(p => !existsSync(join(ship.out, p))).map(p => `${f}: ${p}`));
   check(!miss.length, `font preloads and tokens.css resolve in dist${miss.length ? ": " + miss.join(", ") : ""}`);
   check(/^\/fonts\/\*\n {2}Cache-Control: public, max-age=31536000, immutable$/m.test(readFileSync(join(ship.out, "_headers"), "utf8")), "dist/_headers caches /fonts/* for a year");
+  // Detect & Resolve reuses the explorer's page.css and liquidtabs.js: every tng50/ reference is rewritten to the site root
+  const dr = readFileSync(join(ship.out, "requirements/index.html"), "utf8"), left = [...dr.matchAll(/(?:href|src)="tng50\/[^"]*"|from "tng50\/[^"]*"/g)].map(m => m[0]);
+  check(!left.length && existsSync(join(ship.out, "css/page.css")) && existsSync(join(ship.out, "js/liquidtabs.js")), `requirements page links resolve to the site root${left.length ? ": " + left.join(", ") : ""}`);
 }
 if (IX.picker === "cases") note("shipped index has picker \"cases\": its listed stories get paths (checked below with the test index)");
 /* perf R5 dist transforms: gzipped sightline bins that inflate to the repository's bytes, per-sightline component slices

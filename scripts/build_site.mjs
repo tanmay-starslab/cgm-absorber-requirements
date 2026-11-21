@@ -27,7 +27,8 @@ cpSync(join(SRC, "tng50"), OUT, {recursive: true, filter: src => !skip(src)});
 mkdirSync(join(OUT, "requirements"), {recursive: true});
 let dr = readFileSync(join(SRC, "index.html"), "utf8");
 dr = dr.replaceAll('href="tng50/learn/', 'href="/learn/').replaceAll('href="tng50/"', 'href="/"').replaceAll('href="tng50/favicon.ico"', 'href="/favicon.ico"').replaceAll('href="tng50/img/icon/', 'href="/img/icon/').replaceAll('href="tng50/site.webmanifest"', 'href="/site.webmanifest"')
-  .replaceAll('href="tng50/css/', 'href="/css/').replaceAll('href="tng50/fonts/', 'href="/fonts/');   // shared tokens.css and fonts
+  .replaceAll('href="tng50/css/', 'href="/css/').replaceAll('href="tng50/fonts/', 'href="/fonts/')   // shared tokens.css, page.css and fonts
+  .replaceAll('from "tng50/js/', 'from "/js/');                                            // the explorer's liquidtabs.js
 writeFileSync(join(OUT, "requirements", "index.html"), dr);
 
 // the explorer's companion link (was ../ on GitHub Pages)
