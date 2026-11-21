@@ -31,7 +31,7 @@ const MEASURE = `(() => { const R = e => { const r = e.getBoundingClientRect(); 
   for (const [k, s] of Object.entries(ovs)) { const e = document.querySelector("#v3d-stage " + s); if (e && vis(e)) { o.ov[k] = R(e); if (!["pill", "guide", "options", "msg"].includes(k)) o.fixed["ov:" + k] = R(e); } }
   const texts = [...document.querySelectorAll("#v3d-stage .v3d-hc .hc-m, #v3d-stage .v3d-hc .hc-st, #v3d-stage .v3d-hp label, #v3d-stage .v3d-hg li, #v3d-stage .v3d-hg p, #v3d-stage .v3d-hp")];
   if (view && vis(view)) texts.push(...view.querySelectorAll(".v3c-btn, .v3c-row > label, .v3c-row > .lab"));
-  for (const e of texts) if (vis(e) && e.scrollWidth > e.clientWidth + 1) o.overflow.push((e.id || e.className || e.tagName) + ":" + e.textContent.trim().slice(0, 30) + " " + e.scrollWidth + ">" + e.clientWidth);
+  for (const e of texts) if (vis(e) && (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)) o.overflow.push((e.id || e.className || e.tagName) + ":" + e.textContent.trim().slice(0, 30) + " " + e.scrollWidth + "x" + e.scrollHeight + ">" + e.clientWidth + "x" + e.clientHeight);
   for (const e of document.querySelectorAll("#v3-head, #v3-fs, #v3d-stage .v3d-hc button")) if (vis(e)) o.heights[e.id || e.className || "?"] = +R(e).h.toFixed(1);
   o.st = window.__hfState || null; return o; })()`;
 const moved = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y), Math.abs(a.w - b.w), Math.abs(a.h - b.h));

@@ -1,7 +1,7 @@
 // Unit checks of the hand control logic (docs/tng50/js/handmath.js): features, label hysteresis, pinch, hold/cooldown,
 // swipe, palm motion -> rotation, pinch -> zoom, fist pause, the hands-win arbitration and the capability decisions.
 // Usage: node tests/js/handmath_unit.mjs
-import {handFeatures, labelSmoother, pinchGate, holdGate, swipeDetector, palmRotate, pinchZoom, arbiter, handController,
+import {handFeatures, labelSmoother, pinchGate, holdGate, swipeDetector, palmRotate, pinchZoom, arbiter, pickJob, handController,
   decideQuick, decideBench, governor, LABELS} from "../../docs/tng50/js/handmath.js";
 
 let n = 0, bad = 0;
@@ -79,7 +79,13 @@ for (const [g, act] of [["thumb", "recentre"], ["victory", "mode"], ["point", "o
   check(A.update(false, 0) === "head" && A.update(true, 100) === "hand" && A.update(false, 600) === "hand" && A.update(false, 1099) === "hand" && A.update(false, 1100) === "head",
     "arbiter: head, hand while seen, hand for 1 s after it leaves, then head");
   check(A.update(true, 2000) === "hand" && A.update(false, 2500) === "hand" && A.update(true, 2900) === "hand" && A.update(false, 3800) === "hand" && A.update(false, 3900) === "head",
-    "arbiter: a hand back within the second restarts the handback timer"); }
+    "arbiter: a hand back within the second restarts the handback timer");
+  const jHead = Array.from({length: 8}, (_, k) => pickJob({face: true, hands: true}, k, {ctrl: "head", mode: "orbit"}));
+  check(jHead.filter(j => j.face).length === 6 && jHead.filter(j => j.hands).length === 2, "pickJob: while the head steers, 3 of 4 frames go to face and 1 of 4 probes for hands");
+  const jHand = Array.from({length: 8}, (_, k) => pickJob({face: true, hands: true}, k, {ctrl: "hand", mode: "orbit"}));
+  check(jHand.every(j => j.hands && !j.face), "pickJob: while a hand steers in orbit mode, every frame goes to hands");
+  const jOnly = Array.from({length: 4}, (_, k) => pickJob({face: true, hands: false}, k, {ctrl: "head", mode: "orbit"}));
+  check(jOnly.every(j => j.face && !j.hands), "pickJob: hands unchecked sends every frame to face"); }
 
 /* the controller: palm drags, pinch zooms, fist pauses, swipes and holds give actions */
 const run = (C, frames, t0 = 0, dt = 1000 / 12) => frames.map((f, i) => C.update(f, t0 + i * dt));
@@ -121,25 +127,33 @@ for (const [g, act] of [["Thumb_Up", "recentre"], ["Victory", "mode"], ["Pointin
 
 /* capability decisions */
 { const q = decideQuick;
-  check(q({touch: false, tier: "high", cores: 8, hasCam: true}).camera === "ok", "quick: a strong desktop with a camera is ok");
+  check(q({touch: false, tier: "high", cores: 8, hasCam: true}).camera === "ok" && q({touch: false, tier: "high", cores: 8, hasCam: true}).hands === true, "quick: a strong desktop with a camera is ok and enables hands");
   check(q({touch: true, tier: "high", cores: 8, mem: 8, w: 1024, h: 1366, hasCam: true}).def === "camera", "quick: an iPad-class tablet defaults to camera");
   check(q({touch: true, tier: "high", cores: 6, mem: 6, w: 393, h: 852, hasCam: true}).def === "camera", "quick: a premium phone (high tier, 6 cores) defaults to camera");
   const low = q({touch: true, tier: "low", cores: 4, mem: 2, w: 360, h: 780, hasCam: true});
-  check(low.camera === "slow" && low.def === "tilt", `quick: a low-tier phone defaults to tilt, camera offered as slow (${JSON.stringify(low)})`);
+  check(low.camera === "slow" && low.def === "tilt" && !low.hands, `quick: a low-tier phone defaults to tilt, camera offered as slow (${JSON.stringify(low)})`);
   const mid = q({touch: true, tier: "mid", cores: 4, mem: 4, w: 390, h: 844, hasCam: true});
-  check(mid.camera === "slow" && mid.def === "tilt", `quick: a mid 4-core phone defaults to tilt (${JSON.stringify(mid)})`);
+  check(mid.camera === "slow" && mid.def === "tilt" && !mid.hands, `quick: a mid 4-core phone defaults to tilt (${JSON.stringify(mid)})`);
+  const midDesk = q({touch: false, tier: "mid", cores: 4, mem: 4, hasCam: true});
+  check(midDesk.camera === "ok" && !midDesk.hands, `quick: a mid 4-core desktop defaults to head-only (hands false) to stay fast (${JSON.stringify(midDesk)})`);
+  const heavy3d = q({touch: false, tier: "mid", cores: 8, hasCam: true, movingMs: 50});
+  check(heavy3d.camera === "ok" && !heavy3d.hands, `quick: a heavy 3D moving frame (> 35 ms) on mid tier defaults to head-only (${JSON.stringify(heavy3d)})`);
   check(q({touch: true, tier: "high", cores: 8, hasCam: false}).camera === "none" && q({touch: true, hasCam: false}).def === "tilt", "quick: no camera, no camera option");
-  check(q({touch: false, tier: "low", cores: 2, hasCam: true}).camera === "slow" && q({touch: false, tier: "low", cores: 2, hasCam: true}).def === "camera", "quick: a weak desktop keeps camera (no tilt) but says slow"); }
+  check(q({touch: false, tier: "low", cores: 2, hasCam: true}).camera === "slow" && q({touch: false, tier: "low", cores: 2, hasCam: true}).def === "camera" && !q({touch: false, tier: "low", cores: 2, hasCam: true}).hands, "quick: a weak desktop keeps camera (no tilt) in head-only mode and says slow"); }
 { const b = decideBench;
   check(b(18).plan === "full" && b(18).fps === 24, "bench: under 30 ms is full rate");
   check(b(45).plan === "reduced" && b(45).fps === 12 && b(45).hint === "", "bench: 30 to 60 ms reduces the rate quietly");
   check(b(90, {touch: true}).plan === "tilt" && /Tilt/.test(b(90, {touch: true}).hint), "bench: slower on touch falls back to Tilt");
-  check(b(90, {touch: false}).plan === "reduced" && b(90).fps === 6 && /slow/.test(b(90).hint), "bench: slower on desktop runs at 6 fps and says it may be slow");
+  check(b(85, {touch: false, both: true}).plan === "headOnly" && b(85, {touch: false, both: true}).dropHands && /Head only/.test(b(85, {touch: false, both: true}).hint), "bench: 60 to 110 ms on desktop with both trackers drops hands to Head only");
+  check(b(130, {touch: false}).plan === "reduced" && b(130).fps === 6 && /slow/.test(b(130).hint), "bench: slower on desktop runs at 6 fps and says it may be slow");
   check(b(20, {tier: "low"}).plan === "reduced", "bench: a low tier never gets full rate"); }
-{ const G = governor({warm: 5}); let r = null; for (const ms of [200, 20, 22, 19, 21]) r = G.update(ms) || r;
+{ const G = governor({warm: 5, both: false}); let r = null; for (const ms of [200, 20, 22, 19, 21]) r = G.update(ms) || r;
   check(r && r.fps === 24 && r.bench === 21, `governor: the median of the warm frames ignores a slow first frame (${JSON.stringify(r)})`);
   const steps = []; for (let i = 0; i < 200; i++) { const x = G.update(80); if (x) steps.push(x.fps); }
   check(steps[0] === 12 && steps[1] === 6, `governor: frame times that climb step the rate down 24 -> 12 -> 6 (${steps})`);
+  const Gh = governor({warm: 3, both: true, touch: false}); for (const ms of [20, 20, 20]) Gh.update(ms);
+  let dropped = null; for (let i = 0; i < 120 && !dropped?.dropHands; i++) dropped = Gh.update(90) || dropped;
+  check(dropped && dropped.dropHands && /Head only/.test(dropped.hint), `governor: when both trackers stay > 75 ms on desktop, drops hands first (${JSON.stringify(dropped)})`);
   const T = governor({warm: 3, touch: true}); for (const ms of [20, 20, 20]) T.update(ms); let tl = null;
   for (let i = 0; i < 300 && !tl?.tilt; i++) tl = T.update(150) || tl;
   check(tl && tl.tilt, "governor: on touch, still too slow at 6 fps falls back to Tilt"); }

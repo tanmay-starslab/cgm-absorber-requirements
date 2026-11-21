@@ -15,15 +15,15 @@
 // click starts Tilt. A small guide card on the stage lists the gestures for 6 s; the pill's "?" brings it back.
 // The camera stops on Stop, Esc, leaving the 3D tab, a hidden page, a viewer dispose, or a minute with nobody seen.
 // Anything else that moves the camera (a drag, a preset, the orbit button) re-bases the control so it never fights it.
-import {poseFromMatrix, oneEuro, orbitMap, windowMap, offAxis, tiltPose, D2R} from "./headmath.js";
-import {handController, arbiter, decideQuick, governor} from "./handmath.js";
+import {poseFromMatrix, oneEuro, orbitMap, windowMap, offAxis, tiltPose, stepToward, D2R} from "./headmath.js";
+import {handController, arbiter, pickJob, decideQuick, governor} from "./handmath.js";
 import {gpuLite} from "./liquidbg.js";
 import {tier} from "./tier.js";
 
 export const isTilt = () => matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches;
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const VENDOR = new URL("../vendor/mediapipe/", import.meta.url).href;
-const NO_FACE_MS = 60000, CAL_MS = 600, CAP_W = 256;
+const NO_FACE_MS = 60000, CAL_MS = 600, FACE_W = 256, HAND_W = 192;
 export const PRIVACY = "Your camera video stays on your device.";
 const GUIDE_MS = 6000;
 const GUIDE = [["🙂", "Turn head", "look around"], ["✋", "Move hand", "rotate"], ["🤏", "Pinch, pull", "zoom"], ["👋", "Swipe", "next sightline"],
@@ -75,14 +75,14 @@ const CSS = `.v3d-stage{--hc-h:48px;--hc-b:32px;--hc-top:48px}
 .v3d-hg li span{display:inline-block;width:1.5em}
 .v3d-hg li b{font-weight:600}
 .v3d-hg p{margin:8px 0 0;font-size:11px;color:var(--s-ink2,#a9b2c3);text-align:center}
-.v3d-ho{width:min(264px,calc(100% - 24px))}
+.v3d-ho{width:min(284px,calc(100% - 24px))}
 .v3d-ho .hc-row{display:grid;grid-template-columns:auto minmax(0,1fr) 2.6em;align-items:center;gap:10px;min-height:var(--hc-b)}
-.v3d-ho label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;min-height:var(--hc-b)}
+.v3d-ho label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;min-height:var(--hc-b)}
 .v3d-ho input[type=range]{width:100%;margin:0;accent-color:var(--s-accent,#7db2f0)}
 .v3d-ho input[type=checkbox]{margin:0;accent-color:var(--s-accent,#7db2f0)}
 .v3d-ho output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right}
-.v3d-ho .hc-checks{display:flex;justify-content:space-between;gap:12px}
-@container (max-width:479px){.v3d-hc{width:min(256px,calc(100% - 24px))}.v3d-hp{padding:8px 10px;font-size:11px}.v3d-hg ul{gap:4px 10px}.v3d-hg li span{width:1.3em}}   /* phones: two columns still fit 334 px */
+.v3d-ho .hc-checks{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@container (max-width:479px){.v3d-hc{width:min(256px,calc(100% - 24px))}.v3d-ho{width:min(256px,calc(100% - 24px))}.v3d-ho .hc-row,.v3d-ho label{min-height:30px}.v3d-hp{padding:6px 10px;font-size:11px}.v3d-hg ul{gap:4px 10px}.v3d-hg li span{width:1.3em}}   /* phones: two columns still fit 334 px */
 @media (prefers-reduced-motion:reduce){.v3d-hp{transition:none}}
 .v3d-thumb .v3d-hc,.v3d-thumb .v3d-hp{display:none}`;
 
@@ -115,8 +115,9 @@ function flash(viewer, msg) {   // a short message in the stage pill that clears
   const f = flashBox = makePill(viewer, true); f.ind.classList.add("idle", "off"); f.ind.querySelector(".hc-m span").textContent = "Hands-free";
   say(f.ind, msg, true); setTimeout(() => { if (flashBox === f) clearFlash(); }, 6000); }
 /** Step 1 of the capability check: no permission prompt (enumerateDevices lists kinds even without labels). */
-const quick = () => (navigator.mediaDevices?.enumerateDevices ? navigator.mediaDevices.enumerateDevices().then(L => L.some(d => d.kind === "videoinput")).catch(() => null) : Promise.resolve(false))
-  .then(hasCam => decideQuick({touch: isTilt(), tier: tier() || "mid", cores: navigator.hardwareConcurrency || 4, mem: navigator.deviceMemory, w: innerWidth, h: innerHeight, hasCam}));
+const quick = viewer => (navigator.mediaDevices?.enumerateDevices ? navigator.mediaDevices.enumerateDevices().then(L => L.some(d => d.kind === "videoinput")).catch(() => null) : Promise.resolve(false))
+  .then(hasCam => decideQuick({touch: isTilt(), tier: tier() || "mid", cores: navigator.hardwareConcurrency || 4, mem: navigator.deviceMemory, w: innerWidth, h: innerHeight, hasCam,
+    movingMs: viewer?.stats?.calibration?.moving_exact_ms || 0}));
 
 /* touch: Tilt straight from the click when it is the known choice (iOS asks for motion permission only from a tap);
    otherwise the quick signals pick camera or Tilt */
@@ -124,24 +125,26 @@ async function go(viewer, btn) {
   const touch = isTilt();
   if (touch && preferTilt) { start(viewer, btn, true); return; }
   btn.setAttribute("aria-pressed", "true");
-  pending = true; const q = await quick().finally(() => { pending = false; });
+  pending = true; const q = await quick(viewer).finally(() => { pending = false; });
   if (S) return;
   if (!touch && q.camera === "none") { btn.setAttribute("aria-pressed", "false"); flash(viewer, MSG.nocam); return; }
-  start(viewer, btn, touch && q.def === "tilt", q.camera === "slow" && !(touch && q.def === "tilt"));
+  const tilt = touch && q.def === "tilt";
+  start(viewer, btn, tilt, q.camera === "slow" && !tilt, !tilt && q.hands !== false);
 }
 
 function say(box, t, bad = false) {
   if (S?.box === box && S.toasting) { S.keep = [t, bad]; return; }   // shown once the toast ends
   const s = box?.querySelector(".hc-st"); if (s) { s.textContent = t; s.classList.toggle("bad", bad); } }
 
-async function start(viewer, btn, tilt, slow = false) {
+async function start(viewer, btn, tilt, slow = false, handsOn = !tilt) {
   btn.setAttribute("aria-pressed", "true"); clearFlash();
   const pl = makePill(viewer, tilt), box = pl.ind;
-  const T = tilt ? {face: true, hands: false} : {face: true, hands: true};
-  const s = {viewer, btn, box, tilt, track: tilt ? "tilt" : "both", T, slow, mode: "orbit", sens: 1, invert: false, preview: true, ref: null, cal: [], calT: 0, base: null, set: null,
+  const T = tilt ? {face: true, hands: false} : {face: true, hands: !!handsOn};
+  const s = {viewer, btn, box, tilt, track: tilt ? "tilt" : T.hands ? "both" : "head", T, slow, mode: "orbit", sens: 1, invert: false, preview: true, ref: null, cal: [], calT: 0, base: null, set: null,
     last: null, lastSeen: performance.now(), filt: ["yaw", "pitch", "x", "y", "z"].map(() => oneEuro(reduced() ? {minCutoff: 0.4, beta: 0.004} : {minCutoff: 1, beta: 0.01})),
     hc: handController(), arb: arbiter(), ctrl: T.face ? "head" : "hand", hand: "none", fps: 24, bench: null,
     stream: null, video: null, worker: null, busy: false, offs: [pl.off]};
+  const bg = window.__liquidBg?.explorer?.handle; if (bg) { bg.pause("handsfree"); s.offs.push(() => bg.resume("handsfree")); }
   S = s; s.starting = true; ui(s); watch(s);   // watched while it loads too: leaving the tab mid-start still turns the camera off
   try { tilt ? await startTilt(s) : await startCam(s); }
   catch (x) { if (S !== s) return; S = null; if (!x?.hc) console.warn("head control:", x); release(s); btn.setAttribute("aria-pressed", "false"); flash(viewer, x?.hc || MSG.unsupported); return; }
@@ -165,7 +168,7 @@ async function startCam(s) {
   const main = typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined";
   if (!navigator.mediaDevices?.getUserMedia || (!main && typeof createImageBitmap === "undefined")) throw {hc: MSG.unsupported};
   say(s.box, s.slow ? MSG.slow : "Loading");
-  s.fps = main ? 10 : gpuLite() ? 12 : 24; s.main = main;
+  s.fps = main ? 10 : gpuLite() ? 18 : 24; s.main = main;
   s.gov = governor({touch: isTilt(), both: s.T.face && s.T.hands, tier: tier() || "mid"});
   try { s.stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: "user", width: {ideal: 320}, height: {ideal: 240}, frameRate: {ideal: s.fps, max: 30}}}); }
   catch (x) { const n = x?.name; throw {hc: n === "NotAllowedError" || n === "SecurityError" ? MSG.denied : n === "NotFoundError" || n === "OverconstrainedError" ? MSG.nocam : MSG.busy}; }
@@ -181,19 +184,27 @@ async function startCam(s) {
   w.onmessage = ({data: d}) => { s.busy = false; if (S !== s || d.type !== "res") return;
     rate(s, d.ms);
     if ("m" in d) { const p = d.m ? poseFromMatrix(d.m) : null; p ? onPose(s, p, d.t) : idle(s); }
-    if ("hand" in d && !s.fed) onHand(s, d.hand, d.t); };
+    if ("hand" in d && !s.fed && s.T.hands) onHand(s, d.hand, d.t); };
   w.onerror = () => fail(s, MSG.load);
   let last = 0, k = 0;
   const grab = now => { if (S !== s && s.worker !== w) return;
     if (s.busy || now - last < 1000 / s.fps - 2 || !v.videoWidth) return;
     last = now; s.busy = true;
-    const job = s.T.face && s.T.hands ? (k++ % 2 ? {hands: true} : {face: true}) : s.T;   // both: alternate frames
+    const job = pickJob(s.T, k++, {ctrl: s.ctrl, mode: s.mode}), cw = job.hands ? HAND_W : FACE_W;
     if (main) { w.postMessage({type: "frame", bmp: v, t: now, ...job}); return; }
-    createImageBitmap(v, {resizeWidth: CAP_W, resizeHeight: Math.round(CAP_W * v.videoHeight / v.videoWidth), resizeQuality: "low"})
+    createImageBitmap(v, {resizeWidth: cw, resizeHeight: Math.round(cw * v.videoHeight / v.videoWidth), resizeQuality: "low"})
       .then(bmp => { if (s.worker) s.worker.postMessage({type: "frame", bmp, t: now, ...job}, [bmp]); else bmp.close(); }).catch(() => { s.busy = false; }); };
   if (v.requestVideoFrameCallback) { const f = now => { if (!s.stream) return; grab(now); v.requestVideoFrameCallback(f); }; v.requestVideoFrameCallback(f); }
   else { const f = now => { if (!s.stream) return; grab(now); requestAnimationFrame(f); }; requestAnimationFrame(f); }
   if (!s.slow) say(s.box, MSG.centre);
+}
+
+function setHands(s, on) {
+  on = !!on && !s.tilt; if (s.T.hands === on) return;
+  s.T.hands = on; s.track = s.tilt ? "tilt" : on ? "both" : "head"; s.gov?.setBoth(on);
+  const cb = s.opts?.querySelector('[data-c="hands"]'); if (cb && cb.checked !== on) cb.checked = on;
+  if (on && s.worker) s.worker.postMessage({type: "hands", base: VENDOR});
+  if (!on) { s.hc.reset(); s.arb.reset(); if (s.ctrl === "hand") { s.ctrl = "head"; if (s.mode === "orbit" && s.base && s.ref) rebase(s); } s.hand = "none"; s.sign = null; pill(s); }
 }
 
 /* step 2 of the capability check and the runtime governor: the tracker's ms per frame sets the rate; too slow on a touch
@@ -202,6 +213,7 @@ function rate(s, ms) {
   const r = Number.isFinite(ms) && s.gov?.update(ms); if (!r) return;
   if (r.bench != null) s.bench = Math.round(r.bench);
   if (r.tilt && isTilt()) { preferTilt = true; stop(MSG.toTilt); return; }
+  if (r.dropHands && s.T.hands) setHands(s, false);
   s.fps = Math.min(s.fps, r.fps); if (r.hint) say(s.box, r.hint);
 }
 
@@ -276,7 +288,7 @@ function act(s, a) {
   else if (a === "orbit") { orb?.click(); toast(s, `☝️ Orbit ${orb?.getAttribute("aria-pressed") === "true" ? "on" : "off"}`); }
   else { document.getElementById(a)?.click(); toast(s, a === "next" ? "👋 Next sightline" : "👋 Previous sightline"); }
 }
-function recentre(s) { restoreProj(s); s.ref = null; s.cal = []; s.calT = 0; s.base = null; s.set = null; s.pose = null; }
+function recentre(s) { restoreProj(s); s.ref = null; s.cal = []; s.calT = 0; s.base = null; s.set = null; s.pose = null; s.smooth = null; }
 const pillText = s => (s.tilt ? "Tilt" : s.ctrl !== "hand" ? "Head" : s.hand === "hold" && HOLD[s.sign] ? `${HOLD[s.sign]} hold…` : PILL[s.hand] || "Hand");
 function pill(s) { const t = s.pillT; if (t && t.textContent !== pillText(s)) t.textContent = pillText(s); }
 function toast(s, text) {   // an action's confirmation in the pill's status line for 1.6 s, then the status comes back
@@ -291,36 +303,45 @@ function rebase(s) {
   const {camera: c, controls} = s.viewer;
   restoreProj(s, !s.set);
   s.base = {pos: c.position.clone(), up: c.up.clone(), q: c.quaternion.clone(), target: controls.target.clone()};
-  s.set = null; s.last = null; if (s.pose) s.ref = {...s.ref, ...pick(s.pose)};
+  s.set = null; s.last = null; s.smooth = null; if (s.pose) s.ref = {...s.ref, ...pick(s.pose)};
 }
 const pick = p => ({yaw: p.yaw, pitch: p.pitch, x: p.x, y: p.y, z: p.z});
-function apply(s) {
-  const V = s.viewer, c = V.camera, T = V.THREE, controls = V.controls;
-  if (!c.parent && !V.canvas.isConnected) { stop(); return; }
-  if (s.set && camState(c).some((v, i) => Math.abs(v - s.set[i]) > 1e-6)) { rebase(s); return; }   // something else moved the camera
-  if (!s.base) rebase(s);
-  const k = reduced() ? 0.5 : 1, opts = {sens: s.sens * k, invert: s.invert}, head = !!(s.pose && s.ref);
-  const B = s.base;
+function drawPose(s, v) {
+  const V = s.viewer, c = V.camera, T = V.THREE, controls = V.controls, B = s.base;
   if (s.mode === "orbit") {
-    const o = head && s.ctrl !== "hand" ? orbitMap(s.pose, s.ref, opts) : {yaw: 0, pitch: 0, zoom: 1};
-    if (s.last && Math.abs(o.yaw - s.last.yaw) < 0.1 && Math.abs(o.pitch - s.last.pitch) < 0.1 && Math.abs(o.zoom / s.last.zoom - 1) < 0.002) return;
-    s.last = o;
+    if (s.last && Math.abs(v.yaw - s.last.yaw) < 0.03 && Math.abs(v.pitch - s.last.pitch) < 0.03 && Math.abs(v.zoom / s.last.zoom - 1) < 0.0008) return;
+    s.last = v;
     const off = B.pos.clone().sub(B.target), right = new T.Vector3().crossVectors(off.clone().negate(), B.up).normalize();
-    const qy = new T.Quaternion().setFromAxisAngle(B.up, o.yaw * D2R), qp = new T.Quaternion().setFromAxisAngle(right, -o.pitch * D2R), q = qy.multiply(qp);
-    const d = Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * o.zoom));
+    const qy = new T.Quaternion().setFromAxisAngle(B.up, v.yaw * D2R), qp = new T.Quaternion().setFromAxisAngle(right, -v.pitch * D2R), q = qy.multiply(qp);
+    const d = Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * v.zoom));
     off.applyQuaternion(q).setLength(d);
     c.position.copy(B.target).add(off); c.up.copy(B.up).applyQuaternion(q); c.lookAt(B.target);
   } else {
-    const w = head ? windowMap(s.pose, s.ref, opts) : {ex: 0, ey: 0, ez: 1};
-    if (s.last && Math.abs(w.ex - s.last.ex) < 0.004 && Math.abs(w.ey - s.last.ey) < 0.004 && Math.abs(w.ez - s.last.ez) < 0.003) return;
-    s.last = w;
+    if (s.last && Math.abs(v.ex - s.last.ex) < 0.0015 && Math.abs(v.ey - s.last.ey) < 0.0015 && Math.abs(v.ez - s.last.ez) < 0.0015) return;
+    s.last = v;
     const d = B.pos.distanceTo(B.target), h = d * Math.tan(c.fov * D2R / 2);
-    const r = offAxis({...w, h, d, aspect: c.aspect, near: c.near, far: c.far});
+    const r = offAxis({...v, h, d, aspect: c.aspect, near: c.near, far: c.far});
     c.quaternion.copy(B.q); c.up.copy(B.up); c.position.copy(B.pos).add(new T.Vector3(...r.eye).applyQuaternion(B.q));
     setProj(s, r.m);
   }
   c.updateMatrixWorld(); s.set = camState(c);
   controls.dispatchEvent({type: "change"});   // the viewer's on-demand render: fast frames while it moves, then refine
+}
+function apply(s) {
+  const V = s.viewer, c = V.camera;
+  if (!c.parent && !V.canvas.isConnected) { stop(); return; }
+  if (s.set && camState(c).some((v, i) => Math.abs(v - s.set[i]) > 1e-6)) { rebase(s); return; }   // something else moved the camera
+  if (!s.base) rebase(s);
+  const k = reduced() ? 0.5 : 1, opts = {sens: s.sens * k, invert: s.invert}, head = !!(s.pose && s.ref);
+  const goal = s.mode === "orbit" ? (head && s.ctrl !== "hand" ? orbitMap(s.pose, s.ref, opts) : {yaw: 0, pitch: 0, zoom: 1})
+    : (head ? windowMap(s.pose, s.ref, opts) : {ex: 0, ey: 0, ez: 1});
+  const now = performance.now(), dt = s.smoothT ? (now - s.smoothT) / 1000 : 0; s.smoothT = now;
+  const st = stepToward(s.smooth, goal, dt, {tau: reduced() ? 0.02 : 0.045, snap: s.mode === "orbit" ? 0.04 : 0.0015});
+  s.smooth = st.val; drawPose(s, st.val);
+  if (st.moved && !s.raf && typeof requestAnimationFrame === "function") {
+    const tick = () => { s.raf = 0; if (S === s && !s.starting && (s.ctrl !== "hand" || s.mode === "window")) apply(s); };
+    s.raf = requestAnimationFrame(tick);
+  }
 }
 /* window mode: the off-axis matrix replaces the symmetric one, and survives the viewer's resize (updateProjectionMatrix) */
 function setProj(s, m) {
@@ -342,11 +363,12 @@ function ui(s) {
     `<li><span aria-hidden="true">${i}</span><b>${a}:</b> ${b}</li>`).join("")}</ul><p>${PRIVACY}</p></div>`);
   const o = s.opts = el(`<div class="v3d-hp v3d-ho" role="group" aria-label="Hands-free options" hidden>
     <div class="hc-row"><label for="hc-sens">sensitivity</label><input id="hc-sens" type="range" min="0.25" max="3" step="0.05" value="1" data-tip="How strongly ${tilt ? "tilt" : "motion"} moves the view"><output>1.0</output></div>
-    <div class="hc-checks"><label><input type="checkbox" data-c="window" data-tip="The screen becomes a window onto the galaxy">window</label><label><input type="checkbox" data-c="invert" data-tip="Reverse the direction">invert</label>${tilt ? "" : '<label><input type="checkbox" data-c="preview" checked data-tip="Show the small camera preview">preview</label>'}</div></div>`);
+    <div class="hc-checks"><label><input type="checkbox" data-c="window" data-tip="The screen becomes a window onto the galaxy">window</label><label><input type="checkbox" data-c="invert" data-tip="Reverse the direction">invert</label>${tilt ? "" : `<label><input type="checkbox" data-c="hands"${s.T.hands ? " checked" : ""} data-tip="Track hand gestures too; uncheck for head only">hands</label><label><input type="checkbox" data-c="preview" checked data-tip="Show the small camera preview">preview</label>`}</div></div>`);
   o.querySelector('[data-c="window"]').addEventListener("change", ev => { const m = ev.target.checked ? "window" : "orbit"; if (s.mode === m) return;
-    restoreProj(s); s.mode = m; s.base = null; s.set = null; s.last = null; if (s.pose) s.ref = {...s.ref, ...pick(s.pose)}; });
+    restoreProj(s); s.mode = m; s.base = null; s.set = null; s.last = null; s.smooth = null; if (s.pose) s.ref = {...s.ref, ...pick(s.pose)}; });
   const sens = o.querySelector("#hc-sens"); sens.addEventListener("input", () => { s.sens = +sens.value; sens.nextElementSibling.textContent = s.sens.toFixed(1); s.last = null; });
   o.querySelector('[data-c="invert"]').addEventListener("change", ev => { s.invert = ev.target.checked; s.last = null; });
+  o.querySelector('[data-c="hands"]')?.addEventListener("change", ev => setHands(s, ev.target.checked));
   o.querySelector('[data-c="preview"]')?.addEventListener("change", ev => { s.preview = ev.target.checked; if (s.video) s.video.hidden = !s.preview; });
   const qb = ind.querySelector(".hc-q"), ob = ind.querySelector(".hc-o");
   /* one panel at a time in the slot above the pill */
@@ -372,6 +394,7 @@ function watch(s) {
 
 function release(s) {
   for (const f of s.offs) f(); s.offs = [];
+  if (s.raf) { cancelAnimationFrame(s.raf); s.raf = 0; }
   if (s.stream) { for (const t of s.stream.getTracks()) t.stop(); s.stream = null; }
   if (s.video) { s.video.srcObject = null; s.video.remove(); s.video = null; }
   if (s.worker) { s.worker.terminate(); s.worker = null; }

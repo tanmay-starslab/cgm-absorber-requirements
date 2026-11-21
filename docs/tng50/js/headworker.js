@@ -23,6 +23,16 @@
         return {type: "ready", delegate: used};
       } catch (x) { return {type: "error", message: String(x && x.message || x)}; }
     }
+    if (d.type === "hands") {
+      try {
+        if (!hands && d.base) {
+          const {FilesetResolver, GestureRecognizer} = self.Vision, fs = await FilesetResolver.forVisionTasks(d.base + "wasm");
+          [hands] = await make(GestureRecognizer, fs, delegate => ({baseOptions: {modelAssetPath: d.base + "gesture_recognizer.task", delegate},
+            runningMode: "VIDEO", numHands: 1}));
+        }
+        return {type: "hands-ready"};
+      } catch (x) { return {type: "error", message: String(x && x.message || x)}; }
+    }
     if (d.type === "frame") {
       const r = {type: "res", t: d.t}, t0 = performance.now();
       try {
