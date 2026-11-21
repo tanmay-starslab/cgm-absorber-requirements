@@ -37,26 +37,29 @@ const PILL = {rotate: "Hand ✋ rotate", zoom: "Hand 🤏 zoom", paused: "Hand �
 const HOLD = {thumb: "👍", victory: "✌️", point: "☝️"};
 
 /* Stage slots while Hands-free is on: nothing in the page flow changes (the View card gets no new box) and no stage overlay
-   moves. The pill sits bottom centre, 8 px above the colour key (--hc-bot, kept in step with the key's height), clear of
-   the scale bar, the message, the orbit and fullscreen buttons (top), and the lines key and ID badge (right). The guide and
-   the options share one panel slot above the pill, one at a time; while one is open the stage message is hidden. */
-const CSS = `.v3d-stage{--hc-h:56px;--hc-b:32px;--hc-bot:110px}
-@media (pointer:coarse){.v3d-stage{--hc-h:52px;--hc-b:44px}}
-.v3d-stage.hc-panel .v3d-msg{visibility:hidden}
+   moves. The pill sits at the top (top-left at 12px/48px on narrow stages under the scale bar; top-centre at 10px on wide stages
+   >= 720 px where the scale bar stays at the bottom), leaving the bottom of the 3D stage (colour key, scale bar, lines key,
+   ID badge) completely uncluttered. The gesture guide and the options share one panel slot right below the pill, one at a time;
+   while Hands-free is on the transient stage loading message is hidden so it never collides with the top pill. */
+const CSS = `.v3d-stage{--hc-h:48px;--hc-b:32px;--hc-top:48px}
+@media (pointer:coarse){.v3d-stage{--hc-h:48px;--hc-b:44px}}
+@container (min-width:720px){.v3d-stage{--hc-top:10px}}
+.v3d-stage:has(.v3d-hc) .v3d-msg{visibility:hidden}
 #v3-head[aria-pressed=true]{border-color:var(--s-accent,#7db2f0)}
-.v3d-hc,.v3d-hp{position:absolute;left:50%;transform:translateX(-50%);z-index:3;box-sizing:border-box;color:var(--s-ink,#eef0f7);
+.v3d-hc,.v3d-hp{position:absolute;left:12px;z-index:3;box-sizing:border-box;color:var(--s-ink,#eef0f7);
   background:var(--s-mat,rgba(12,16,22,.74));box-shadow:inset 0 0 0 1px var(--s-edge,rgba(200,215,240,.16)),var(--s-hi,none),0 6px 20px rgba(0,0,0,.3);
   backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));-webkit-backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));border-radius:14px}
-.v3d-hc{bottom:var(--hc-bot);width:min(280px,calc(100% - 24px));height:var(--hc-h);display:flex;align-items:center;gap:8px;padding:4px;font:600 12px/16px system-ui,sans-serif}
+@container (min-width:720px){.v3d-hc,.v3d-hp{left:50%;transform:translateX(-50%)}}
+.v3d-hc{top:var(--hc-top);width:min(264px,calc(100% - 24px));height:var(--hc-h);display:flex;align-items:center;gap:7px;padding:4px;font:600 12px/15px system-ui,sans-serif}
 .v3d-hc .hc-cam{flex:none;height:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:rgba(255,255,255,.06)}
 .v3d-hc.tilt .hc-cam{display:none}
 .v3d-hc video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
 .v3d-hc video[hidden]{display:none}
-.v3d-hc .hc-txt{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:1px;padding-left:4px}
-.v3d-hc .hc-m{display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden}
+.v3d-hc .hc-txt{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:1px;padding-left:3px}
+.v3d-hc .hc-m{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
 .v3d-hc .hc-m i{width:8px;height:8px;border-radius:50%;background:#5ad19a;box-shadow:0 0 6px #5ad19a;flex:none}
 .v3d-hc.off .hc-m i{background:#d9a35a;box-shadow:none}
-.v3d-hc .hc-st{margin:0;font:500 11px/14px system-ui,sans-serif;color:var(--s-ink2,#a9b2c3);max-height:28px;overflow:hidden;overflow-wrap:anywhere}
+.v3d-hc .hc-st{margin:0;font:500 11px/13px system-ui,sans-serif;color:var(--s-ink2,#a9b2c3);max-height:26px;overflow:hidden;overflow-wrap:anywhere}
 .v3d-hc .hc-st.bad{color:var(--s-bad,#ff8a8a)}
 .v3d-hc button{flex:none;width:var(--hc-b);height:var(--hc-b);padding:0;border:0;border-radius:50%;cursor:pointer;display:grid;place-items:center;
   font:600 13px/1 system-ui,sans-serif;color:inherit;background:rgba(255,255,255,.12)}
@@ -65,21 +68,21 @@ const CSS = `.v3d-stage{--hc-h:56px;--hc-b:32px;--hc-bot:110px}
 .v3d-hc button[aria-expanded=true]{background:var(--s-accent,#7db2f0);color:#0c1016}
 .v3d-hc button:focus-visible,.v3d-hp :focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
 .v3d-hc.idle button{visibility:hidden}
-.v3d-hp{bottom:calc(var(--hc-bot) + var(--hc-h) + 8px);max-width:calc(100% - 24px);max-height:calc(100% - var(--hc-bot) - var(--hc-h) - 60px);overflow:auto;padding:10px 14px;font:500 12px/1.3 system-ui,sans-serif;transition:opacity .25s}
+.v3d-hp{top:calc(var(--hc-top) + var(--hc-h) + 8px);max-width:calc(100% - 24px);max-height:calc(100% - var(--hc-top) - var(--hc-h) - 110px);overflow:auto;padding:10px 14px;font:500 12px/1.3 system-ui,sans-serif;transition:opacity .25s}
 .v3d-hp[hidden]{display:block;opacity:0;visibility:hidden}
 .v3d-hg{pointer-events:none}
 .v3d-hg ul{display:grid;grid-template-columns:auto auto;gap:6px 18px;margin:0;padding:0;list-style:none;white-space:nowrap}
 .v3d-hg li span{display:inline-block;width:1.5em}
 .v3d-hg li b{font-weight:600}
 .v3d-hg p{margin:8px 0 0;font-size:11px;color:var(--s-ink2,#a9b2c3);text-align:center}
-.v3d-ho{width:min(280px,calc(100% - 24px))}
+.v3d-ho{width:min(264px,calc(100% - 24px))}
 .v3d-ho .hc-row{display:grid;grid-template-columns:auto minmax(0,1fr) 2.6em;align-items:center;gap:10px;min-height:var(--hc-b)}
 .v3d-ho label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;min-height:var(--hc-b)}
 .v3d-ho input[type=range]{width:100%;margin:0;accent-color:var(--s-accent,#7db2f0)}
 .v3d-ho input[type=checkbox]{margin:0;accent-color:var(--s-accent,#7db2f0)}
 .v3d-ho output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right}
 .v3d-ho .hc-checks{display:flex;justify-content:space-between;gap:12px}
-@container (max-width:479px){.v3d-hp{padding:8px 10px;font-size:11px}.v3d-hg ul{gap:4px 10px}.v3d-hg li span{width:1.3em}}   /* phones: two columns still fit 334 px */
+@container (max-width:479px){.v3d-hc{width:min(256px,calc(100% - 24px))}.v3d-hp{padding:8px 10px;font-size:11px}.v3d-hg ul{gap:4px 10px}.v3d-hg li span{width:1.3em}}   /* phones: two columns still fit 334 px */
 @media (prefers-reduced-motion:reduce){.v3d-hp{transition:none}}
 .v3d-thumb .v3d-hc,.v3d-thumb .v3d-hp{display:none}`;
 
@@ -103,10 +106,7 @@ function makePill(viewer, tilt) {
   const ind = el(`<div class="v3d-hc${tilt ? " tilt" : ""}" role="group" aria-label="Hands-free"><div class="hc-cam"></div><div class="hc-txt"><div class="hc-m"><i></i><span role="status" aria-live="polite"></span></div>
     <p class="hc-st" role="status" aria-live="polite"></p></div><button type="button" class="hc-o" aria-expanded="false" aria-label="Hands-free options" data-tip="Window view, sensitivity and preview">${ICON_OPT}</button>
     <button type="button" class="hc-q" aria-expanded="false" aria-label="Show the gestures" data-tip="Show the gestures">?</button></div>`);
-  const stage = viewer.el, leg = viewer.el.querySelector(".v3d-leg");
-  const place = () => { const h = leg && !leg.hidden ? leg.offsetHeight : 0; stage.style.setProperty("--hc-bot", `${Math.round(10 + h + 8)}px`); };
-  place(); const ro = typeof ResizeObserver === "function" && leg ? new ResizeObserver(place) : null; ro?.observe(leg);
-  stage.append(ind); return {ind, off: () => { ro?.disconnect(); }};
+  viewer.el.append(ind); return {ind, off: () => {}};
 }
 let flashBox = null;
 function clearFlash() { if (flashBox) { flashBox.off(); flashBox.ind.remove(); flashBox = null; } }
