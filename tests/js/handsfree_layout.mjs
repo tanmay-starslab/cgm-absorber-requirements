@@ -48,8 +48,8 @@ try {
     const key = `${name}-${theme}`, touch = !!mobile;
     await P.send("Emulation.setDeviceMetricsOverride", {width: w, height: h, deviceScaleFactor: dsf, mobile: touch});
     await P.send("Emulation.setTouchEmulationEnabled", {enabled: touch, maxTouchPoints: touch ? 5 : 0});
-    if (touch) { await P.send("Browser.grantPermissions", {permissions: ["sensors"], origin: srv.origin});
-      await P.send("DeviceOrientation.setDeviceOrientationOverride", {alpha: 0, beta: 30, gamma: 0}); }
+    await P.send("Browser.grantPermissions", {permissions: ["sensors"], origin: srv.origin});
+    await P.send("DeviceOrientation.setDeviceOrientationOverride", {alpha: 0, beta: 30, gamma: 0});
     await P.scheme(theme === "dark");
     await P.goto(`${srv.base}${srv.query ? srv.query + "&" : "?"}tier=high#tab=3d`);
     if (!check(await P.waitFor(`window.tngViewer3d && tngViewer3d.species && document.querySelector("#v3-head")`, 240000, 250) >= 0, `${key}: viewer mounted`)) continue;
