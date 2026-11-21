@@ -1,7 +1,7 @@
 // Unit checks of the head and tilt control math (docs/tng50/js/headmath.js): pose from the facial transformation matrix,
 // the One Euro filter, the dead zone and sensitivity map, the off-axis projection and the tilt pose.
 // Usage: node tests/js/headctl_unit.mjs
-import {poseFromMatrix, matrixFromPose, oneEuro, deadGain, orbitMap, windowMap, frustum, symmetric, offAxis, tiltPose} from "../../docs/tng50/js/headmath.js";
+import {poseFromMatrix, matrixFromPose, oneEuro, deadGain, orbitMap, windowMap, frustum, symmetric, offAxis, tiltPose, stepToward} from "../../docs/tng50/js/headmath.js";
 
 let n = 0, bad = 0;
 const check = (ok, msg) => { n++; if (!ok) { bad++; console.log("FAIL " + msg); } else console.log("ok " + msg); };
@@ -79,6 +79,13 @@ check(near(deadGain(3 + 1e-9, 3, 2), 0, 1e-8), "dead zone: continuous at its edg
   check(Number.isFinite(tiltPose(0, 89).x) && Math.abs(tiltPose(0, 89).x) <= 40 * Math.tan(Math.PI / 3) + 1e-9, "tilt: extreme tilt is clamped to 60 degrees");
   const ref = tiltPose(30, -10), o = orbitMap(tiltPose(30, -10), ref);
   check(o.yaw === 0 && o.pitch === 0, "tilt: the current tilt as neutral gives no motion"); }
+
+/* 60 fps interpolation stepToward */
+{ const s0 = stepToward(null, {yaw: 20, pitch: -10, zoom: 1}, 1 / 60);
+  check(s0.moved && s0.val.yaw === 20, "stepToward: first sample adopts the target at once");
+  let cur = {yaw: 0, pitch: 0, zoom: 1}, steps = 0;
+  for (let i = 0; i < 60; i++) { const r = stepToward(cur, {yaw: 20, pitch: 0, zoom: 1}, 1 / 60, {tau: 0.045, snap: 0.04}); cur = r.val; if (r.moved) steps++; }
+  check(steps >= 8 && near(cur.yaw, 20, 0.05), `stepToward: smoothly interpolates across ${steps} 60-fps frames and snaps cleanly to target (${cur.yaw.toFixed(3)})`); }
 
 console.log(bad ? `${bad} of ${n} checks failed` : `all ${n} checks passed`);
 process.exit(bad ? 1 : 0);

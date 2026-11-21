@@ -83,6 +83,20 @@ export function offAxis({ex = 0, ey = 0, ez = 1, h, d, aspect, near, far}) {
   return {m: frustum((-w - x) * k, (w - x) * k, (-h - y) * k, (h - y) * k, near, far), eye: [x, y, dist - d]};
 }
 
+/** Exponential smoothing step toward a target pose or offset (60 fps render-loop interpolation between tracker frames).
+ *  tau: time constant in seconds (~0.045 s = 45 ms); snap: threshold below which cur snaps to target. */
+export function stepToward(cur, target, dt, {tau = 0.045, snap = 1e-3} = {}) {
+  if (!target) return {val: null, moved: false};
+  if (!cur || !(dt > 0) || dt > 0.5) return {val: {...target}, moved: true};
+  const a = 1 - Math.exp(-dt / tau), next = {}; let moved = false;
+  for (const k of Object.keys(target)) {
+    const d = target[k] - cur[k];
+    if (Math.abs(d) > snap) { next[k] = cur[k] + a * d; moved = true; }
+    else next[k] = target[k];
+  }
+  return {val: next, moved};
+}
+
 /** Tilt pose from DeviceOrientationEvent beta (front-back) and gamma (left-right), rotated into screen axes by the screen
  *  orientation angle (0, 90, 180, 270). Tilting the right edge down (gamma up) turns the screen to the right, so the eye
  *  sits to its left; tilting the top toward you (beta up) leaves the eye below the screen's normal. dist: the assumed

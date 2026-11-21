@@ -81,6 +81,16 @@ export function arbiter({handbackMs = 1000} = {}) {
   return {update(seen, t) { if (seen) lastHand = t; return t - lastHand < handbackMs ? "hand" : "head"; }, reset() { lastHand = -Infinity; }};
 }
 
+/** Which tracker reads camera frame k (0, 1, 2, …). With both face and hands on, an active hand in orbit mode gets every
+ *  frame (hands win anyway, so full hand rate); while the head steers (or in window mode, where the head keeps the
+ *  perspective), face gets 3 of every 4 frames and hands 1 of 4 as a low-cost probe. */
+export function pickJob(T, k, {ctrl = "head", mode = "orbit", probe = 4} = {}) {
+  if (!T.hands) return {face: true};
+  if (!T.face) return {hands: true};
+  if (ctrl === "hand" && mode === "orbit") return {hands: true};
+  return k % probe === probe - 1 ? {hands: true} : {face: true};
+}
+
 /** The whole hand controller, one call per hand result. frame: {lm, g (MediaPipe category), score} or null (no hand).
  *  Returns {state: "none" | "rotate" | "zoom" | "paused" | "hold", yaw, pitch, zoom, action: null | "recentre" | "mode"
  *  | "orbit" | "next" | "prev", sign (the held label while state is "hold")}. A fist pauses everything; a pinch zooms; an open palm drags or swipes; holds fire actions. */
@@ -109,39 +119,49 @@ export function handController(o = {}) {
 
 /* ---- device capability ---- */
 
-/** Step 1, quick signals before any permission: {camera: "ok" | "slow" | "none", def: "camera" | "tilt"}.
+/** Step 1, quick signals before any permission: {camera: "ok" | "slow" | "none", def: "camera" | "tilt", hands: bool}.
  *  touch: a coarse-pointer device (it also has tilt); tier: html[data-tier]; cores, mem (GB, may be undefined); hasCam:
- *  a videoinput in enumerateDevices (null while unknown). */
-export function decideQuick({touch = false, tier = "mid", cores = 4, mem, w = 1024, h = 768, hasCam = null} = {}) {
-  if (hasCam === false) return {camera: "none", def: touch ? "tilt" : "camera"};
+ *  a videoinput in enumerateDevices (null while unknown); movingMs: the 3D viewer's measured moving_exact_ms (from
+ *  viewer3d.js stats.calibration). On constrained devices (camera === "slow", low tier, <= 4 cores on mid tier, or a heavy
+ *  3D frame time > 35 ms) hands defaults to false (Head only) so head steering stays smooth, while the options panel still
+ *  lets the visitor turn hands on. */
+export function decideQuick({touch = false, tier = "mid", cores = 4, mem, w = 1024, h = 768, hasCam = null, movingMs = 0} = {}) {
+  if (hasCam === false) return {camera: "none", def: touch ? "tilt" : "camera", hands: false};
   const big = Math.min(w, h) >= 700;                          // a tablet or larger viewport
   const strong = tier === "high" || (tier !== "low" && cores >= 6 && (mem == null || mem >= 4));
   const ok = tier !== "low" && cores >= 4 && (mem == null || mem >= 3) && (!touch || strong || big);
-  return {camera: ok ? "ok" : "slow", def: !touch || ok ? "camera" : "tilt"};
+  const hands = ok && (tier === "high" || (cores >= 6 && (mem == null || mem >= 4) && !(movingMs > 35)));
+  return {camera: ok ? "ok" : "slow", def: !touch || ok ? "camera" : "tilt", hands};
 }
 
 /** Step 2, after a few tracker frames: the median ms per frame -> a plan. full: both trackers at full rate; reduced: a lower
- *  rate; tilt: too slow, Tilt is the better control (touch) or the lowest
- *  rate with a warning (desktop). */
+ *  rate; headOnly: hands are too heavy on a mid-tier desktop/tablet so drop to head-only before dropping to 6 fps; tilt: too
+ *  slow, Tilt is the better control (touch) or the lowest rate with a warning (desktop). */
 export function decideBench(ms, {touch = false, both = true, tier = "mid"} = {}) {
-  if (ms < 30 && tier !== "low") return {plan: "full", fps: 24, hint: ""};
-  if (ms < 60) return {plan: "reduced", fps: 12, hint: ""};
-  return touch ? {plan: "tilt", fps: 6, hint: "Camera control is slow here: Tilt is smoother"} : {plan: "reduced", fps: 6, hint: "Camera control may be slow on this device"};
+  if (ms < 30 && tier !== "low") return {plan: "full", fps: 24, hint: "", dropHands: false};
+  if (ms < 60) return {plan: "reduced", fps: 12, hint: "", dropHands: false};
+  if (both && !touch && tier !== "high" && ms < 110) return {plan: "headOnly", fps: 15, hint: "Head only (hands off for speed)", dropHands: true};
+  return touch ? {plan: "tilt", fps: 6, hint: "Camera control is slow here: Tilt is smoother", dropHands: false}
+    : {plan: "reduced", fps: 6, hint: "Camera control may be slow on this device", dropHands: both && tier !== "high"};
 }
 
 /** Runtime governor: warm frames give the bench decision, then a running mean of ms per frame steps the rate down
- *  (24 -> 12 -> 6 fps) when it stays over budget, and asks for Tilt (touch) when even 6 fps cannot keep up.
- *  update(ms) -> null | {fps, hint, tilt}. */
+ *  (24 -> 12 -> 6 fps, or drops hands on non-high-tier devices when both trackers are on and frame times stay > 80 ms)
+ *  when it stays over budget, and asks for Tilt (touch) when even 6 fps cannot keep up.
+ *  update(ms) -> null | {fps, hint, tilt, dropHands, bench}. */
 export function governor({warm = 5, touch = false, both = true, tier = "mid"} = {}) {
-  const W = []; let fps = 24, mean = 0, over = 0, done = false;
-  return {get fps() { return fps; }, update(ms) {
+  const W = []; let fps = 24, mean = 0, over = 0, done = false, hasHands = both;
+  return {get fps() { return fps; }, setBoth(b) { hasHands = !!b; over = 0; }, update(ms) {
     if (!done) { W.push(ms); if (W.length < warm) return null; done = true;
-      const med = W.slice().sort((a, b) => a - b)[W.length >> 1], d = decideBench(med, {touch, both, tier}); fps = d.fps; mean = med;
-      return {fps, hint: d.hint, tilt: d.plan === "tilt", bench: med}; }
+      const med = W.slice().sort((a, b) => a - b)[W.length >> 1], d = decideBench(med, {touch, both: hasHands, tier}); fps = d.fps; mean = med;
+      if (d.dropHands) hasHands = false;
+      return {fps, hint: d.hint, tilt: d.plan === "tilt", dropHands: !!d.dropHands, bench: med}; }
     mean = 0.9 * mean + 0.1 * ms;
     over = mean > Math.min(60, 1000 / fps) ? over + 1 : 0;
     if (over < 20) return null;
     over = 0;
-    if (fps > 6) { fps = fps > 12 ? 12 : 6; return {fps, hint: "", tilt: false}; }
-    return touch && mean > 120 ? {fps, hint: "Camera control is slow here: Tilt is smoother", tilt: true} : null; }};
+    if (fps > 12) { fps = 12; return {fps, hint: "", tilt: false, dropHands: false}; }
+    if (hasHands && !touch && tier !== "high" && mean > 75) { hasHands = false; return {fps: 12, hint: "Head only (hands off for speed)", tilt: false, dropHands: true}; }
+    if (fps > 6) { fps = 6; return {fps, hint: "", tilt: false, dropHands: false}; }
+    return touch && mean > 120 ? {fps, hint: "Camera control is slow here: Tilt is smoother", tilt: true, dropHands: false} : null; }};
 }
