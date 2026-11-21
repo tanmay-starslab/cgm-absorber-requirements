@@ -1,4 +1,4 @@
-// Head control in a headless Chromium with a fake camera that shows a face (tests/js/fixtures/face_portrait.jpg, the 2012
+// Head control (Head mode) in a headless Chromium with a fake camera that shows a face (tests/js/fixtures/face_portrait.jpg, the 2012
 // official White House portrait, public domain as a US government work, cropped; MediaPipe's own test image).
 // Usage: TNG_BROWSER=1 node tests/js/headctl_browser.mjs [docs/tng50] [--viz DIR] [--edge BIN] [--shots DIR]
 // It builds a short y4m from the fixture with ffmpeg ($FFMPEG, else ffmpeg on PATH, else ~/.conda/envs/cgm/bin/ffmpeg;
@@ -53,15 +53,18 @@ async function run(w, h, mobileTag) {
     const tq = Date.now(); let idle = -1; for (let i = 0; i < 60 && idle < 0; i++) idle = await P.waitFor(`(() => { const t = performance.now(), ok = window.__qt && t - window.__qt < 60; window.__qt = t; return ok; })()`, 5000, 30);
     note(`${tag}: page idle after ${((Date.now() - tq) / 1000).toFixed(0)} s`);
     const lbl = await P.eval(`document.querySelector('[data-testid="v3-head"]').textContent.trim()`);
-    check(lbl === (mobileTag ? "Tilt control" : "Head control"), `${tag}: button label "${lbl}"`);
+    check(lbl === (mobileTag ? "Motion control" : "Head and hands"), `${tag}: button label "${lbl}"`);
     await shot("button");
     if (mobileTag) {   // touch: first no sensor (an error state), then CDP's device-orientation override as the sensor
+      if (!(await P.eval(`document.body.classList.contains("ctl-open")`))) { await P.click("#dock-open"); await sleep(600); }   // the phone controls sheet
+      await P.click('input[name="v3-tab"][value="view"] + span'); await sleep(300);                                                   // and its View tab
       await P.click('[data-testid="v3-head"]'); await P.waitFor(`document.querySelector(".v3c-hc [data-a=start]")`, 15000, 100); await shot("popover");
-      await P.click(".v3c-hc [data-a=start]"); await sleep(2600);
+      await P.waitFor(`document.querySelector(".v3c-hc")?.dataset.camera`, 10000, 100);   // the quick check shows Camera and Tilt
+      await P.click('.v3c-hc input[value="tilt"] + span'); await P.click(".v3c-hc [data-a=start]"); await sleep(2600);
       const st = await P.eval(`document.querySelector(".v3c-hc .hc-st")?.textContent`);
       check(/tilt sensor|permission/i.test(st || ""), `${tag}: tilt without a sensor shows a clear error: "${st}"`); await shot("error");
       await P.send("DeviceOrientation.setDeviceOrientationOverride", {alpha: 0, beta: 30, gamma: 0});
-      await P.click(".v3c-hc [data-a=start]");
+      await P.click('.v3c-hc input[value="tilt"] + span'); await P.click(".v3c-hc [data-a=start]");
       const tt = await until(P, `${HC}.then(H => H.state().on && H.state().tilt && H.state().calibrated)`, 15000, 200);
       const c0 = await P.eval(`tngViewer3d.camera.position.toArray()`);
       for (let g = 2; g <= 20; g += 2) { await P.send("DeviceOrientation.setDeviceOrientationOverride", {alpha: 0, beta: 30, gamma: g}); await sleep(80); }
@@ -76,13 +79,13 @@ async function run(w, h, mobileTag) {
     await P.click('[data-testid="v3-head"]'); await P.waitFor(`document.querySelector(".v3c-hc [data-a=start]")`, 15000, 100); await shot("popover");
     check(before === 0 && P.requests.filter(r => /mediapipe|headworker/.test(r)).length === 0, `${tag}: no tracker file fetched before Start`);
     const n0 = P.requests.length, t0 = Date.now();
-    await P.click(".v3c-hc [data-a=start]");
+    await P.click('.v3c-hc input[value="head"] + span'); await P.click(".v3c-hc [data-a=start]");
     const tc = await until(P, `${HC}.then(H => H.state().calibrated && !!H.state().pose)`, 240000, 500);
     const s1 = await P.eval(`${HC}.then(H => H.state())`);
     check(tc >= 0 && s1.on && s1.tracks === 1, `${tag}: tracking started from the fake camera in ${((Date.now() - t0) / 1000).toFixed(1)} s (${JSON.stringify(s1)})`);
     const after = P.requests.slice(n0);
     note(`${tag}: requests after Start: ${after.filter(r => !/huggingface\.co\/datasets/.test(r)).map(r => r.replace(srv.origin, "")).join(", ")}`);
-    check(after.some(r => /face_landmarker\.task/.test(r)) && after.some(r => /vision_wasm_internal\.wasm/.test(r)), `${tag}: model and WASM fetched from this site (worker requests seen)`);
+    check(after.some(r => /face_landmarker\.task/.test(r)) && after.some(r => /vision_wasm_internal\.wasm/.test(r)) && !after.some(r => /gesture_recognizer/.test(r)), `${tag}: face model and WASM fetched from this site (worker requests seen), no hand model in Head mode`);
     // the 3D cubes the page streams from its data host (huggingface.co, blocked in tests) are the viewer's, not head control's
     const off = after.filter(r => !r.split(" ")[1].startsWith(srv.origin + "/") && !/^\w+ (data|blob):/.test(r) && !/^\w+ https:\/\/huggingface\.co\/datasets\//.test(r));
     check(!off.length, `${tag}: nothing fetched off-origin after Start${off.length ? ": " + off.join(", ") : ""}`);
@@ -90,7 +93,7 @@ async function run(w, h, mobileTag) {
     const c0 = await P.eval(`tngViewer3d.camera.position.toArray()`); await sleep(3000); const c1 = await P.eval(`tngViewer3d.camera.position.toArray()`);
     note(`${tag}: orbit camera moved ${Math.hypot(...c0.map((x, i) => x - c1[i])).toFixed(1)} kpc over 3 s (pose ${JSON.stringify((await P.eval(`${HC}.then(H => H.state().pose)`)))})`);
     await shot("active");
-    await P.click('.v3c-hc [data-m="window"]');
+    await P.click('.v3c-hc input[value="window"] + span');
     // the face pans about 6 cm either way in the fake video: wait for the frustum to go off-axis
     const tw = await until(P, `Math.abs(tngViewer3d.camera.projectionMatrix.elements[8]) > 1e-3`, 60000);
     const sw = await P.eval(`${HC}.then(H => ({s: H.state(), m: tngViewer3d.camera.projectionMatrix.elements.slice()}))`);

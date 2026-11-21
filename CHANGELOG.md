@@ -6,6 +6,14 @@ Detailed notes for each release are on the [Releases](https://github.com/tanmay-
 
 ## [Unreleased]
 
+### Added
+- **Hand control in the 3D tab**: the on-device control now runs Head, Hands or Head + Hands (MediaPipe Gesture
+  Recognizer, vendored). An open palm turns the view, a pinch pushed or pulled zooms, a quick swipe steps sightlines,
+  thumbs up recentres, victory toggles Integral and Volume, point up starts or stops the orbit, a fist pauses. A visible
+  hand takes over from the head until 1 s after it leaves; a glass pill on the stage says who is in control. Touch
+  devices are offered Camera as well as Tilt where the device can run it, and a slow tracker lowers its rate or falls
+  back to Tilt.
+
 ### Changed
 - **Explorer performance**: a device tier (`html[data-tier]` low, mid or high; `?tier=` overrides) from cheap signals and a
   one-off WebGL probe. Low tier: solid panels without blur, infinite animations play once, no liquid background, and the
