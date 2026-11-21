@@ -65,16 +65,19 @@ if (existsSync(COMP)) {
 writeFileSync(join(OUT, "_redirects"), ["/tng50/* /:splat 301", "/tng50 / 301", ""].join("\n"));
 // Cache rules (Workers static assets _headers: one splat per rule, :placeholders match one path segment, and a header set by
 // two matching rules is joined with a comma, so no path matches two Cache-Control rules). Vendor files and fonts never
-// change in place: a year, immutable. js, css, data and images: 5 minutes, then served stale while revalidating for a day. HTML
+// change in place: a year, immutable. js, css and data: revalidated every load (no-cache, 304 when unchanged); images: 5 minutes, then stale-while-revalidate. HTML
 // (and anything unlisted) keeps the default revalidate-every-time.
-const SWR = "public, max-age=300, stale-while-revalidate=86400", IMM = "public, max-age=31536000, immutable";
+// code and data are revalidated on every load (a cheap 304 when unchanged): serving them stale let a browser run an old
+// module next to new CSS after a release (the Edge 'Head + Hands' box, 2026-11-21). Only never-edited images keep a short cache.
+const SWR = "public, max-age=300, stale-while-revalidate=86400", IMM = "public, max-age=31536000, immutable", FRESH = "no-cache";
 const rule = (path, cc) => [path, `  Cache-Control: ${cc}`];
 writeFileSync(join(OUT, "_headers"), [
   "/*", "  X-Content-Type-Options: nosniff", "  Referrer-Policy: strict-origin-when-cross-origin",
   // fonts too: the woff2 names are not hashed, so a changed font file must get a new name
   ...rule("/vendor/*", IMM), ...rule("/learn/:story/vendor/*", IMM), ...rule("/fonts/*", IMM),
-  ...["js", "css", "data", "img"].flatMap(d => rule(`/${d}/*`, SWR)),
-  ...["js", "css", "data", "img", "eq", "media", "films"].flatMap(d => rule(`/learn/:story/${d}/*`, SWR)), ""].join("\n"));
+  ...["js", "css", "data"].flatMap(d => rule(`/${d}/*`, FRESH)), ...rule("/img/*", SWR),
+  ...["js", "css", "data", "eq"].flatMap(d => rule(`/learn/:story/${d}/*`, FRESH)),
+  ...["img", "media", "films"].flatMap(d => rule(`/learn/:story/${d}/*`, SWR)), ""].join("\n"));
 // Per-case story paths (DESIGN_tierA §7.3, behind the picker flag): a copy of the explainer page per listed story, with
 // <base href="../"> for its relative assets and the story id put into ?story= before any page script reads it.
 // shortcut: the shim rewrites the address to <id>/?story=<id> because js/main.js reads only ?story=; drop it once

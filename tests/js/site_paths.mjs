@@ -80,8 +80,8 @@ if (!ship.err) {
   const H = readFileSync(join(ship.out, "_headers"), "utf8"), rules = H.split(/\n(?=\/)/).map(b => ({path: b.split("\n")[0], cc: (b.match(/Cache-Control: (.*)/) || [])[1]})).filter(r => r.cc);
   const re = p => new RegExp("^" + p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/:[A-Za-z]\w*/g, "[^/]+").replace("*", ".*") + "$");
   const hits = u => rules.filter(r => re(r.path).test(u)).map(r => r.cc);
-  for (const [u, want] of [["/js/app.js", /max-age=300, stale-while-revalidate/], ["/data/s/x.bin", /max-age=300/], ["/learn/how-a-spectrum-is-made/vendor/katex/katex.min.js", /immutable/],
-    ["/learn/how-a-spectrum-is-made/js/main.js", /max-age=300/], ["/", null], ["/learn/how-a-spectrum-is-made/", null], ["/index.html", null]]) {
+  for (const [u, want] of [["/js/app.js", /^no-cache$/], ["/css/page.css", /^no-cache$/], ["/data/s/x.bin", /^no-cache$/], ["/img/og/explorer.jpg", /stale-while-revalidate/], ["/learn/how-a-spectrum-is-made/vendor/katex/katex.min.js", /immutable/],
+    ["/learn/how-a-spectrum-is-made/js/main.js", /^no-cache$/], ["/", null], ["/learn/how-a-spectrum-is-made/", null], ["/index.html", null]]) {
     const h = hits(u); check(want ? h.length === 1 && want.test(h[0]) : !h.length, `_headers: ${u} -> ${h.join(" | ") || "default (revalidate)"}`); }
   check(rules.every(r => (r.path.match(/\*/g) || []).length <= 1), "_headers: at most one splat per rule");
 }
