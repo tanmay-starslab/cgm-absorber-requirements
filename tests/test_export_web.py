@@ -518,3 +518,17 @@ def test_no_google_fonts():
              *(ROOT / "docs" / "tng50" / "css").glob("*.css"), *(ROOT / "docs" / "tng50" / "learn").rglob("*.css")]
     bad = [str(p.relative_to(ROOT)) for p in pages if p.is_file() and re.search(r"fonts\.(googleapis|gstatic)\.com", p.read_text(encoding="utf-8"))]
     assert not bad, bad
+
+
+def test_requirements_page_matches_explorer_registry():
+    """Detect & Resolve draws each line in the explorer's colours (tngsight/ions.json) and shares its stylesheet."""
+    tpl = (ROOT / "docs" / "_template.html").read_text(encoding="utf-8")
+    m = re.search(r"const ION_COLORS = (\{.*?\});", tpl, re.S)
+    assert m, "ION_COLORS not found in docs/_template.html"
+    got = {k: [a, b] for k, a, b in re.findall(r'(\w+): \["(#[0-9A-Fa-f]{6})", "(#[0-9A-Fa-f]{6})"\]', m.group(1))}
+    reg = {i["key"]: [i["color"], i["color_dark"]] for i in json.loads((ROOT / "tngsight" / "ions.json").read_text())["ions"]}
+    assert got and all(reg.get(k) == v for k, v in got.items()), {k: (v, reg.get(k)) for k, v in got.items() if reg.get(k) != v}
+    assert 'href="tng50/css/page.css"' in tpl and 'from "tng50/js/liquidtabs.js"' in tpl
+    assert "/*__DATA__*/null" in tpl
+    visible = re.sub(r"<script.*?</script>|<style.*?</style>", "", tpl, flags=re.S)
+    assert "·" not in visible
