@@ -1,10 +1,15 @@
 <p align="center">
-  <a href="https://galaxies.tanmaysingh.uk"><img src="docs/readme/hero.webp" width="100%" alt="Gas around a TNG50 galaxy rendered in 3D as nested temperature shells, cool blue outside and hot gold inside, crossed by one sightline"></a>
+  <a href="https://galaxies.tanmaysingh.uk/?tf=T~B4.5_0.03_0.25_2341af~B5_0.03_0.35_64b9ff~B5.5_0.03_0.5_ffd732~EnH_1~W4.4_6.3~FT#id=rand_b062_a062&ions=HI,MgII,SiIII,CIV,OVI&lay=1&R=uv:15000,50000;euv:15000,50000;xray:300,3000&sn=20,5&vc=0&vw=400&seed=0&fit=1&intr=1&tab=3d"><img src="docs/readme/hero.webp" width="100%" alt="The explorer's 3D stage: gas around TNG50 galaxy 488530 rendered as temperature shells, cool blue to hot gold, around the starlit disk, crossed by one sightline"></a>
 </p>
+<p align="center"><sub>Gas around galaxy 488530 coloured by temperature, as the explorer's 3D view shows it at <a href="https://galaxies.tanmaysingh.uk/?tf=T~B4.5_0.03_0.25_2341af~B5_0.03_0.35_64b9ff~B5.5_0.03_0.5_ffd732~EnH_1~W4.4_6.3~FT#id=rand_b062_a062&ions=HI,MgII,SiIII,CIV,OVI&lay=1&R=uv:15000,50000;euv:15000,50000;xray:300,3000&sn=20,5&vc=0&vw=400&seed=0&fit=1&intr=1&tab=3d">this link</a>.</sub></p>
 
 <h1 align="center">Seeing the Circumgalactic Medium</h1>
 
 <p align="center"><b>Shine a beam of light through a simulated galaxy's halo and read what the gas leaves behind.</b></p>
+
+<p align="center">
+  <a href="https://galaxies.tanmaysingh.uk/"><b>Try it in your browser &rarr;</b></a>
+</p>
 
 <p align="center">
   <a href="https://galaxies.tanmaysingh.uk"><img alt="Live site" src="https://img.shields.io/badge/live-galaxies.tanmaysingh.uk-7c8cff?style=flat-square"></a>
@@ -14,33 +19,23 @@
   <a href="https://www.tng-project.org/data/"><img alt="Data: IllustrisTNG TNG50" src="https://img.shields.io/badge/data-IllustrisTNG%20TNG50-f08a4b?style=flat-square"></a>
 </p>
 
-<p align="center">
-  <a href="https://galaxies.tanmaysingh.uk/"><b>Explorer</b></a> &nbsp;|&nbsp;
-  <a href="https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/"><b>How an absorption spectrum is made</b></a> &nbsp;|&nbsp;
-  <a href="https://galaxies.tanmaysingh.uk/requirements/"><b>Detect & Resolve</b></a> &nbsp;|&nbsp;
-  <a href="#technical-details"><b>Technical details</b></a>
-</p>
-
-Every galaxy sits inside a vast halo of thin gas, the circumgalactic medium (CGM), which holds much of the raw
-material it will turn into stars. The halo is far too faint to photograph, so we see it only when a distant quasar
-shines through it: each kind of atom takes its own small bite out of the light, and those dips tell us how much gas
-there is, how hot it is and how it moves.
-
-This site lets you do that with 198 Milky Way and Andromeda look-alikes from the TNG50 simulation, in your browser.
+Every galaxy sits inside a vast, faint halo of gas, the circumgalactic medium. We only see it when a distant quasar
+shines through: each kind of atom bites its own dip out of the light, and those dips tell us how much gas there is,
+how hot it is and how it moves. This site lets you do that for 198 Milky Way look-alikes from the TNG50 simulation.
 
 ## What you can do
 
 ### Read the light
 
 <p align="center"><a href="https://galaxies.tanmaysingh.uk/"><img src="docs/readme/spectra.webp" width="100%" alt="The explorer comparing five absorption lines at two resolving powers, with fitted components"></a></p>
-<p align="center"><sub>Twelve ions along any sightline, from cool hydrogen to million-degree oxygen, seen through the telescope you choose and fitted in your browser.</sub></p>
+<p align="center"><sub>Twelve ions along any sightline, through the telescope you choose.</sub></p>
 
 ### Fly through the gas
 
 <p align="center"><img src="docs/readme/gas-3d.webp" width="100%" alt="Six 3D views of the same galaxy: THOR gas phases, O VI column, line-of-sight velocity, gas density, face-on and edge-on"></p>
-<p align="center"><sub>Turn the galaxy in 3D and colour its gas by temperature phase, any of the twelve ions, velocity or density, with your sightline drawn in place. Top: gas phases, O VI, line-of-sight velocity. Bottom: gas density, face-on, edge-on. Optional head and hand control (or tilt on a phone) steers the view, on your device.</sub></p>
+<p align="center"><sub>Colour the halo by temperature, any ion, velocity or density, and turn it any way you like.</sub></p>
 
-### Watch a spectrum being made
+### Watch a spectrum form
 
 <table>
   <tr>
@@ -48,37 +43,24 @@ This site lets you do that with 198 Milky Way and Andromeda look-alikes from the
     <td width="50%"><img src="docs/readme/learn-step.webp" alt="A step of the story, midway from gas cells to a fitted spectrum"></td>
   </tr>
 </table>
-<p align="center"><sub>Follow one beam cell by cell, from the gas to a fitted spectrum, as a scroll story or a short film.</sub></p>
+<p align="center"><sub>Follow one beam cell by cell, from gas to a fitted spectrum.</sub></p>
 
-### Ask what a telescope can see
+### Take it anywhere
 
-<p align="center"><a href="https://galaxies.tanmaysingh.uk/requirements/"><img src="docs/readme/requirements.webp" width="100%" alt="Detect & Resolve: maps of the weakest detectable absorber and the smallest resolvable separation, with real spectrographs marked"></a></p>
-<p align="center"><sub>Detect & Resolve maps the signal-to-noise and resolving power it takes to detect an absorber and split it into components, with real spectrographs marked.</sub></p>
+<p align="center"><img src="docs/readme/mobile.webp" width="520" alt="The explorer on a phone: the spectra with the glass dock, and the control sheet pulled up"></p>
+<p align="center"><sub>Works on a phone, nothing to install.</sub></p>
 
-### Take it with you
+## Three ways in
 
-<p align="center"><img src="docs/readme/mobile.webp" width="560" alt="The explorer on a phone: the spectra with the glass dock, and the control sheet pulled up"></p>
-<p align="center"><sub>Everything works on a phone, with nothing to install.</sub></p>
+- [**Explorer**](https://galaxies.tanmaysingh.uk/) for sightlines, spectra and 3D gas.
+- [**How an absorption spectrum is made**](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) for the story.
+- [**Detect & Resolve**](https://galaxies.tanmaysingh.uk/requirements/) for what a telescope needs to see it.
 
-## The three pages
+## Credit and feedback
 
-| Page | What it is |
-|---|---|
-| [**Explorer**](https://galaxies.tanmaysingh.uk/) | Sightlines, spectra, fits, 3D gas and a chat helper for 198 TNG50 galaxies |
-| [**How an absorption spectrum is made**](https://galaxies.tanmaysingh.uk/learn/how-a-spectrum-is-made/) | A cinematic story from gas cells to a fitted spectrum |
-| [**Detect & Resolve**](https://galaxies.tanmaysingh.uk/requirements/) | The instrument study: the S/N and resolving power it takes to detect and resolve an absorber |
-
-## Credit
-
-This is not a published work, so there is nothing formal to cite. If the site or the code helps you, a short
-acknowledgement with a link to https://galaxies.tanmaysingh.uk is kindly appreciated. The simulation and the tools it
-builds on have their own citation requests, listed under [Credits](#credits).
-
-## Feedback and contributing
-
-Found a bug, spotted a number that looks wrong, or have an idea? Open an
-[issue](https://github.com/tanmay-starslab/cgm-absorber-requirements/issues), or read
-[CONTRIBUTING.md](CONTRIBUTING.md) to send a pull request.
+No formal citation needed; a link to https://galaxies.tanmaysingh.uk is kindly appreciated. The simulation and tools
+have their own citation requests under [Credits](#credits). Found a bug or have an idea? Open an
+[issue](https://github.com/tanmay-starslab/cgm-absorber-requirements/issues) or see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -98,6 +80,8 @@ redirect to the new site.
 <summary><b>Detect &amp; Resolve: method, transitions and figures</b></summary>
 
 ### Detect & Resolve
+
+<p align="center"><img src="docs/readme/requirements.webp" width="80%" alt="Detect & Resolve: maps of the weakest detectable absorber and the smallest resolvable separation for C IV, with real spectrographs marked"></p>
 
 ![Requirement matrix](figures/requirements_matrix.png)
 
