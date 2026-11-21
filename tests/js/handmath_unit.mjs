@@ -2,7 +2,7 @@
 // swipe, palm motion -> rotation, pinch -> zoom, fist pause, the hands-win arbitration and the capability decisions.
 // Usage: node tests/js/handmath_unit.mjs
 import {handFeatures, labelSmoother, pinchGate, holdGate, swipeDetector, palmRotate, pinchZoom, arbiter, handController,
-  decideQuick, decideBench, governor} from "../../docs/tng50/js/handmath.js";
+  decideQuick, decideBench, governor, LABELS} from "../../docs/tng50/js/handmath.js";
 
 let n = 0, bad = 0;
 const check = (ok, msg) => { n++; if (!ok) { bad++; console.log("FAIL " + msg); } else console.log("ok " + msg); };
@@ -113,7 +113,9 @@ const run = (C, frames, t0 = 0, dt = 1000 / 12) => frames.map((f, i) => C.update
   const a2 = run(D, G, 0, 40).map(r => r.action).filter(Boolean); check(a2.length === 1 && a2[0] === "prev", `controller: a quick swipe left is previous (${a2})`); }
 for (const [g, act] of [["Thumb_Up", "recentre"], ["Victory", "mode"], ["Pointing_Up", "orbit"]]) {
   const C = handController(), acts = run(C, Array.from({length: 24}, () => ({lm: hand(0.5, 0.5), g, score: 0.9}))).map(r => r.action).filter(Boolean);
-  check(acts.length === 1 && acts[0] === act, `controller: ${g} held 2 s fires "${act}" once (${acts})`); }
+  check(acts.length === 1 && acts[0] === act, `controller: ${g} held 2 s fires "${act}" once (${acts})`);
+  const o = run(handController(), Array.from({length: 6}, () => ({lm: hand(0.5, 0.5), g, score: 0.9}))).at(-1);
+  check(o.state === "hold" && o.sign === LABELS[g] && o.yaw === 0, `controller: while ${g} is held the state is "hold" with sign "${o.sign}" (the pill shows it)`); }
 { const C = handController(); run(C, [{lm: hand(0.5, 0.5), g: "Open_Palm", score: 0.9}]); const r = C.update(null, 200);
   check(r.state === "none" && r.yaw === 0, "controller: no hand is state none"); }
 
@@ -130,7 +132,7 @@ for (const [g, act] of [["Thumb_Up", "recentre"], ["Victory", "mode"], ["Pointin
   check(q({touch: false, tier: "low", cores: 2, hasCam: true}).camera === "slow" && q({touch: false, tier: "low", cores: 2, hasCam: true}).def === "camera", "quick: a weak desktop keeps camera (no tilt) but says slow"); }
 { const b = decideBench;
   check(b(18).plan === "full" && b(18).fps === 24, "bench: under 30 ms is full rate");
-  check(b(45).plan === "reduced" && b(45).fps === 12 && /Hands only/.test(b(45, {both: true}).hint) && b(45, {both: false}).hint === "", "bench: 30 to 60 ms reduces the rate and suggests Hands only when both run");
+  check(b(45).plan === "reduced" && b(45).fps === 12 && b(45).hint === "", "bench: 30 to 60 ms reduces the rate quietly");
   check(b(90, {touch: true}).plan === "tilt" && /Tilt/.test(b(90, {touch: true}).hint), "bench: slower on touch falls back to Tilt");
   check(b(90, {touch: false}).plan === "reduced" && b(90).fps === 6 && /slow/.test(b(90).hint), "bench: slower on desktop runs at 6 fps and says it may be slow");
   check(b(20, {tier: "low"}).plan === "reduced", "bench: a low tier never gets full rate"); }

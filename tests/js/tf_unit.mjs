@@ -5,7 +5,7 @@
 // pins the text-level guarantees: TF code runs only under uTFOn with uMode 1 outside velocity views.)
 // Usage: node tests/js/tf_unit.mjs
 import {TF_W, TF_H, MAX_BANDS, PRESETS, PRESET_LABELS, THOR, NELSON16, NELSON16_WMIN, GMAX_DEFAULT, evalTF, buildTF, preset, encodeTF, decodeTF,
-  histogram, histogram2D, gradAt, gradMask, tfUniforms, defaultWRef} from "../../docs/tng50/js/tf.js";
+  histogram, histogram2D, gradAt, gradMask, tfUniforms, defaultWRef, W_MIN, W_MAX, wPos, posW, fmtW} from "../../docs/tng50/js/tf.js";
 import {lut} from "../../docs/tng50/js/colormaps.js";
 import {FRAG, makeMaterial} from "../../docs/tng50/js/raymarch.js";
 
@@ -84,6 +84,14 @@ const L = lut("inferno");
   const many = Array.from({length: 12}, (_, i) => `B${i}_1_1_m`).join("~"); check(decodeTF(many, ctxNH).bands.length === MAX_BANDS, `at most ${MAX_BANDS} bands`);
   const cl = decodeTF("B0_-0.5_7_ff0000~S3~E nH_1".replace(" ", ""), ctxNH);
   check(cl && cl.bands[0].w === 0.5 && cl.bands[0].a === 1 && cl.shade === 1, "decodeTF clamps alpha and shading to [0, 1], |width|"); }
+
+/* band width slider: log scale 0.01..2 dex (position = log10 w), clamped, round trip, display precision */
+{ check(W_MIN === 0.01 && W_MAX === 2 && near(wPos(0.01), -2) && near(wPos(2), Math.log10(2)) && posW(-2) === 0.01 && posW(Math.log10(2)) === 2, "width slider: endpoints 0.01 and 2 dex");
+  check([0.01, 0.03, 0.05, 0.1, 0.2, 0.5, 1, 2].every(w => posW(wPos(w)) === w), "width slider: w -> position -> w round-trips (0.01 to 2 dex)");
+  check(wPos(0.001) === -2 && wPos(0) === -2 && wPos(5) === Math.log10(2) && posW(-5) === 0.01 && posW(3) === 2, "width slider: values outside 0.01..2 clamp to the ends");
+  check(decodeTF("B5_0.003_0.5_m", ctxT).bands[0].w === 0.01, "decodeTF: an old state's width below 0.01 dex is raised to 0.01");
+  check(fmtW(0.03) === "0.030" && fmtW(0.2) === "0.20" && fmtW(1) === "1.00", `width display: ${fmtW(0.03)}, ${fmtW(0.2)}, ${fmtW(1)}`);
+  check(NELSON16.bands.every(b => near(posW(wPos(b.w)), b.w)) && THOR.bands.every(b => near(posW(wPos(b.w)), b.w)), "width slider shows the Nelson+16 (0.03) and THOR (0.1, 0.2) widths exactly"); }
 
 /* histograms and gradient */
 { const n = 8, vmin = -6, vmax = 0.4, cube = new Uint8Array(n * n * n);

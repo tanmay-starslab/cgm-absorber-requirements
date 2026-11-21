@@ -13,6 +13,14 @@ Detailed notes for each release are on the [Releases](https://github.com/tanmay-
   hand takes over from the head until 1 s after it leaves; a glass pill on the stage says who is in control. Touch
   devices are offered Camera as well as Tilt where the device can run it, and a slow tracker lowers its rate or falls
   back to Tilt.
+- **Hands-free** replaces the Head / Hands / Head + Hands choice: one click starts head and hands together (head steers,
+  hand gestures act), the browser's camera prompt is the only consent step, and a second click or Esc stops. A small
+  gesture guide shows on the stage for 6 s and comes back from the "?" on the status pill; the pill shows a held sign
+  ("👍 hold…"). Window view, sensitivity and preview sit under "options".
+- **Stage fullscreen icon**: a glass button at the top right of the 3D stage; Fullscreen and Hands-free now share one row
+  in the View card.
+- **Transfer function band width** slider is log scale from 0.01 to 2 dex (URL encoding unchanged; older widths below
+  0.01 dex read as 0.01).
 
 ### Changed
 - **Explorer performance**: a device tier (`html[data-tier]` low, mid or high; `?tier=` overrides) from cheap signals and a

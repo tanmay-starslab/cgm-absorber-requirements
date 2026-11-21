@@ -3,17 +3,16 @@
 // Usage: TNG_BROWSER=1 node tests/js/handctl_browser.mjs [docs/tng50] [--viz DIR] [--edge BIN] [--shots DIR]
 // It builds a short y4m of the hand panning sideways with ffmpeg ($FFMPEG, else ffmpeg on PATH, else
 // ~/.conda/envs/cgm/bin/ffmpeg; skipped when none is found). Two camera sessions (model loading is slow on a busy CPU node):
-// at 1440 px (desktop), Head + Hands:
-//   - the popover offers Head, Hands and Head + Hands (default) with the privacy line, and loads nothing before Start;
+// at 1440 px (desktop), Hands-free (head and hands together, the only mode):
+//   - one click on Hands-free starts it (no selector, no Start), nothing loads before the click;
 //   - the real Gesture Recognizer sees the hand in the clip and the pill says so;
 //   - with synthetic landmarks fed through the test hook (headctl._hand, which then mutes the tracker's own hand results):
-//     the pill's rotate, zoom and paused states, the view turning and zooming, the fist freezing it, the swipe and hold
+//     the pill's rotate, zoom, paused and hold states ("👍 hold…" while a sign is held), the view turning and zooming, the fist freezing it, the swipe and hold
 //     actions with their toasts, and the head resuming 1 s after the hand leaves;
-//   - Stop ends every camera track and removes the pill; a low-tier desktop is told camera control may be slow;
-// at 390 px (touch): Camera and Tilt offered from the quick signals (Camera by default on a high tier); Hands only on the
-// real tracker never fetches the face model and nothing goes off-origin; a slow tracker (frame times fed through
-// headctl._rate) falls back to Tilt with a message and the camera off; a low tier defaults to Tilt with "May be slow".
-// With --shots DIR it saves the mode selector, the pill states and the capability messages.
+//   - a second click ends every camera track and removes the pill and guide; a low-tier desktop is told it may be slow;
+// at 390 px (touch, high tier): one tap starts the camera, the real tracker sees the hand, nothing goes off-origin; a slow
+// tracker (frame times fed through headctl._rate) stops with a message and the camera off, and the next tap starts Tilt.
+// With --shots DIR it saves the running state, the pill states and the capability messages.
 import {mkdirSync, rmSync} from "node:fs";
 import {execFileSync} from "node:child_process";
 import {join, resolve} from "node:path";
@@ -30,6 +29,9 @@ const Y4M = join(work, "hand.y4m");
 execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-i", join(ROOT, "tests/js/fixtures/hand_open_palm.jpg"),
   "-filter_complex", "color=c=0xc9c3bb:s=480x300:r=15:d=4[bg];[bg][0]overlay=x=120+80*sin(2*PI*t/4):y=21:shortest=1,scale=320:200,format=yuv420p", "-t", "4", Y4M]);
 
+// TNG_NOGL=1: stub the page's GL draw and upload calls (as layout_3d.mjs does) so a software-GL GPU process on a loaded
+// node never stalls the page; the stage renders black, the tracker (in its worker) is untouched
+const NOGL = process.env.TNG_NOGL ? [`for (const C of [self.WebGL2RenderingContext, self.WebGLRenderingContext]) if (C) for (const f of ["drawArrays","drawElements","drawArraysInstanced","drawElementsInstanced","drawRangeElements","clear","blitFramebuffer","texImage3D","texSubImage3D","readPixels"]) if (C.prototype[f]) C.prototype[f] = function () {};`] : [];
 const C = checker(), check = C.check, note = C.note;
 const srv = await serve({dir: DIR, page: PAGE, port: opt.port, viz: opt.viz || process.env.TNG_VIZ});
 const ARGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-video-capture=${Y4M}`, "--enable-unsafe-swiftshader"];
@@ -61,12 +63,12 @@ async function open(P, w, h, mobile, query) {
   for (let i = 0, idle = -1; i < 60 && idle < 0; i++) idle = await P.waitFor(`(() => { const t = performance.now(), ok = window.__qt && t - window.__qt < 60; window.__qt = t; return ok; })()`, 5000, 30);
   return true;
 }
-const popover = async P => {
+const press = async P => {
   if (P.mobile && !(await P.eval(`document.body.classList.contains("ctl-open")`))) { await P.click("#dock-open"); await sleep(600); }   // phones: the controls sheet,
   if (P.mobile) { await P.click('input[name="v3-tab"][value="view"] + span'); await sleep(300); }                                        // then its View tab
-  await P.click('[data-testid="v3-head"]'); return P.waitFor(`document.querySelector(".v3c-hc [data-a=start]")`, 15000, 100); };
+  await P.click('[data-testid="v3-head"]'); return P.waitFor(`document.querySelector(".v3c-hc")`, 15000, 100); };
 async function browser(w, h) {
-  const P = await launch({edge: opt.edge, block: BLOCK, width: w, height: h, args: ARGS, reducedMotion: false});
+  const P = await launch({edge: opt.edge, block: BLOCK, width: w, height: h, args: ARGS, reducedMotion: false, inject: NOGL});
   P.on(m => { if (m.method === "Target.attachedToTarget" && m.params.targetInfo.type === "worker") { const sid = m.params.sessionId;
     P.send("Network.enable", {}, sid).then(() => P.send("Runtime.runIfWaitingForDebugger", {}, sid)); } });
   await P.send("Target.setAutoAttach", {autoAttach: true, waitForDebuggerOnStart: true, flatten: true});
@@ -79,19 +81,16 @@ async function desktop() {
   try {
     if (!(await open(P, w, 900, false, "tier=high"))) { check(false, `${tag}: 3D viewer mounted`); return; }
     const lbl = await P.eval(`document.querySelector('[data-testid="v3-head"]').textContent.trim()`);
-    check(lbl === "Head and hands", `${tag}: button label "${lbl}"`);
+    check(lbl === "Hands-free", `${tag}: button label "${lbl}"`);
     const before = P.requests.filter(r => /mediapipe|headworker/.test(r)).length;
-    await popover(P); await sleep(300); await shot("modes");
-    const pop = await P.fn(`const b = document.querySelector(".v3c-hc"); return {modes: [...b.querySelectorAll('[name="hc-track"]')].map(i => i.value + (i.checked ? "*" : "")), labels: [...b.querySelectorAll('.hc-cam span')].map(s => s.textContent),
-      msg: b.querySelector(".hc-msg").textContent, src: !!b.querySelector('[name="hc-src"]')};`);
-    check(pop.modes.join() === "head,hands,both*" && pop.labels.join() === "Head,Hands,Head + Hands" && pop.msg === "Runs on your device. No video leaves your computer." && !pop.src,
-      `${tag}: popover offers Head, Hands, Head + Hands (default) with the privacy line, no Tilt (${JSON.stringify(pop)})`);
-    check(before === 0 && P.requests.filter(r => /mediapipe|headworker/.test(r)).length === 0, `${tag}: no tracker file fetched before Start`);
+    check(before === 0, `${tag}: no tracker file fetched before the click`);
     const n0 = P.requests.length, t0 = Date.now();
-    await P.click(".v3c-hc [data-a=start]");
+    await press(P);
+    const one = await P.eval(`document.querySelectorAll('[name="hc-track"], [name="hc-src"], .v3c-hc [data-a=start]').length`);
+    check(one === 0, `${tag}: one click starts it, no mode selector or Start button (${one})`);
     const on = await until(P, `${HC}.then(H => H.state().on)`, 1800000, 1000);
     const s1 = await P.eval(`${HC}.then(H => H.state())`);
-    check(on >= 0 && s1.track === "both" && s1.tracks === 1, `${tag}: Head + Hands started from the fake camera in ${((Date.now() - t0) / 1000).toFixed(0)} s (${JSON.stringify(s1)})`);
+    check(on >= 0 && s1.track === "both" && s1.tracks === 1, `${tag}: Hands-free (head and hands) started from the fake camera in ${((Date.now() - t0) / 1000).toFixed(0)} s (${JSON.stringify(s1)})`);
     const seen = await until(P, `${HC}.then(H => H.state().hand !== "none" && /^Hand ✋/.test(H.state().pill))`, 120000, 250);
     const s1b = await P.eval(`${HC}.then(H => H.state())`);
     check(seen >= 0, `${tag}: the real Gesture Recognizer sees the open hand in the clip, the hand takes over and the pill says "${s1b.pill}" (ctrl ${s1b.ctrl})`);
@@ -136,20 +135,27 @@ async function desktop() {
     await P.fn(`return __feed(5, i => ({lm: __hand(0.5, 0.5), g: "Open_Palm", score: 0.9}));`); await sleep(1600);
     st = await P.fn(`return __feed(22, i => ({lm: __hand(0.5, 0.5), g: "Thumb_Up", score: 0.9}));`);
     check(st.toast === "👍 Recentred", `${tag}: thumbs up held recentres (toast "${st.toast}")`);
+    /* while a sign is held (before and after it fires) the pill shows it, not "Hand ✋ rotate" */
+    await P.fn(`return __feed(5, i => ({lm: __hand(0.5, 0.5), g: "Open_Palm", score: 0.9}));`); await sleep(1600);
+    const hp = await P.fn(`const r = []; for (const g of ["Thumb_Up", "Victory", "Pointing_Up"]) { await __feed(5, i => ({lm: __hand(0.5, 0.5), g, score: 0.9})); r.push((await __feed(1, () => ({lm: __hand(0.5, 0.5), g, score: 0.9}))).pill); await __feed(4, i => ({lm: __hand(0.5, 0.5), g: "Open_Palm", score: 0.9})); } return r;`);
+    check(hp.join() === "👍 hold…,✌️ hold…,☝️ hold…", `${tag}: the pill shows the held sign (${hp.join(" | ")})`);
+    await P.fn(`return __feed(5, i => ({lm: __hand(0.5, 0.5), g: "Thumb_Up", score: 0.9}));`); await shot("pill_hold");
+    await P.fn(`return __feed(5, i => ({lm: __hand(0.5, 0.5), g: "Open_Palm", score: 0.9}));`);   // the hand still in view for the handback below
     await shot("toast_recentred");
     const hb = await P.fn(`const H = await ${HC}; H._hand(null); await new Promise(r => setTimeout(r, 500)); const a = H.state().ctrl; await new Promise(r => setTimeout(r, 1700)); return {a, b: H.state().ctrl, pill: H.state().pill};`);
     check(hb.a === "hand" && hb.b === "head" && hb.pill === "Head", `${tag}: the head resumes about 1 s after the hand leaves (${JSON.stringify(hb)})`);
     await shot("pill_head");
-    await P.click('.v3c-hc [data-a="stop"]'); await sleep(500);
-    const s2 = await P.fn(`const H = await ${HC}; return {on: H.state().on, pill: !!document.querySelector(".v3d-hc"), pressed: document.querySelector('[data-testid="v3-head"]').getAttribute("aria-pressed")};`);
+    await P.click('[data-testid="v3-head"]'); await sleep(500);
+    const s2 = await P.fn(`const H = await ${HC}; return {on: H.state().on, pill: !!document.querySelector(".v3d-hc, .v3d-hg"), pressed: document.querySelector('[data-testid="v3-head"]').getAttribute("aria-pressed")};`);
     const lv = await live(P);
-    check(!s2.on && !s2.pill && lv === 0 && s2.pressed === "false", `${tag}: Stop ends every camera track and removes the pill (${JSON.stringify(s2)}, live ${lv})`);
+    check(!s2.on && !s2.pill && lv === 0 && s2.pressed === "false", `${tag}: a second click ends every camera track and removes the pill and guide (${JSON.stringify(s2)}, live ${lv})`);
     check(!P.exceptions.length, `${tag}: no page exceptions${P.exceptions.length ? ": " + P.exceptions.slice(0, 3).join(" | ") : ""}`);
     /* a low tier says the camera may be slow */
-    await P.eval(`document.querySelector(".v3c-hc")?.remove(); document.documentElement.dataset.tier = "low"`); await popover(P); await sleep(500);   // a low tier mounts no live viewer: the tier the popover reads
-    const lowMsg = await P.eval(`document.querySelector(".v3c-hc .hc-st").textContent`);
+    await P.eval(`document.documentElement.dataset.tier = "low"`); await press(P); await sleep(500);   // a low tier mounts no live viewer: the tier the quick check reads
+    const lowMsg = await P.eval(`document.querySelector(".v3c-hc .hc-st")?.textContent || ""`);
     check(/may be slow/i.test(lowMsg), `${tag}: a low-tier desktop is told camera control may be slow ("${lowMsg}")`);
     await shot("capability_low");
+    await P.click('[data-testid="v3-head"]'); await sleep(300);
   } catch (x) { check(false, `${tag}: aborted: ${x.message}`); }
   finally { await P.close(); }
 }
@@ -158,34 +164,29 @@ async function touch() {
   const w = 390, h = 844, tag = "390px", P = await browser(w, h), shot = async n => { if (SHOTS) await P.shot(join(SHOTS, `handctl_${w}_${n}.png`)); };
   try {
     if (!(await open(P, w, h, true, "tier=high"))) { check(false, `${tag}: 3D viewer mounted`); return; }
-    check(await P.eval(`document.querySelector('[data-testid="v3-head"]').textContent.trim()`) === "Motion control", `${tag}: button label "Motion control"`);
-    await popover(P); await P.waitFor(`document.querySelector(".v3c-hc").dataset.camera`, 10000, 100); await sleep(200);
-    const hi = await P.fn(`const b = document.querySelector(".v3c-hc"); return {cam: b.dataset.camera, src: b.querySelector('[name="hc-src"]:checked')?.value, shown: !b.querySelector(".hc-src").hidden, modes: !b.querySelector(".hc-cam").hidden, msg: b.querySelector(".hc-msg").textContent};`);
-    check(hi.cam === "ok" && hi.src === "camera" && hi.shown && hi.modes && /No video leaves/.test(hi.msg), `${tag}: a high-tier touch device with a camera is offered Camera (default) and Tilt (${JSON.stringify(hi)})`);
-    await shot("capability_ok");
+    check(await P.eval(`document.querySelector('[data-testid="v3-head"]').textContent.trim()`) === "Hands-free", `${tag}: button label "Hands-free"`);
     const n0 = P.requests.length;
-    await P.click('.v3c-hc input[value="hands"] + span'); await P.click(".v3c-hc [data-a=start]");
+    await press(P);
     const on = await until(P, `${HC}.then(H => H.state().on)`, 1800000, 1000);
     const seen = await until(P, `${HC}.then(H => H.state().hand !== "none")`, 120000, 250);
     const s1 = await P.eval(`${HC}.then(H => H.state())`);
-    check(on >= 0 && seen >= 0 && s1.track === "hands" && /^Hand/.test(s1.pill), `${tag}: camera control (Hands) runs on a touch device and sees the hand (${JSON.stringify({pill: s1.pill, bench: s1.bench, fps: s1.fps})})`);
+    check(on >= 0 && seen >= 0 && s1.track === "both" && !s1.tilt && /^Hand/.test(s1.pill), `${tag}: one tap starts the camera on a high-tier touch device and it sees the hand (${JSON.stringify({pill: s1.pill, bench: s1.bench, fps: s1.fps})})`);
     const after = P.requests.slice(n0);
-    check(after.some(r => /gesture_recognizer\.task/.test(r)) && !after.some(r => /face_landmarker/.test(r)), `${tag}: Hands only fetches the hand model from this site and never the face model`);
+    check(after.some(r => /gesture_recognizer\.task/.test(r)) && after.some(r => /face_landmarker\.task/.test(r)), `${tag}: both models fetched from this site`);
     // the page's own backend health polls (blocked in tests) and data host are not the tracker's
     const off = after.filter(r => !r.split(" ")[1].startsWith(srv.origin + "/") && !/^\w+ (data|blob):/.test(r) && !/^\w+ https:\/\/huggingface\.co\/datasets\//.test(r) && !/\/api\/health$/.test(r));
     check(!off.length, `${tag}: nothing fetched off-origin after Start${off.length ? ": " + off.join(", ") : ""}`);
     await shot("pill");
     await P.fn(`const H = await ${HC}; for (let i = 0; i < 300; i++) H._rate(400);`); await sleep(400);
-    const fb = await P.fn(`const H = await ${HC}, b = document.querySelector(".v3c-hc"); return {on: H.state().on, src: b?.querySelector('[name="hc-src"]:checked')?.value, st: b?.querySelector(".hc-st")?.textContent};`);
+    const fb = await P.fn(`const H = await ${HC}; return {on: H.state().on, st: document.querySelector(".v3c-hc .hc-st")?.textContent};`);
     const lv = await live(P);
-    check(!fb.on && lv === 0 && fb.src === "tilt" && /Tilt/.test(fb.st || ""), `${tag}: a slow tracker falls back to Tilt with a message and the camera off (${JSON.stringify(fb)}, live ${lv})`);
+    check(!fb.on && lv === 0 && /Tilt/.test(fb.st || ""), `${tag}: a slow tracker stops the camera with a message pointing to Tilt (${JSON.stringify(fb)}, live ${lv})`);
     await shot("fallback");
-    await P.eval(`document.querySelector(".v3c-hc")?.remove(); document.documentElement.dataset.tier = "low"`); await popover(P); await P.waitFor(`document.querySelector(".v3c-hc").dataset.camera`, 10000, 100); await sleep(200);
-    const lo = await P.fn(`const b = document.querySelector(".v3c-hc"); return {cam: b.dataset.camera, src: b.querySelector('[name="hc-src"]:checked')?.value};`);
-    await P.click('.v3c-hc input[value="camera"] + span'); await sleep(200);
-    const loMsg = await P.eval(`document.querySelector(".v3c-hc .hc-st").textContent`);
-    check(lo.cam === "slow" && lo.src === "tilt" && /may be slow/i.test(loMsg), `${tag}: a low-tier touch device defaults to Tilt, camera offered as may be slow (${JSON.stringify(lo)}, "${loMsg}")`);
-    await shot("capability_slow");
+    await P.send("DeviceOrientation.setDeviceOrientationOverride", {alpha: 0, beta: 30, gamma: 0});
+    await P.click('[data-testid="v3-head"]');
+    const tt = await until(P, `${HC}.then(H => H.state().on && H.state().tilt)`, 15000, 200);
+    check(tt >= 0 && (await live(P)) === 0, `${tag}: the next tap starts Tilt, no camera`);
+    await P.click('[data-testid="v3-head"]'); await sleep(300);
     check(!P.exceptions.length, `${tag}: no page exceptions${P.exceptions.length ? ": " + P.exceptions.slice(0, 3).join(" | ") : ""}`);
   } catch (x) { check(false, `${tag}: aborted: ${x.message}`); }
   finally { await P.close(); }

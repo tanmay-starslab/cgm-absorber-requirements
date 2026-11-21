@@ -56,6 +56,12 @@ export const NELSON16 = {field: "T", emis: "nH", gamma: 1, win: [4.4, 6.3],
           {c: 6.0, w0: 0.003, a: 0.7, rgb: [225, 45, 35]}].map(b => ({...b, w: Math.max(b.w0, NELSON16_WMIN)}))};
 
 const clamp01 = x => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+/* band width slider (tfeditor.js): log scale, slider position = log10 w over W_MIN..W_MAX dex; the state keeps w in dex */
+export const W_MIN = 0.01, W_MAX = 2;
+export const wPos = w => Math.log10(Math.min(W_MAX, Math.max(W_MIN, +w || W_MIN)));
+export const posW = p => Math.min(W_MAX, Math.max(W_MIN, Math.round(10 ** p * 1000) / 1000));
+export const fmtW = w => (+w).toFixed(w < 0.1 ? 3 : 2);
 const sstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 const G_SOFT = 0.04;        /* soft edge of a band's gradient range (normalised units) */
 
@@ -147,7 +153,7 @@ export function decodeTF(s, ctx = null) {
       if (k === "R") { st.ramp = {lo: F(p[0]), hi: F(p[1]), a: clamp01(F(p[2]))}; const g = G(p, 3); if (g) st.ramp.g = g; }
       else if (k === "B") { if (st.bands.length >= MAX_BANDS) continue;
         if (!(p[3] === "m" || /^[0-9a-f]{6}$/i.test(p[3] || ""))) throw 0;
-        const b = {c: F(p[0]), w: Math.max(1e-3, Math.abs(F(p[1]))), a: clamp01(F(p[2])), rgb: p[3] === "m" ? null : [0, 2, 4].map(i => parseInt(p[3].slice(i, i + 2), 16))};
+        const b = {c: F(p[0]), w: Math.max(W_MIN, Math.abs(F(p[1]))), a: clamp01(F(p[2])), rgb: p[3] === "m" ? null : [0, 2, 4].map(i => parseInt(p[3].slice(i, i + 2), 16))};
         const g = G(p, 4); if (g) b.g = g; st.bands.push(b); }
       else if (k === "D" && tok.length === 1) st.twoD = true;
       else if (k === "S") st.shade = clamp01(F(p[0]));
