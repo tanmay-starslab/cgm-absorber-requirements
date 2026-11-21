@@ -48,8 +48,9 @@ look-alikes, read the spectrum it makes, change the telescope, and see what a re
     <td width="45%"><img src="docs/readme/gas-3d.webp" alt="The 3D view: gas density around galaxy 488530 with the sightline crossing it"></td>
     <td>Turn the galaxy around and see the gas your beam passes through: density, temperature, metals, each of the
     twelve ions, the gas velocities and the starlight, with the sightline drawn in place. Pick a point to cast a new
-    beam. Optional head control (or tilt, on a phone) steers the view or turns the screen into a window onto the
-    galaxy. It runs on your device: no camera frame is stored, uploaded or logged.</td>
+    beam. Optional head and hand control (or tilt, on a phone) steers the view or turns the screen into a window onto
+    the galaxy; hand signs zoom, step sightlines, switch the render and start the orbit. It runs on your device: no
+    camera frame is stored, uploaded or logged.</td>
   </tr>
 </table>
 
@@ -392,9 +393,11 @@ Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full t
   (Apache-2.0) and ffmpeg, build tools only, not vendored. No GSAP or Remotion.
 - **uisfx** 0.4.0 (code MIT, sounds CC0): the optional UI sound effects runtime, vendored in
   `docs/tng50/vendor/uisfx/` with both licences.
-- **MediaPipe Tasks Vision** 1.2.3 and the **Face Landmarker** model (Apache-2.0, © Google LLC): vendored in
-  `docs/tng50/vendor/mediapipe/` with the licence and a README (versions, sources, sha256, the one change: the usage
-  logger is disabled). Loaded only when a visitor starts head control in the 3D tab.
+- **MediaPipe Tasks Vision** 1.2.3 and the **Face Landmarker** and **Gesture Recognizer** models (Apache-2.0, © Google LLC):
+  vendored in `docs/tng50/vendor/mediapipe/` with the licence and a README (versions, sources, sha256, the one change: the
+  usage logger is disabled). `gesture_recognizer.task` (float16) has sha256
+  `97952348cf6a6a4915c2ea1496b4b37ebabc50cbbf80571435643c455f2b0482`. Loaded only when a visitor starts head or hand control
+  in the 3D tab.
 - **TNG50 data.** The TNG50-derived spectra, library, story data and 3D cubes (`docs/tng50/data/`, `docs/tng50/learn/*/data/`, the npz library, the
   private HF dataset and the public datasets `tanmay-starslab/tng50-mwm31-web-0` to `-3` and `tanmay-starslab/tng50-sub488530-viz`)
   are not MIT and are not relicensed here. They are used as the TNG Collaboration requests
