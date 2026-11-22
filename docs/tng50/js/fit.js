@@ -94,8 +94,12 @@ export function tauVoigt(atom, comps, vGrid, out) {
   for (const c of comps || []) {
     const vc = Array.isArray(c) ? c[0] : c.v, lN = Array.isArray(c) ? c[1] : c.logN, b = Array.isArray(c) ? c[2] : c.b;
     if (!(b > 0) || !Number.isFinite(lN) || !Number.isFinite(vc)) continue;
-    const A = kTau * 10 ** lN, a = a0 / b, ib = 1 / b;
-    for (let i = 0; i < n; i++) tau[i] += A * wofz4((vGrid[i] - vc) * ib, a, w4, u)[0] * ib;
+    const A = kTau * 10 ** lN, a = a0 / b, ib = 1 / b, C = A * a * ISQPI * ib;
+    for (let i = 0; i < n; i++) {
+      const x = (vGrid[i] - vc) * ib, ax = Math.abs(x);
+      if (ax > 15 && a < 0.05 && C < 1e-8 * x * x) continue;
+      tau[i] += A * wofz4(x, a, w4, u)[0] * ib;
+    }
   }
   return tau;
 }
@@ -362,16 +366,19 @@ function makeWindow(ctx, lo, hi, dataIdx) {
   const Vf = new Float64Array(nf); for (let i = 0; i < nf; i++) Vf[i] = (line.u0 + (i0 + i) * du) + vSys;
   const vd = Float64Array.from(dataIdx, m => ctx.data.v[m]), d = Float64Array.from(dataIdx, m => ctx.data.flux[m]);
   const smp = makeSampler(vd, line.u0, du, n, vSys, ctx.R, 0, i0, i1), N = vd.length, sig = ctx.data.sigma, w4 = new Float64Array(4);
-  const tauOne = (vc, lN, b, tau, D) => {                      // adds one component's tau; D = [dv, dlogN, db] columns or null
+  const tauOne = (vc, lN, b, tau, D, clip = false) => {         // adds one component's tau; D = [dv, dlogN, db] columns or null
     const A = kTau * 10 ** lN, a = a0 / b, ib = 1 / b;
-    for (let i = 0; i < nf; i++) {
+    const hw = clip ? Math.max(14 * b, 600 * Math.sqrt(Math.max(1e-6, a) * (10 ** (lN - 14))) * b) : 0;
+    const j0 = clip ? Math.max(0, Math.floor((vc - hw - Vf[0]) / du)) : 0;
+    const j1 = clip ? Math.min(nf - 1, Math.ceil((vc + hw - Vf[0]) / du)) : nf - 1;
+    for (let i = j0; i <= j1; i++) {
       const x = (Vf[i] - vc) * ib; wofz4(x, a, w4, asymU);
       const H = w4[0], t = A * H * ib; tau[i] += t;
       if (D) { const Hu = w4[2], Ha = -w4[3]; D[0][i] = -A * Hu * ib * ib; D[1][i] = t * LN10; D[2][i] = -(A * ib * ib) * (H + x * Hu + a * Ha); }
     }
   };
   const W = {lo, hi, dataIdx, vd, d, N, nf,
-    tauComps(P) { const out = []; for (let c = 0; c < P.length / 3; c++) { const t = new Float64Array(nf); tauOne(P[3 * c], P[3 * c + 1], P[3 * c + 2], t, null); out.push(t); } return out; },
+    tauComps(P, clip = false) { const out = []; for (let c = 0; c < P.length / 3; c++) { const t = new Float64Array(nf); tauOne(P[3 * c], P[3 * c + 1], P[3 * c + 2], t, null, clip); out.push(t); } return out; },
     fluxModel(tau) { const F = new Float64Array(nf); for (let i = 0; i < nf; i++) F[i] = Math.exp(-tau[i]); return smp.sample(F, new Float64Array(N)); },
     model(P, wantJ) {
       const np = P.length, tau = new Float64Array(nf), D = wantJ ? Array.from({length: np}, () => new Float64Array(nf)) : null;
@@ -537,7 +544,7 @@ export function fitPanel(req) {
     let modelFull = model, profilesFull = comps.map(x => x.prof);
     if (comps.length && nOut >= 2) {
       const all = Array.from({length: nOut}, (_, m) => m), WF = makeWindow(ctx, data.v[0], data.v[nOut - 1], all);
-      const taus = WF.tauComps(Float64Array.from(comps.flatMap(x => x.P))), tot = new Float64Array(WF.nf);
+      const taus = WF.tauComps(Float64Array.from(comps.flatMap(x => x.P)), true), tot = new Float64Array(WF.nf);
       for (const t of taus) for (let i = 0; i < WF.nf; i++) tot[i] += t[i];
       modelFull = Float32Array.from(WF.fluxModel(tot)); profilesFull = taus.map(t => Float32Array.from(WF.fluxModel(t)));
     }
