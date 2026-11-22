@@ -147,7 +147,7 @@ const isVel = k => VEL_KEYS.includes(k);
 const VEL_W = 200, VEL_WMIN = 10;
 /* Phase 3 thumbnail: steps per voxel, frame rate of the slow turn, its speed, refine frames when still */
 const THUMB = {spv: 0.6, fps: 12, degPerSec: 5, acc: 2};
-const GAS_L = ["L0", "L1", "L2"], STAR_L = ["S0", "S1", "S2"];
+const GAS_L_DEF = ["L0", "L1", "L2"], STAR_L_DEF = ["S0", "S1", "S2"];
 const BYTES = {gas: 256 ** 3, stars: 4 * 256 ** 3, vel: 4 * 256 ** 3};
 const BG = "#05070b";
 /* tune1 display defaults (integral mode), applied over the manifest's proj windows: a lower n_H floor keeps the outer
@@ -574,7 +574,7 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
-      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
+      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div><div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div></details>
       <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase" title="Sightlines with several clean, unsaturated absorbers, plus rays you made">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
     <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
@@ -634,14 +634,45 @@ async function create(app, opts = {}) {
   let movingPR = Math.min(PR * movGov.rung.scale, exactPR), movingSpv = movGov.rung.spv, movingShade = movGov.rung.shade;
   const EXACT_MS = 100;
   renderer.setPixelRatio(PR);
-  const scene = new T.Scene(), volScene = new T.Scene(), camera = new T.PerspectiveCamera(FOV, 1, 0.5, 20000);
-  const controls = new OrbitControls(camera, canvas); controls.enableDamping = false; controls.minDistance = 15; controls.maxDistance = 5600;
+  const scene = new T.Scene(), volScene = new T.Scene(), camera = new T.PerspectiveCamera(FOV, 1, manifest?.levels?.L3 ? 0.05 : 0.5, 20000);
+  const controls = new OrbitControls(camera, canvas); controls.enableDamping = false;
+  controls.minDistance = manifest?.levels?.L4 ? 0.4 : manifest?.levels?.L3 ? 1.5 : 15; controls.maxDistance = 5600;
   controls.zoomSpeed = 1.2; controls.keys = {};
 
   /* ---- the cube mesh (local = disk frame) ---- */
+  let GAS_L = ["L0", "L1", "L2", "L3", "L4"].filter(L => manifest?.levels?.[L]); if (!GAS_L.length) GAS_L = GAS_L_DEF;
+  let STAR_L = ["S0", "S1", "S2", "S3", "S4"].filter(L => manifest?.levels?.[L]); if (!STAR_L.length) STAR_L = STAR_L_DEF;
   const nCube = manifest ? (manifest.levels.L1?.n || manifest.levels.L0?.n || 256) : 256;
   const RM = makeMaterial(T, {n: nCube}), U = RM.uniforms;
-  const half = lv => manifest?.levels?.[lv]?.half_kpc ?? {L0: 400, L1: 100, L2: 25, S0: 400, S1: 100, S2: 25}[lv];
+  RM.uniforms.uDust = {value: 1.0};
+  RM.material.fragmentShader = RM.material.fragmentShader
+    .replace("in vec3 vPos;", "uniform float uDust; in vec3 vPos;")
+    .replace("vec3 starAt(vec3 p, int l) {", `float starDustAt(vec3 p, int l) {
+  if (l == 0 && length(p) > uMask0) return 0.0;
+  float h = hl(l); vec3 tc = p / (2.0 * h) + 0.5;
+  return l == 0 ? texture(uStar0, tc).a : l == 1 ? texture(uStar1, tc).a : texture(uStar2, tc).a; }
+vec3 starAt(vec3 p, int l) {`)
+    .replace("vec3 sumS = vec3(0.0), C = vec3(0.0);", "vec3 sumS = vec3(0.0), transS = vec3(1.0), C = vec3(0.0);")
+    .replace("if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms); sumS += sv * hw; }",
+      `if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms);
+        if (uDust > 0.0 && uStarHave != vec3(0.0)) {
+          float sa = starDustAt(p, ls); if (cs >= 0) sa = mix(starDustAt(p, cs), sa, ms);
+          float kV = 0.0;
+          if (sa > 0.002 && sa < 0.996) { kV = exp2(LOG2_10 * (-4.5 + sa * 6.0)); }
+          else {
+            float gv = lg >= 0 && !velMode && uKind == 0 ? gasVal(p, lg) : (lw >= 0 ? wVal(p, lw) : 0.0);
+            float sm2 = max(sv.r, max(sv.g, sv.b));
+            if (gv > 0.1) kV = clamp(0.35 * (gv - 0.1), 0.0, 4.0);
+            else if (sm2 > 1e5) kV = clamp(0.18 * (log2(sm2) / LOG2_10 - 5.0), 0.0, 2.5);
+          }
+          if (kV > 0.0) {
+            vec3 tau = uDust * kV * hw * vec3(0.65, 0.84, 1.19);
+            vec3 att = exp(-tau);
+            sumS += transS * sv * hw * (1.0 - att) / max(tau, vec3(1e-5));
+            transS *= att;
+          } else { sumS += transS * sv * hw; }
+        } else { sumS += sv * hw; } }`);
+  const half = lv => manifest?.levels?.[lv]?.half_kpc ?? {L0: 400, L1: 100, L2: 25, L3: 6.25, L4: 1.5, S0: 400, S1: 100, S2: 25, S3: 6.25, S4: 1.5}[lv];
   U.uHalf.value.set(half("L0"), half("L1"), half("L2")); U.uMask0.value = manifest?.levels?.L0?.r_mask_kpc ?? 400;
   U.uBg.value.set(5 / 255, 7 / 255, 11 / 255);
   const volMesh = new T.Mesh(new T.BoxGeometry(2 * half("L0"), 2 * half("L0"), 2 * half("L0")), RM.material);
@@ -745,7 +776,7 @@ async function create(app, opts = {}) {
 
   /* ---- state ---- */
   let species = null, wanted = null, mode = "integral", loadTok = 0;
-  const layer = {stars: !mobile && !!manifest?.stars, gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
+  const layer = {stars: !mobile && !!manifest?.stars, dust: true, gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
     balance: manifest?.stars?.display?.balance ?? [1, 1, 1]};
   const tf = {integral: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
   /* tf3d: transfer-function (TF) volume mode, THOR (Byrohl & Nelson 2025) sec. 3.5.3: per field a tf.js state; a field
@@ -798,14 +829,15 @@ async function create(app, opts = {}) {
   function ratios(k) {
     const bufH = Math.max(1, (stage.clientHeight || 400) * exactPR), pxAng = 2 * Math.tan(camera.fov * Math.PI / 360) / bufH;
     const c = camera.position, cd = [c.dot(Xv), c.dot(Yv), c.dot(Lv)], cg = lodField(k), out = {};
-    for (const [L, C] of [["L1", cg], ["L2", cg], ["S1", LOD_C.stars], ["S2", LOD_C.stars]]) {
-      const hh = half(L), n = manifest?.levels?.[L]?.n || 256, d = Math.max(1, Math.hypot(...cd.map(x => x - Math.max(-hh, Math.min(hh, x)))));
+    for (const [L, C] of [["L1", cg], ["L2", cg], ["L3", cg], ["L4", cg], ["S1", LOD_C.stars], ["S2", LOD_C.stars], ["S3", LOD_C.stars], ["S4", LOD_C.stars]]) {
+      const hh = half(L), n = manifest?.levels?.[L]?.n || 256, d = Math.max(0.1, Math.hypot(...cd.map(x => x - Math.max(-hh, Math.min(hh, x)))));
       out[L] = (2 * hh / n) / (C * pxAng * d); }
     return out; }
   /* final (cold first load): the keys the current view uses, in load priority (vizdata.viewPlan): field L0 (+ nH weights for
      T / Z), L1, the star level, then L2 / S2 / S0 only when the view resolves them; other fields only once selected */
   function needed(k = wanted || species) {
-    const plan = viewPlan({ratio: ratios(k), hVisKpc: hVis(), mobile, stars: layer.stars && !!manifest.stars}), keys = [];
+    const plan = viewPlan({ratio: ratios(k), hVisKpc: hVis(), mobile, stars: layer.stars && !!manifest.stars,
+      hasL3: !!manifest?.levels?.L3, hasL4: !!manifest?.levels?.L4}), keys = [];
     for (const [kind, L] of plan.order) {
       if (kind === "gas") { if (!k) continue;
         /* vel3d: a velocity view needs the packed velocity cube of the level ("vel||L") and its weight field */
@@ -817,11 +849,11 @@ async function create(app, opts = {}) {
     /* Phase 3 thumbnail: only L0 / L1 of the field (and nH weights) are fetched for it; stars and finer levels are used only
        when the full stage already loaded them */
     if (docked === "thumb") ks = ks.filter(x => TEX.has(x) || /^(gas|vel)\|.*\|L[01]$/.test(x));
-    /* fix-ui FE-06: the needed set itself must fit the GPU budget (with the render targets): drop S0, then S2, then the L2
+    /* fix-ui FE-06: the needed set itself must fit the GPU budget (with the render targets): drop S0, then S4..S2, then L4..L2
        field (with its weights), then S1, until it does; evict() can only free what is not needed */
     const over = () => ks.reduce((a, x) => a + keyBytes(x), 0) + rtBytes() > BUDGET, dropped = [];
-    const l2 = isVel(k) ? [keyOf("vel", "", "L2"), keyOf("gas", velW, "L2")] : [keyOf("gas", k, "L2"), keyOf("gas", "nH", "L2"), keyOf("gas", emisKey(k) || "nH", "L2")];
-    for (const grp of [[keyOf("stars", "", "S0")], [keyOf("stars", "", "S2")], l2, [keyOf("stars", "", "S1")]]) {
+    const lGrp = L => isVel(k) ? [keyOf("vel", "", L), keyOf("gas", velW, L)] : [keyOf("gas", k, L), keyOf("gas", "nH", L), keyOf("gas", emisKey(k) || "nH", L)];
+    for (const grp of [[keyOf("stars", "", "S0")], [keyOf("stars", "", "S4")], lGrp("L4"), [keyOf("stars", "", "S3")], lGrp("L3"), [keyOf("stars", "", "S2")], lGrp("L2"), [keyOf("stars", "", "S1")]]) {
       if (!over()) break;
       const hit = ks.filter(x => grp.includes(x)); if (hit.length) { ks = ks.filter(x => !grp.includes(x)); dropped.push(...hit.map(x => x.split("|")[2])); } }
     budgetDropped = [...new Set(dropped)];
@@ -890,6 +922,8 @@ async function create(app, opts = {}) {
     const rank = key => { const [kind, k, L] = key.split("|");
       if (kind === "gas" && k !== species && k !== wKey(species)) return 0;   // other fields first
       if (kind === "vel" && !isVel(species)) return 0;
+      if ((L === "L4" || L === "S4") && hv > 25) return 1;
+      if ((L === "L3" || L === "S3") && hv > 60) return 1;
       if ((L === "L2" || L === "S2") && hv > 150) return 1; if (L === "S0" && hv < 60) return 1; return 2; };
     const cand = [...TEX.keys()].filter(k => !need.has(k) && !isBound(k)).sort((a, b) => rank(a) - rank(b) || TEX.get(a).used - TEX.get(b).used);
     for (const k of cand) { if (total <= BUDGET) break; const it = TEX.get(k); it.tex.dispose(); TEX.delete(k); total -= it.bytes; }
@@ -897,30 +931,45 @@ async function create(app, opts = {}) {
   const gpuBytes = () => [...TEX.values()].reduce((a, it) => a + it.bytes, 0);
   const SLOT = {gas: ["uGas0", "uGas1", "uGas2"], w: ["uW0", "uW1", "uW2"], stars: ["uStar0", "uStar1", "uStar2"], vel: ["uVel0", "uVel1", "uVel2"]};
   const haveOf = slot => (slot === SLOT.gas ? U.uGasHave.value : slot === SLOT.w ? U.uWHave.value : slot === SLOT.vel ? U.uVelHave.value : U.uStarHave.value);
-  const isBound = key => { const [kind, k, L] = key.split("|"), i = +L[1];
-    if (kind === "stars") return U[SLOT.stars[i]].value === TEX.get(key)?.tex;
-    if (kind === "vel") return U[SLOT.vel[i]].value === TEX.get(key)?.tex;
-    return U[SLOT.gas[i]].value === TEX.get(key)?.tex || U[SLOT.w[i]].value === TEX.get(key)?.tex; };
-  /* bind every resident level of the current field (and weights, stars); new bindings fade in over 300 ms, except the
-     weights of a Weight switch (wInstant): those replace a drawn weight level for level, so they appear at once */
+  let curWinIdx = 0;
+  function calcWinIdx() {
+    if (!manifest || !species) return 0;
+    const hv = hVis(), vel = isVel(species);
+    const hasG = L => TEX.has(vel ? keyOf("vel", "", L) : keyOf("gas", species, L)) && (!vel || TEX.has(keyOf("gas", boundW, L)));
+    if (GAS_L.includes("L4") && hv <= 5.5 && hasG("L4") && hasG("L3")) return 2;
+    if (GAS_L.includes("L3") && hv <= 22 && hasG("L3")) return 1;
+    return 0;
+  }
+  const isBound = key => { const [kind, k, L] = key.split("|"), t = TEX.get(key)?.tex; if (!t) return false;
+    if (kind === "stars") return SLOT.stars.some(s => U[s].value === t);
+    if (kind === "vel") return SLOT.vel.some(s => U[s].value === t);
+    return SLOT.gas.some(s => U[s].value === t) || SLOT.w.some(s => U[s].value === t); };
+  /* bind every resident level of the current field (and weights, stars) in the active 3-level sliding window; new bindings
+     fade in over 300 ms, except the weights of a Weight switch (wInstant) or a sliding-window shift (winChanged) */
   function bindAll(wInstant = false) {
     if (!manifest) return;
+    const winIdx = calcWinIdx(), winChanged = winIdx !== curWinIdx; curWinIdx = winIdx;
+    const gWin = ["L0", "L1", "L2", "L3", "L4"].slice(winIdx, winIdx + 3);
+    const sWin = ["S0", "S1", "S2", "S3", "S4"].slice(winIdx, winIdx + 3);
+    U.uHalf.value.set(half(gWin[0]), half(gWin[1]), half(gWin[2]));
+    U.uMask0.value = winIdx === 0 ? (manifest?.levels?.L0?.r_mask_kpc ?? 400) : 1e9;
     const now = performance.now(), fade = (slot, i, tex, ok) => { const cur = U[slot[i]].value;
       const haveVec = haveOf(slot), comp = ["x", "y", "z"][i];
       if (!ok) { U[slot[i]].value = slot === SLOT.stars || slot === SLOT.vel ? RM.empty4 : RM.empty1; haveVec[comp] = 0; FADE.delete(slot[i]); return; }
-      if (cur !== tex) { U[slot[i]].value = tex; if (reduced() || !FADE.has("init:" + slot[0]) || wInstant && slot === SLOT.w) { haveVec[comp] = 1; FADE.delete(slot[i]); } else { haveVec[comp] = 0.001; FADE.set(slot[i], now); } } };
+      if (cur !== tex) { U[slot[i]].value = tex; if (reduced() || !FADE.has("init:" + slot[0]) || winChanged || (wInstant && slot === SLOT.w)) { haveVec[comp] = 1; FADE.delete(slot[i]); } else { haveVec[comp] = 0.001; FADE.set(slot[i], now); } } };
     const vel = isVel(species), wk = wKey(species);
     for (let i = 0; i < 3; i++) {
-      const g = species && !vel && TEX.get(keyOf("gas", species, GAS_L[i])); fade(SLOT.gas, i, g?.tex, !!g);
-      const w = species && wk && TEX.get(keyOf("gas", wk, GAS_L[i])); fade(SLOT.w, i, w?.tex, !!w);
-      const v = vel && TEX.get(keyOf("vel", "", GAS_L[i])); fade(SLOT.vel, i, v?.tex, !!v);
-      const s = layer.stars && TEX.get(keyOf("stars", "", STAR_L[i])); fade(SLOT.stars, i, s?.tex, !!s);
+      const gL = gWin[i], sL = sWin[i];
+      const g = species && !vel && TEX.get(keyOf("gas", species, gL)); fade(SLOT.gas, i, g?.tex, !!g);
+      const w = species && wk && TEX.get(keyOf("gas", wk, gL)); fade(SLOT.w, i, w?.tex, !!w);
+      const v = vel && TEX.get(keyOf("vel", "", gL)); fade(SLOT.vel, i, v?.tex, !!v);
+      const s = layer.stars && TEX.get(keyOf("stars", "", sL)); fade(SLOT.stars, i, s?.tex, !!s);
     }
     for (const s of [SLOT.gas, SLOT.w, SLOT.vel, SLOT.stars]) FADE.set("init:" + s[0], 1);   // the first binding of a slot set is instant
     if (species && !vel) { const f = fld(species); U.uGasRange.value.set(f.vmin, f.vmax); }
     if (vel) U.uVelV.value = VELI.V;
     if (fld(wk || "nH")) U.uWRange.value.set(fld(wk || "nH").vmin, fld(wk || "nH").vmax);
-    STAR_L.forEach((S, i) => { const c = manifest.stars?.cubes?.[S]; if (c) U["uStarRange" + i].value.set(c.vmin, c.vmax); });
+    sWin.forEach((S, i) => { const c = manifest.stars?.cubes?.[S]; if (c) U["uStarRange" + i].value.set(c.vmin, c.vmax); });
     applyTfMode(); syncTfCard(true); lodStatus(); aria(); render();
   }
   function stepFades(now) {
@@ -1073,13 +1122,16 @@ async function create(app, opts = {}) {
     if (species) { syncTfInputs(); applyTf(); ensure().catch(() => {}); bindAll(); } else { aria(); render(); } tfUrl(); return true; }
   function setStars(o = {}) {
     if (o.on !== undefined) layer.stars = !!o.on && !!manifest?.stars;
+    if (o.dust !== undefined) layer.dust = !!o.dust;
     if (Number.isFinite(+o.mix) && o.mix !== null && o.mix !== undefined) layer.starMix = Math.min(1, Math.max(0, +o.mix));
     if (Number.isFinite(+o.Q) && o.Q) layer.Q = Math.min(40, Math.max(0.5, +o.Q));
     if (Number.isFinite(+o.sat) && o.sat !== null && o.sat !== undefined) layer.sat = Math.min(3, Math.max(0, +o.sat));
     if (Number.isFinite(+o.mu0) && o.mu0) layer.mu0 = Math.min(28, Math.max(14, +o.mu0));
     if (Number.isFinite(+o.gasMix) && o.gasMix !== null && o.gasMix !== undefined) layer.gasMix = Math.min(1, Math.max(0, +o.gasMix));
-    q("#v3-stars").checked = layer.stars; q("#v3-starmix").value = layer.starMix; q("#v3-starmix-o").textContent = layer.starMix.toFixed(2);
+    q("#v3-stars").checked = layer.stars; if (q("#v3-dust")) q("#v3-dust").checked = layer.dust;
+    q("#v3-starmix").value = layer.starMix; q("#v3-starmix-o").textContent = layer.starMix.toFixed(2);
     q("#v3-mu0").value = layer.mu0; q("#v3-mu0-o").textContent = layer.mu0.toFixed(1); q("#v3-gasmix").value = layer.gasMix; q("#v3-gasmix-o").textContent = layer.gasMix.toFixed(2); fillRanges();
+    if (U.uDust) U.uDust.value = layer.dust ? 1.0 : 0.0;
     /* tune2: no star request before the first gas field is wanted, so a cold first load fetches the gas L1 cube first */
     if (manifest && (species || wanted)) { ensure().catch(x => { if (x instanceof HostError) hostMessage(x); }); bindAll(); }
     legend(); aria(); render(); viewer?.hooks?.starsChanged?.(layer.stars);
@@ -1311,11 +1363,13 @@ async function create(app, opts = {}) {
   const accSize = new T.Vector2();
   let keepTF2D = 0, keepShade = 0;
   function draw(exact = true, acc = false) {
+    if (manifest && species && calcWinIdx() !== curWinIdx) bindAll();
     const th = docked === "thumb"; setPR(th ? PR : exact ? exactPR : Math.min(movingPR, exactPR));
     if (!acc) accK = 0;
     /* tune3: half-voxel steps for exact frames in close views (L2), so the finest grid shows no step banding; moving frames
        scale resolution, ray steps, and 2D gradient fetches adaptively with the FPS governor and freeze uFrame so dither noise never boils */
     U.uSpv.value = th ? THUMB.spv : exact ? (hVis() < 30 ? 2.0 : 1.0) : movingSpv; U.uStarFloor.value = STAR_COMP.floor; U.uCompMode.value = STAR_COMP.mode; U.uOccRange.value.set(...[0, 1].map(i => STAR_CLOSE.occ[i] + (STAR_ZOOM.occWide[i] - STAR_CLOSE.occ[i]) * zoomW())); U.uGasW.value = STAR_CLOSE.gasW + (1 - STAR_CLOSE.gasW) * zoomW(); U.uExact.value = exact || useMovingExact ? 1 : 0;
+    if (U.uDust) U.uDust.value = layer.dust ? 1.0 : 0.0;
     const trimGrad = !exact && !th && !benching && movingShade < 1 && U.uTFOn.value === 1;
     if (trimGrad) { keepTF2D = U.uTF2D.value; keepShade = U.uShade.value; if (movingShade <= 0) U.uTF2D.value = 0; U.uShade.value = keepShade * movingShade; }
     const c = camera.position; U.uCamDisk.value.set(c.dot(Xv), c.dot(Yv), c.dot(Lv)); if (exact) U.uFrame.value = (++frameNo) % 1024;
@@ -1340,12 +1394,12 @@ async function create(app, opts = {}) {
   function guideFit() {
     ring.quaternion.copy(camera.quaternion);
     const hv = hVis(), hh = hv * Math.min(camera.aspect || 1, 1);       // the smaller half-extent of the view at the target
-    const r = frame.R200c <= 0.92 * hh ? frame.R200c : [200, 100, 50, 20, 10, 5, 2, 1].find(v => v <= 0.8 * hh) || 1;
+    const r = frame.R200c <= 0.92 * hh ? frame.R200c : [200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05].find(v => v <= 0.8 * hh) || 0.05;
     ring.scale.setScalar(r / frame.R200c);
     const len = Math.min(150, 0.7 * hv); arrow.setLength(len, 0.16 * len, 0.08 * len);
-    if (r !== ringR) { ringR = r; const g = q(".v3d-leg .gd");
+    if (r !== ringR) { ringR = r; const g = q(".v3d-leg .gd"), rTxt = r < 1 ? `${Math.round(r * 1000)} pc` : `${r} kpc`;
       g.innerHTML = r === frame.R200c ? `<i></i>guides: ring R<sub>200c</sub> = ${Math.round(r)} kpc<br><i></i>arrow: disk normal`
-        : `<i></i>guides: ring ${r} kpc (R<sub>200c</sub> = ${Math.round(frame.R200c)} kpc is off-screen)<br><i></i>arrow: disk normal`; } }
+        : `<i></i>guides: ring ${rTxt} (R<sub>200c</sub> = ${Math.round(frame.R200c)} kpc is off-screen)<br><i></i>arrow: disk normal`; } }
   /* tune4: 0 in close views → 1 in wide views (STAR_ZOOM) */
   function zoomW() { const t = Math.min(1, Math.max(0, (hVis() - STAR_ZOOM.h[0]) / (STAR_ZOOM.h[1] - STAR_ZOOM.h[0]))); return t * t * (3 - 2 * t); }
   function mu0Eff() { return layer.mu0 + STAR_ZOOM.dmag[0] + (STAR_ZOOM.dmag[1] - STAR_ZOOM.dmag[0]) * zoomW(); }
@@ -1355,11 +1409,11 @@ async function create(app, opts = {}) {
   function scale() {   // a round length at the orbit target's distance, in CSS px
     const sc = q(".v3d-scale"), h = scaleH || (scaleH = stage.clientHeight || 400), d = camera.position.distanceTo(controls.target);
     const pxPerKpc = h / (2 * d * Math.tan(camera.fov * Math.PI / 360));
-    let L = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(v => v * pxPerKpc >= 60) || 500;
+    let best = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500].find(v => v * pxPerKpc >= 60) || 500;
     starLegend();
     if (scaleHidden !== !scaleOn) sc.hidden = scaleHidden = !scaleOn;
-    const w = (L * pxPerKpc).toFixed(1) + "px"; if (w !== scaleW) sc.querySelector("i").style.width = scaleW = w;
-    if (L !== scaleL) { scaleL = L; sc.querySelector("span").textContent = `${L} kpc`; } }
+    const w = (best * pxPerKpc).toFixed(1) + "px"; if (w !== scaleW) sc.querySelector("i").style.width = scaleW = w;
+    if (best !== scaleL) { scaleL = best; sc.querySelector("span").textContent = best < 1 ? `${Math.round(best * 1000)} pc` : `${best} kpc`; } }
   function resize() { const p = calcPR(); scaleH = stage.clientHeight || 400;
     if (Math.abs(p - PR) > 1e-6) { PR = exactPR = p; syncMovingRung(); calibrated = ""; }
     const w = stage.clientWidth || 600, h = scaleH; curPR = exactPR; renderer.setPixelRatio(exactPR); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -1371,8 +1425,8 @@ async function create(app, opts = {}) {
   const ro = new ResizeObserver(resize); ro.observe(stage);
   controls.addEventListener("change", motion);
   let lastH = 0;
-  controls.addEventListener("end", () => { const h = hVis(); if (Math.abs(h - lastH) / Math.max(h, 1) > 0.02) { lastH = h;
-    if (selId) select(selId, true); if (manifest && species) ensure().catch(() => {}); } });
+  controls.addEventListener("end", () => { const h = hVis(); if (Math.abs(h - lastH) / Math.max(h, 0.05) > 0.02) { lastH = h;
+    if (selId) select(selId, true); if (manifest && species) { ensure().catch(() => {}); bindAll(); } } });
 
   /* moving-frame path (design §5.5): exact samples while moving if they reach 30 fps, else the hardware path */
   function timeFrames(n, exact, movingExact) {
@@ -1608,8 +1662,8 @@ async function create(app, opts = {}) {
   speciesUnits();
   for (const c of CMAPS) { const o = document.createElement("option"); o.value = c; o.textContent = c; q("#v3-cmap").appendChild(o); }
   for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.disabled = !manifest;
-  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
-  if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0"]) q(id).disabled = true;
+  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-dust", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
+  if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0", "#v3-dust"]) q(id).disabled = true;
   q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) { sfx("select"); setSpecies(ev.target.value); } });
   q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) { sfx("select"); setMode(ev.target.value); } });
   q("#v3-lo").addEventListener("input", ev => tfWinMode() ? setTfWin(+ev.target.value, null) : setTransfer({lo: Math.min(+ev.target.value, fieldTf(species).hi - 0.1)}));
@@ -1622,6 +1676,7 @@ async function create(app, opts = {}) {
   q("#v3-starmix").addEventListener("input", ev => setStars({mix: +ev.target.value}));
   q("#v3-mu0").addEventListener("input", ev => setStars({mu0: +ev.target.value}));
   q("#v3-stars").addEventListener("change", ev => setStars({on: ev.target.checked}));
+  q("#v3-dust").addEventListener("change", ev => setStars({dust: ev.target.checked}));
   q("#v3-guides").addEventListener("change", ev => setGuides({ring: ev.target.checked}));
   q("#v3-scale").addEventListener("change", ev => setGuides({scale: ev.target.checked}));
   q("#v3-lines").addEventListener("change", ev => setLines(ev.target.value));
