@@ -79,7 +79,7 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const fb = x => Number.isInteger(+x) ? String(+x) : fmtNum(+x, 1);
 const isDark = () => getComputedStyle(document.documentElement).getPropertyValue("--scheme").trim() === "dark";
 const ionColor = k => ION[k] ? (isDark() ? ION[k].color_dark : ION[k].color) : "#888";
-const modUrl = f => new URL(`${CFG.js_base}${f}?v=${CFG.registry_tag || "20261122"}`, location.href).href;
+const modUrl = f => new URL(`${CFG.js_base}${f}?v=${CFG.registry_tag || "20261122"}-2`, location.href).href;
 const strip = e => { const o = {}; for (const k in e) if (k[0] !== "_") o[k] = e[k]; return o; };
 const debounce = (f, ms) => { let t = 0; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
 
@@ -1048,16 +1048,20 @@ if (!store.get(DOCK_SEEN)) $("#dock").classList.add("hint");
 document.addEventListener("change", () => dockRead());
 setInterval(() => { if (!document.hidden && !BODY.classList.contains("ctl-open")) dockRead(); }, 1000);   // shortcut: catches chat-driven 3D changes; an event from the viewer would be exact
 const mqMobile = matchMedia("(max-width:820px)");
-const HOME = ["#grp-gal", "#grp-sight", "#grp-lines", "#grp-layout"].filter(s => $(s)).map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });   /* #grp-gal is absent from pages exported before the galaxy picker */
+const HOME = ["#grp-sight", "#grp-lines", "#grp-layout"].filter(s => $(s)).map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });   /* #grp-gal stays in #top on phones so TNG50 | FIRE-2 and the galaxy picker work on both Spectra and 3D tabs */
 const tools = document.createElement("div"); tools.className = "grp"; tools.id = "grp-tools"; tools.innerHTML = '<span class="gl">Tools</span><div class="row"></div>';
 const ASK = (el => ({el, parent: el.parentNode, next: el.nextSibling}))($("#chat-open"));
 const INST = $("#side>section[aria-labelledby=h-inst]");
 const TOOL_HOME = ["#req-link", "#find-toggle"].filter(s => $(s)).map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
+const LEARN_HOME = (el => el ? {el, parent: el.parentNode, next: el.nextSibling} : null)($("#cl-learn"));
 function placeControls() {
   if (mqMobile.matches) { const slot = $("#mobslot"); for (const h of HOME) slot.appendChild(h.el); slot.appendChild(tools); for (const h of TOOL_HOME) { h.el.classList.remove("hide-m"); tools.lastChild.appendChild(h.el); }
+    if (LEARN_HOME) tools.lastChild.appendChild(LEARN_HOME.el);
     $("#dock").appendChild(ASK.el);       // Ask lives in the phone dock, so it never covers the spectra or the status bar
     $("#side").insertBefore(INST, $("#mobslot")); $("#side").setAttribute("role", "dialog"); $("#side").setAttribute("aria-modal", "false"); autoSheet(); }   // Instrument first: R and S/N in the peek sheet
-  else { for (const h of HOME) h.parent.insertBefore(h.el, h.next); for (const h of TOOL_HOME) { h.parent.insertBefore(h.el, h.next); h.el.classList.add("hide-m"); } tools.remove(); toggleDrawer(false);
+  else { for (const h of HOME) h.parent.insertBefore(h.el, h.next); for (const h of TOOL_HOME) { h.parent.insertBefore(h.el, h.next); h.el.classList.add("hide-m"); }
+    if (LEARN_HOME) LEARN_HOME.parent.insertBefore(LEARN_HOME.el, LEARN_HOME.next);
+    tools.remove(); toggleDrawer(false);
     ASK.parent.insertBefore(ASK.el, ASK.next); $("#side").insertBefore(INST, $("#v3d-mini").nextSibling); $("#side").removeAttribute("role"); $("#side").removeAttribute("aria-modal");
     const c = $("#v3-ctl"); if (c) { c.setAttribute("role", "group"); c.removeAttribute("aria-modal"); } }
   draw(); }

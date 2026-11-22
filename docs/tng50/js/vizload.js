@@ -9,7 +9,7 @@
    one can be started (FE-10); a fallback base that answers 404 for everything is not tried again (FE-15) */
 import {atlasToRaw, cubeRef, cubeUrls, gunzipIfNeeded, sha256Hex, packVelocity} from "./vizdata.js";
 
-const CACHE = "tng50-viz-v2";
+const CACHE = "tng50-viz-v3";
 export const STALL_MS = 20000;
 
 export class HostError extends Error {
@@ -64,9 +64,44 @@ export async function fetchText(url, timeoutMs = 10000) {
   return b.text();
 }
 
+let _gl = null, _glFailed = false;
+function getDecodeGL() {
+  if (_glFailed) return null;
+  if (_gl && !_gl.isContextLost?.()) return _gl;
+  try {
+    const cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(1, 1)
+      : (typeof document !== "undefined" ? Object.assign(document.createElement("canvas"), {width: 1, height: 1}) : null);
+    const gl = cv?.getContext?.("webgl2", {alpha: true, premultipliedAlpha: false, antialias: false, depth: false, stencil: false});
+    if (gl && typeof gl.createTexture === "function" && typeof gl.readPixels === "function") { _gl = gl; return _gl; }
+  } catch { /* fall back to 2d canvas */ }
+  _glFailed = true; return null;
+}
+
 export async function imageData(blob) {
   const bmp = await createImageBitmap(blob, {colorSpaceConversion: "none", premultiplyAlpha: "none"});
-  const w = bmp.width, h = bmp.height;
+  const w = bmp.width, h = bmp.height, gl = getDecodeGL();
+  if (gl) {
+    let tex = null, fb = null;
+    try {
+      tex = gl.createTexture(); fb = gl.createFramebuffer();
+      const out = new Uint8Array(w * h * 4);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE && gl.getError() === gl.NO_ERROR) {
+        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, out);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(fb); gl.deleteTexture(tex); bmp.close?.();
+        return out;
+      }
+    } catch { /* fall back to 2d canvas below */ }
+    try { gl.bindFramebuffer(gl.FRAMEBUFFER, null); if (fb) gl.deleteFramebuffer(fb); if (tex) gl.deleteTexture(tex); } catch { /* ignore */ }
+  }
   const cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : Object.assign(document.createElement("canvas"), {width: w, height: h});
   const g = cv.getContext("2d", {willReadFrequently: true});
   g.drawImage(bmp, 0, 0); bmp.close?.();
@@ -78,18 +113,21 @@ export async function decodeAtlas(blobs, n, kind) {
   const raw = atlasToRaw(parts, n, kind);
   return {raw, sha: await sha256Hex(raw)};
 }
-/* FE-10: the same in a module worker (decode_worker.js), so the 67 MB of ImageData per cube, the atlas loop and a pure-JS
-   hash do not block the main thread; any worker failure falls back to decodeAtlas on this thread */
-let dW = null, dN = 0, dBroken = false; const dP = new Map();
+/* FE-10: the same in a 2-worker pool (decode_worker.js), so gas and star cubes decode in parallel off the main thread;
+   any worker failure falls back to decodeAtlas on this thread */
+const dPool = []; let dN = 0, dBroken = false; const dP = new Map();
 function decodeOffThread(blobs, n, kind) {
   if (dBroken || typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined" || typeof document === "undefined") return decodeAtlas(blobs, n, kind);
   try {
-    if (!dW) { dW = new Worker(new URL("./decode_worker.js", import.meta.url), {type: "module"});
-      dW.onmessage = ev => { const p = dP.get(ev.data.id); dP.delete(ev.data.id); if (!p) return;
+    if (dPool.length < 2) {
+      const w = new Worker(new URL("./decode_worker.js", import.meta.url), {type: "module"});
+      w.onmessage = ev => { const p = dP.get(ev.data.id); dP.delete(ev.data.id); if (!p) return;
         if (ev.data.error) p.reject(Object.assign(new Error(ev.data.error), {decode: true})); else p.resolve({raw: new Uint8Array(ev.data.raw), sha: ev.data.sha}); };
-      dW.onerror = ev => { ev.preventDefault?.(); dBroken = true; dW = null; const ps = [...dP.values()]; dP.clear();
-        for (const p of ps) decodeAtlas(p.blobs, p.n, p.kind).then(p.resolve, p.reject); }; }
-    const id = ++dN;
+      w.onerror = ev => { ev.preventDefault?.(); dBroken = true; dPool.length = 0; const ps = [...dP.values()]; dP.clear();
+        for (const p of ps) decodeAtlas(p.blobs, p.n, p.kind).then(p.resolve, p.reject); };
+      dPool.push(w);
+    }
+    const id = ++dN, dW = dPool[id % dPool.length];
     return new Promise((resolve, reject) => { dP.set(id, {resolve, reject, blobs, n, kind}); dW.postMessage({id, blobs, n, kind}); });
   } catch { dBroken = true; return decodeAtlas(blobs, n, kind); }
 }
@@ -114,7 +152,7 @@ export function makeLoader({manifest, base, fallbackBase = null, cache = true, s
     let r;
     try { r = await decodeOffThread(got.map(g => g.blob), n, kind); } catch (x) { throw Object.assign(x, {cached}); }
     if (r.sha !== cube.raw_sha256)
-      throw Object.assign(new Error(`WebP decode is not byte-exact (sha256 ${r.sha.slice(0, 12)} ≠ ${cube.raw_sha256.slice(0, 12)})`), {cached});
+      throw Object.assign(new Error(`WebP decode is not byte-exact (sha256 ${r.sha.slice(0, 12)} ≠ ${cube.raw_sha256.slice(0, 12)})`), {cached, raw: r.raw});
     got.forEach((g, i) => { if (!g.cached) cachePut(U.webp[i], g.blob); });       // FE-03: cache only verified bytes
     return {data: r.raw, format: "webp", fetchMs: t1 - t0, decodeMs: performance.now() - t1, bytes: cube.webp.bytes.reduce((a, x) => a + x, 0)};
   }
@@ -137,7 +175,12 @@ export function makeLoader({manifest, base, fallbackBase = null, cache = true, s
     try { return await verified(rc => webpOnce(cube, U, n, kind, rc, onBytes, prio), U.webp); }     // 1-2: WebP parts, decode, verify
     catch (x) { errs.push(x); }
     if (!errs[0].timeout) {                                  // 3: the gzip fallback (not after a stall: same host, it would stall too)
-      try { const r = await verified(rc => gzOnce(cube, U, rc, prio), [U.gz]); r.webpError = errs[0].message; return r; } catch (x) { errs.push(x); } }
+      try { const r = await verified(rc => gzOnce(cube, U, rc, prio), [U.gz]); r.webpError = errs[0].message; return r; }
+      catch (x) {
+        if (x.http === 404 && errs[0]?.raw?.length === cube.raw_bytes)
+          return {data: errs[0].raw, format: "webp", fetchMs: 0, decodeMs: 0, bytes: cube.webp.bytes.reduce((a, v) => a + v, 0), webpError: errs[0].message};
+        errs.push(x);
+      } }
     const e = new Error([...new Set(errs.map(x => x.message))].join("; "));      // final: no "Failed to fetch; Failed to fetch"
     e.network = errs.every(isNet); e.all404 = errs.every(x => x.http === 404); throw e;
   }
