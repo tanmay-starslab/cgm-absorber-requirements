@@ -46,6 +46,27 @@ code) is MIT-licensed; see LICENSE. The components below are not ours and keep t
      Trident HM2012 table. The stellar cubes use GFM_StellarPhotometrics (Bruzual & Charlot 2003
      models, as documented by TNG).
 
+3b. FIRE-2 cosmological zoom-in simulation data (z = 0, snapshot 600),
+    http://flathub.flatironinstitute.org/fire and https://fire.northwestern.edu/data/
+   - The FIRE-2-derived products in the PUBLIC Hugging Face datasets
+     tanmay-starslab/fire2-core-web-0 to tanmay-starslab/fire2-core-web-3 (23 halos: Latte Milky
+     Way-mass halos m12b, m12c, m12f, m12i, m12m, m12r, m12w, m12z; ELVIS on FIRE Local Group pairs
+     Romeo, Juliet, Romulus, Remus, Thelma, Louise; Core dwarf halos m11b, m11d, m11e, m11h, m11i,
+     m11q, m10q, m10v, m09; 120 Trident HM2012 sightlines, Voigt component catalogues, and 5-level
+     L0..L4 gas and S0..S4 3D-dust stellar cubes per halo) are derived from the FIRE-2 public data
+     release and are not relicensed here (not MIT). They are used under the FIRE Collaboration's
+     citation terms (https://fire.northwestern.edu/data/); please cite:
+       Wetzel et al. 2023, ApJS 265, 44, "Public Data Release of the FIRE-2 Cosmological Zoom-in
+         Simulations of Galaxy Formation" (arXiv:2202.06969)
+       Hopkins et al. 2018, MNRAS 480, 800 (FIRE-2 physics; arXiv:1702.06148)
+       Hopkins 2015, MNRAS 450, 53 (GIZMO code; arXiv:1409.7395)
+       Wetzel et al. 2016, ApJL 827, L23; Garrison-Kimmel et al. 2017, MNRAS 471, 1709;
+         Samuel et al. 2020, MNRAS 491, 1471 (Latte suite)
+       Garrison-Kimmel et al. 2019, MNRAS 487, 1380 (ELVIS on FIRE Local Group suite)
+       Chan et al. 2018, MNRAS 478, 906; El-Badry et al. 2018, MNRAS 473, 1930 (Core dwarf suite)
+     Acknowledgement: We thank the FIRE Collaboration and the Flatiron Institute for making the
+     FIRE-2 simulation snapshots publicly available.
+
 
 4. three.js 0.169.0 (MIT), https://github.com/mrdoob/three.js
    - Loaded by docs/tng50 from cdn.jsdelivr.net when the 3D tab is opened; not vendored.

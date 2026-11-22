@@ -62,7 +62,7 @@ const TOOL_BY_NAME = new Map(TOOLS.map(t => [t.name, t]));
 
 /* Generated: the text of server/chat_system_prompt.txt (server/chat.py SYSTEM_PROMPT). */
 /*__GEN:PROMPT__*/
-export const SYSTEM_PROMPT = "You are the assistant of the TNG50 and FIRE-2 sightline explorer, a web page showing mock quasar absorption spectra of 12 ions (H I 1216, Mg II 2796, Si II 1260, C II 1335, Si III 1206, C III 977, Si IV 1403, C IV 1548, N V 1239, O VI 1032, Ne VIII 770, O VII 21.6) through the circumgalactic medium of 221 simulated Milky Way and M31 analogues from TNG50-1 at z = 0 plus FIRE-2 zoom-in galaxies (Latte MW hosts m12b to m12z, Elvis pairs Romeo, Juliet, Romulus, Remus, Thelma, Louise, and Core dwarfs m11b to m09). Each user message starts with a [page ...] snapshot of the screen, which you can rely on: g is the open galaxy (subhalo or halo id, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, number of sightlines), s the shown sightline (id, orientation, impact parameter b in kpc, azimuth), tab, the 3D view and the instrument. Tool arguments name the ions by key: HI, MgII, SiII, CII, SiIII, CIII, SiIV, CIV, NV, OVI, NeVIII, OVII. Ne VIII 770 is in the EUV band (rest-frame EUV, observable only as a redshifted analogue). You act on the page only by calling the provided tools; the page executes them and returns JSON results. search_sightlines and select_sightline work on the open galaxy: to act on another galaxy, call select_galaxy first (list_galaxies finds galaxies by simulation, mass, SFR or type), then search or select. Use set_instrument for the resolving power R per band (UV 5000 to 150000, EUV 5000 to 150000, X-ray 100 to 5000), the S/N per resolution element (2 to 100), the layout, the ions shown and the velocity window, show_3d for the gas distribution, set_view to switch tabs, and request_sightline or request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes and the page opens it when ready). Every number, id or property about this data (sightline and galaxy ids, galaxy properties, log N, components, b) must come from a tool result, the page snapshot or the user; never invent ids. If the data tools cannot answer, say what the page can do instead. You may answer general questions about the field from your own knowledge: CGM physics, ionisation, O VI and Ne VIII, Lyman-limit and damped systems, Voigt profiles, column densities, spectral resolution and S/N, HST/COS, TNG50, FIRE-2 and how these mock spectra were made. Mark such answers plainly, starting with \"In general,\", and never invent citations. The mock spectra: for the 197 THOR galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions under the FG11 UV background; for subhalo 488530 and FIRE-2, Trident with the HM2012 background. The 3D tab raymarches nested 256^3 cubes from +-400 kpc (L0) to +-25 kpc (L2), and on FIRE-2 to +-6.25 kpc (L3) and +-1.5 kpc (L4, 12 pc voxels) with 3D dust lanes, a log shell width slider, Hands-free webcam control (video stays on device), and Save for PNG export and ?cam= links. The show_3d velocity views are mass-weighted gas velocities in the galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it as a measured column. Companion pages cover How a Spectrum Is Made and Detect and Resolve Requirements. Keep answers short and friendly, and when useful suggest one concrete next step on the page.";
+export const SYSTEM_PROMPT = "You are the assistant of the TNG50 and FIRE-2 sightline explorer, a web page showing mock quasar absorption spectra of 12 ions (H I 1216, Mg II 2796, Si II 1260, C II 1335, Si III 1206, C III 977, Si IV 1403, C IV 1548, N V 1239, O VI 1032, Ne VIII 770, O VII 21.6) through the circumgalactic medium of 221 simulated Milky Way and M31 analogues from TNG50-1 at z = 0 plus FIRE-2 zoom-in galaxies (Latte MW hosts m12b to m12z, Elvis pairs Romeo/Juliet, Romulus/Remus, Thelma/Louise, Core dwarfs m11b to m09). Each user message starts with a [page ...] snapshot of the screen, which you can rely on: g is the open galaxy (subhalo or halo id, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, number of sightlines), s the shown sightline (id, orientation, impact parameter b in kpc, azimuth), tab, the 3D view and the instrument. Tool arguments name the ions by key: HI, MgII, SiII, CII, SiIII, CIII, SiIV, CIV, NV, OVI, NeVIII, OVII. Ne VIII 770 is in the EUV band (rest-frame EUV, observable only as a redshifted analogue). You act on the page only by calling the provided tools; the page executes them and returns JSON results. search_sightlines and select_sightline work on the open galaxy: to act on another galaxy, call select_galaxy first (list_galaxies finds galaxies by simulation, mass, SFR or type), then search or select. Use set_instrument for the resolving power R per band (UV 5000 to 150000, EUV 5000 to 150000, X-ray 100 to 5000), the S/N per resolution element (2 to 100), the layout, the ions shown and the velocity window, show_3d for the gas distribution, set_view to switch tabs, and request_sightline or request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes and the page opens it when ready). Every number, id or property about this data (sightline and galaxy ids, galaxy properties, log N, components, b) must come from a tool result, the page snapshot or the user; never invent ids. If the data tools cannot answer, say what the page can do instead. You may answer general questions about the field from your own knowledge: CGM physics, ionisation, O VI and Ne VIII, Lyman-limit and damped systems, Voigt profiles, column densities, spectral resolution and S/N, HST/COS, TNG50 (Nelson et al. 2019a,b, Pillepich et al. 2019, 2024), FIRE-2 (Hopkins et al. 2018, Wetzel et al. 2016, 2023, Garrison-Kimmel et al. 2019, Chan et al. 2018) and how these mock spectra were made. Mark such answers plainly, starting with \"In general,\", and never invent citations. The mock spectra: for the 197 THOR galaxies, THOR (Byrohl & Nelson 2025) traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions under the FG11 UV background; for subhalo 488530 and the 23 FIRE-2 halos, Trident (Hummels et al. 2017) with the HM2012 background. The 3D tab raymarches 5 nested 256^3 cubes across all 221 galaxies from +-400 kpc (L0) to +-1.5 kpc (L4, 12 pc voxels) with S0 to S4 stars, 3D dust lanes, log shell width slider, Hands-free webcam control (video stays on device), and Save for PNG export and ?cam= links. The show_3d velocity views are mass-weighted gas velocities in the galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it as a measured column. Companion pages cover How a Spectrum Is Made and Detect and Resolve Requirements. Keep answers short and friendly, and when useful suggest one concrete next step on the page.";
 /*__END__*/
 
 const ID_SRC = "(?:face|edge|rand)_b\\d{3}_a\\d{3}(?:_s\\d+)?|cust_[0-9a-f]{10}";
@@ -260,7 +260,7 @@ export function pageSnapshot(app) {
 const ANS_NUM = /(?<![\w.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?![\w])/g;
 const SRC_NUM = /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g;
 const ID_ANY = new RegExp(ID_SRC, "g");
-export const FIXED_FACTS = "1031.912 1032 1025.722 1026 977.020 977 488530 198 197";
+export const FIXED_FACTS = "1031.912 1032 1025.722 1026 977.020 977 488530 198 197 221 23";
 const norm = s => s.replace(/[−‒–—]/g, "-").replace(/[  ]/g, " ");
 const GENERAL = /\b(in general|generally|typically|usually|as a rule|in the literature|commonly|in real observations)\b/i;
 const UNIT_AFTER = /^\s*(?:(?:-|to|and|or)\s*[-+]?\d[\d,]*(?:\.\d+)?\s*)?(?:km\s*\/\s*s|km\s*s|kpc|cm\s*\^?\s*-\s*2|cm⁻²)/i;
@@ -702,10 +702,12 @@ function svg(name) {
 }
 /* Example questions on the empty chat; each maps onto the page's tools. */
 export const SUGGESTIONS = [
+  "Switch to FIRE-2 galaxy m12i and open its 3D view edge-on",
+  "List the FIRE-2 galaxies sorted by stellar mass",
   "Find edge-on sightlines with two O VI components 50–150 km/s apart",
   "Show H I, C IV and O VI at R = 50,000 and S/N 20",
   "Which sightlines have log N(Mg II) above 13 within 50 kpc?",
-  "Open the 3D view of O VI, face-on"];
+  "Open the 3D temperature gas phases (THOR preset)"];
 /* One-line data-flow summary per backend (the full text sits behind "More"). */
 export function noticeShort(backend, api, defaults = []) {
   if (backend === "local") return "Runs in your browser: your questions stay on this device.";
@@ -714,6 +716,120 @@ export function noticeShort(backend, api, defaults = []) {
 }
 const LOCAL_DETAIL = "The local model needs WebGPU and about 2 GB of GPU memory. Nothing is downloaded until you start it. The files come from " +
   LOCAL_HOSTS.join(", ") + " (WebLLM, the model library and the Qwen2.5-1.5B-Instruct weights), each pinned to a fixed version and hash-checked where the files are code.";
+
+/* Built-in browser assistant fallback when the Claude sightline server is offline: maps natural-language commands and
+   questions onto the 10 verified page tools (exec) and returns a grounded summary of the tool results. */
+const ION_ALIASES = [
+  ["OVII", /\b(o\s*vii|o7|o\s*7|21\.6)\b/i],
+  ["NeVIII", /\b(ne\s*viii|ne8|ne\s*8|770)\b/i],
+  ["OVI", /\b(o\s*vi|o6|o\s*6|1032)\b/i],
+  ["NV", /\b(n\s*v|n5|n\s*5|1239)\b/i],
+  ["CIV", /\b(c\s*iv|c4|c\s*4|1548)\b/i],
+  ["SiIV", /\b(si\s*iv|si4|si\s*4|1403)\b/i],
+  ["CIII", /\b(c\s*iii|c3|c\s*3|977)\b/i],
+  ["SiIII", /\b(si\s*iii|si3|si\s*3|1206)\b/i],
+  ["CII", /\b(c\s*ii|c2|c\s*2|1335)\b/i],
+  ["SiII", /\b(si\s*ii|si2|si\s*2|1260)\b/i],
+  ["MgII", /\b(mg\s*ii|mg2|mg\s*2|2796)\b/i],
+  ["HI", /\b(h\s*i|h1|ly-?a|lyman|1216)\b/i],
+];
+export async function runBrowserAssistantTurn({userText, exec, app, onEvent = () => {}}) {
+  const q = String(userText || "").trim(), ql = q.toLowerCase(), calls = [];
+  const call = async (name, args) => {
+    onEvent({type: "tool", name, args});
+    const result = await exec(name, args);
+    calls.push({name, args, result});
+    onEvent({type: "result", name, args, result});
+    return result;
+  };
+  const ionsFound = ION_ALIASES.filter(([, rx]) => rx.test(q)).map(([k]) => k);
+  const allGals = app.galaxies ? app.galaxies() : [];
+  let switchedGal = null;
+  for (const g of allGals) {
+    const idStr = String(g.id);
+    const rx = new RegExp(`(?:^|[^A-Za-z0-9_])(?:subhalo\\s+|halo\\s+|galaxy\\s+)?(${idStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?:$|[^A-Za-z0-9_])`, "i");
+    if (rx.test(q) && (/\b(switch|open|show|go to|select|load|halo|subhalo|galaxy|fire)\b/i.test(q) || /^[A-Za-z]/.test(idStr))) {
+      if (String(app.galaxy?.()) !== idStr) {
+        const r = await call("select_galaxy", {id: g.id});
+        if (r && r.ok) switchedGal = r.galaxy;
+      } else {
+        switchedGal = {id: g.id, sim: g.sim || "TNG50-1", n_sightlines: app.entries?.().length};
+      }
+      break;
+    }
+  }
+  if (/\b(list|which galaxies|compare galaxies|show galaxies|fire-?2 galaxies|tng50 galaxies|most massive|highest sfr|dwarf|elvis|latte)\b/i.test(q)) {
+    const sim = /\bfire/i.test(q) && !/\btng/i.test(q) ? "FIRE-2" : /\btng/i.test(q) && !/\bfire/i.test(q) ? "TNG50" : undefined;
+    const sort = /\bsfr|star formation\b/i.test(q) ? "SFR" : /\bhalo mass|m200\b/i.test(q) ? "M200c" : "Mstar";
+    const order = /\bsmallest|lowest|least|dwarf\b/i.test(q) ? "asc" : "desc";
+    const central = /\bsatellite/i.test(q) ? false : /\bcentral/i.test(q) ? true : undefined;
+    const r = await call("list_galaxies", {...(sim ? {sim} : {}), sort, order, ...(central !== undefined ? {central} : {}), limit: 10});
+    if (r && r.ok && r.results) {
+      const top = r.results.slice(0, 6).map(g => `${g.id} (${g.sim || "TNG50-1"}, log M* ${g.logMstar ?? "–"}, log M200c ${g.logM200c ?? "–"}, SFR ${g.SFR ?? "–"})`).join("; ");
+      return {answer: `Found ${r.n_total} matching galaxies out of ${r.n_sample}: ${top}. Click or ask to open any galaxy by id.`, calls, unverified: []};
+    }
+  }
+  const wants3d = /\b(3d|three-d|volume|thor|nelson|temperature shells|gas phases|iso bands|clouds|vlos|vphi|vr|vmag|sigmalos|velocity field)\b/i.test(q)
+    || (switchedGal && /\b(face-on|edge-on)\b/i.test(q));
+  if (wants3d) {
+    const tf = /\bthor|gas phases\b/i.test(q) ? "thor" : /\bnelson|shells\b/i.test(q) ? "nelson16" : /\biso\b/i.test(q) ? "iso" : /\bclouds\b/i.test(q) ? "clouds" : undefined;
+    const preset = /\bface-?on\b/i.test(q) ? "face-on" : /\bedge-?on\b/i.test(q) ? "edge-on" : /\yalong.*sightline\b/i.test(q) ? "sightline" : undefined;
+    const mode = tf || /\bvolume\b/i.test(q) ? "volume" : /\bintegral|column|projected\b/i.test(q) ? "integral" : undefined;
+    let species = ionsFound[0];
+    if (!species) {
+      if (/\btemp|thor|nelson|shells\b/i.test(q)) species = "T";
+      else if (/\bmetallicity|\bZ\b/.test(q)) species = "Z";
+      else if (/\bvlos|line-of-sight vel/i.test(q)) species = "vlos";
+      else if (/\bvphi|rotat/i.test(q)) species = "vphi";
+      else if (/\bvr|radial vel|outflow/i.test(q)) species = "vr";
+      else if (/\bsigmalos|dispersion/i.test(q)) species = "sigmalos";
+      else if (/\bdensity|nh\b/i.test(q)) species = "nH";
+    }
+    const r = await call("show_3d", {...(species ? {species} : {}), ...(preset ? {preset} : {}), ...(mode ? {mode} : {}), ...(tf ? {tf} : {})});
+    const gTxt = switchedGal ? `Switched to ${switchedGal.sim || ""} galaxy ${switchedGal.id} and opened ` : "Opened ";
+    if (r && r.ok) return {answer: `${gTxt}the 3D view showing ${r.species || species || "gas"} in ${r.mode || "integral"} mode${r.preset ? ` (${r.preset})` : ""}${r.tf && r.tf !== "ramp" ? ` with the ${r.tf} transfer function` : ""}`, calls, unverified: []};
+    return {answer: `${switchedGal ? `Switched to galaxy ${switchedGal.id}; ` : ""}Could not open the 3D view: ${(r && r.error) || "unavailable"}`, calls, unverified: []};
+  }
+  if (/\b(find|search|which sightlines|sightlines with|components?)\b/i.test(q)) {
+    const ion = ionsFound[0] || "OVI";
+    const query = {ion};
+    if (/\bedge-?on\b/i.test(q)) query.orientation = "edge-on";
+    else if (/\bface-?on\b/i.test(q)) query.orientation = "face-on";
+    else if (/\brandom\b/i.test(q)) query.orientation = "random";
+    const sepM = q.match(/(\d+(?:\.\d+)?)\s*(?:–|-|to)\s*(\d+(?:\.\d+)?)\s*km\/s/i);
+    if (sepM) { query.sep_kms = [+sepM[1], +sepM[2]]; query.n_min = 2; }
+    if (/\btwo\b|\b2\s+comp/i.test(q)) query.n_min = Math.max(query.n_min || 0, 2);
+    if (/\bthree\b|\b3\s+comp/i.test(q)) query.n_min = Math.max(query.n_min || 0, 3);
+    const logNM = q.match(/(?:above|>=|>|at least|log\s*n[^0-9]*)\s*(1\d(?:\.\d+)?|2[0-2](?:\.\d+)?)/i);
+    if (logNM) query.logN_min = +logNM[1];
+    const bKpcM = q.match(/(?:within|<=|<|under|inside)\s*(\d+(?:\.\d+)?)\s*kpc/i);
+    if (bKpcM) query.b_kpc = [0, +bKpcM[1]];
+    const r = await call("search_sightlines", {query});
+    if (r && r.ok && r.results && r.results.length) {
+      const top = r.results[0];
+      await call("select_sightline", {id: top.id});
+      const list = r.results.slice(0, 4).map(x => `${x.id} (b = ${x.b_kpc} kpc, ${x.reason})`).join("; ");
+      return {answer: `Found ${r.n_total} matching sightlines and opened ${top.id}: ${list}.`, calls, unverified: []};
+    }
+    return {answer: `No sightlines in galaxy ${app.galaxy?.() ?? ""} matched ${JSON.stringify(query)}. Try relaxing the filter or switching galaxies.`, calls, unverified: []};
+  }
+  const rMatch = q.match(/\bR\s*=?\s*([\d,]{3,7})/i), snMatch = q.match(/\bS\/?N\s*=?\s*(\d{1,3})/i);
+  if (rMatch || snMatch || (ionsFound.length && /\b(show|plot|set|compare|fit)\b/i.test(q))) {
+    const args = {};
+    if (ionsFound.length) args.ions = [...new Set(ionsFound)];
+    if (rMatch) { const rv = +rMatch[1].replace(/,/g, ""); if (rv >= 5000 && rv <= 150000) args.R = {uv: rv}; }
+    if (snMatch) { const sv = +snMatch[1]; if (sv >= 2 && sv <= 100) args.snr = sv; }
+    if (/\bfit\b/i.test(q)) args.fit = !/\bno fit|hide fit|off\b/i.test(q);
+    const r = await call("set_instrument", args);
+    if (r && r.ok) return {answer: `Updated the spectrograph view: ions ${(r.ions || []).join(", ")}, UV R = ${(r.R?.uv || [])[0]}, S/N = ${(r.sn || [])[0]}${r.fit ? ", with Voigt fits shown" : ""}.`, calls, unverified: []};
+  }
+  if (switchedGal) {
+    return {answer: `Opened ${switchedGal.sim || "TNG50-1"} galaxy ${switchedGal.id} (${switchedGal.n_sightlines ?? 120} sightlines, log M* ${switchedGal.logMstar ?? "–"}, log M200c ${switchedGal.logM200c ?? "–"}, R200c ${switchedGal.R200c_kpc ?? "–"} kpc).`, calls, unverified: []};
+  }
+  const st = await call("get_page_state", {});
+  const g = st?.galaxy || {};
+  return {answer: `Currently viewing ${g.sim || "TNG50-1"} galaxy ${g.id ?? 488530} (log M* ${g.logMstar ?? "–"}, log M200c ${g.logM200c ?? "–"}, R200c ${g.R200c_kpc ?? "–"} kpc, ${g.n_sightlines ?? "–"} sightlines) on sightline ${st?.sightline?.id || "none"}. In general, this explorer covers 198 IllustrisTNG TNG50-1 Milky Way and M31 analogues (Nelson et al. 2019a,b; Pillepich et al. 2019, 2024; THOR spectra by Byrohl & Nelson 2025) and 23 FIRE-2 cosmological zoom-in halos (Hopkins et al. 2018; Wetzel et al. 2016, 2023; Garrison-Kimmel et al. 2019; Chan et al. 2018; Trident HM2012 spectra by Hummels et al. 2017) with 5-level 3D gas, stars and dust cubes.`, calls, unverified: []};
+}
 
 /* mount(root, app, opts) -> {open(), close(), destroy()}.  `app` = window.tngApp. Opens immediately unless
    opts.open === false. opts: {opener, fetch, loadSearch}. Uses Claude via the sightline server (no model download). */
@@ -760,13 +876,14 @@ export async function mount(root, app, opts = {}) {
   };
   const defaults = () => { try { return (app.config && app.config.backends) || []; } catch { return []; } };
   const curApi = () => { try { return app.getState().api; } catch { return null; } };
-  const ready = () => claudeOk;
+  const ready = () => true;
   function refresh() {
-    noticeText.textContent = claudeOk ? noticeShort("claude", curApi(), defaults()) : "Connecting to the sightline server…";
-    noticeMore.textContent = claudeNote(curApi(), defaults());
-    ta.disabled = busy || !ready(); send.disabled = busy || !ready();
-    for (const b of sugs) b.disabled = busy || !ready();
-    ta.placeholder = ready() ? "Ask about the sightlines" : "The server is offline";
+    noticeText.textContent = claudeOk ? noticeShort("claude", curApi(), defaults()) : "Browser assistant active: drives the page directly on this device.";
+    noticeMore.textContent = claudeOk ? claudeNote(curApi(), defaults())
+      : "The external sightline server is offline, so Ask uses the built-in browser assistant to search sightlines, switch between TNG50 and FIRE-2 galaxies, configure R and S/N, and control the 3D view locally on your device.";
+    ta.disabled = busy; send.disabled = busy;
+    for (const b of sugs) b.disabled = busy;
+    ta.placeholder = "Ask about TNG50 or FIRE-2 galaxies, sightlines or 3D views";
     send.replaceChildren(svg(busy ? "busy" : "send")); send.setAttribute("aria-busy", String(busy));
     if (busy && !typing.isConnected) { log.append(typing); log.scrollTop = log.scrollHeight; } else if (!busy) typing.remove();
   }
@@ -777,14 +894,12 @@ export async function mount(root, app, opts = {}) {
     if (api) try { const r = await fetchImpl(api + "/api/health", {cache: "no-store"}); if (r.ok) { const h = await r.json(); claudeOk = !!(h.chat && h.chat.claude === true); } } catch { claudeOk = false; }
     if (!claudeOk) {
       claudeApi = null;
-      noticeText.textContent = "The sightline server is currently offline.";
     } else if (claudeApi && normApi(api) !== normApi(claudeApi)) {      // the server changed under us: say so before anything is sent
       claudeApi = api; hist.messages = []; add("chat-note", "The sightline server changed. " + claudeNote(api, defaults()));
     } else {
       claudeApi = api;
     }
     refresh();
-    if (!claudeOk) noticeText.textContent = "The sightline server is currently offline.";
     return claudeOk ? api : null;
   }
   function ask(q) {
@@ -799,9 +914,13 @@ export async function mount(root, app, opts = {}) {
     let res;
     const page = pagePrefix(pageSnapshot(app));
     try {
-      const api = curApi();
-      if (normApi(api) !== normApi(claudeApi)) { await checkClaude(); throw new Error("The sightline server changed; read the note above and send again."); }
-      res = await runClaudeTurn({post: createClaudePost(api, fetchImpl), state: hist, userText: q, exec, onEvent, knownId, page});
+      if (claudeOk) {
+        const api = curApi();
+        if (normApi(api) !== normApi(claudeApi)) { await checkClaude(); throw new Error("The sightline server changed; read the note above and send again."); }
+        res = await runClaudeTurn({post: createClaudePost(api, fetchImpl), state: hist, userText: q, exec, onEvent, knownId, page});
+      } else {
+        res = await runBrowserAssistantTurn({userText: q, exec, app, onEvent});
+      }
     } catch (e) { res = {answer: null, error: errMsg(e), unverified: []}; }
     pending.length = 0;
     busy = false; refresh();

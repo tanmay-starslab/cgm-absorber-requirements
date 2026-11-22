@@ -20,11 +20,12 @@
   <a href="https://github.com/tanmay-starslab/cgm-absorber-requirements/releases"><img alt="Release" src="https://img.shields.io/github/v/release/tanmay-starslab/cgm-absorber-requirements?style=flat-square"></a>
   <a href="LICENSE"><img alt="Code licence: MIT" src="https://img.shields.io/badge/code-MIT-3fb68b?style=flat-square"></a>
   <a href="https://www.tng-project.org/data/"><img alt="Data: IllustrisTNG TNG50" src="https://img.shields.io/badge/data-IllustrisTNG%20TNG50-f08a4b?style=flat-square"></a>
+  <a href="http://flathub.flatironinstitute.org/fire"><img alt="Data: FIRE-2 zoom-in" src="https://img.shields.io/badge/data-FIRE--2%20zoom--in-ff6b4a?style=flat-square"></a>
 </p>
 
 Every galaxy sits inside a vast, faint halo of gas, the circumgalactic medium. We only see it when a distant quasar
 shines through: each kind of atom bites its own dip out of the light, and those dips tell us how much gas there is,
-how hot it is and how it moves. This site lets you do that for 198 Milky Way look-alikes from the TNG50 simulation.
+how hot it is and how it moves. This site lets you do that across **221 simulated galaxies at z = 0**: **198 Milky Way and M31 analogues** from the IllustrisTNG **TNG50-1** simulation and **23 cosmological zoom-in halos** from **FIRE-2** (Latte Milky Way hosts, ELVIS on FIRE Local Group pairs and Core dwarfs).
 
 ## What you can do
 
@@ -151,14 +152,14 @@ and `export_web_data.py` run. `tests/test_instruments.py` checks the file.
 </details>
 
 <details>
-<summary><b>TNG50 sightline explorer: data, fitting, 3D, chat and deployment</b></summary>
+<summary><b>TNG50 &amp; FIRE-2 sightline explorer: data, fitting, 3D, chat and deployment</b></summary>
 
-### TNG50 sightline explorer
+### TNG50 & FIRE-2 sightline explorer
 
-The explorer applies the same instrument question to simulated absorbers. It covers 198 TNG50-1 Milky Way and M31
-analogues at z = 0, with a galaxy picker (filter by stellar mass, halo mass, SFR, central or satellite). Subhalo 488530
-has the deepest data: 672 quasar sightlines, plus any geometry you request (face-on, edge-on or random; impact parameter
-b ≤ 300 kpc; azimuth Φ; or a ray picked in 3D), cast on demand with yt + Trident.
+The explorer applies the same instrument question to simulated absorbers across **221 galaxies at z = 0**:
+- **198 IllustrisTNG TNG50-1 Milky Way and M31 analogues** (snapshot 99; Nelson et al. 2019a,b; Pillepich et al. 2019, 2024). Subhalo 488530 has 672 Trident quasar sightlines plus on-demand ray generation; the other 197 analogues carry 700 sightlines each traced through the Voronoi mesh with THOR (Byrohl & Nelson 2025) and CLOUDY FG11 ion fractions.
+- **23 FIRE-2 cosmological zoom-in halos** (snapshot 600; Hopkins et al. 2018; Wetzel et al. 2023): 8 Latte Milky Way-mass hosts (`m12b`, `m12c`, `m12f`, `m12i`, `m12m`, `m12r`, `m12w`, `m12z`; Wetzel et al. 2016; Garrison-Kimmel et al. 2017; Samuel et al. 2020), 6 ELVIS on FIRE Local Group MW+M31 paired hosts (`Romeo` & `Juliet`, `Romulus` & `Remus`, `Thelma` & `Louise`; Garrison-Kimmel et al. 2019), and 9 Core dwarf halos (`m11b`, `m11d`, `m11e`, `m11h`, `m11i`, `m11q`, `m10q`, `m10v`, `m09`; Chan et al. 2018; El-Badry et al. 2018), each with 120 Trident sightlines (face-on, edge-on and random orientations across impact parameters up to R200c) and fitted Voigt component catalogues.
+- **Simulation switcher & galaxy picker.** A top-bar `TNG50 | FIRE-2` segmented choice switch (also visible on Android and iPhone) jumps between simulations, and the galaxy picker groups all 221 galaxies by simulation with instant search and sorting by stellar mass, halo mass, SFR, central or satellite.
 
 - **Lines (Phase 3).** Twelve ions ordered by ionisation potential, from cool to hot: H I 1216 (Lyα), Mg II 2796,
   Si II 1260, C II 1335, Si III 1206, C III 977, Si IV 1403, C IV 1548, N V 1239, O VI 1032, Ne VIII 770 and
@@ -180,18 +181,24 @@ b ≤ 300 kpc; azimuth Φ; or a ray picked in 3D), cast on demand with yt + Trid
   native spectra with a pseudo-noise σ = 0.01, so its errors are formal. Fit regions are seeded per pixel and by a
   matched filter (box widths 3 to 127 km/s; the library was refitted with it), which also finds shallow, broad O VI,
   N V and Ne VIII. Flags: 1 SAT, 2 BOUND, 4 MAXCOMP, 8 POORFIT, 16 EDGE, 32 NOERR, 64 DAMPED, 128 BUDGET.
-- **3D tab.** Every gas cell is deposited with its own kernel onto three nested 256³ cubes (L0 ±400, L1 ±100 and
-  L2 ±25 kpc) of n_H, T, Z and all 12 ion densities, next to the stellar g, r, i light (a Lupton et al. 2004
-  composite), and drawn as column maps or volumes in a square stage. Velocity views (v_los, v_r, v_φ, |v|, σ_los)
-  are derived per frame from stored mass-weighted velocity cubes in the galaxy rest frame. The cubes live on the public dataset
-  [`tanmay-starslab/tng50-sub488530-viz`](https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz);
+- **3D tab (5-level nested octree + 3D dust radiative transfer).** For all 221 TNG50 and FIRE-2 galaxies, every gas cell
+  or particle is deposited with its SPH/Voronoi kernel onto **five nested 256³ cubes** (L0 ±400 kpc, L1 ±100 kpc,
+  L2 ±25 kpc, L3 ±6.25 kpc, and L4 ±1.5 kpc at **12 pc voxel resolution**) of n_H, T, Z, v_x, v_y, v_z and all 12 ion
+  densities, next to crisp 5-level stellar g, r, i light cubes (S0..S4, Lupton et al. 2004 asinh composite with
+  3D cold-gas dust opacity `q_dust` packed in the alpha channel and selectable SKIRT 2-component, Calzetti+00,
+  Cardelli+89 and FIRE Studio Pei+92 extinction curves). Velocity views (v_los, v_r, v_φ, |v|, σ_los)
+  are derived per frame from stored mass-weighted velocity cubes in the galaxy rest frame. The public datasets live on Hugging Face at
+  [`tanmay-starslab/tng50-sub488530-viz`](https://huggingface.co/datasets/tanmay-starslab/tng50-sub488530-viz),
+  [`tanmay-starslab/tng50-mwm31-web-0`..`3`](https://huggingface.co/datasets/tanmay-starslab/tng50-mwm31-web-0) and
+  [`tanmay-starslab/fire2-core-web-0`..`3`](https://huggingface.co/datasets/tanmay-starslab/fire2-core-web-0);
   git keeps only the pinned `manifest_v2.json` and the LUTs. If huggingface.co is unreachable, everything except the
   3D stage keeps working.
-- **Find and Ask.** A deterministic component search (identical JS and Python versions), and a chat panel whose
-  model only emits tool calls that the page runs: by default a local model (WebLLM, Qwen2.5-1.5B, about 1 GB,
-  downloaded only on request; needs WebGPU), or a Claude backend when the server has an Anthropic key. That backend
-  sends the conversation to Anthropic through our stateless server, which logs no message content. Answers whose
-  numbers do not come from a tool result get an "unverified" badge.
+- **Find and Ask.** A deterministic component search (identical JS and Python versions), and an **Ask** chat panel that
+  drives all 10 page tools across the 221 TNG50 and FIRE-2 galaxies (`list_galaxies`, `select_galaxy`,
+  `search_sightlines`, `select_sightline`, `set_instrument`, `show_3d`, `set_view`, `get_page_state`,
+  `request_sightline`, `request_custom_ray`). When the sightline server is online with an Anthropic key it uses the
+  stateless Claude proxy; when offline on the static site it runs an instant built-in browser assistant (with optional
+  WebLLM Qwen2.5-1.5B local WebGPU model). Answers whose numbers do not come from a tool result get an "unverified" badge.
 
 ```
  Cloudflare: docs/tng50/                backend (Docker): server.app             laptop
@@ -309,22 +316,16 @@ constant continuum noise. Nominal instrument resolving powers are indicative.
 
 ## Credits
 
-IllustrisTNG, TNG50-1 at z = 0, snapshot 99 (Nelson et al. 2019a, ComAC 6, 2, [doi:10.1186/s40668-019-0028-x](https://doi.org/10.1186/s40668-019-0028-x);
-Nelson et al. 2019b, MNRAS 490, 3234, [doi:10.1093/mnras/stz2306](https://doi.org/10.1093/mnras/stz2306); Pillepich et al. 2019, MNRAS 490, 3196, [doi:10.1093/mnras/stz2338](https://doi.org/10.1093/mnras/stz2338);
-data from https://www.tng-project.org/data/, used as the TNG Collaboration requests). Spectra of the 198 MW/M31
-galaxies: a fiducial ray library, rays through the TNG50 Voronoi mesh traced with THOR (Byrohl & Nelson
-2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background
-(Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding. Galaxy 488530's default and custom rays,
-and every 3D ion cube: Trident (Hummels, Smith & Silvia 2017) on yt (Turk et al. 2011) with the HM2012 background
-(Haardt & Madau 2012). The star composite follows Lupton et al. (2004). The 3D viewer's approach (deposited cubes and
-column-integral rendering) was inspired by Scott Lucchini's TNG viewer. Explainer music (optional, two tracks): Hans Zimmer,
-Day One (Interstellar, 2014), and Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (orchestral recording);
-excerpted, faded and looped.
+- **IllustrisTNG (TNG50-1 at z = 0, snapshot 99, 198 MW/M31 analogues):** Nelson et al. 2019a, ComAC 6, 2, [doi:10.1186/s40668-019-0028-x](https://doi.org/10.1186/s40668-019-0028-x);
+  Nelson et al. 2019b, MNRAS 490, 3234, [doi:10.1093/mnras/stz2306](https://doi.org/10.1093/mnras/stz2306); Pillepich et al. 2019, MNRAS 490, 3196, [doi:10.1093/mnras/stz2338](https://doi.org/10.1093/mnras/stz2338); Pillepich et al. 2024, MNRAS 535, 1721, [doi:10.1093/mnras/stae2125](https://doi.org/10.1093/mnras/stae2125);
+  data from https://www.tng-project.org/data/, used as the TNG Collaboration requests.
+- **FIRE-2 cosmological zoom-in simulations (z = 0, snapshot 600, 23 halos):** public data release (Wetzel et al. 2023, ApJS 265, 44, [doi:10.3847/1538-4365/acb99a](https://doi.org/10.3847/1538-4365/acb99a); http://flathub.flatironinstitute.org/fire and https://fire.northwestern.edu/data/), run with GIZMO (Hopkins 2015, MNRAS 450, 53, [doi:10.1093/mnras/stv195](https://doi.org/10.1093/mnras/stv195)) and the FIRE-2 physics model (Hopkins et al. 2018, MNRAS 480, 800, [doi:10.1093/mnras/sty1690](https://doi.org/10.1093/mnras/sty1690)): Latte Milky Way-mass hosts `m12b..m12z` (Wetzel et al. 2016, ApJL 827, L23, [doi:10.3847/2041-8205/827/2/L23](https://doi.org/10.3847/2041-8205/827/2/L23); Garrison-Kimmel et al. 2017, MNRAS 471, 1709; Samuel et al. 2020, MNRAS 491, 1471), ELVIS on FIRE Local Group pairs `Romeo` & `Juliet`, `Romulus` & `Remus`, `Thelma` & `Louise` (Garrison-Kimmel et al. 2019, MNRAS 487, 1380, [doi:10.1093/mnras/stz1317](https://doi.org/10.1093/mnras/stz1317)), and Core dwarf halos `m11b..m09` (Chan et al. 2018, MNRAS 478, 906, [doi:10.1093/mnras/sty1153](https://doi.org/10.1093/mnras/sty1153); El-Badry et al. 2018, MNRAS 473, 1930).
+- **Spectra and 3D cubes:** Spectra of the 197 TNG50 MW/M31 analogues from the fiducial ray library traced through the TNG50 Voronoi mesh with THOR (Byrohl & Nelson 2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background (Faucher-Giguère et al. 2009) and Rahmati et al. (2013) H I self-shielding. TNG50 galaxy 488530's default and custom rays, all 23 FIRE-2 sightline libraries, and every 3D ion cube: Trident (Hummels, Smith & Silvia 2017) on yt (Turk et al. 2011) with the HM2012 background (Haardt & Madau 2012). The star composite follows Lupton et al. (2004) with Bruzual & Charlot (2003) / FSPS stellar synthesis and 3D cold-gas dust extinction. The 3D viewer's approach (deposited cubes and column-integral rendering) was inspired by Scott Lucchini's TNG viewer. Explainer music (optional, two tracks): Hans Zimmer, Day One (Interstellar, 2014), and Beethoven, Symphony No. 7 in A major, Op. 92, II. Allegretto (orchestral recording); excerpted, faded and looped.
 
 ## Licence
 
 Code: MIT, © 2026 Tanmay Singh ([`LICENSE`](LICENSE)). This covers all code here, including the
-TNG50 explorer (`tngsight/`, `server/`, `deploy/`, `tng50/`, `docs/tng50/`).
+TNG50 and FIRE-2 explorer (`tngsight/`, `server/`, `deploy/`, `tng50/`, `docs/tng50/`).
 
 Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full texts):
 
@@ -343,10 +344,10 @@ Third-party terms ([`THIRD_PARTY_LICENSES`](THIRD_PARTY_LICENSES) has the full t
 - **MediaPipe Tasks Vision** 1.2.3 and the **Face Landmarker** model (Apache-2.0, © Google LLC): vendored in
   `docs/tng50/vendor/mediapipe/` with the licence and a README (versions, sources, sha256, the one change: the usage
   logger is disabled). Loaded only when a visitor starts head control in the 3D tab.
-- **TNG50 data.** The TNG50-derived spectra, library, story data and 3D cubes (`docs/tng50/data/`, `docs/tng50/learn/*/data/`, the npz library, the
-  private HF dataset and the public datasets `tanmay-starslab/tng50-mwm31-web-0` to `-3` and `tanmay-starslab/tng50-sub488530-viz`)
-  are not MIT and are not relicensed here. They are used as the TNG Collaboration requests
-  ([citation](https://www.tng-project.org/data/docs/background/#citation)): please cite Nelson et al. 2019a (ComAC 6, 2),
-  Nelson et al. 2019b (MNRAS 490, 3234) and Pillepich et al. 2019 (MNRAS 490, 3196).
+- **TNG50 and FIRE-2 data.** The TNG50-derived and FIRE-2-derived spectra, libraries, story data and 3D cubes (`docs/tng50/data/`, `docs/tng50/learn/*/data/`, the npz libraries, the
+  private HF dataset and the public datasets `tanmay-starslab/tng50-mwm31-web-0` to `-3`, `tanmay-starslab/tng50-sub488530-viz`, and `tanmay-starslab/fire2-core-web-0` to `-3`)
+  are not MIT and are not relicensed here. They are used as the IllustrisTNG Collaboration
+  ([citation](https://www.tng-project.org/data/docs/background/#citation): Nelson et al. 2019a,b; Pillepich et al. 2019, 2024)
+  and FIRE Collaboration ([citation](https://fire.northwestern.edu/data/): Hopkins 2015; Hopkins et al. 2018; Wetzel et al. 2016, 2023; Garrison-Kimmel et al. 2017, 2019; Samuel et al. 2020; Chan et al. 2018; El-Badry et al. 2018) request.
   Please also cite Trident (Hummels, Smith & Silvia 2017, ApJ 847, 59) and yt (Turk et al. 2011,
   ApJS 192, 9).
