@@ -68,7 +68,7 @@ class _M(BaseModel):
 
 
 _Galaxy = Optional[str]
-_GAL_FIELD = dict(default=None, pattern=GAL_ID_RE.pattern, max_length=9)
+_GAL_FIELD = dict(default=None, pattern=GAL_ID_RE.pattern, max_length=24)
 
 
 class GeometryReq(_M):
@@ -519,7 +519,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         return d
 
     @app.get("/api/catalog")
-    def catalog(request: Request, g: Optional[str] = Query(None, max_length=12)):
+    def catalog(request: Request, g: Optional[str] = Query(None, max_length=24)):
         body, etag = store_of(galaxy_of(g)).catalog_doc()
         hdr = {"ETag": etag, "Cache-Control": "max-age=60"}
         if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
@@ -527,7 +527,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         return Response(body, media_type="application/json", headers=hdr)
 
     @app.get("/api/sightline/{name}")
-    def sightline(name: str, g: Optional[str] = Query(None, max_length=12)):
+    def sightline(name: str, g: Optional[str] = Query(None, max_length=24)):
         gid = galaxy_of(g)
         st = store_of(gid)
         if name.endswith(".bin"):
@@ -552,7 +552,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             raise HTTPException(422, str(e))
 
     @app.post("/api/geometry")
-    def geometry(req: GeometryReq, g: Optional[str] = Query(None, max_length=12)):
+    def geometry(req: GeometryReq, g: Optional[str] = Query(None, max_length=24)):
         gid = galaxy_of(g, req.galaxy)
         c = _canon(req)
         rec, st = record_of(gid), store_of(gid)
@@ -608,7 +608,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
                              "position": snap["position"], **extra}, 202)
 
     @app.post("/api/sightlines")
-    def submit(req: GeometryReq, request: Request, g: Optional[str] = Query(None, max_length=12)):
+    def submit(req: GeometryReq, request: Request, g: Optional[str] = Query(None, max_length=24)):
         gid = galaxy_of(g, req.galaxy)
         return enqueue(_canon(req), request, gid)
 
@@ -620,7 +620,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
             raise HTTPException(422, str(e))
 
     @app.post("/api/geometry/custom")
-    def geometry_custom(req: CustomReq, g: Optional[str] = Query(None, max_length=12)):
+    def geometry_custom(req: CustomReq, g: Optional[str] = Query(None, max_length=24)):
         gid = galaxy_of(g, req.galaxy)
         c = _canon_custom(req)
         rec, st = record_of(gid), store_of(gid)
@@ -629,13 +629,13 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         return out if hub.is_default(gid) else {**out, "galaxy": gid}
 
     @app.post("/api/sightlines/custom")
-    def submit_custom(req: CustomReq, request: Request, g: Optional[str] = Query(None, max_length=12)):
+    def submit_custom(req: CustomReq, request: Request, g: Optional[str] = Query(None, max_length=24)):
         gid = galaxy_of(g, req.galaxy)
         c = _canon_custom(req)
         return enqueue(c, request, gid, {"canonical": {"p0_kpc": c["p0_kpc"], "p1_kpc": c["p1_kpc"]}})
 
     @app.get("/api/components")
-    def components_index(request: Request, g: Optional[str] = Query(None, max_length=12)):
+    def components_index(request: Request, g: Optional[str] = Query(None, max_length=24)):
         body, etag = store_of(galaxy_of(g)).components_index()
         hdr = {"ETag": etag, "Cache-Control": "max-age=60"}
         if etag in [t.strip() for t in request.headers.get("if-none-match", "").split(",")]:
@@ -643,7 +643,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
         return Response(body, media_type="application/json", headers=hdr)
 
     @app.get("/api/components/{name}")
-    def components_one(name: str, g: Optional[str] = Query(None, max_length=12)):
+    def components_one(name: str, g: Optional[str] = Query(None, max_length=24)):
         st = store_of(galaxy_of(g))
         sid = _sid(name, ".json")
         d = st.components(sid)
@@ -714,7 +714,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
                 sse_open.pop(who, None)
 
     @app.post("/api/figure")
-    async def figure(req: FigureReq, request: Request, g: Optional[str] = Query(None, max_length=12)):
+    async def figure(req: FigureReq, request: Request, g: Optional[str] = Query(None, max_length=24)):
         gid = galaxy_of(g, req.galaxy)
         st = await asyncio.to_thread(store_of, gid)          # a first use may fetch the galaxy record
         wait = limiter.check("figure", ip(request))

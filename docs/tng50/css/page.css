@@ -610,6 +610,7 @@ html[data-tier=low] *,html[data-tier=low] *::before,html[data-tier=low] *::after
 @keyframes gxy-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){#gxy-open[data-state=loading] .gxg{animation:none}}
 #gxy-pop{width:500px;max-width:min(500px,calc(calc(100 * var(--vw, 1vw)) - 24px));padding:10px}
+#gxy-sim{display:grid;grid-template-columns:repeat(3,1fr);width:100%;margin-bottom:6px}
 .gxycur{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin:0 0 8px;padding:2px 2px 9px;border-bottom:1px solid var(--mat-edge-c,var(--gline))}
 .gxycur .gxid{font:600 14px var(--mono);color:var(--ink)}
 .gxycur .gxk{font:500 11px var(--sans);color:var(--muted)}
