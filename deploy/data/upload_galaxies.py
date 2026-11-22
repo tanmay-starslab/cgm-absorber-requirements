@@ -65,8 +65,8 @@ FREE_PRIVATE_BYTES = 100e9         # free user/org private storage (same page, "
 ALL_FIELDS = None                  # sentinel: every field of the manifest
 TIERS = {
     #          gas/star levels kept                    gas fields kept                gz fallback hosted
-    "full": {"levels": ("L0", "L1", "L2", "S0", "S1", "S2"), "fields": ALL_FIELDS, "gz": True},
-    "webp": {"levels": ("L0", "L1", "L2", "S0", "S1", "S2"), "fields": ALL_FIELDS, "gz": False},
+    "full": {"levels": ("L0", "L1", "L2", "L3", "L4", "S0", "S1", "S2", "S3", "S4"), "fields": ALL_FIELDS, "gz": True},
+    "webp": {"levels": ("L0", "L1", "L2", "L3", "L4", "S0", "S1", "S2", "S3", "S4"), "fields": ALL_FIELDS, "gz": False},
     "nol2": {"levels": ("L0", "L1", "S0", "S1"), "fields": ALL_FIELDS, "gz": True},
     "lite": {"levels": ("L0", "L1", "S0", "S1"), "fields": ALL_FIELDS, "gz": False},
     "core": {"levels": ("L0", "L1", "S0", "S1"),
@@ -76,8 +76,8 @@ TIERS = {
 _GID = r"(?:[0-9]{1,9}|[A-Za-z][A-Za-z0-9_]{1,23})"
 GAL_ID_RE = re.compile(rf"^{_GID}$")
 _SID = r"(face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?"
-_CUBE = (r"viz/(gas/L[012]/[A-Za-z0-9]+\.[0-9a-f]{12}\.(p[0-3]\.webp|u8\.gz)"
-         r"|stars/S[012]/gri\.[0-9a-f]{12}\.(p[0-3]\.webp|rgba\.gz))")
+_CUBE = (r"viz/(gas/L[0-4]/[A-Za-z0-9]+\.[0-9a-f]{12}\.(p[0-3]\.webp|u8\.gz)"
+         r"|stars/S[0-4]/gri\.[0-9a-f]{12}\.(p[0-3]\.webp|rgba\.gz))")
 PACK_RE = re.compile(rf"^(README\.md|{_GID}/(galaxy\.json|catalog\.json|components\.json|s/{_SID}\.bin"
                      rf"|viz/manifest_v2\.json|viz/luts/luts\.json|{_CUBE}))$")
 CUTOUT_RE = re.compile(rf"^(README\.md|trident/hm2012_ss_hr\.h5|{_GID}/(cutout_slim_R400\.hdf5|galaxy\.json))$")
@@ -104,8 +104,8 @@ def shard(gid: int | str) -> int:
     return int(hashlib.sha256(str(gid).encode("utf-8")).hexdigest()[:8], 16) % N_SHARDS
 
 
-def pack_repo(gid: int | str) -> str:
-    return PACK_REPO.format(k=shard(gid))
+def pack_repo(gid: int | str, template: str = PACK_REPO) -> str:
+    return template.format(k=shard(gid))
 
 
 def resolve_base(repo: str, gid: int | str) -> str:
@@ -371,11 +371,53 @@ The code that builds these files is MIT-licensed: https://github.com/tanmay-star
 TNG_META = ("---\nlicense: other\nlicense_name: illustristng-data-terms\n"
             "license_link: https://www.tng-project.org/data/docs/background/#citation\n")
 
+FIRE2_TERMS = """
+This dataset holds derived products only, no raw simulation data.
 
-def dataset_card(repo: str, gids: list[int], kind: str, total: int) -> bytes:
+## Data terms, licence, and citation
+
+These files are derived from the FIRE-2 public data release (http://flathub.flatironinstitute.org/fire), shared under
+the **Creative Commons Attribution 4.0 International (CC BY 4.0)** licence (https://creativecommons.org/licenses/by/4.0/).
+If you use them, please cite the FIRE-2 simulation and data release papers:
+
+- Hopkins et al. 2018, *MNRAS* 480, 800: FIRE-2 simulations, physics and numerical methods (arXiv:1702.06148);
+- Wetzel et al. 2023, *ApJS* 265, 44: Public data release of the FIRE-2 cosmological zoom-in simulations (arXiv:2202.06969);
+- Wetzel et al. 2025: FIRE-2 public data release updates and documentation.
+
+Please refer to the project as "FIRE-2" (Feedback In Realistic Environments).
+
+## How the spectra and 3D cubes were made
+
+- Synthetic circumgalactic-medium absorption spectra (120 sightlines per galaxy, 12 transitions, TNGS v2 binaries) and
+  Voigt profile components traced with Trident (Hummels, Smith & Silvia 2017, *ApJ* 847, 59) on yt (Turk et al. 2011,
+  *ApJS* 192, 9) with the HM2012 UV background (Haardt & Madau 2012, *ApJ* 746, 125) and H I self-shielding;
+- Multi-resolution 3D gas (L0-L4) and 3D dust-attenuated stellar (S0-S4) volume atlases in lossless WebP (tng50-viz/2).
+
+## Code
+
+The code that builds these files is MIT-licensed: https://github.com/tanmay-starslab/cgm-absorber-requirements
+(third-party licences in its THIRD_PARTY_LICENSES file).
+"""
+FIRE2_META = ("---\nlicense: cc-by-4.0\n"
+              "license_link: https://creativecommons.org/licenses/by/4.0/\n")
+
+
+def dataset_card(repo: str, gids: list[int | str], kind: str, total: int) -> bytes:
     """The HF dataset card. TNG-derived data carry the IllustrisTNG citation request, never an open-data licence
-    (the TNG data are not ours to relicense)."""
+    (the TNG data are not ours to relicense). FIRE-2 derived data carry CC BY 4.0 attribution."""
     shard = repo.rsplit('-', 1)[-1]
+    if "fire2" in repo.lower():
+        glist = ", ".join(str(g) for g in gids)
+        body = (f"# FIRE-2 Core + Latte + ELVIS CGM explorer: web pack, shard {shard}\n\n"
+                "Synthetic circumgalactic-medium absorption spectra (120 sightlines per galaxy, 12 transitions, TNGS v2 "
+                "binaries), their Voigt components, and multi-resolution 3D gas (L0-L4) and dust-attenuated stellar (S0-S4) "
+                "cubes (tng50-viz/2) for the FIRE-2 cosmological zoom-in galaxies at z = 0 (Hopkins et al. 2018; "
+                "Wetzel et al. 2023, 2025). They are read by the explorer page at https://galaxies.tanmaysingh.uk/.\n\n"
+                f"Galaxies here: shard {shard} of {N_SHARDS} ({len(gids)} galaxies: {glist}; {total / 1e9:.2f} GB). One "
+                "folder per galaxy id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
+                "viz/manifest_v2.json and the cubes it lists.\n" + FIRE2_TERMS)
+        meta = FIRE2_META + f"pretty_name: FIRE-2 CGM explorer web pack (shard {shard})\n---\n"
+        return (meta + "\n" + body).encode("utf-8")
     if kind == "pack":
         body = (f"# TNG50 MW/M31 CGM explorer: web pack, shard {shard}\n\n"
                 "Synthetic circumgalactic-medium absorption spectra (700 sightlines per galaxy, 12 transitions, TNGS v2 "
@@ -554,6 +596,8 @@ def main(argv=None) -> int:
     ap.add_argument("--verify-only", action="store_true", help="anonymous CORS/Range/sha checks of planned packs")
     ap.add_argument("--execute", action="store_true", help="upload (needs a write token); default is a dry run")
     ap.add_argument("--token-file", type=Path, default=None)
+    ap.add_argument("--pack-repo-template", default=PACK_REPO,
+                    help=f"HF dataset repo template with {{k}} shard placeholder (default: {PACK_REPO})")
     ap.add_argument("--message", default="Update TNG50 MW/M31 galaxy packs")
     a = ap.parse_args(argv)
 
@@ -588,7 +632,7 @@ def main(argv=None) -> int:
             if p["problems"]:
                 problems[gid] = p["problems"]
             else:
-                repo = pack_repo(gid)
+                repo = pack_repo(gid, a.pack_repo_template)
                 repos[repo]["gids"].append(gid)
                 repos[repo]["items"] += p["items"]
                 index[str(gid)] = {"repo": repo, "base": resolve_base(repo, gid), "tier": tier, "checked": ok,

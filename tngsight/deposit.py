@@ -82,6 +82,7 @@ def to_disk(x_abs_kpc: np.ndarray) -> np.ndarray:
 class Grid:
     half_kpc: float
     n: int
+    h_min_vox: float = H_MIN_VOX
 
     def __post_init__(self):
         n = int(self.n)
@@ -89,6 +90,8 @@ class Grid:
             raise ValueError(f"Grid.n must be a power of two ≥ 2, got {self.n}")
         if not (self.half_kpc > 0):
             raise ValueError("Grid.half_kpc must be > 0")
+        if not (self.h_min_vox > 0):
+            raise ValueError("Grid.h_min_vox must be > 0")
 
     @property
     def dx(self) -> float:
@@ -102,7 +105,7 @@ class Grid:
         return -float(self.half_kpc) + (np.arange(int(self.n)) + 0.5) * self.dx
 
     def h_eff(self, h) -> np.ndarray:
-        return np.maximum(np.asarray(h, dtype=np.float64), H_MIN_VOX * self.dx)
+        return np.maximum(np.asarray(h, dtype=np.float64), float(self.h_min_vox) * self.dx)
 
     def contains(self, pos, h) -> np.ndarray:
         """Mask of elements whose support (radius h_eff) overlaps the box: max_a |p_a| < half + h_eff."""
@@ -202,6 +205,11 @@ def _run_weights(pos, heff, dxm, k, n_m, half):
     w = kernel_shape(np.sqrt(r2) / heff[:, None])
     del r2
     S = w.sum(axis=1)
+    zero = S <= 0.0
+    if np.any(zero):
+        c_idx = int(np.flatnonzero((off[:, 0] == 0) & (off[:, 1] == 0) & (off[:, 2] == 0))[0])
+        w[zero, c_idx] = 1.0
+        S[zero] = 1.0
     w /= S[:, None]
     inb = (ix >= 0) & (ix < n_m) & (iy >= 0) & (iy < n_m) & (iz >= 0) & (iz < n_m)
     f = np.where(inb, w, 0.0).sum(axis=1)
@@ -462,7 +470,7 @@ def scatter_reference(pos_kpc, h_kpc, quantities: dict, grid: Grid, *, k_max=K_M
     acc = [np.zeros((n >> mm, n >> mm, n >> mm, len(names))) for mm in range(m_max + 1)]
     fs, ms, qrows, kept = [], [], [], []
     for e in range(pos.shape[0]):
-        he = max(float(h[e]), H_MIN_VOX * dx)
+        he = max(float(h[e]), float(grid.h_min_vox) * dx)
         p = [float(pos[e, a]) for a in range(3)]
         if not max(abs(p[0]), abs(p[1]), abs(p[2])) < half + he:
             continue
@@ -499,6 +507,10 @@ def scatter_reference(pos_kpc, h_kpc, quantities: dict, grid: Grid, *, k_max=K_M
                     S += w
                     if 0 <= jx < nm_ and 0 <= jy < nm_ and 0 <= jz < nm_:
                         pts.append((jx, jy, jz, w))
+        if S == 0.0:
+            S = 1.0
+            if 0 <= c[0] < nm_ and 0 <= c[1] < nm_ and 0 <= c[2] < nm_:
+                pts.append((c[0], c[1], c[2], 1.0))
         fin = 0.0
         qe = [qc[e] for qc in qcols]
         for jx, jy, jz, w in pts:
