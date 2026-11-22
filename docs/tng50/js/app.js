@@ -828,19 +828,46 @@ $("#v3d-mini").addEventListener("pointerenter", () => { if (thumbOk() && tier() 
 const GPICK = GIX ? createGalaxyPicker({pop: $("#gxy-pop"), cur: $("#gxy-cur"), search: $("#gxy-search"), filter: $("#gxy-filter"), head: $("#gxy-head"),
   list: $("#gxy-list"), count: $("#gxy-count")}, {index: GIX, current: () => GAL, onPick: id => { closePops(); sfx("select"); switchGalaxy(id, {source: "picker"}); }}) : null;
 if (GPICK && $("#gxy-sim")) initLiquidSeg($("#gxy-sim"));
+const LAST_BY_SIM = {tng50: GIX?.default ?? 488530, fire2: "m12i"};
+let topSimEl = null;
+if (GIX && new Set(GIX.list.map(e => e.simKey)).size > 1 && $("#grp-gal") && !$("#top-sim")) {
+  topSimEl = document.createElement("div");
+  topSimEl.id = "top-sim";
+  topSimEl.className = "seg";
+  topSimEl.setAttribute("role", "radiogroup");
+  topSimEl.setAttribute("aria-label", "Simulation");
+  topSimEl.innerHTML = [
+    ["tng50", "TNG50", "Switch to IllustrisTNG TNG50-1 galaxies"],
+    ["fire2", "FIRE-2", "Switch to FIRE-2 zoom-in halos"]
+  ].map(([v, lab, tip], i) => `<label><input type="radio" name="top-sim" value="${v}" data-tip="${tip}"${i === 0 ? " checked" : ""}><span>${lab}</span></label>`).join("");
+  const grpGal = $("#grp-gal"), gxyOpen = $("#gxy-open");
+  if (gxyOpen) grpGal.insertBefore(topSimEl, gxyOpen); else grpGal.prepend(topSimEl);
+  initLiquidSeg(topSimEl);
+  topSimEl.addEventListener("change", ev => {
+    const sk = ev.target?.value;
+    if (!sk || (sk === "fire2") === activeIsFire()) return;
+    sfx("select");
+    if (GPICK) GPICK.setSim(sk);
+    const target = (LAST_BY_SIM[sk] && GIX.byId.has(LAST_BY_SIM[sk])) ? LAST_BY_SIM[sk]
+      : (sk === "fire2" && GIX.byId.has("m12i") ? "m12i" : GIX.list.find(e => e.simKey === sk)?.id);
+    if (target != null && target !== GAL) switchGalaxy(target, {source: "sim-switch"});
+  });
+}
 const activeSim = () => String((GIX && GIX.byId.get(GAL)?.sim) || CFG.galaxy?.sim || (isFire({id: GAL}) ? "FIRE-2" : "TNG50-1"));
 const activeIsFire = () => /^FIRE/i.test(activeSim());
 const activeNoun = (cap = false) => (activeIsFire() ? (cap ? "Halo" : "halo") : (cap ? "Subhalo" : "subhalo"));
 function galaxyUI() {
-  const fire = activeIsFire(), ttl = $("#title");
+  const fire = activeIsFire(), ttl = $("#title"), sk = fire ? "fire2" : "tng50";
+  if (GAL != null) LAST_BY_SIM[sk] = GAL;
   if (ttl) ttl.textContent = fire ? "FIRE-2 sightlines" : "TNG50 sightlines";
+  if (topSimEl) for (const r of topSimEl.querySelectorAll('input[name="top-sim"]')) r.checked = r.value === sk;
   const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
   const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");
   lab.textContent = String(GAL); lab.dataset.id = String(GAL);
   b.dataset.tip = `${fire ? `FIRE-2 halo ${GAL}` : `Subhalo ${GAL}`}, ${e && e.n ? e.n + " sightlines" : "this galaxy"}; click to pick another`;
   b.setAttribute("aria-label", `Galaxy: ${fire ? `FIRE-2 halo ${GAL}` : `subhalo ${GAL}`}. Pick another galaxy`);
   document.body.dataset.galaxy = String(GAL);
-  document.body.dataset.sim = fire ? "fire2" : "tng50";
+  document.body.dataset.sim = sk;
 }
 /* the provenance chip in the plot footer (visible on phones too, review2_ux S3): the galaxy id and its spectra source;
    a click opens Data and methods, whose spectra paragraphs follow the source */

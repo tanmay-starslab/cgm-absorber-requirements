@@ -246,6 +246,8 @@ export function createGalaxyPicker(els, opts) {
   const sims = new Set((opts.index.list || []).map(e => e.simKey || (isFire(e) ? "fire2" : "tng50")));
   const multiSim = sims.size > 1;
   let simBar = els.pop ? els.pop.querySelector("#gxy-sim") : null;
+  const nTng = (opts.index.list || []).filter(e => (e.simKey || (isFire(e) ? "fire2" : "tng50")) === "tng50").length;
+  const nFire = (opts.index.list || []).filter(e => (e.simKey || (isFire(e) ? "fire2" : "tng50")) === "fire2").length;
   if (multiSim && els.pop && !simBar) {
     simBar = document.createElement("div");
     simBar.id = "gxy-sim";
@@ -253,9 +255,9 @@ export function createGalaxyPicker(els, opts) {
     simBar.setAttribute("role", "radiogroup");
     simBar.setAttribute("aria-label", "Simulation filter");
     simBar.innerHTML = [
-      ["all", "All", "Show TNG50 and FIRE-2 galaxies"],
-      ["tng50", "TNG50", "Show only TNG50-1 galaxies"],
-      ["fire2", "FIRE-2", "Show only FIRE-2 zoom-in halos"]
+      ["all", `All (${nTng + nFire})`, "Show TNG50 and FIRE-2 galaxies grouped by simulation"],
+      ["tng50", `TNG50 (${nTng})`, "Show only TNG50-1 galaxies"],
+      ["fire2", `FIRE-2 (${nFire})`, "Show only FIRE-2 zoom-in halos"]
     ].map(([v, lab, tip], i) => `<label><input type="radio" name="gxy-sim" value="${v}" data-tip="${esc(tip)}"${i === 0 ? " checked" : ""}><span>${lab}</span></label>`).join("");
     const fl = els.pop.querySelector(".fl");
     if (fl) els.pop.insertBefore(simBar, fl); else els.pop.prepend(simBar);
@@ -269,7 +271,7 @@ export function createGalaxyPicker(els, opts) {
     }
     msgEl.textContent = simFilter === "fire2" ? "FIRE-2 z = 0 zoom-in halos"
       : simFilter === "tng50" ? "TNG50-1 z = 0 Milky Way and M31 analogues"
-      : "TNG50-1 and FIRE-2 z = 0 galaxies";
+      : "TNG50-1 and FIRE-2 z = 0 galaxies grouped by simulation";
   }
   els.head.innerHTML = COLS.map(([k, lab, tip]) => `<button type="button" class="gxs" data-sort="${k}" data-tip="${esc(tip)}" aria-sort="none">${lab}<b aria-hidden="true"></b></button>`).join("") + "<span></span>";
   function row(e, i, cur) {
@@ -279,10 +281,34 @@ export function createGalaxyPicker(els, opts) {
   }
   function render() {
     const f = els.filter.value, all = opts.index.list, cur = opts.current();
-    view = sortGalaxies(filterGalaxies(all, els.search.value, f, simFilter), sort.key, sort.dir);
-    if (hl >= shown().length) hl = shown().length - 1;
-    els.list.innerHTML = view.length ? shown().map((e, i) => row(e, i, cur)).join("")
-      : '<li class="empty" role="presentation">No match<button type="button" class="lk" data-act="clear" data-tip="Clear the search and the filter">clear</button></li>';
+    const filtered = filterGalaxies(all, els.search.value, f, simFilter);
+    if (multiSim && simFilter === "all") {
+      const curE = opts.index.byId.get(cur), curFire = isFire(curE);
+      const fireList = sortGalaxies(filtered.filter(e => (e.simKey || (isFire(e) ? "fire2" : "tng50")) === "fire2"), sort.key, sort.dir);
+      const tngList = sortGalaxies(filtered.filter(e => (e.simKey || (isFire(e) ? "fire2" : "tng50")) === "tng50"), sort.key, sort.dir);
+      const groups = curFire
+        ? [["FIRE-2 zoom-in halos", fireList], ["TNG50-1 Milky Way and M31 analogues", tngList]]
+        : [["FIRE-2 zoom-in halos", fireList], ["TNG50-1 Milky Way and M31 analogues", tngList]];
+      view = groups.flatMap(([, g]) => g);
+      if (hl >= shown().length) hl = shown().length - 1;
+      let idx = 0;
+      const htmlParts = [];
+      for (const [title, g] of groups) {
+        if (!g.length) continue;
+        htmlParts.push(`<li class="gxy-sec" role="presentation"><span>${esc(title)}</span><b>${g.length}</b></li>`);
+        for (const e of g) {
+          if (idx >= MAX_ROWS) break;
+          htmlParts.push(row(e, idx++, cur));
+        }
+      }
+      els.list.innerHTML = htmlParts.length ? htmlParts.join("")
+        : '<li class="empty" role="presentation">No match<button type="button" class="lk" data-act="clear" data-tip="Clear the search and the filter">clear</button></li>';
+    } else {
+      view = sortGalaxies(filtered, sort.key, sort.dir);
+      if (hl >= shown().length) hl = shown().length - 1;
+      els.list.innerHTML = view.length ? shown().map((e, i) => row(e, i, cur)).join("")
+        : '<li class="empty" role="presentation">No match<button type="button" class="lk" data-act="clear" data-tip="Clear the search and the filter">clear</button></li>';
+    }
     els.count.textContent = `${view.length} of ${all.length}`;
     updateMsg();
     for (const b of els.head.querySelectorAll("[data-sort]")) { const on = b.dataset.sort === sort.key;
