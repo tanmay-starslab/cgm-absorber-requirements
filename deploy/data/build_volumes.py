@@ -214,7 +214,7 @@ def deposit_level(cells, L, cache: Path, workers, keys=V.VOL_KEYS) -> dict:
             pass
     nums.update({"side_version": SIDE_VERSION, "volume": V.GENERATOR, "level": L, "n": V.N,
                  "gas_h_min_vox": V.GAS_H_MIN_VOX,
-                 "half_kpc": V.GAS_LEVELS[L], "wall_s": round(time.time() - t, 1)})
+                 "half_kpc": V._half_kpc(L), "wall_s": round(time.time() - t, 1)})
     side.write_text(json.dumps(nums, indent=1))
     print(f"[deposit] {L}: {nums['n_elements']:,} elements, {nums['n_straddling']:,} straddling, "
           f"levels {nums['level_counts']}, {nums['pairs'] / 1e6:.0f} M pairs, scatter {nums['seconds']:.1f}s, "
@@ -246,7 +246,7 @@ def old_fragment(viz: Path):
 
 def encode(cubes: dict, nums: dict, keys, viz: Path, workers: int, force=False, allow_range=()) -> dict:
     """cubes: {L: {field: float64}} for every built level; returns {field: field entry}."""
-    levels = [L for L in V.GAS_LEVELS if L in cubes]
+    levels = [L for L in V._ordered_gas_levels() if L in cubes]
     old = old_fragment(viz)
     old_fields = (old or {}).get("gas", {}).get("fields", {})
     entries, jobs, reuse = {}, [], {}
@@ -592,8 +592,8 @@ def main(argv=None):
                           else lib / "cutout.ewah")             # = config.index_path() for the default library
     levels = [s.strip() for s in a.levels.split(",") if s.strip()]
     keys = [s.strip() for s in a.fields.split(",") if s.strip()]
-    if [x for x in levels if x not in V.GAS_LEVELS] or [k for k in keys if k not in V.FIELDS]:
-        ap.error(f"levels from {list(V.GAS_LEVELS)}, fields from {V.ALL_KEYS}")
+    if [x for x in levels if x not in V._ordered_gas_levels()] or [k for k in keys if k not in V.FIELDS]:
+        ap.error(f"levels from {V._ordered_gas_levels()}, fields from {V.ALL_KEYS}")
     vel_only = bool(keys) and all(k in V.VEL_KEYS for k in keys)
     if set(keys) & set(V.VEL_KEYS) and not set(V.VEL_KEYS) <= set(keys):
         ap.error("vx, vy and vz share one range V and the gas.vectors block: build them together")
@@ -606,7 +606,8 @@ def main(argv=None):
 
     if not a.check:
         nums = {}
-        for L in V.GAS_LEVELS:
+        target_levels = list(dict.fromkeys(list(V.GAS_LEVELS) + [L for L in V._ordered_gas_levels() if L in levels]))
+        for L in target_levels:
             if L in levels and (a.force or not level_cached(a.cache, L, keys)):
                 t = time.time()
                 nums[L] = deposit_level(cells, L, a.cache, a.deposit_workers, keys)
@@ -614,7 +615,7 @@ def main(argv=None):
             elif level_cached(a.cache, L, keys):
                 nums[L] = side_numbers(a.cache, L)
                 print(f"[deposit] {L}: cached ({nums[L]['seconds']:.1f}s scatter when built)", flush=True)
-        missing = [L for L in V.GAS_LEVELS if L not in nums]
+        missing = [L for L in target_levels if L not in nums]
         if missing:
             print(f"[deposit] WARNING levels {missing} are not built: ranges use {list(nums)} only", flush=True)
         t = time.time()
@@ -625,7 +626,7 @@ def main(argv=None):
         entries = encode(cubes, nums, keys, a.viz, a.workers, force=a.force, allow_range=allow)
         del cubes
         old = old_fragment(a.viz)
-        built = [L for L in V.GAS_LEVELS if L in nums]
+        built = [L for L in V._ordered_gas_levels() if L in nums]
         for k, e in ((old or {}).get("gas", {}).get("fields", {}) or {}).items():
             if k not in entries and set(e.get("cubes", {})) == set(built) and \
                     all(V.cube_files_ok(a.viz, c) for c in e["cubes"].values()):

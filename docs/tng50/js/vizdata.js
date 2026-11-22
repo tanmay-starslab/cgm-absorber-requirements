@@ -103,8 +103,8 @@ export function velRayMoment(key, samples, d) {
   if (!(s0 > 0)) return NaN;
   const m = s1 / s0; return key === "sigmalos" ? Math.sqrt(Math.max(0, s2 / s0 - m * m)) : m;
 }
-export const GAS_LEVELS = {L0: 400.0, L1: 100.0, L2: 25.0};
-export const STAR_LEVELS = {S0: 400.0, S1: 100.0, S2: 25.0};
+export const GAS_LEVELS = {L0: 400.0, L1: 100.0, L2: 25.0, L3: 6.25, L4: 1.5};
+export const STAR_LEVELS = {S0: 400.0, S1: 100.0, S2: 25.0, S3: 6.25, S4: 1.5};
 export const MU_ZERO = 36.57212566588;                 // mag arcsec^-2 of 1 L_AB0 per kpc^2 (design §2.7)
 export const CM_PER_KPC = 3.0856775814913673e21;
 export const LUT_NAMES = ["tng_dusk", "tng_ice", "magma", "inferno", "viridis", "cividis", "grey"];
@@ -157,8 +157,9 @@ export function validateManifestV2(m) {
   need(m.formats.webp, "formats.webp", [["parts", x => x === 4], ["slices_per_part", x => x === 64], ["cols", x => x === 16], ["rows", x => x === 4]]);
   const levelKeys = Object.keys(m.levels);
   for (const L of levelKeys) {
-    if (!/^[LS][012]$/.test(L)) bad(`levels.${L}`, "unknown level");
+    if (!/^[LS][0-4]$/.test(L)) bad(`levels.${L}`, "unknown level");
     need(m.levels[L], `levels.${L}`, [["half_kpc", isNum], ["n", x => isInt(x) && x > 0], ["voxel_kpc", isNum], ["r_mask_kpc", x => x === null || isNum(x)]]);
+    if (!/^[LS]0$/.test(L) && m.levels[L].r_mask_kpc !== null) bad(`levels.${L}.r_mask_kpc`, "expected null");
     const v = m.levels[L]; if (Math.abs(v.voxel_kpc - 2 * v.half_kpc / v.n) > 1e-9 * v.half_kpc) bad(`levels.${L}.voxel_kpc`, "≠ 2*half_kpc/n");
   }
   const cube = (c, where, kind, L, vmin, vmax) => {
@@ -174,7 +175,7 @@ export function validateManifestV2(m) {
     c.webp.paths.forEach((p, i) => { if (p !== `${stem}.${id12}.p${i}.webp`) bad(`${where}.webp.paths[${i}]`, `expected ${stem}.${id12}.p${i}.webp`); });
     if (c.gz.path !== `${stem}.${id12}.${kind === "stars" ? "rgba" : "u8"}.gz`) bad(`${where}.gz.path`, "does not follow the §2.6 naming");
   };
-  need(m.gas, "gas", [["levels", x => Array.isArray(x) && x.every(L => /^L[012]$/.test(L))], ["fields", isObj]]);
+  need(m.gas, "gas", [["levels", x => Array.isArray(x) && x.every(L => /^[LS][0-4]$/.test(L) && L[0] === "L")], ["fields", isObj]]);
   for (const [k, f] of Object.entries(m.gas.fields)) {
     const w = `gas.fields.${k}`;
     /* vel3d: vx, vy, vz are linear velocity fields with no proj / vol_window (the viewer derives its windows) */
@@ -205,7 +206,7 @@ export function validateManifestV2(m) {
         if (f.vmax !== v.V || f.vmin !== -v.V) bad(`${w}.V`, `${c} is not encoded on ±V`); }
     }
   }
-  need(m.stars, "stars", [["levels", x => Array.isArray(x) && x.every(L => /^S[012]$/.test(L))], ["bands", x => Array.isArray(x) && x.join() === "i,r,g"],
+  need(m.stars, "stars", [["levels", x => Array.isArray(x) && x.every(L => /^[LS][0-4]$/.test(L) && L[0] === "S")], ["bands", x => Array.isArray(x) && x.join() === "i,r,g"],
     ["display", isObj], ["cubes", isObj]]);
   need(m.stars.display, "stars.display", [["Q", isNum], ["mu0", isNum], ["mu_zero", isNum], ["balance", x => isVec(x, 3)]]);
   for (const L of m.stars.levels) cube(m.stars.cubes[L], `stars.cubes.${L}`, "stars", L);
@@ -301,7 +302,7 @@ export function levelForView({hVisKpc, mobile = false, deviceMemory = 8} = {}) {
    ratio = {L1, L2, S1, S2}: voxel size / (LOD constant × kpc per drawing-buffer pixel at the box's nearest point).
    L1 is skipped only in very wide views where its voxel is under half a footprint (ratio < 0.5). Other fields are never
    in the plan: they load when they are selected. */
-export function viewPlan({ratio = {}, hVisKpc, mobile = false, stars = false} = {}) {
+export function viewPlan({ratio = {}, hVisKpc, mobile = false, stars = false, hasL3 = false, hasL4 = false} = {}) {
   const h = Number.isFinite(hVisKpc) ? hVisKpc : 153, r = k => (Number.isFinite(ratio[k]) ? ratio[k] : 0);
   const fine = !mobile || h < 60;
   const gas = ["L0"], st = [];
@@ -310,6 +311,10 @@ export function viewPlan({ratio = {}, hVisKpc, mobile = false, stars = false} = 
   const order = [...gas.map(L => ["gas", L]), ...st.map(S => ["stars", S])];
   if (fine && r("L2") >= 1) order.push(["gas", "L2"]);
   if (stars && fine && r("S2") >= 1) order.push(["stars", "S2"]);
+  if (fine && h < 25 && (r("L3") >= 0.35 || (hasL3 && !Number.isFinite(ratio.L3)))) order.push(["gas", "L3"]);
+  if (stars && fine && h < 25 && (r("S3") >= 0.35 || r("L3") >= 0.35 || (hasL3 && !Number.isFinite(ratio.S3)))) order.push(["stars", "S3"]);
+  if (fine && h < 6.25 && (r("L4") >= 0.35 || (hasL4 && !Number.isFinite(ratio.L4)))) order.push(["gas", "L4"]);
+  if (stars && fine && h < 6.25 && (r("S4") >= 0.35 || r("L4") >= 0.35 || (hasL4 && !Number.isFinite(ratio.S4)))) order.push(["stars", "S4"]);
   if (stars && !mobile && h > 150) order.push(["stars", "S0"]);
   return {order, gas: order.filter(o => o[0] === "gas").map(o => o[1]), stars: order.filter(o => o[0] === "stars").map(o => o[1])};
 }

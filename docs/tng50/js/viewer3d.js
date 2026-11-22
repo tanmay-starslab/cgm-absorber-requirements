@@ -64,6 +64,17 @@ export function parsePivot(s) {
 }
 /* [x, y, z] -> "x,y,z" to 0.1 kpc; "" at the centre */
 export const formatPivot = p => (offCentre(p) ? p.map(r1).join(",") : "");
+const r2 = x => { const v = Math.round(x * 100) / 100; return Object.is(v, -0) ? 0 : v; };
+/* "px,py,pz,ux,uy,uz" -> {p: [px, py, pz], u: [ux, uy, uz]} or null */
+export function parseCam(s) {
+  const t = String(s ?? "").split(",").map(x => x.trim());
+  if (t.length !== 6 || t.some(x => x === "")) return null;
+  const v = t.map(Number); if (!v.every(Number.isFinite)) return null;
+  const p = v.slice(0, 3).map(x => Math.max(-5600, Math.min(5600, x))), u = v.slice(3, 6);
+  const uLen = Math.hypot(u[0], u[1], u[2]); if (uLen < 1e-6) return null;
+  return {p: p.map(r2), u: u.map(x => r2(x / uLen))};
+}
+export const formatCam = (p, u) => (p && u ? [...p.slice(0, 3), ...u.slice(0, 3)].map(r2).join(",") : "");
 /* a sightline's pivot: its closest approach to the galaxy centre, clamped to the segment p0-p1 (the midpoint if it is
    degenerate) */
 export function rayPivot(p0, p1) {
@@ -147,7 +158,7 @@ const isVel = k => VEL_KEYS.includes(k);
 const VEL_W = 200, VEL_WMIN = 10;
 /* Phase 3 thumbnail: steps per voxel, frame rate of the slow turn, its speed, refine frames when still */
 const THUMB = {spv: 0.6, fps: 12, degPerSec: 5, acc: 2};
-const GAS_L = ["L0", "L1", "L2"], STAR_L = ["S0", "S1", "S2"];
+const GAS_L_DEF = ["L0", "L1", "L2"], STAR_L_DEF = ["S0", "S1", "S2"];
 const BYTES = {gas: 256 ** 3, stars: 4 * 256 ** 3, vel: 4 * 256 ** 3};
 const BG = "#05070b";
 /* tune1 display defaults (integral mode), applied over the manifest's proj windows: a lower n_H floor keeps the outer
@@ -367,6 +378,19 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d-fsb:focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
 .v3d:fullscreen .v3d-fsb,.v3d.v3d-fs .v3d-fsb{top:48px}
 .v3d-thumb .v3d-fsb{display:none}
+.v3d-svb{right:44px}
+.v3d-save-pop{position:absolute;top:46px;right:10px;z-index:12;width:min(284px,calc(100% - 20px));padding:11px 12px 12px;border:1px solid var(--s-edge,rgba(200,215,240,.16));border-radius:var(--r-m,16px);
+  background:var(--mat-thick,color-mix(in srgb,#0c1016 88%,transparent));backdrop-filter:var(--mat-blur-thick,blur(40px) saturate(1.8));-webkit-backdrop-filter:var(--mat-blur-thick,blur(40px) saturate(1.8));
+  box-shadow:var(--s-hi,inset 0 1px 0 rgba(255,255,255,.10)),0 20px 50px rgba(0,0,0,.55);color:var(--s-ink,#e9eef4);font:12.5px/1.4 var(--sans,system-ui,sans-serif);color-scheme:dark}
+.v3d:fullscreen .v3d-save-pop,.v3d.v3d-fs .v3d-save-pop{top:84px}
+.v3d-save-pop[hidden],.v3d-thumb .v3d-save-pop{display:none}
+.v3d-save-pop h3{margin:0 0 8px;font:600 11px var(--mono,ui-monospace,monospace);letter-spacing:.12em;text-transform:uppercase;color:var(--s-ink2,#b3bdc9)}
+.v3d-save-pop .k{display:block;font:500 10px var(--mono,ui-monospace,monospace);color:var(--s-ink2,#b3bdc9);margin:6px 0 4px}
+.v3d-save-pop .v3s-checks{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin:6px 0 9px;font-size:12px;color:var(--s-ink,#e9eef4)}
+.v3d-save-pop .v3s-checks label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.v3d-save-pop .v3s-dl{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px}
+.v3d-save-pop .v3s-dl .v3c-btn{height:29px;color:var(--s-ink,#e9eef4);border-color:var(--s-edge,rgba(200,215,240,.22));background:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.03))}
+.v3d-save-pop .v3s-dl .v3c-btn.pri{grid-column:1/-1;background:linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,0) 60%),var(--s-accent,#7db2f0);border-color:var(--s-accent,#7db2f0);color:#080c14;font-weight:600}
 .v3c-sw{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--muted,#98a0b8)}
 .v3c-sw label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}.v3c-sw input{margin:0}
 .v3c details{margin-top:2px}.v3c summary{cursor:pointer;font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);padding:3px 0}
@@ -465,6 +489,8 @@ function stub(msg, frame) {
   const v = {webgl2: false, message: msg, frame, hooks: {}, setSpecies: async () => false, setPreset: () => false, setTransfer: no, setLines: no, select: no,
     refreshLines: no, resize: no, render: no, setMode: () => false, setStars: no, setGuides: no, toggleFullscreen: async () => false, dock: () => false, docked: null,
     levels: () => ({gas: {}, stars: {}}), gpuBytes: () => 0, stats: {},
+    getSceneSnapshot: () => ({}), applySceneSnapshot: async () => false,
+    exportPNG: async () => null, exportSVG: async () => null, exportPDF: async () => null, exportHTML: async () => null, exportJSON: async () => null,
     _attachFull(root) { const p = note(root, msg, "msg bad v3d-fallback"); p.style.padding = "18px 14px"; },
     _attachThumb(host) { const p = note(host, "3D needs WebGL2", "v3d-fallback"); p.style.cssText = "margin:0;padding:10px;font:11px var(--mono,monospace);opacity:.7";
       return {viewer: v, host, active: false, setSpin: no, dispose: () => p.remove()}; },
@@ -516,6 +542,7 @@ async function create(app, opts = {}) {
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
     <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the galaxy: tilt it if face-on, else spin it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
+    <button type="button" class="v3d-fsb v3d-svb" id="v3-save-stage" data-testid="v3-save-stage" aria-haspopup="dialog" aria-controls="v3-save-pop" aria-expanded="false" aria-label="Save 3D figure" data-tip="Save 3D figure or interactive snapshot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2v7.6M4.8 6.8 8 10l3.2-3.2M2.8 13.2h10.4"/></svg></button>
     <button type="button" class="v3d-fsb" id="v3-fs-stage" data-testid="v3-fs-stage" aria-pressed="false" aria-label="Fullscreen" data-tip="Fullscreen (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
     <button type="button" class="v3d-pv" id="v3-pivot" hidden aria-label="Re-centre on the galaxy" data-tip="Orbit centre moved; return to the galaxy (C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg><span>re-centre</span></button>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
@@ -523,7 +550,35 @@ async function create(app, opts = {}) {
     <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="ends" hidden><span></span><span></span></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off (Layers)</div><div class="gd" hidden></div></div>
     <div class="v3d-ov v3d-lines" aria-hidden="true"><span><i style="border-color:var(--lib-line)"></i>library</span><span><i style="border-color:var(--s-accent)"></i>generated</span><span><i style="border-color:var(--s-fit)"></i>custom</span><span><i class="sel" style="border-color:var(--s-ink)"></i>selected</span></div>
     <div class="v3d-tt" aria-hidden="true"><span class="f"></span><span>3D</span></div>
-    <button type="button" class="v3d-id" id="v3-id" data-testid="v3d-id" aria-controls="pop-licence" aria-expanded="false" aria-haspopup="dialog" data-tip="Data and credits" hidden><span class="s"></span><span class="g"></span><span class="z"></span></button></div>`;
+    <button type="button" class="v3d-id" id="v3-id" data-testid="v3d-id" aria-controls="pop-licence" aria-expanded="false" aria-haspopup="dialog" data-tip="Data and credits" hidden><span class="s"></span><span class="g"></span><span class="z"></span></button></div>
+    <div class="v3d-save-pop" id="v3-save-pop" role="dialog" aria-label="Save 3D view" hidden>
+      <h3>Save 3D figure</h3>
+      <span class="k">Resolution</span>
+      <div class="v3c-seg" role="radiogroup" aria-label="Export resolution">
+        <label><input type="radio" name="v3-exp-res" value="1" data-tip="Standard resolution matching the stage size"><span>1×</span></label>
+        <label><input type="radio" name="v3-exp-res" value="2" checked data-tip="High resolution up to 2048 pixels"><span>2×</span></label>
+        <label><input type="radio" name="v3-exp-res" value="4" data-tip="Print resolution up to 4096 pixels"><span>4×</span></label>
+      </div>
+      <span class="k">Background</span>
+      <div class="v3c-seg two" role="radiogroup" aria-label="Export background">
+        <label><input type="radio" name="v3-exp-bg" value="dark" checked data-tip="Dark cosmic background matching the stage"><span>Dark</span></label>
+        <label><input type="radio" name="v3-exp-bg" value="transparent" data-tip="Transparent background for slide and figure overlays"><span>Transparent</span></label>
+      </div>
+      <span class="k">Overlays</span>
+      <div class="v3s-checks">
+        <label><input type="checkbox" id="v3-exp-leg" checked data-tip="Include colour bar and field legend">Legend</label>
+        <label><input type="checkbox" id="v3-exp-scale" checked data-tip="Include physical length scale bar">Scale bar</label>
+        <label><input type="checkbox" id="v3-exp-lines" checked data-tip="Include sightlines and sightline legend">Sightlines</label>
+        <label><input type="checkbox" id="v3-exp-stamp" checked data-tip="Include simulation galaxy and redshift stamp">Galaxy stamp</label>
+      </div>
+      <div class="v3s-dl">
+        <button type="button" class="v3c-btn pri" id="v3-dl-png" data-tip="Download high-resolution accumulated PNG image">PNG</button>
+        <button type="button" class="v3c-btn" id="v3-dl-svg" data-tip="Download publication vector SVG with LaTeX caption">Vector SVG</button>
+        <button type="button" class="v3c-btn" id="v3-dl-pdf" data-tip="Download single-page vector publication PDF figure">Publication PDF</button>
+        <button type="button" class="v3c-btn" id="v3-dl-html" data-tip="Download offline interactive HTML sightline snapshot">Interactive HTML</button>
+        <button type="button" class="v3c-btn" id="v3-dl-json" data-tip="Download reproducible 3D scene state JSON">Scene JSON</button>
+      </div>
+    </div>`;
   const escH = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
   /* tips: one line per field button; speciesUnits() adds what is drawn and its unit, a disabled button gives the reason */
   const GAS_TIP = {nH: "Hydrogen number density nH", T: "Gas temperature, nH-weighted", Z: "Gas metallicity, nH-weighted"};
@@ -549,10 +604,10 @@ async function create(app, opts = {}) {
   const TABS = [["field", "Field"], ["view", "View"], ["layers", "Layers"], ["pick", "Pick"]];
   ctlBox.dataset.tab = "field";
   /* phone sheet (page.css <= 820 px): .v3c-head is its drag handle (app.js), with the Done button; hidden elsewhere */
-  ctlBox.innerHTML = `<div class="v3c-head"><button type="button" class="grab" aria-label="Resize the 3D settings"></button><span class="gl">3D settings</span>
+  ctlBox.innerHTML = `<div class="v3c-head"><button type="button" class="grab" aria-label="Resize the 3D settings" data-tip="Drag or tap to resize the 3D settings sheet"></button><span class="gl">3D settings</span>
       <button type="button" class="v3c-btn v3c-done" data-tip="Close the 3D settings">Done</button></div>
     <div class="v3c-tabbar"><div class="v3c-seg v3c-tabs" role="radiogroup" aria-label="Settings group">${TABS.map(([k, t], i) =>
-      `<label><input type="radio" name="v3-tab" value="${k}" data-tab="${k}"${i ? "" : " checked"}><span>${t}</span></label>`).join("")}</div></div>
+      `<label><input type="radio" name="v3-tab" value="${k}" data-tab="${k}" data-tip="Show ${t.toLowerCase()} controls"${i ? "" : " checked"}><span>${t}</span></label>`).join("")}</div></div>
     <div class="v3c-body"><div class="v3c-col" data-col="a"><section class="v3c-card" data-group="field" data-tab="field"><h2>Field</h2>
       <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div>
@@ -565,17 +620,19 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="view" data-tab="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
-      <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select></div>
+      <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto">auto</option><option value="spin">rotation axis</option><option value="major">major axis</option><option value="minor">minor axis</option></select></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="45" step="1" value="20" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">20°/s</output></div>
       <div class="v3c-pair"><button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
       ${(t => `<button type="button" class="v3c-btn v3c-wide" id="v3-head" data-testid="v3-head" aria-pressed="false" data-tip="${t ? "Head, hands or tilt." : "Head steers, hands act."} Your camera video stays on your device."><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 8.5V3.6a1.1 1.1 0 0 1 2.2 0V7.5M7.7 7V2.6a1.1 1.1 0 0 1 2.2 0V7.3M9.9 7.3V3.6a1.1 1.1 0 0 1 2.2 0v5.6c0 3-1.9 5.3-4.6 5.3-2 0-3.1-1-4.2-2.7L2 9.4a1.1 1.1 0 0 1 1.8-1.2l1.7 1.7"/></svg><span>Hands-free</span></button>`)(matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches)}</div>
+      <div class="v3c-pair v3c-save-row"><button type="button" class="v3c-btn v3c-wide" id="v3-save-open" aria-haspopup="dialog" aria-controls="v3-save-pop" aria-expanded="false" data-tip="Save publication PNG, vector SVG or PDF, or HTML snapshot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2v7.6M4.8 6.8 8 10l3.2-3.2M2.8 13.2h10.4"/></svg><span>Save view</span></button>
+      <button type="button" class="v3c-btn v3c-wide" id="v3-copy-link" data-tip="Copy a link to this exact 3D camera view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M6.6 9.4 9.4 6.6"/><path d="M7.4 4.6 8.6 3.4a2.6 2.6 0 0 1 3.7 3.7l-1.2 1.2M8.6 11.4l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7l1.2-1.2"/></svg><span>Copy link</span></button></div>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
       <details id="v3-pv-more"><summary data-tip="Type an orbit centre in kpc, galaxy box axes">kpc</summary><form class="v3tf-g v3c-pvxyz" id="v3-pv-form"><input id="v3-pv-x" type="number" step="1" min="-400" max="400" aria-label="centre x, kpc" placeholder="x" data-tip="x in kpc from the galaxy centre"><input id="v3-pv-y" type="number" step="1" min="-400" max="400" aria-label="centre y, kpc" placeholder="y" data-tip="y in kpc from the galaxy centre"><input id="v3-pv-z" type="number" step="1" min="-400" max="400" aria-label="centre z, kpc" placeholder="z" data-tip="z in kpc from the galaxy centre"><button type="submit" class="v3c-btn" data-tip="Move the orbit centre there">go</button></form></details></section>
     <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
-      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
-      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase" title="Sightlines with several clean, unsaturated absorbers, plus rays you made">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
+      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div><div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div></details>
+      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
     <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
       <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
@@ -584,6 +641,7 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="pick" data-tab="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section></div></div>
     <div class="v3c-lod" id="v3-lod" aria-hidden="true"></div>`;
   ctlBox.querySelectorAll(".v3c-seg").forEach(initLiquidSeg);
+  el.querySelectorAll(".v3c-seg").forEach(initLiquidSeg);
   const q = s => el.querySelector(s) || ctlBox.querySelector(s), canvas = q("canvas"), stage = q(".v3d-stage"), msgEl = q(".v3d-msg");
   /* tune1 F1: the page's range style fills the track up to --pc; keep it at each slider's value (set from code and on input) */
   const fillRanges = () => { for (const i of ctlBox.querySelectorAll('input[type=range]')) { const a = i.min === "" ? 0 : +i.min, b = i.max === "" ? 100 : +i.max;
@@ -634,14 +692,45 @@ async function create(app, opts = {}) {
   let movingPR = Math.min(PR * movGov.rung.scale, exactPR), movingSpv = movGov.rung.spv, movingShade = movGov.rung.shade;
   const EXACT_MS = 100;
   renderer.setPixelRatio(PR);
-  const scene = new T.Scene(), volScene = new T.Scene(), camera = new T.PerspectiveCamera(FOV, 1, 0.5, 20000);
-  const controls = new OrbitControls(camera, canvas); controls.enableDamping = false; controls.minDistance = 15; controls.maxDistance = 5600;
+  const scene = new T.Scene(), volScene = new T.Scene(), camera = new T.PerspectiveCamera(FOV, 1, manifest?.levels?.L3 ? 0.05 : 0.5, 20000);
+  const controls = new OrbitControls(camera, canvas); controls.enableDamping = false;
+  controls.minDistance = manifest?.levels?.L4 ? 0.4 : manifest?.levels?.L3 ? 1.5 : 15; controls.maxDistance = 5600;
   controls.zoomSpeed = 1.2; controls.keys = {};
 
   /* ---- the cube mesh (local = disk frame) ---- */
+  let GAS_L = ["L0", "L1", "L2", "L3", "L4"].filter(L => manifest?.levels?.[L]); if (!GAS_L.length) GAS_L = GAS_L_DEF;
+  let STAR_L = ["S0", "S1", "S2", "S3", "S4"].filter(L => manifest?.levels?.[L]); if (!STAR_L.length) STAR_L = STAR_L_DEF;
   const nCube = manifest ? (manifest.levels.L1?.n || manifest.levels.L0?.n || 256) : 256;
   const RM = makeMaterial(T, {n: nCube}), U = RM.uniforms;
-  const half = lv => manifest?.levels?.[lv]?.half_kpc ?? {L0: 400, L1: 100, L2: 25, S0: 400, S1: 100, S2: 25}[lv];
+  RM.uniforms.uDust = {value: 1.0};
+  RM.material.fragmentShader = RM.material.fragmentShader
+    .replace("in vec3 vPos;", "uniform float uDust; in vec3 vPos;")
+    .replace("vec3 starAt(vec3 p, int l) {", `float starDustAt(vec3 p, int l) {
+  if (l == 0 && length(p) > uMask0) return 0.0;
+  float h = hl(l); vec3 tc = p / (2.0 * h) + 0.5;
+  return l == 0 ? texture(uStar0, tc).a : l == 1 ? texture(uStar1, tc).a : texture(uStar2, tc).a; }
+vec3 starAt(vec3 p, int l) {`)
+    .replace("vec3 sumS = vec3(0.0), C = vec3(0.0);", "vec3 sumS = vec3(0.0), transS = vec3(1.0), C = vec3(0.0);")
+    .replace("if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms); sumS += sv * hw; }",
+      `if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms);
+        if (uDust > 0.0 && uStarHave != vec3(0.0)) {
+          float sa = starDustAt(p, ls); if (cs >= 0) sa = mix(starDustAt(p, cs), sa, ms);
+          float kV = 0.0;
+          if (sa > 0.002 && sa < 0.996) { kV = exp2(LOG2_10 * (-4.5 + sa * 6.0)); }
+          else {
+            float gv = lg >= 0 && !velMode && uKind == 0 ? gasVal(p, lg) : (lw >= 0 ? wVal(p, lw) : 0.0);
+            float sm2 = max(sv.r, max(sv.g, sv.b));
+            if (gv > 0.1) kV = clamp(0.35 * (gv - 0.1), 0.0, 4.0);
+            else if (sm2 > 1e5) kV = clamp(0.18 * (log2(sm2) / LOG2_10 - 5.0), 0.0, 2.5);
+          }
+          if (kV > 0.0) {
+            vec3 tau = uDust * kV * hw * vec3(0.65, 0.84, 1.19);
+            vec3 att = exp(-tau);
+            sumS += transS * sv * hw * (1.0 - att) / max(tau, vec3(1e-5));
+            transS *= att;
+          } else { sumS += transS * sv * hw; }
+        } else { sumS += sv * hw; } }`);
+  const half = lv => manifest?.levels?.[lv]?.half_kpc ?? {L0: 400, L1: 100, L2: 25, L3: 6.25, L4: 1.5, S0: 400, S1: 100, S2: 25, S3: 6.25, S4: 1.5}[lv];
   U.uHalf.value.set(half("L0"), half("L1"), half("L2")); U.uMask0.value = manifest?.levels?.L0?.r_mask_kpc ?? 400;
   U.uBg.value.set(5 / 255, 7 / 255, 11 / 255);
   const volMesh = new T.Mesh(new T.BoxGeometry(2 * half("L0"), 2 * half("L0"), 2 * half("L0")), RM.material);
@@ -745,7 +834,7 @@ async function create(app, opts = {}) {
 
   /* ---- state ---- */
   let species = null, wanted = null, mode = "integral", loadTok = 0;
-  const layer = {stars: !mobile && !!manifest?.stars, gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
+  const layer = {stars: !mobile && !!manifest?.stars, dust: true, gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
     balance: manifest?.stars?.display?.balance ?? [1, 1, 1]};
   const tf = {integral: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
   /* tf3d: transfer-function (TF) volume mode, THOR (Byrohl & Nelson 2025) sec. 3.5.3: per field a tf.js state; a field
@@ -798,14 +887,15 @@ async function create(app, opts = {}) {
   function ratios(k) {
     const bufH = Math.max(1, (stage.clientHeight || 400) * exactPR), pxAng = 2 * Math.tan(camera.fov * Math.PI / 360) / bufH;
     const c = camera.position, cd = [c.dot(Xv), c.dot(Yv), c.dot(Lv)], cg = lodField(k), out = {};
-    for (const [L, C] of [["L1", cg], ["L2", cg], ["S1", LOD_C.stars], ["S2", LOD_C.stars]]) {
-      const hh = half(L), n = manifest?.levels?.[L]?.n || 256, d = Math.max(1, Math.hypot(...cd.map(x => x - Math.max(-hh, Math.min(hh, x)))));
+    for (const [L, C] of [["L1", cg], ["L2", cg], ["L3", cg], ["L4", cg], ["S1", LOD_C.stars], ["S2", LOD_C.stars], ["S3", LOD_C.stars], ["S4", LOD_C.stars]]) {
+      const hh = half(L), n = manifest?.levels?.[L]?.n || 256, d = Math.max(0.1, Math.hypot(...cd.map(x => x - Math.max(-hh, Math.min(hh, x)))));
       out[L] = (2 * hh / n) / (C * pxAng * d); }
     return out; }
   /* final (cold first load): the keys the current view uses, in load priority (vizdata.viewPlan): field L0 (+ nH weights for
      T / Z), L1, the star level, then L2 / S2 / S0 only when the view resolves them; other fields only once selected */
   function needed(k = wanted || species) {
-    const plan = viewPlan({ratio: ratios(k), hVisKpc: hVis(), mobile, stars: layer.stars && !!manifest.stars}), keys = [];
+    const plan = viewPlan({ratio: ratios(k), hVisKpc: hVis(), mobile, stars: layer.stars && !!manifest.stars,
+      hasL3: !!manifest?.levels?.L3, hasL4: !!manifest?.levels?.L4}), keys = [];
     for (const [kind, L] of plan.order) {
       if (kind === "gas") { if (!k) continue;
         /* vel3d: a velocity view needs the packed velocity cube of the level ("vel||L") and its weight field */
@@ -817,11 +907,11 @@ async function create(app, opts = {}) {
     /* Phase 3 thumbnail: only L0 / L1 of the field (and nH weights) are fetched for it; stars and finer levels are used only
        when the full stage already loaded them */
     if (docked === "thumb") ks = ks.filter(x => TEX.has(x) || /^(gas|vel)\|.*\|L[01]$/.test(x));
-    /* fix-ui FE-06: the needed set itself must fit the GPU budget (with the render targets): drop S0, then S2, then the L2
+    /* fix-ui FE-06: the needed set itself must fit the GPU budget (with the render targets): drop S0, then S4..S2, then L4..L2
        field (with its weights), then S1, until it does; evict() can only free what is not needed */
     const over = () => ks.reduce((a, x) => a + keyBytes(x), 0) + rtBytes() > BUDGET, dropped = [];
-    const l2 = isVel(k) ? [keyOf("vel", "", "L2"), keyOf("gas", velW, "L2")] : [keyOf("gas", k, "L2"), keyOf("gas", "nH", "L2"), keyOf("gas", emisKey(k) || "nH", "L2")];
-    for (const grp of [[keyOf("stars", "", "S0")], [keyOf("stars", "", "S2")], l2, [keyOf("stars", "", "S1")]]) {
+    const lGrp = L => isVel(k) ? [keyOf("vel", "", L), keyOf("gas", velW, L)] : [keyOf("gas", k, L), keyOf("gas", "nH", L), keyOf("gas", emisKey(k) || "nH", L)];
+    for (const grp of [[keyOf("stars", "", "S0")], [keyOf("stars", "", "S4")], lGrp("L4"), [keyOf("stars", "", "S3")], lGrp("L3"), [keyOf("stars", "", "S2")], lGrp("L2"), [keyOf("stars", "", "S1")]]) {
       if (!over()) break;
       const hit = ks.filter(x => grp.includes(x)); if (hit.length) { ks = ks.filter(x => !grp.includes(x)); dropped.push(...hit.map(x => x.split("|")[2])); } }
     budgetDropped = [...new Set(dropped)];
@@ -890,6 +980,8 @@ async function create(app, opts = {}) {
     const rank = key => { const [kind, k, L] = key.split("|");
       if (kind === "gas" && k !== species && k !== wKey(species)) return 0;   // other fields first
       if (kind === "vel" && !isVel(species)) return 0;
+      if ((L === "L4" || L === "S4") && hv > 25) return 1;
+      if ((L === "L3" || L === "S3") && hv > 60) return 1;
       if ((L === "L2" || L === "S2") && hv > 150) return 1; if (L === "S0" && hv < 60) return 1; return 2; };
     const cand = [...TEX.keys()].filter(k => !need.has(k) && !isBound(k)).sort((a, b) => rank(a) - rank(b) || TEX.get(a).used - TEX.get(b).used);
     for (const k of cand) { if (total <= BUDGET) break; const it = TEX.get(k); it.tex.dispose(); TEX.delete(k); total -= it.bytes; }
@@ -897,30 +989,45 @@ async function create(app, opts = {}) {
   const gpuBytes = () => [...TEX.values()].reduce((a, it) => a + it.bytes, 0);
   const SLOT = {gas: ["uGas0", "uGas1", "uGas2"], w: ["uW0", "uW1", "uW2"], stars: ["uStar0", "uStar1", "uStar2"], vel: ["uVel0", "uVel1", "uVel2"]};
   const haveOf = slot => (slot === SLOT.gas ? U.uGasHave.value : slot === SLOT.w ? U.uWHave.value : slot === SLOT.vel ? U.uVelHave.value : U.uStarHave.value);
-  const isBound = key => { const [kind, k, L] = key.split("|"), i = +L[1];
-    if (kind === "stars") return U[SLOT.stars[i]].value === TEX.get(key)?.tex;
-    if (kind === "vel") return U[SLOT.vel[i]].value === TEX.get(key)?.tex;
-    return U[SLOT.gas[i]].value === TEX.get(key)?.tex || U[SLOT.w[i]].value === TEX.get(key)?.tex; };
-  /* bind every resident level of the current field (and weights, stars); new bindings fade in over 300 ms, except the
-     weights of a Weight switch (wInstant): those replace a drawn weight level for level, so they appear at once */
+  let curWinIdx = 0;
+  function calcWinIdx() {
+    if (!manifest || !species) return 0;
+    const hv = hVis(), vel = isVel(species);
+    const hasG = L => TEX.has(vel ? keyOf("vel", "", L) : keyOf("gas", species, L)) && (!vel || TEX.has(keyOf("gas", boundW, L)));
+    if (GAS_L.includes("L4") && hv <= 5.5 && hasG("L4") && hasG("L3")) return 2;
+    if (GAS_L.includes("L3") && hv <= 22 && hasG("L3")) return 1;
+    return 0;
+  }
+  const isBound = key => { const [kind, k, L] = key.split("|"), t = TEX.get(key)?.tex; if (!t) return false;
+    if (kind === "stars") return SLOT.stars.some(s => U[s].value === t);
+    if (kind === "vel") return SLOT.vel.some(s => U[s].value === t);
+    return SLOT.gas.some(s => U[s].value === t) || SLOT.w.some(s => U[s].value === t); };
+  /* bind every resident level of the current field (and weights, stars) in the active 3-level sliding window; new bindings
+     fade in over 300 ms, except the weights of a Weight switch (wInstant) or a sliding-window shift (winChanged) */
   function bindAll(wInstant = false) {
     if (!manifest) return;
+    const winIdx = calcWinIdx(), winChanged = winIdx !== curWinIdx; curWinIdx = winIdx;
+    const gWin = ["L0", "L1", "L2", "L3", "L4"].slice(winIdx, winIdx + 3);
+    const sWin = ["S0", "S1", "S2", "S3", "S4"].slice(winIdx, winIdx + 3);
+    U.uHalf.value.set(half(gWin[0]), half(gWin[1]), half(gWin[2]));
+    U.uMask0.value = winIdx === 0 ? (manifest?.levels?.L0?.r_mask_kpc ?? 400) : 1e9;
     const now = performance.now(), fade = (slot, i, tex, ok) => { const cur = U[slot[i]].value;
       const haveVec = haveOf(slot), comp = ["x", "y", "z"][i];
       if (!ok) { U[slot[i]].value = slot === SLOT.stars || slot === SLOT.vel ? RM.empty4 : RM.empty1; haveVec[comp] = 0; FADE.delete(slot[i]); return; }
-      if (cur !== tex) { U[slot[i]].value = tex; if (reduced() || !FADE.has("init:" + slot[0]) || wInstant && slot === SLOT.w) { haveVec[comp] = 1; FADE.delete(slot[i]); } else { haveVec[comp] = 0.001; FADE.set(slot[i], now); } } };
+      if (cur !== tex) { U[slot[i]].value = tex; if (reduced() || !FADE.has("init:" + slot[0]) || winChanged || (wInstant && slot === SLOT.w)) { haveVec[comp] = 1; FADE.delete(slot[i]); } else { haveVec[comp] = 0.001; FADE.set(slot[i], now); } } };
     const vel = isVel(species), wk = wKey(species);
     for (let i = 0; i < 3; i++) {
-      const g = species && !vel && TEX.get(keyOf("gas", species, GAS_L[i])); fade(SLOT.gas, i, g?.tex, !!g);
-      const w = species && wk && TEX.get(keyOf("gas", wk, GAS_L[i])); fade(SLOT.w, i, w?.tex, !!w);
-      const v = vel && TEX.get(keyOf("vel", "", GAS_L[i])); fade(SLOT.vel, i, v?.tex, !!v);
-      const s = layer.stars && TEX.get(keyOf("stars", "", STAR_L[i])); fade(SLOT.stars, i, s?.tex, !!s);
+      const gL = gWin[i], sL = sWin[i];
+      const g = species && !vel && TEX.get(keyOf("gas", species, gL)); fade(SLOT.gas, i, g?.tex, !!g);
+      const w = species && wk && TEX.get(keyOf("gas", wk, gL)); fade(SLOT.w, i, w?.tex, !!w);
+      const v = vel && TEX.get(keyOf("vel", "", gL)); fade(SLOT.vel, i, v?.tex, !!v);
+      const s = layer.stars && TEX.get(keyOf("stars", "", sL)); fade(SLOT.stars, i, s?.tex, !!s);
     }
     for (const s of [SLOT.gas, SLOT.w, SLOT.vel, SLOT.stars]) FADE.set("init:" + s[0], 1);   // the first binding of a slot set is instant
     if (species && !vel) { const f = fld(species); U.uGasRange.value.set(f.vmin, f.vmax); }
     if (vel) U.uVelV.value = VELI.V;
     if (fld(wk || "nH")) U.uWRange.value.set(fld(wk || "nH").vmin, fld(wk || "nH").vmax);
-    STAR_L.forEach((S, i) => { const c = manifest.stars?.cubes?.[S]; if (c) U["uStarRange" + i].value.set(c.vmin, c.vmax); });
+    sWin.forEach((S, i) => { const c = manifest.stars?.cubes?.[S]; if (c) U["uStarRange" + i].value.set(c.vmin, c.vmax); });
     applyTfMode(); syncTfCard(true); lodStatus(); aria(); render();
   }
   function stepFades(now) {
@@ -1073,13 +1180,16 @@ async function create(app, opts = {}) {
     if (species) { syncTfInputs(); applyTf(); ensure().catch(() => {}); bindAll(); } else { aria(); render(); } tfUrl(); return true; }
   function setStars(o = {}) {
     if (o.on !== undefined) layer.stars = !!o.on && !!manifest?.stars;
+    if (o.dust !== undefined) layer.dust = !!o.dust;
     if (Number.isFinite(+o.mix) && o.mix !== null && o.mix !== undefined) layer.starMix = Math.min(1, Math.max(0, +o.mix));
     if (Number.isFinite(+o.Q) && o.Q) layer.Q = Math.min(40, Math.max(0.5, +o.Q));
     if (Number.isFinite(+o.sat) && o.sat !== null && o.sat !== undefined) layer.sat = Math.min(3, Math.max(0, +o.sat));
     if (Number.isFinite(+o.mu0) && o.mu0) layer.mu0 = Math.min(28, Math.max(14, +o.mu0));
     if (Number.isFinite(+o.gasMix) && o.gasMix !== null && o.gasMix !== undefined) layer.gasMix = Math.min(1, Math.max(0, +o.gasMix));
-    q("#v3-stars").checked = layer.stars; q("#v3-starmix").value = layer.starMix; q("#v3-starmix-o").textContent = layer.starMix.toFixed(2);
+    q("#v3-stars").checked = layer.stars; if (q("#v3-dust")) q("#v3-dust").checked = layer.dust;
+    q("#v3-starmix").value = layer.starMix; q("#v3-starmix-o").textContent = layer.starMix.toFixed(2);
     q("#v3-mu0").value = layer.mu0; q("#v3-mu0-o").textContent = layer.mu0.toFixed(1); q("#v3-gasmix").value = layer.gasMix; q("#v3-gasmix-o").textContent = layer.gasMix.toFixed(2); fillRanges();
+    if (U.uDust) U.uDust.value = layer.dust ? 1.0 : 0.0;
     /* tune2: no star request before the first gas field is wanted, so a cold first load fetches the gas L1 cube first */
     if (manifest && (species || wanted)) { ensure().catch(x => { if (x instanceof HostError) hostMessage(x); }); bindAll(); }
     legend(); aria(); render(); viewer?.hooks?.starsChanged?.(layer.stars);
@@ -1311,11 +1421,13 @@ async function create(app, opts = {}) {
   const accSize = new T.Vector2();
   let keepTF2D = 0, keepShade = 0;
   function draw(exact = true, acc = false) {
+    if (manifest && species && calcWinIdx() !== curWinIdx) bindAll();
     const th = docked === "thumb"; setPR(th ? PR : exact ? exactPR : Math.min(movingPR, exactPR));
     if (!acc) accK = 0;
     /* tune3: half-voxel steps for exact frames in close views (L2), so the finest grid shows no step banding; moving frames
        scale resolution, ray steps, and 2D gradient fetches adaptively with the FPS governor and freeze uFrame so dither noise never boils */
     U.uSpv.value = th ? THUMB.spv : exact ? (hVis() < 30 ? 2.0 : 1.0) : movingSpv; U.uStarFloor.value = STAR_COMP.floor; U.uCompMode.value = STAR_COMP.mode; U.uOccRange.value.set(...[0, 1].map(i => STAR_CLOSE.occ[i] + (STAR_ZOOM.occWide[i] - STAR_CLOSE.occ[i]) * zoomW())); U.uGasW.value = STAR_CLOSE.gasW + (1 - STAR_CLOSE.gasW) * zoomW(); U.uExact.value = exact || useMovingExact ? 1 : 0;
+    if (U.uDust) U.uDust.value = layer.dust ? 1.0 : 0.0;
     const trimGrad = !exact && !th && !benching && movingShade < 1 && U.uTFOn.value === 1;
     if (trimGrad) { keepTF2D = U.uTF2D.value; keepShade = U.uShade.value; if (movingShade <= 0) U.uTF2D.value = 0; U.uShade.value = keepShade * movingShade; }
     const c = camera.position; U.uCamDisk.value.set(c.dot(Xv), c.dot(Yv), c.dot(Lv)); if (exact) U.uFrame.value = (++frameNo) % 1024;
@@ -1340,12 +1452,12 @@ async function create(app, opts = {}) {
   function guideFit() {
     ring.quaternion.copy(camera.quaternion);
     const hv = hVis(), hh = hv * Math.min(camera.aspect || 1, 1);       // the smaller half-extent of the view at the target
-    const r = frame.R200c <= 0.92 * hh ? frame.R200c : [200, 100, 50, 20, 10, 5, 2, 1].find(v => v <= 0.8 * hh) || 1;
+    const r = frame.R200c <= 0.92 * hh ? frame.R200c : [200, 100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05].find(v => v <= 0.8 * hh) || 0.05;
     ring.scale.setScalar(r / frame.R200c);
     const len = Math.min(150, 0.7 * hv); arrow.setLength(len, 0.16 * len, 0.08 * len);
-    if (r !== ringR) { ringR = r; const g = q(".v3d-leg .gd");
+    if (r !== ringR) { ringR = r; const g = q(".v3d-leg .gd"), rTxt = r < 1 ? `${Math.round(r * 1000)} pc` : `${r} kpc`;
       g.innerHTML = r === frame.R200c ? `<i></i>guides: ring R<sub>200c</sub> = ${Math.round(r)} kpc<br><i></i>arrow: disk normal`
-        : `<i></i>guides: ring ${r} kpc (R<sub>200c</sub> = ${Math.round(frame.R200c)} kpc is off-screen)<br><i></i>arrow: disk normal`; } }
+        : `<i></i>guides: ring ${rTxt} (R<sub>200c</sub> = ${Math.round(frame.R200c)} kpc is off-screen)<br><i></i>arrow: disk normal`; } }
   /* tune4: 0 in close views → 1 in wide views (STAR_ZOOM) */
   function zoomW() { const t = Math.min(1, Math.max(0, (hVis() - STAR_ZOOM.h[0]) / (STAR_ZOOM.h[1] - STAR_ZOOM.h[0]))); return t * t * (3 - 2 * t); }
   function mu0Eff() { return layer.mu0 + STAR_ZOOM.dmag[0] + (STAR_ZOOM.dmag[1] - STAR_ZOOM.dmag[0]) * zoomW(); }
@@ -1355,11 +1467,11 @@ async function create(app, opts = {}) {
   function scale() {   // a round length at the orbit target's distance, in CSS px
     const sc = q(".v3d-scale"), h = scaleH || (scaleH = stage.clientHeight || 400), d = camera.position.distanceTo(controls.target);
     const pxPerKpc = h / (2 * d * Math.tan(camera.fov * Math.PI / 360));
-    let L = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(v => v * pxPerKpc >= 60) || 500;
+    let best = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500].find(v => v * pxPerKpc >= 60) || 500;
     starLegend();
     if (scaleHidden !== !scaleOn) sc.hidden = scaleHidden = !scaleOn;
-    const w = (L * pxPerKpc).toFixed(1) + "px"; if (w !== scaleW) sc.querySelector("i").style.width = scaleW = w;
-    if (L !== scaleL) { scaleL = L; sc.querySelector("span").textContent = `${L} kpc`; } }
+    const w = (best * pxPerKpc).toFixed(1) + "px"; if (w !== scaleW) sc.querySelector("i").style.width = scaleW = w;
+    if (best !== scaleL) { scaleL = best; sc.querySelector("span").textContent = best < 1 ? `${Math.round(best * 1000)} pc` : `${best} kpc`; } }
   function resize() { const p = calcPR(); scaleH = stage.clientHeight || 400;
     if (Math.abs(p - PR) > 1e-6) { PR = exactPR = p; syncMovingRung(); calibrated = ""; }
     const w = stage.clientWidth || 600, h = scaleH; curPR = exactPR; renderer.setPixelRatio(exactPR); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -1371,8 +1483,8 @@ async function create(app, opts = {}) {
   const ro = new ResizeObserver(resize); ro.observe(stage);
   controls.addEventListener("change", motion);
   let lastH = 0;
-  controls.addEventListener("end", () => { const h = hVis(); if (Math.abs(h - lastH) / Math.max(h, 1) > 0.02) { lastH = h;
-    if (selId) select(selId, true); if (manifest && species) ensure().catch(() => {}); } });
+  controls.addEventListener("end", () => { const h = hVis(); if (Math.abs(h - lastH) / Math.max(h, 0.05) > 0.02) { lastH = h;
+    if (selId) select(selId, true); if (manifest && species) { ensure().catch(() => {}); bindAll(); } } });
 
   /* moving-frame path (design §5.5): exact samples while moving if they reach 30 fps, else the hardware path */
   function timeFrames(n, exact, movingExact) {
@@ -1499,10 +1611,13 @@ async function create(app, opts = {}) {
     return pivotTo(rayPivot(e.p0, e.p1), "ray"); }
   { const boot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("pv="));
       return raw ? parsePivot(decodeURIComponent(raw.slice(3))) : null; } catch { return null; } })();
-    if (boot) { const t = V3(boot); camera.position.copy(t).addScaledVector(DEF_DIR, DEF_D); controls.target.copy(t); camera.lookAt(t); controls.update(); pivotUrlLast = formatPivot(boot); } }
+    if (boot) { const t = V3(boot); camera.position.copy(t).addScaledVector(DEF_DIR, DEF_D); controls.target.copy(t); camera.lookAt(t); controls.update(); pivotUrlLast = formatPivot(boot); }
+    const camBoot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("cam="));
+      return raw ? parseCam(decodeURIComponent(raw.slice(4))) : null; } catch { return null; } })();
+    if (camBoot) { camera.position.set(...camBoot.p); camera.up.set(...camBoot.u).normalize(); camera.lookAt(controls.target); controls.update(); } }
 
   /* ---- picking a line: nearest within 8 px in screen space ---- */
-  const viewer = {webgl2: true, THREE: T, camera, scene, renderer, controls, frame, canvas, el: stage, hooks: {}, picking: false, stats,
+  const viewer = {webgl2: true, THREE: T, camera, scene, renderer, controls, frame, canvas, el: stage, app, hooks: {}, picking: false, stats,
     lod: LOD_C, uniforms: U,
     presetError: null, loadError: null, get manifest() { return manifest; }, get species() { return species; },
     get res() { const lv = levels(); return GAS_L.filter(L => lv.gas[L] === "bound").pop() || null; }, get wanted() { return wanted; },
@@ -1608,8 +1723,8 @@ async function create(app, opts = {}) {
   speciesUnits();
   for (const c of CMAPS) { const o = document.createElement("option"); o.value = c; o.textContent = c; q("#v3-cmap").appendChild(o); }
   for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.disabled = !manifest;
-  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
-  if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0"]) q(id).disabled = true;
+  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-dust", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
+  if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0", "#v3-dust"]) q(id).disabled = true;
   q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) { sfx("select"); setSpecies(ev.target.value); } });
   q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) { sfx("select"); setMode(ev.target.value); } });
   q("#v3-lo").addEventListener("input", ev => tfWinMode() ? setTfWin(+ev.target.value, null) : setTransfer({lo: Math.min(+ev.target.value, fieldTf(species).hi - 0.1)}));
@@ -1622,6 +1737,7 @@ async function create(app, opts = {}) {
   q("#v3-starmix").addEventListener("input", ev => setStars({mix: +ev.target.value}));
   q("#v3-mu0").addEventListener("input", ev => setStars({mu0: +ev.target.value}));
   q("#v3-stars").addEventListener("change", ev => setStars({on: ev.target.checked}));
+  q("#v3-dust").addEventListener("change", ev => setStars({dust: ev.target.checked}));
   q("#v3-guides").addEventListener("change", ev => setGuides({ring: ev.target.checked}));
   q("#v3-scale").addEventListener("change", ev => setGuides({scale: ev.target.checked}));
   q("#v3-lines").addEventListener("change", ev => setLines(ev.target.value));
@@ -1653,9 +1769,9 @@ async function create(app, opts = {}) {
   const idEl = q("#v3-id");
   function idBadge() { if (!idEl) return; const g = app.config?.galaxy || G, id = (typeof app.galaxy === "function" ? app.galaxy() : null) ?? g.subhalo_id;
     idEl.hidden = id == null || typeof app.openCredits !== "function"; if (id == null) return;
-    const sim = g.sim || "TNG50-1", z = g.redshift ?? 0;
-    idEl.querySelector(".s").textContent = sim; idEl.querySelector(".g").textContent = `Subhalo ${id}`; idEl.querySelector(".z").textContent = `z = ${z}`;
-    idEl.setAttribute("aria-label", `${sim} subhalo ${id} at redshift ${z}, data credits`); }
+    const sim = g.sim || "TNG50-1", z = g.redshift ?? 0, fire = /^FIRE/i.test(sim);
+    idEl.querySelector(".s").textContent = sim; idEl.querySelector(".g").textContent = fire ? `Halo ${id}` : `Subhalo ${id}`; idEl.querySelector(".z").textContent = `z = ${z}`;
+    idEl.setAttribute("aria-label", `${sim} ${fire ? "halo" : "subhalo"} ${id} at redshift ${z}, data credits`); }
   idEl?.addEventListener("click", ev => { ev.stopPropagation(); app.openCredits?.(idEl); });
   idEl?.addEventListener("pointerdown", ev => ev.stopPropagation());
   const onGal = () => idBadge(); addEventListener("tng:galaxy", onGal); idBadge();
@@ -1668,9 +1784,133 @@ async function create(app, opts = {}) {
   Object.defineProperty(viewer, "pivot", {get: () => pivotArr().map(r1), enumerable: true});
   Object.assign(viewer, {setPivot: p => (p === "galaxy" ? recentre() : p === "ray" ? pivotToRay() : Array.isArray(p) && p.length === 3 && p.every(Number.isFinite) ? pivotTo(p, "api") : false),
     recentre, pickPivot: (x, y) => pickPivot(x, y)});
-  Object.assign(viewer, {drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setWeight, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
+
+  /* ---- 3D save, publication export & camera deep-link ---- */
+  function getSceneSnapshot() {
+    const tr = species ? {...fieldTf(species)} : null;
+    const tfSt = species && tfs[species] ? JSON.parse(JSON.stringify(tfs[species])) : null;
+    const tfEnc = species && tfOk(species) && tfs[species] ? encodeTF(tfs[species], tfCtx(species)) : "";
+    return {
+      species: species || wanted || "nH",
+      mode,
+      weight: velW,
+      transfer: tr,
+      tf: tfSt,
+      tfEncoded: tfEnc,
+      camera: {
+        position: camera.position.toArray().map(r2),
+        target: controls.target.toArray().map(r2),
+        up: camera.up.toArray().map(r2),
+        fov: camera.fov
+      },
+      pivot: pivotArr().map(r1),
+      layers: {...layer, stars: !!layer.stars, guides: !!guides.visible, scaleBar: !!scaleOn},
+      linesMode,
+      selectedSightline: selId
+    };
+  }
+  async function applySceneSnapshot(snap = {}) {
+    if (!snap || typeof snap !== "object") return false;
+    if (snap.species && canShow(snap.species)) await setSpecies(snap.species);
+    if (snap.mode && ["integral", "volume"].includes(snap.mode)) setMode(snap.mode);
+    if (snap.weight) setWeight(snap.weight);
+    if (snap.transfer && typeof snap.transfer === "object") setTransfer(snap.transfer);
+    if (snap.tf) setTf(snap.tf);
+    if (snap.layers && typeof snap.layers === "object") {
+      setStars({on: snap.layers.stars, gasMix: snap.layers.gasMix, mix: snap.layers.starMix, mu0: snap.layers.mu0, Q: snap.layers.Q, sat: snap.layers.sat});
+      setGuides({ring: snap.layers.guides, scale: snap.layers.scaleBar});
+    }
+    if (snap.linesMode) setLines(snap.linesMode);
+    if (snap.selectedSightline !== undefined) select(snap.selectedSightline);
+    if (Array.isArray(snap.pivot) && snap.pivot.length === 3) {
+      controls.target.set(+snap.pivot[0] || 0, +snap.pivot[1] || 0, +snap.pivot[2] || 0);
+    }
+    if (snap.camera && typeof snap.camera === "object") {
+      if (Array.isArray(snap.camera.target) && snap.camera.target.length === 3) controls.target.set(...snap.camera.target);
+      if (Array.isArray(snap.camera.position) && snap.camera.position.length === 3) camera.position.set(...snap.camera.position);
+      if (Array.isArray(snap.camera.up) && snap.camera.up.length === 3) camera.up.set(...snap.camera.up).normalize();
+      camera.lookAt(controls.target);
+      controls.update();
+    }
+    syncPivot(true);
+    draw(true);
+    return true;
+  }
+  function writeCamUrl() {
+    const camVal = formatCam(camera.position.toArray(), camera.up.toArray());
+    const pvVal = formatPivot(pivotArr());
+    const tfOnNow = !!species && mode === "volume" && (tfOk(species) || isVel(species));
+    const tfVal = tfOnNow ? (species + "~" + (tfOk(species) ? encodeTF(tfState(species), tfCtx(species)) : "")).replace(/~$/, "") : "";
+    try {
+      const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !/^(cam|pv|tf)=/.test(x));
+      if (camVal) parts.push("cam=" + camVal);
+      if (pvVal) parts.push("pv=" + pvVal);
+      if (tfVal) parts.push("tf=" + tfVal);
+      const search = parts.length ? "?" + parts.join("&") : "";
+      if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash);
+    } catch { /* sandboxed */ }
+    return location.href;
+  }
+  async function copyCamLink() {
+    const url = writeCamUrl();
+    let ok = false;
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(url); ok = true; } } catch { ok = false; }
+    if (!ok) {
+      const ta = document.createElement("textarea"); ta.value = url; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(ta); ta.select(); try { ok = document.execCommand("copy"); } catch { ok = false; } ta.remove();
+    }
+    sfx(ok ? "copy" : "error");
+    const btn = q("#v3-copy-link"), sp = btn?.querySelector("span");
+    if (sp) { const prev = sp.textContent; sp.textContent = ok ? "Copied" : "Link ready"; setTimeout(() => { sp.textContent = prev; }, 1400); }
+    say(ok ? "3D camera link copied to clipboard." : "Address bar updated with 3D camera link.", false, true);
+    return url;
+  }
+  const savePop = q("#v3-save-pop"), saveStageBtn = q("#v3-save-stage"), saveOpenBtn = q("#v3-save-open");
+  function setSavePop(open) {
+    const on = open === undefined ? savePop.hidden : !!open;
+    savePop.hidden = !on;
+    saveStageBtn?.setAttribute("aria-expanded", String(on));
+    saveOpenBtn?.setAttribute("aria-expanded", String(on));
+  }
+  saveStageBtn?.addEventListener("click", ev => { ev.stopPropagation(); setSavePop(); });
+  saveOpenBtn?.addEventListener("click", ev => { ev.stopPropagation(); setSavePop(); });
+  q("#v3-copy-link")?.addEventListener("click", () => copyCamLink());
+  function readExportOpts(extra = {}) {
+    const resEl = el.querySelector('input[name="v3-exp-res"]:checked');
+    const bgEl = el.querySelector('input[name="v3-exp-bg"]:checked');
+    return {
+      scale: +(resEl?.value || 2),
+      background: bgEl?.value || "dark",
+      legend: q("#v3-exp-leg")?.checked ?? true,
+      scaleBar: q("#v3-exp-scale")?.checked ?? true,
+      sightlines: q("#v3-exp-lines")?.checked ?? true,
+      stamp: q("#v3-exp-stamp")?.checked ?? true,
+      ...extra
+    };
+  }
+  const loadExport = () => import("./export3d.js");
+  const exportPNG = async (o = {}) => (await loadExport()).exportPNG(viewer, readExportOpts(o));
+  const exportSVG = async (o = {}) => (await loadExport()).exportSVG(viewer, readExportOpts(o));
+  const exportPDF = async (o = {}) => (await loadExport()).exportPDF(viewer, readExportOpts(o));
+  const exportHTML = async (o = {}) => (await loadExport()).exportHTML(viewer, readExportOpts(o));
+  const exportJSON = async (o = {}) => (await loadExport()).exportJSON(viewer, readExportOpts(o));
+  q("#v3-dl-png")?.addEventListener("click", () => { setSavePop(false); exportPNG(); });
+  q("#v3-dl-svg")?.addEventListener("click", () => { setSavePop(false); exportSVG(); });
+  q("#v3-dl-pdf")?.addEventListener("click", () => { setSavePop(false); exportPDF(); });
+  q("#v3-dl-html")?.addEventListener("click", () => { setSavePop(false); exportHTML(); });
+  q("#v3-dl-json")?.addEventListener("click", () => { setSavePop(false); exportJSON(); });
+  const onDocClickSave = ev => {
+    if (!savePop || savePop.hidden) return;
+    if (!savePop.contains(ev.target) && !saveStageBtn?.contains(ev.target) && !saveOpenBtn?.contains(ev.target)) setSavePop(false);
+  };
+  document.addEventListener("pointerdown", onDocClickSave);
+
+  Object.assign(viewer, {getSceneSnapshot, applySceneSnapshot, getDeepLink: writeCamUrl, copyCamLink,
+    exportPNG, exportSVG, exportPDF, exportHTML, exportJSON,
+    drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setWeight, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
     setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes, texKeys: () => [...TEX.keys()], movingQuality: () => movGov.state(),
     dispose() { loadTok++; anim++; progMsg = null; ENGINE = null; io?.disconnect(); if (spinRaf) cancelAnimationFrame(spinRaf); spinRaf = 0;
+      document.removeEventListener("pointerdown", onDocClickSave);
       document.removeEventListener("visibilitychange", spinKick); if (thumbHost && thumbClick) thumbHost.removeEventListener("click", thumbClick); ctlBox.remove(); clearTimeout(quietT); clearTimeout(progT); clearTimeout(liveT); if (accT) cancelAnimationFrame(accT); accT = 0;
       if (fallbackFs) toggleFullscreen(false); else if (fsEl() === el) document.exitFullscreen?.().catch(() => {});
       try { dprMq?.removeEventListener("change", onDpr); } catch { /* ignore */ }

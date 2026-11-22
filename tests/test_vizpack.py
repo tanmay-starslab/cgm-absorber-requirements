@@ -15,10 +15,37 @@ def test_constants():
     assert VP.SCHEMA == "tng50-viz/2" and VP.GENERATOR == "tngsight.vizpack/1" and VP.N == 256
     assert VP.GAS_LEVELS == {"L0": 400.0, "L1": 100.0, "L2": 25.0}
     assert VP.STAR_LEVELS == {"S0": 400.0, "S1": 100.0, "S2": 25.0}
+    assert VP.ALL_GAS_LEVELS == {"L0": 400.0, "L1": 100.0, "L2": 25.0, "L3": 6.25, "L4": 1.5}
+    assert VP.ALL_STAR_LEVELS == {"S0": 400.0, "S1": 100.0, "S2": 25.0, "S3": 6.25, "S4": 1.5}
     assert VP.R_MASK_KPC == {"L0": 400.0, "S0": 400.0}
     from tngsight import ions
     assert VP.VOL_KEYS == ("nH", "T", "Z") + ions.KEYS
     assert abs(VP.MU_ZERO - 36.57212566588) < 1e-10 and VP.BANDS == {"g": 4, "r": 5, "i": 6}
+
+
+def test_raw_stars_with_dust_and_l3_l4_manifest(tmp_path):
+    n = 8
+    rng = np.random.default_rng(19)
+    qi, qr, qg = (rng.integers(0, 256, (n, n, n), dtype=np.uint8) for _ in range(3))
+    q_dust = rng.integers(0, 255, (n, n, n), dtype=np.uint8)
+    raw = VP.raw_stars(qi, qr, qg, q_dust=q_dust)
+    assert len(raw) == 4 * n ** 3
+    for (a, b, c) in [(1, 2, 3), (7, 0, 5), (0, 0, 0)]:
+        o = 4 * (a + n * (b + n * c))
+        assert raw[o] == qi[a, b, c] and raw[o + 1] == qr[a, b, c] and raw[o + 2] == qg[a, b, c]
+        assert raw[o + 3] == q_dust[a, b, c]
+    parts = VP.atlas_parts(np.stack([qi, qr, qg, q_dust], axis=-1))
+    dec = [VP.decode_webp(VP.encode_webp(p)) for p in parts]
+    assert VP.atlas_to_raw(dec, n, 4) == raw
+    assert VP.atlas_to_raw(dec, n, 3) == raw
+    viz = make_viz(tmp_path / "viz_l3", n=n)
+    man = VP.merge(viz)
+    man["galaxy"]["subhalo_id"] = "m12i"
+    man["levels"]["L3"] = {"half_kpc": 6.25, "n": n, "voxel_kpc": 12.5 / n, "r_mask_kpc": None}
+    man["levels"]["L4"] = {"half_kpc": 1.5, "n": n, "voxel_kpc": 3.0 / n, "r_mask_kpc": None}
+    man["levels"]["S3"] = {"half_kpc": 6.25, "n": n, "voxel_kpc": 12.5 / n, "r_mask_kpc": None}
+    man["levels"]["S4"] = {"half_kpc": 1.5, "n": n, "voxel_kpc": 3.0 / n, "r_mask_kpc": None}
+    VP.validate_manifest_v2(man)
 
 
 def test_quantize_roundtrip_and_empties():

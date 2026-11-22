@@ -2,8 +2,8 @@
 // from CFG.galaxies, the URL state g=<id>, where a galaxy's pack lives (the default galaxy keeps the legacy data/ paths),
 // sort with missing values last, search terms and cuts, and the number formats. Usage: node tests/js/galaxies_unit.mjs
 import assert from "node:assert/strict";
-import {galaxyIndex, parseGalaxy, resolveGalaxy, galaxyHashPart, packFor, sortGalaxies, matchGalaxy, lg, fmtSfr, galaxyTip, galaxyAria, galaxyCard,
-  unlistedGalaxy, nearestSightline, defaultSightline, srcOf, packBase} from "../../docs/tng50/js/galaxies.js";
+import {galaxyIndex, parseGalaxy, resolveGalaxy, galaxyHashPart, packFor, sortGalaxies, matchGalaxy, filterGalaxies, lg, fmtSfr, galaxyTip, galaxyAria, galaxyCard,
+  unlistedGalaxy, nearestSightline, defaultSightline, srcOf, packBase, normId, isFire} from "../../docs/tng50/js/galaxies.js";
 
 let n = 0;
 const ok = (name, f) => { f(); n++; console.log("ok " + name); };
@@ -26,7 +26,7 @@ ok("index: null without galaxies, with one galaxy, or without the default", () =
 ok("g=<id>: hash wins over query, malformed ignored, unknown id -> default", () => {
   assert.equal(parseGalaxy("#g=900001&id=edge_b100_a090", "?g=900002"), 900001);
   assert.equal(parseGalaxy("#id=edge_b100_a090", "?g=900002"), 900002);
-  assert.equal(parseGalaxy("#g=abc", ""), null); assert.equal(parseGalaxy("", ""), null);
+  assert.equal(parseGalaxy("#g=9bad", ""), null); assert.equal(parseGalaxy("", ""), null);
   const I = galaxyIndex(CFG);
   assert.equal(resolveGalaxy(I, "#g=900002", ""), 900002); assert.equal(resolveGalaxy(I, "#g=42", ""), 488530); assert.equal(resolveGalaxy(I, "", ""), 488530);
   assert.equal(galaxyHashPart(I, 488530), ""); assert.equal(galaxyHashPart(I, 900001), "g=900001&"); assert.equal(galaxyHashPart(null, 5), "");
@@ -107,5 +107,38 @@ ok("spectra source and gas-poor flags in tags, tips, search and card", () => {
   assert.ok(matchGalaxy(e, "gas-poor") && !matchGalaxy(t, "gas-poor")); assert.ok(matchGalaxy(e, "sbi") && matchGalaxy(t, "trident"));
   assert.match(galaxyTip(e), /gas-poor/); assert.ok(galaxyTip(e).split(/\s+/).length <= 12);
   assert.match(galaxyAria(e), /THOR spectra/); assert.doesNotMatch(galaxyCard(e), /THOR|SBI_CGM/); assert.match(galaxyCard(e), /gas-poor/);   // owner 2026-11-13: no spectra label in the galaxy card
+});
+ok("FIRE-2 multi-sim: string IDs, sim/simKey, filterGalaxies, parseGalaxy sim=fire2, galaxyHashPart, galaxyCard Halo", () => {
+  const FLIST = [
+    ...LIST,
+    {id: "m12i", label: "Halo m12i", Mstar: 5.5e10, SFR: 1.8, M200c: 1.1e12, R200c: 210, central: true, mw: true, n: 683, viz: true},
+    {id: "m12b", sim: "FIRE-2", label: "Halo m12b", Mstar: 7.2e10, SFR: 2.5, M200c: 1.3e12, R200c: 225, central: true, mw: true, n: 683, viz: true},
+    {id: "Romeo", label: "Halo Romeo", Mstar: 8.1e10, SFR: 1.1, M200c: 1.4e12, R200c: 230, central: true, mw: true, n: 683, viz: false}];
+  const I = galaxyIndex({galaxies: {default: 488530, base: "data/gal", viz_base: null, list: FLIST}});
+  assert.equal(normId("488530"), 488530); assert.equal(normId("m12i"), "m12i"); assert.equal(normId("Romeo"), "Romeo");
+  assert.equal(I.byId.get(488530).id, 488530); assert.equal(I.byId.get(488530).sim, "TNG50-1"); assert.equal(I.byId.get(488530).simKey, "tng50");
+  const m12i = I.byId.get("m12i"), romeo = I.byId.get("Romeo");
+  assert.equal(m12i.id, "m12i"); assert.equal(m12i.sim, "FIRE-2"); assert.equal(m12i.simKey, "fire2"); assert.ok(isFire(m12i));
+  assert.equal(romeo.id, "Romeo"); assert.equal(romeo.sim, "FIRE-2"); assert.equal(romeo.simKey, "fire2");
+  // parseGalaxy & resolveGalaxy with FIRE-2 string IDs and #sim=fire2
+  assert.equal(parseGalaxy("#sim=fire2&g=m12i", "", I), "m12i");
+  assert.equal(parseGalaxy("#g=m12b", "", I), "m12b");
+  assert.equal(parseGalaxy("#sim=fire2", "", I), "m12i");
+  assert.equal(parseGalaxy("#sim=fire2", I), "m12i");
+  assert.equal(resolveGalaxy(I, "#sim=fire2", ""), "m12i");
+  assert.equal(resolveGalaxy(I, "#sim=fire2&g=Romeo", ""), "Romeo");
+  assert.equal(galaxyHashPart(I, 488530), "");
+  assert.equal(galaxyHashPart(I, 900001), "g=900001&");
+  assert.equal(galaxyHashPart(I, "m12i"), "sim=fire2&g=m12i&");
+  // filterGalaxies & matchGalaxy with sim tokens
+  assert.deepEqual(filterGalaxies(I.list, "sim:fire2").map(e => e.id), ["m12i", "m12b", "Romeo"]);
+  assert.deepEqual(filterGalaxies(I.list, "fire").map(e => e.id), ["m12i", "m12b", "Romeo"]);
+  assert.deepEqual(filterGalaxies(I.list, "sim:tng50").map(e => e.id), [488530, 900001, 900002, 512345]);
+  assert.deepEqual(filterGalaxies(I.list, "sim:all", "all", "fire2").map(e => e.id), ["m12i", "m12b", "Romeo"]);
+  // galaxyCard & tips for FIRE-2
+  const card = galaxyCard(m12i), tngCard = galaxyCard(I.byId.get(488530));
+  assert.match(card, /Halo m12i/); assert.match(card, /FIRE-2/); assert.ok(!/[·•]/.test(card));
+  assert.match(tngCard, /Subhalo 488530/);
+  assert.match(galaxyTip(m12i), /Halo m12i/); assert.ok(galaxyTip(m12i).split(/\s+/).length <= 12);
 });
 console.log(`${n} galaxies_unit checks passed`);

@@ -16,7 +16,7 @@ import {initLiquidTabs, initLiquidSeg, initLiquidButtons} from "./liquidtabs.js"
 import {initLiquidBg} from "./liquidbg.js";   /* liquid metal shader background (3D tab; Spectra only with SPECTRA_BG) */
 import {uiSound, sfx} from "./uisound.js";   /* optional UI sound effects (off by default; top-bar switch #sfx) */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
-  nearestSightline, defaultSightline, srcOf, galaxySummary} from "./galaxies.js";
+  nearestSightline, defaultSightline, srcOf, galaxySummary, normId, isFire} from "./galaxies.js";
 import {tier, tierReady} from "./tier.js";   /* perf R5: device tier (html[data-tier]) and its one-off WebGL probe */
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
@@ -34,14 +34,14 @@ const reg = makeRegistry(CFG), {ION} = reg;
 const GIX = galaxyIndex(CFG);
 const LEGACY = {catalog_url: CFG.catalog_url, bin_dir: CFG.bin_dir, components_url: CFG.components_url, components_dir: CFG.components_dir, viz: CFG.viz, frame: CFG.frame,
   galaxy: CFG.galaxy, n_static: CFG.n_static};
-let GAL = GIX ? resolveGalaxy(GIX, location.hash, location.search) : (CFG.galaxy && +CFG.galaxy.subhalo_id) || null;
+let GAL = GIX ? resolveGalaxy(GIX, location.hash, location.search) : (CFG.galaxy && CFG.galaxy.subhalo_id != null ? normId(CFG.galaxy.subhalo_id) : null);
 const isDefGal = () => !GIX || GAL === GIX.default;
 function applyPack(pack, gj) {
   Object.assign(CFG, {catalog_url: pack.catalog_url, bin_dir: pack.bin_dir, components_url: pack.components_url, viz: pack.viz,
     components_dir: pack.legacy ? LEGACY.components_dir : null});   /* per-sightline slices: the default galaxy's built site only */
   if (pack.legacy) Object.assign(CFG, {frame: LEGACY.frame, galaxy: LEGACY.galaxy, n_static: LEGACY.n_static});
   else { const e = GIX.byId.get(pack.id) || {}, g = gj || {};
-    CFG.galaxy = {sim: g.sim || "TNG50-1", snapshot: g.snapshot ?? 99, redshift: g.redshift ?? 0, subhalo_id: pack.id, central: g.central ?? e.central,
+    CFG.galaxy = {sim: g.sim || e.sim || "TNG50-1", snapshot: g.snapshot ?? 99, redshift: g.redshift ?? 0, subhalo_id: pack.id, central: g.central ?? e.central,
       R200c_kpc: g.R200c_kpc ?? e.R200c, M200c_Msun: g.M200c_Msun ?? e.M200c, Mstar_Msun: g.Mstar_Msun ?? e.Mstar, SFR_Msun_yr: g.SFR_Msun_yr ?? e.SFR};
     CFG.frame = g.Lhat ? {Lhat: g.Lhat, xhat: g.xhat, yhat: g.yhat, R200c_kpc: g.R200c_kpc ?? e.R200c} : {R200c_kpc: e.R200c};   /* the manifest's frame wins in viewer3d */
     CFG.n_static = e.n || 0; }
@@ -816,12 +816,20 @@ $("#v3d-mini").addEventListener("pointerenter", () => { if (thumbOk() && tier() 
 /* ---------------- galaxy sample: picker and switching (js/galaxies.js) ---------------- */
 const GPICK = GIX ? createGalaxyPicker({pop: $("#gxy-pop"), cur: $("#gxy-cur"), search: $("#gxy-search"), filter: $("#gxy-filter"), head: $("#gxy-head"),
   list: $("#gxy-list"), count: $("#gxy-count")}, {index: GIX, current: () => GAL, onPick: id => { closePops(); sfx("select"); switchGalaxy(id, {source: "picker"}); }}) : null;
+if (GPICK && $("#gxy-sim")) initLiquidSeg($("#gxy-sim"));
+const activeSim = () => String((GIX && GIX.byId.get(GAL)?.sim) || CFG.galaxy?.sim || (isFire({id: GAL}) ? "FIRE-2" : "TNG50-1"));
+const activeIsFire = () => /^FIRE/i.test(activeSim());
+const activeNoun = (cap = false) => (activeIsFire() ? (cap ? "Halo" : "halo") : (cap ? "Subhalo" : "subhalo"));
 function galaxyUI() {
+  const fire = activeIsFire(), ttl = $("#title");
+  if (ttl) ttl.textContent = fire ? "FIRE-2 sightlines" : "TNG50 sightlines";
   const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
   const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");
-  lab.textContent = String(GAL); lab.dataset.id = String(GAL); b.dataset.tip = `Subhalo ${GAL}, ${e && e.n ? e.n + " sightlines" : "this galaxy"}; click to pick another`;
-  b.setAttribute("aria-label", `Galaxy: subhalo ${GAL}. Pick another galaxy`);
+  lab.textContent = String(GAL); lab.dataset.id = String(GAL);
+  b.dataset.tip = `${fire ? `FIRE-2 halo ${GAL}` : `Subhalo ${GAL}`}, ${e && e.n ? e.n + " sightlines" : "this galaxy"}; click to pick another`;
+  b.setAttribute("aria-label", `Galaxy: ${fire ? `FIRE-2 halo ${GAL}` : `subhalo ${GAL}`}. Pick another galaxy`);
   document.body.dataset.galaxy = String(GAL);
+  document.body.dataset.sim = fire ? "fire2" : "tng50";
 }
 /* the provenance chip in the plot footer (visible on phones too, review2_ux S3): the galaxy id and its spectra source;
    a click opens Data and methods, whose spectra paragraphs follow the source */
@@ -832,11 +840,11 @@ function sourceUI() {
     chip.setAttribute("aria-haspopup", "dialog"); chip.style.cssText = "flex:none;white-space:nowrap;cursor:pointer;background:none;font-family:inherit";
     chip.addEventListener("click", ev => { ev.stopPropagation(); const pop = $("#pop-methods"); if (pop) { if (pop.hidden) openPop(chip, pop); else closePops(); } });
     bar.insertBefore(chip, bar.firstChild); }
-  const sbi = srcOf(SRC) === "sbi", gid = GAL ?? CFG.galaxy?.subhalo_id;
+  const sbi = srcOf(SRC) === "sbi", gid = GAL ?? CFG.galaxy?.subhalo_id, fire = activeIsFire(), noun = fire ? `FIRE-2 halo ${gid}` : `Subhalo ${gid}`;
   chip.textContent = `${GIX && gid != null ? gid + "  " : ""}${sbi ? "THOR" : "Trident"}${GFLAGS.gas_poor ? "  gas-poor" : ""}`;
-  chip.dataset.tip = sbi ? `Subhalo ${gid}: THOR rays through the Voronoi mesh, CLOUDY FG11 ions; click for details`
-    : `Subhalo ${gid}: Trident HM2012 spectra, ±R200c; click for details`;
-  chip.setAttribute("aria-label", `Subhalo ${gid}, spectra source ${sbi ? "THOR" : (SRC.label || "Trident")}. Open data and methods`);
+  chip.dataset.tip = sbi ? `${noun}: THOR rays through the Voronoi mesh, CLOUDY FG11 ions; click for details`
+    : `${noun}: Trident HM2012 spectra, ±R200c; click for details`;
+  chip.setAttribute("aria-label", `${noun}, spectra source ${sbi ? "THOR" : (SRC.label || "Trident")}. Open data and methods`);
   methodsText(sbi);
 }
 const MEL = {}, MTX = {};
@@ -859,7 +867,8 @@ function methodsText(sbi) {
 }
 function aboutText() {
   const g = CFG.galaxy || {}; if (!g.R200c_kpc) return;
-  $("#about-gal").textContent = `Sightlines through the circumgalactic medium of one ${g.sim || "TNG50-1"} galaxy (subhalo ${g.subhalo_id} at z = ${g.redshift ?? 0}, R200c ${nf.format(Math.round(+g.R200c_kpc))} kpc${g.M200c_Msun ? `, M200c ${(+g.M200c_Msun / 1e12).toFixed(2)}e12 solar masses` : ""}), labelled by orientation, impact parameter b and azimuth from the projected major axis.`;
+  const sim = g.sim || activeSim() || "TNG50-1", fire = /^FIRE/i.test(sim), gid = g.subhalo_id ?? GAL;
+  $("#about-gal").textContent = `Sightlines through the circumgalactic medium of one ${sim} galaxy (${fire ? "halo" : "subhalo"} ${gid} at z = ${g.redshift ?? 0}, R200c ${nf.format(Math.round(+g.R200c_kpc))} kpc${g.M200c_Msun ? `, M200c ${(+g.M200c_Msun / 1e12).toFixed(2)}e12 solar masses` : ""}), labelled by orientation, impact parameter b and azimuth from the projected major axis.`;
 }
 /* the 3D engine is per galaxy (its cubes, frame and lines): dispose it and remount on demand (the tab, or the thumbnail
    where it was live). viewer.dispose() also removes its control column with the #picker-root it adopted: put one back */
@@ -878,13 +887,14 @@ async function reset3d() {
    azimuth: SBI_CGM galaxies have their own Sobol rays, so ids are not shared; review2_ux S1) */
 let GTOK = 0;
 async function switchGalaxy(id, {want = null, source = "picker"} = {}) {
+  id = normId(id);
   if (!GIX || !GIX.byId.has(id)) return false; if (id === GAL) return true;
   if (JOB) { note("a sightline is being generated; switch galaxies when it is done", "bad"); return false; }
-  const tok = ++GTOK, pack = packFor(GIX, id, LEGACY), b = $("#gxy-open");
-  b.dataset.state = "loading"; note(`loading subhalo ${id}`);
+  const tok = ++GTOK, pack = packFor(GIX, id, LEGACY), b = $("#gxy-open"), targetNoun = isFire(GIX.byId.get(id)) ? "halo" : "subhalo";
+  b.dataset.state = "loading"; note(`loading ${targetNoun} ${id}`);
   let cat, gj = null;
   try { const [r, g] = await Promise.all([fetch(pack.catalog_url), galaxyJson(pack)]); if (!r.ok) throw new Error("HTTP " + r.status); cat = await r.json(); gj = g; }
-  catch (x) { if (tok === GTOK) { delete b.dataset.state; note(`could not load subhalo ${id}: ${x.message}`, "bad"); } return false; }
+  catch (x) { if (tok === GTOK) { delete b.dataset.state; note(`could not load ${targetNoun} ${id}: ${x.message}`, "bad"); } return false; }
   if (tok !== GTOK) return false;
   const keep = want || S.id, prevE = CAT.get(S.id) || null, prevR = +(CFG.galaxy && CFG.galaxy.R200c_kpc) || +(GIX.byId.get(GAL)?.R200c) || 0;
   GAL = id; applyPack(pack, gj); GAL_READY = Promise.resolve(); setSource(cat);
@@ -901,7 +911,7 @@ async function switchGalaxy(id, {want = null, source = "picker"} = {}) {
   reset3d();
   if (first) await select(first, true, "galaxy"); else { status(); draw(); }
   writeHash(); emit("tng:galaxy", {id, source, n: CAT.size});
-  note(`subhalo ${id}: ${CAT.size} sightlines`); bcatFor = null;
+  note(`${activeNoun()} ${id}: ${CAT.size} sightlines`); bcatFor = null;
   if (source === "picker" && document.activeElement === document.body) $("#gxy-open")?.focus({preventScroll: true});   /* S4: keep keyboard focus */
   return true;
 }
@@ -922,7 +932,7 @@ function mountFind() { if (FINDP) return; FINDP = import(modUrl("search.js")).th
 let CHAT = null;
 $("#chat-open").hidden = !(CFG.chat && CFG.chat.enabled);
 $("#chat-open").addEventListener("click", async () => { backendCatalog(); try { if (!CHAT) { const m = await import(modUrl("chat.js")), root = $("#chat-root"); root.hidden = false;
-    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); initLiquidSeg(root.querySelector(".chat-mode")); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
+    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
 
 /* ---------------- side column (collapsible, remembered) and the phone drawer ---------------- */
 function setSide(on) { document.body.classList.toggle("side-off", !on); const b = $("#side-toggle"); b.setAttribute("aria-expanded", String(on));
@@ -1097,8 +1107,8 @@ window.tngStoryEntry = storyEntry;
 function writeHash() { try { history.replaceState(null, "", "#" + galaxyHashPart(GIX, GAL) + formatHash(S, pendingId)); } catch { /* sandboxed */ } storyEntry.links(); }
 const writeHashSoon = debounce(writeHash, 150);
 addEventListener("hashchange", () => {
-  if (GIX) { const g = parseGalaxy(location.hash) ?? GIX.default;      /* g=<id> in a pasted or edited URL switches the galaxy */
-    if (g !== GAL && !GIX.byId.has(g)) note(`subhalo ${g} is not in this sample; showing subhalo ${GAL}`, "bad");
+  if (GIX) { const g = parseGalaxy(location.hash, location.search, GIX) ?? GIX.default;      /* g=<id> in a pasted or edited URL switches the galaxy */
+    if (g !== GAL && !GIX.byId.has(g)) note(`subhalo ${g} is not in this sample; showing ${activeNoun()} ${GAL}`, "bad");
     if (g !== GAL && GIX.byId.has(g)) { const N = parseHash(location.hash, reg, S); Object.assign(S, N, {id: S.id, tab: S.tab}); syncAll();
       switchGalaxy(g, {want: N.id, source: "hash"}).then(() => { if (N.tab !== S.tab) showTab(N.tab); }); return; } }
   const prev = S.id, tab = S.tab, N = parseHash(location.hash, reg, S), want = N.id;
@@ -1137,7 +1147,7 @@ window.tngApp = {
   /* Data and credits (#pop-licence) from another opener, e.g. the 3D stage's ID badge; a second click closes it */
   openCredits(opener) { const pop = $("#pop-licence"), b = opener || $("#credits-open"); if (!pop || !b) return false;
     if (!pop.hidden && lastOpener === b) { closePops(); return false; } openPop(b, pop); return true; },
-  async selectGalaxy(id, {source = "chat"} = {}) { return switchGalaxy(+id, {source}); },
+  async selectGalaxy(id, {source = "chat"} = {}) { return switchGalaxy(normId(id), {source}); },
   getState, pageState, entries: () => sorted().map(strip), entry: id => (CAT.has(id) ? strip(CAT.get(id)) : null),
   async select(id, {source = "chat"} = {}) { if (!CAT.has(id)) return false; if (id !== S.id) await select(id, false, source); return true; },
   setInstrument(o = {}) { return applyPatch(instrumentPatch(o, reg, S, vmaxFor)); },
