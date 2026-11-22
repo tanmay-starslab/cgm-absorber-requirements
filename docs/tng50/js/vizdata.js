@@ -229,6 +229,10 @@ export function atlasToRaw(parts, n, kind) {
   const W = 16 * n, H = 4 * n, stars = kind === "stars", out = new Uint8Array((stars ? 4 : 1) * n * n * n);
   if (!Array.isArray(parts) || parts.length !== 4) throw new Error("atlasToRaw: expected 4 parts");
   parts.forEach((p, i) => { if (!p || p.length !== W * H * 4) throw new Error(`atlasToRaw: part ${i} has ${p?.length} bytes, expected ${W}×${H}×4`); });
+  let hasDustAlpha = false;
+  if (stars) {
+    outer: for (const p of parts) for (let i = 3; i < p.length; i += 4) if (p[i] < 255) { hasDustAlpha = true; break outer; }
+  }
   for (let k = 0; k < n; k++) {
     const P = parts[k >> 6], s = k & 63, x0 = (s & 15) * n, y0 = (s >> 4) * n;
     for (let j = 0; j < n; j++) {
@@ -236,7 +240,7 @@ export function atlasToRaw(parts, n, kind) {
       if (!stars) for (let i = 0; i < n; i++, src += 4) out[dst + i] = P[src];
       else for (let i = 0, d = 4 * dst; i < n; i++, src += 4, d += 4) {
         const r = P[src], g = P[src + 1], b = P[src + 2], a = P[src + 3];
-        out[d] = r; out[d + 1] = g; out[d + 2] = b; out[d + 3] = (a > 0 && a < 255) ? a : ((r | g | b) ? 255 : 0); }
+        out[d] = r; out[d + 1] = g; out[d + 2] = b; out[d + 3] = hasDustAlpha ? a : ((r | g | b) ? 255 : 0); }
     }
   }
   return out;

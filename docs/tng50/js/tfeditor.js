@@ -42,7 +42,7 @@ let N = 0;
 export function createTfEditor({onChange = () => {}} = {}) {
   const uid = "v3tf" + (++N), el = document.createElement("section");
   el.className = "v3c-card v3tf"; el.dataset.group = "tf"; el.id = "v3-tf"; el.hidden = true;
-  const opts = PRESETS.map(p => `<option value="${p}">${PRESET_LABELS[p]}</option>`).join("") + `<option value="custom" disabled>custom</option>`;
+  const opts = PRESETS.map(p => `<option value="${p}">${PRESET_LABELS[p]}</option>`).join("") + `<option value="custom">Custom (full range)</option>`;
   el.innerHTML = `<h2 id="${uid}-h">Transfer function</h2>
     <div class="v3c-row"><label for="v3-tf-preset">preset</label><select id="v3-tf-preset" data-testid="v3-tf-preset" data-tip="Starting look: ramp, THOR phases, temperature shells, iso bands or clouds">${opts}</select></div>
     <div class="v3tf-plot"><canvas id="v3-tf-cv" data-testid="v3-tf-canvas" tabindex="0" role="application" aria-roledescription="transfer function editor"
@@ -72,8 +72,17 @@ export function createTfEditor({onChange = () => {}} = {}) {
   function normSel() { if (sel < 0 && st.ramp) return; sel = st.bands.length ? clamp(sel, 0, st.bands.length - 1) : (st.ramp ? -1 : 0); }
   const bandCol = B => (B.rgb ? B.rgb : (() => { const L = ctx.lut, k = 4 * Math.round(clamp(nx(B.c), 0, 1) * 255); return L ? [L[k], L[k + 1], L[k + 2]] : [143, 168, 255]; })());
 
-  function emit(commit, reason) { baked = null; onChange(copy(st), {commit, reason}); syncInputs(); draw(); }
+  function emit(commit, reason) {
+    baked = null;
+    if (ctx.codes && Number.isFinite(ctx.vmin) && Number.isFinite(ctx.vmax)) ctx.hist = histWindow(ctx.codes, ctx.vmin, ctx.vmax, st.win[0], st.win[1], 128);
+    onChange(copy(st), {commit, reason}); syncInputs(); draw();
+  }
   function custom() { st.preset = "custom"; }
+  const fullMin = () => Number.isFinite(ctx.vmin) ? Math.min(ctx.vmin, st.win[0]) : st.win[0] - span();
+  const fullMax = () => Number.isFinite(ctx.vmax) ? Math.max(ctx.vmax, st.win[1]) : st.win[1] + span();
+  function expandToFull() {
+    if (Number.isFinite(ctx.vmin) && Number.isFinite(ctx.vmax)) st.win = [r3(Math.min(st.win[0], ctx.vmin)), r3(Math.max(st.win[1], ctx.vmax))];
+  }
   function set(s, c) { st = copy(s); if (!st.win) st.win = [0, 1]; if (c) ctx = {...ctx, ...c}; normSel(); baked = null;
     const e = q("#v3-tf-emis"), list = ctx.emis || [], k = list.map(o => o.value).join();
     if (e.dataset.k !== k) { e.textContent = ""; for (const o of [{value: "", label: "none"}, ...list]) { const x = document.createElement("option"); x.value = o.value; x.textContent = o.label; e.appendChild(x); } e.dataset.k = k; }
@@ -179,21 +188,52 @@ export function createTfEditor({onChange = () => {}} = {}) {
     st.bands.forEach((B, i) => { const [hx, hy] = handle(B), d = at(hx, hy); if (d < d0) { d0 = d; best = {i, k: 0}; } });
     return best; }
   let drag = null;
-  cv.addEventListener("pointerdown", ev => { if (ev.button !== 0) return; const h = hit(ev); if (!h) return;
-    sel = h.i; const B = item(); drag = {x: ev.clientX, y: ev.clientY, k: h.k, c: B.c, w: B.w, lo: B.lo, hi: B.hi, a: B.a, g: (B.g || [0, 1]).slice(), shift: ev.shiftKey, geo: geom(), moved: false};
+  cv.addEventListener("pointerdown", ev => { if (ev.button !== 0) return; const h = hit(ev);
+    if (!h) {
+      drag = {pan: true, x: ev.clientX, y: ev.clientY, win: st.win.slice(), span: span(), geo: geom(), moved: false};
+      try { cv.setPointerCapture(ev.pointerId); } catch { /* synthetic events */ }
+      ev.preventDefault(); cv.focus({preventScroll: true}); return;
+    }
+    sel = h.i; const B = item(); drag = {x: ev.clientX, y: ev.clientY, k: h.k, c: B.c, w: B.w, lo: B.lo, hi: B.hi, a: B.a, g: (B.g || [0, 1]).slice(), win: st.win.slice(), span: span(), shift: ev.shiftKey, geo: geom(), moved: false};
     try { cv.setPointerCapture(ev.pointerId); } catch { /* synthetic events */ }
     ev.preventDefault(); cv.focus({preventScroll: true}); syncInputs(); draw(); say(); });
   const gShift = (g0, d) => { const s = g0[1] - g0[0], m = clamp((g0[0] + g0[1]) / 2 + d, s / 2, 1 - s / 2); return [r3(m - s / 2), r3(m + s / 2)]; };
-  cv.addEventListener("pointermove", ev => { if (!drag) { cv.style.cursor = hit(ev) ? "grab" : "crosshair"; return; }
-    const B = item(), G = drag.geo, dx = (ev.clientX - drag.x) / G.w, dy = -(ev.clientY - drag.y) / (G.h - PADT - PADB); if (!B) return; custom(); drag.moved = true;
+  cv.addEventListener("pointermove", ev => { if (!drag) { cv.style.cursor = hit(ev) ? "grab" : "ew-resize"; return; }
+    const G = drag.geo, dx = (ev.clientX - drag.x) / G.w, dy = -(ev.clientY - drag.y) / (G.h - PADT - PADB);
+    if (drag.pan) {
+      if (Math.abs(ev.clientX - drag.x) < 2) return;
+      custom(); drag.moved = true;
+      const fmin = fullMin(), fmax = fullMax(), sp = drag.span;
+      let w0 = drag.win[0] - dx * sp, w1 = drag.win[1] - dx * sp;
+      if (w0 < fmin) { w0 = fmin; w1 = Math.min(fmax, w0 + sp); }
+      if (w1 > fmax) { w1 = fmax; w0 = Math.max(fmin, w1 - sp); }
+      if (w1 > w0 + 0.1) { st.win = [r3(w0), r3(w1)]; emit(false, "drag"); }
+      return;
+    }
+    const B = item(); if (!B) return; custom(); drag.moved = true;
+    const fmin = fullMin(), fmax = fullMax(), sp = drag.span;
     if (ramp()) { /* ramp ends: x moves that end (kept 0.05 dex apart); y: the high end's opacity (1D) or the gradient range (2D) */
-      if (drag.k) B.hi = r3(clamp(drag.hi + dx * span(), B.lo + 0.05, st.win[1] + span())); else B.lo = r3(clamp(drag.lo + dx * span(), st.win[0] - span(), B.hi - 0.05));
+      if (drag.k) { B.hi = r3(clamp(drag.hi + dx * sp, B.lo + 0.05, fmax)); if (B.hi > st.win[1]) st.win[1] = r3(Math.min(fmax, B.hi)); }
+      else { B.lo = r3(clamp(drag.lo + dx * sp, fmin, B.hi - 0.05)); if (B.lo < st.win[0]) st.win[0] = r3(Math.max(fmin, B.lo)); }
       if (st.twoD) { if (B.g || Math.abs(dy) > 0.01) B.g = gShift(drag.g, dy); } else if (drag.k) B.a = r3(clamp(drag.a + dy, 0, 1)); }
     else if (drag.shift) B.w = r3(clamp(drag.w * Math.exp(3 * dx), 0.01, 2));
-    else { B.c = r3(clamp(drag.c + dx * span(), st.win[0], st.win[1]));
+    else { B.c = r3(clamp(drag.c + dx * sp, fmin, fmax));
+      if (B.c - B.w < st.win[0]) st.win[0] = r3(Math.max(fmin, Math.min(st.win[0], B.c - B.w)));
+      if (B.c + B.w > st.win[1]) st.win[1] = r3(Math.min(fmax, Math.max(st.win[1], B.c + B.w)));
       if (st.twoD) B.g = gShift(drag.g, dy);
       else B.a = r3(clamp(drag.a + dy, 0, 1)); }
     emit(false, "drag"); });
+  cv.addEventListener("wheel", ev => {
+    const fmin = fullMin(), fmax = fullMax(), maxSp = Math.max(0.4, fmax - fmin);
+    const g = geom(), x = clamp((ev.clientX - g.l) / Math.max(1, g.w), 0, 1), anchor = vx(x);
+    const factor = Math.exp(clamp(ev.deltaY, -120, 120) * 0.0025), newSp = clamp(span() * factor, 0.3, maxSp);
+    let w0 = anchor - x * newSp, w1 = w0 + newSp;
+    if (w0 < fmin) { w0 = fmin; w1 = Math.min(fmax, w0 + newSp); }
+    if (w1 > fmax) { w1 = fmax; w0 = Math.max(fmin, w1 - newSp); }
+    if (w1 > w0 + 0.1 && (Math.abs(w0 - st.win[0]) > 1e-3 || Math.abs(w1 - st.win[1]) > 1e-3)) {
+      ev.preventDefault(); custom(); st.win = [r3(w0), r3(w1)]; emit(true, "wheel");
+    }
+  }, {passive: false});
   const end = () => { if (!drag) return; const m = drag.moved; drag = null; if (m) { emit(true, "drag"); say(); } };
   cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end); cv.addEventListener("lostpointercapture", end);
   cv.addEventListener("dblclick", ev => { if (hit(ev)) return; const g = geom(), x = clamp((ev.clientX - g.l) / g.w, 0, 1), y = clamp(1 - (ev.clientY - g.t - PADT) / (g.h - PADT - PADB), 0, 1);
@@ -206,8 +246,10 @@ export function createTfEditor({onChange = () => {}} = {}) {
     else if (k === "PageUp" || k === "[") step(-1);
     else if (k === "Insert" || k === "n" || k === "N") add();
     else if (!B) { if (k === "Enter" || k === " ") add(); else return; }
-    else if (k === "ArrowLeft" || k === "ArrowRight") { custom(); const d = k === "ArrowLeft" ? -dv : dv;
-      if (R) { B.lo = r3(B.lo + d); B.hi = r3(B.hi + d); } else B.c = r3(clamp(B.c + d, st.win[0], st.win[1])); emit(true, "key"); say(); }
+    else if (k === "ArrowLeft" || k === "ArrowRight") { custom(); const d = k === "ArrowLeft" ? -dv : dv, fmin = fullMin(), fmax = fullMax();
+      if (R) { B.lo = r3(B.lo + d); B.hi = r3(B.hi + d); } else { B.c = r3(clamp(B.c + d, fmin, fmax));
+        if (B.c - B.w < st.win[0]) st.win[0] = r3(Math.max(fmin, B.c - B.w));
+        if (B.c + B.w > st.win[1]) st.win[1] = r3(Math.min(fmax, B.c + B.w)); } emit(true, "key"); say(); }
     else if (k === "ArrowUp" || k === "ArrowDown") { custom(); const d = (k === "ArrowUp" ? 1 : -1) * (ev.shiftKey ? 0.1 : 0.05);
       if (st.twoD && ev.shiftKey) B.g = gShift(B.g || [0, 1], d / 2);
       else B.a = r3(clamp(B.a + d, 0, 1)); emit(true, "key"); say(); }
@@ -219,7 +261,11 @@ export function createTfEditor({onChange = () => {}} = {}) {
     ev.preventDefault(); ev.stopPropagation(); });
 
   /* ---- inputs ---- */
-  q("#v3-tf-preset").addEventListener("change", ev => { sfx("select"); sel = 0; onChange(copy(st), {commit: true, reason: "preset", preset: ev.target.value}); });
+  q("#v3-tf-preset").addEventListener("change", ev => {
+    sfx("select");
+    if (ev.target.value === "custom") { custom(); expandToFull(); if (!st.bands.length && !st.ramp) add(); else emit(true, "input"); return; }
+    sel = 0; onChange(copy(st), {commit: true, reason: "preset", preset: ev.target.value});
+  });
   q("#v3-tf-reset").addEventListener("click", () => { sel = 0; onChange(copy(st), {commit: true, reason: "reset"}); });
   q("#v3-tf-add").addEventListener("click", () => add());
   q("#v3-tf-del").addEventListener("click", () => del());

@@ -724,10 +724,13 @@ async function create(app, opts = {}) {
   if (any(lessThan(u, vec3(d))) || any(greaterThan(u, vec3(1.0 - d)))) return 0.0;
   float sa = (l == 0 ? texture(uStar0, u).a : l == 1 ? texture(uStar1, u).a : texture(uStar2, u).a);
   float a = sa * 255.0;
-  return (a > 0.5 && a < 254.5) ? exp2(LOG2_10 * (-4.5 + sa * 6.0)) : -1.0; }
+  if (a >= 254.5) return -1.0;
+  return a > 0.5 ? exp2(LOG2_10 * (-4.5 + sa * 6.0)) : 0.0; }
 float dustDiskKv(vec3 p, vec3 sv, float gv, float kvRaw) {
-  if (kvRaw >= 0.0) return kvRaw;
   float rDisk = length(p.xy);
+  float hz = 0.16 + 0.010 * clamp(rDisk, 0.0, 20.0);
+  float zEnv = exp(-0.5 * (p.z / hz) * (p.z / hz));
+  if (kvRaw >= 0.0) return kvRaw * zEnv;
   if (rDisk > 22.0 || abs(p.z) > 0.6) return 0.0;
   float mid = exp(-0.5 * (p.z / 0.12) * (p.z / 0.12));
   float gasKv = gv > 0.08 ? clamp(1.8 * pow(gv - 0.08, 0.75), 0.0, 4.0) : 0.0;
@@ -1118,7 +1121,7 @@ vec3 starAt(vec3 p, int l) {`)
      cubes download at once (the first-frame keys always start at once, with network priority 0), each finished cube is bound
      and drawn, and keys a newer plan no longer names are not started. ensure() resolves when the wanted field's first level
      (L0, plus its nH weights for T / Z) is bound. */
-  const LOAD_PAR = mobile || deviceMemory < 4 ? 1 : 2;
+  const LOAD_PAR = mobile || deviceMemory < 4 ? 1 : 3;
   let plan = [], planFirst = new Set(), active = 0;
   const failed = new Map(), waiters = new Map(), tries = new Map();
   function settle(key, err) { const ws = waiters.get(key); if (!ws) return; waiters.delete(key); for (const [res, rej] of ws) err ? rej(err) : res(); }
@@ -1340,7 +1343,7 @@ vec3 starAt(vec3 p, int l) {`)
     const st = tfState(species), f = fld(species), cm = fieldTf(species, "volume").cmap, it = tfLevel(species);
     const key = `${species}|${encodeTF(st)}|${cm}|${it ? (it.sub ? "s" : "c") + it.bytes : ""}|${WEIGHTS.join()}`;
     if (soft && key === tfCardKey) return; tfCardKey = key;
-    tfEd.set(st, {lut: lut(cm), field: lab(species), hist: it?.codes ? histWindow(it.codes, f.vmin, f.vmax, st.win[0], st.win[1], 128) : null,
+    tfEd.set(st, {vmin: f.vmin, vmax: f.vmax, codes: it?.codes || null, lut: lut(cm), field: lab(species), hist: it?.codes ? histWindow(it.codes, f.vmin, f.vmax, st.win[0], st.win[1], 128) : null,
       hist2: st.twoD ? tfHist2(species, st) : null, emis: WEIGHTS.map(k => ({value: k, label: k === "nH" ? "nH" : lab(k)}))}); }
   function onTfEdit(st, info) { if (!tfOk(species)) return;
     if (info.reason === "preset" || info.reason === "reset") { tfApplyPreset(info.reason === "reset" ? "ramp" : info.preset); return; }
@@ -1348,7 +1351,9 @@ vec3 starAt(vec3 p, int l) {`)
     /* the ramp's ends are the Field card's low / high (setTransfer moves the ramp from them): keep the two in step */
     if (st.ramp) { const s = fieldTf(species, "volume"), f = fld(species); s.lo = Math.max(f.vmin, Math.min(st.ramp.lo, f.vmax)); s.hi = Math.max(s.lo, Math.min(st.ramp.hi, f.vmax)); U.uWin.value.set(s.lo, s.hi); }
     tfWinUi();
-    if (st.twoD) { const h2 = tfHist2(species, st); if (h2) tfEd.set(st, {hist2: h2}); }
+    const f = fld(species), it = tfLevel(species);
+    if (it?.codes) tfEd.set(st, {vmin: f.vmin, vmax: f.vmax, codes: it.codes, hist: histWindow(it.codes, f.vmin, f.vmax, st.win[0], st.win[1], 128), hist2: st.twoD ? tfHist2(species, st) : null});
+    else if (st.twoD) { const h2 = tfHist2(species, st); if (h2) tfEd.set(st, {hist2: h2}); }
     applyTfMode(); legend(); aria(); render();
     if (emisKey() !== was) { ensure().catch(() => {}); bindAll(); }
     if (info.commit) { tfUrl(); announce(tfWords()); } }
@@ -1535,9 +1540,9 @@ vec3 starAt(vec3 p, int l) {`)
   watchDpr();
   const ro = new ResizeObserver(resize); ro.observe(stage);
   controls.addEventListener("change", motion);
-  let lastH = 0;
+  let lastH = 0, endT = 0;
   controls.addEventListener("end", () => { const h = hVis(); if (Math.abs(h - lastH) / Math.max(h, 0.05) > 0.02) { lastH = h;
-    if (selId) select(selId, true); if (manifest && species) { ensure().catch(() => {}); bindAll(); } } });
+    if (selId) select(selId, true); if (manifest && species) { bindAll(); clearTimeout(endT); endT = setTimeout(() => { if (manifest && species) { ensure().catch(() => {}); bindAll(); } }, 140); } } });
 
   /* moving-frame path (design §5.5): exact samples while moving if they reach 30 fps, else the hardware path */
   function timeFrames(n, exact, movingExact) {

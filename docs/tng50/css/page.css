@@ -318,8 +318,15 @@ body[data-tab="3d"] #shell{grid-template-columns:minmax(0,1fr)}
   #mobslot #grp-sight #geo-open{justify-content:center}
   #mobslot #gal-open{justify-content:center}
   #mobslot #ion-chips{gap:5px}
-  #mobslot .seg{display:grid;grid-template-columns:repeat(4,1fr)}
+  #mobslot #layout.seg{display:grid;grid-template-columns:repeat(4,1fr)}
   #mobslot #find-toggle .lbl{display:inline}#mobslot #grp-tools .row .pbtn{color:var(--ink)}
+  #mobslot #cl-learn{display:inline-flex;gap:4px;align-items:center}
+  #top #grp-gal{gap:4px}
+  #top #grp-gal .gl{display:none}
+  #top #top-sim{height:28px;padding:2px}
+  #top #top-sim span{height:22px;padding:0 7px;font-size:11px;line-height:22px}
+  #top #gxy-open{height:28px;padding:0 8px;gap:4px}
+  #top #gxy-open .glab{font-size:11.5px}
   #bar{padding-left:20px}
   #note{display:none}
   /* ux/3d-layout: the stage takes the width (no size containment here: the sheet below is position:fixed), and the 3D
@@ -334,7 +341,8 @@ body[data-tab="3d"] #shell{grid-template-columns:minmax(0,1fr)}
   #v3d-controls .v3c-done{display:inline-flex;align-items:center}
   body[data-tab="3d"].ctl-open #chat-open.fab{visibility:hidden}
 }
-@media (max-width:480px){#top{gap:4px;padding:0 4px 0 10px}#title{font-size:11.5px}#tabs [role=tab]{padding:4px 8px}
+@media (max-width:480px){#top{gap:4px;padding:0 4px 0 8px}#title{font-size:11.5px}#tabs [role=tab]{padding:4px 7px;font-size:12px}
+  #top #top-sim span{padding:0 5px;font-size:10.5px}#top #gxy-open{padding:0 6px;gap:3px}#top #gxy-open .gxg{display:none}#top #gxy-open .glab{font-size:11px}
   .ib{width:28px;height:28px}.ib svg{width:15px;height:15px}#pill{display:none}}
 /* ---- button visibility (2026-11): every control has a visible edge and full-contrast label ---- */
 :root{--bline:rgba(175,190,235,.30);--btnbg:rgba(150,165,215,.13);--accent-ink:#0a0d18}
