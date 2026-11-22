@@ -100,6 +100,42 @@ export function pickAlongRay(o, d, cubes, qmin = 1) {
     t += 0.5 / f; }
   return best;
 }
+
+/* ---- moving-frame FPS & quality governor: 5-rung ladder from 60 fps crisp down to 24 fps smooth on constrained GPUs ----
+   Each rung sets {scale (fraction of PR), spv (ray samples per voxel), exact (1 = 8-fetch linear trilinear, 0 = 1-fetch
+   hardware trilinear), shade (multiplier on 2D TF gradient / headlight shading while moving)}. 4 consecutive slow frames
+   (> targetMs * 1.15) step down one rung; 40 consecutive fast frames (< targetMs * 0.72) step up one rung. */
+export const MOVING_LADDER = Object.freeze([
+  {name: "24fps-lite",   fps: 24, scale: 0.50, spv: 0.50, exact: 0, shade: 0},
+  {name: "30fps-fast",   fps: 30, scale: 0.65, spv: 0.65, exact: 0, shade: 0},
+  {name: "30fps-balanced", fps: 30, scale: 0.75, spv: 0.80, exact: 0, shade: 0.5},
+  {name: "60fps-fast",   fps: 60, scale: 0.85, spv: 1.00, exact: 0, shade: 1},
+  {name: "60fps-crisp",  fps: 60, scale: 1.00, spv: 1.00, exact: 1, shade: 1},
+]);
+export function pickMovingRung(ms, {lowTier = false, fs = false} = {}) {
+  if (lowTier) return 0;
+  const k = fs ? 1.35 : 1, t = Number.isFinite(ms) && ms > 0 ? ms * k : 18;
+  return t <= 7 ? 4 : t <= 14 ? 3 : t <= 22 ? 2 : t <= 33 ? 1 : 0;
+}
+export function createMovingGovernor({ladder = MOVING_LADDER, start = 3, targetMs = 16.7, slowN = 4, fastN = 40, slowF = 1.15, fastF = 0.72, min = 0, max = ladder.length - 1} = {}) {
+  let i = Math.max(min, Math.min(max, start)), slow = 0, fast = 0, drops = 0, raises = 0, ema = targetMs;
+  return {
+    push(dtMs) {
+      if (!(dtMs > 0) || dtMs > 250) return ladder[i];
+      ema = ema ? 0.85 * ema + 0.15 * dtMs : dtMs;
+      const goal = Math.max(targetMs, 1000 / (ladder[i].fps || 60));
+      if (dtMs > goal * slowF) { slow++; fast = 0; }
+      else if (dtMs < targetMs * fastF) { fast++; slow = 0; }
+      else { slow = 0; fast = 0; }
+      if (slow >= slowN && i > min) { i--; slow = fast = 0; drops++; }
+      else if (fast >= fastN && i < max) { i++; slow = fast = 0; raises++; }
+      return ladder[i];
+    },
+    get rung() { return ladder[i]; }, get index() { return i; },
+    reset(k = start) { i = Math.max(min, Math.min(max, k)); slow = fast = 0; },
+    state: () => ({...ladder[i], index: i, drops, raises, emaMs: +ema.toFixed(1), estFps: Math.min(60, Math.round(1000 / Math.max(8, ema)))})
+  };
+}
 /* fix-ui V8: no literal underscores; COL_HTML is the colour-bar title with real subscripts (plain text elsewhere) */
 const COL_HTML = {nH: "N<sub>H</sub>", T: "⟨T⟩ (n<sub>H</sub>-weighted)", Z: "⟨Z⟩ (n<sub>H</sub>-weighted)"};
 const COL_TXT = {nH: "NH", T: "⟨T⟩ (nH-weighted)", Z: "⟨Z⟩ (nH-weighted)"};
@@ -593,7 +629,9 @@ async function create(app, opts = {}) {
      stays sharp; the per-device cap (1.0 phones, 1.5 desktop) still bounds the cost */
   const cssZoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
   const calcPR = () => Math.min(devicePixelRatio || 1, lowTier ? 0.75 : mobile ? 1.0 : 1.5) * cssZoom();
-  let PR = calcPR(), exactPR = PR, movingPR = Math.min(PR * (lowTier ? 0.55 : 0.85), exactPR), movingSpv = lowTier ? 0.6 : 1.0, accMax = 8;
+  let PR = calcPR(), exactPR = PR, accMax = 8;
+  const movGov = createMovingGovernor({start: lowTier ? 0 : mobile ? 2 : 3, max: lowTier ? 1 : MOVING_LADDER.length - 1});
+  let movingPR = Math.min(PR * movGov.rung.scale, exactPR), movingSpv = movGov.rung.spv, movingShade = movGov.rung.shade;
   const EXACT_MS = 100;
   renderer.setPixelRatio(PR);
   const scene = new T.Scene(), volScene = new T.Scene(), camera = new T.PerspectiveCamera(FOV, 1, 0.5, 20000);
@@ -908,7 +946,7 @@ async function create(app, opts = {}) {
     const lv = levels(), mark = s => (s === "bound" ? "✓" : s === "loading" ? "…" : "–");
     /* Phase 3 (C12): one fact per line, no dot separators */
     let t = species ? `gas ${lab(species)}  ${GAS_L.map(L => `${L} ${mark(lv.gas[L])}`).join("  ")}` + (layer.stars ? `\nstars  ${STAR_L.map(S => `${S} ${mark(lv.stars[S])}`).join("  ")}` : "\nstars off") +
-      `\nGPU ${mb(gpuBytes())}` + (docked === "thumb" ? "  thumbnail" : "") : "";
+      `\nGPU ${mb(gpuBytes())}` + (docked === "thumb" ? "  thumbnail" : `  ${movGov.rung.name}`) : "";
     const [g, tot] = progOf([...PROG.keys()]); if (t && budgetDropped.length) t += `\nGPU budget: ${budgetDropped.join(", ")} skipped`; if (t && tot) t += `\ndownloading ${mb(g)} of ${mb(tot)}`;
     if (t !== lastLod) { q("#v3-lod").textContent = lastLod = t; }
     /* final: once the field is shown, a small progress note while the finer levels of the current view stream in */
@@ -1252,22 +1290,34 @@ async function create(app, opts = {}) {
       (offCentre(pivotArr()) ? ` Orbit centre ${pivotArr().map(fmtKpc).join(", ")} kpc.` : "");
     if (canvas.getAttribute("aria-label") !== al) canvas.setAttribute("aria-label", al); }
 
-  /* ---- render on demand: moving frames (spv 0.5, half resolution) then one exact refine frame ---- */
-  let rq = false, moving = false, quietT = null, frameNo = 0, curPR = PR, accK = 0, accT = 0;
+  /* ---- render on demand: moving frames (adaptive 60->30->24 fps ladder) then progressive exact refine frames ---- */
+  let rq = false, moving = false, quietT = null, frameNo = 0, curPR = PR, accK = 0, accT = 0, lastMoveRaf = 0, benching = false;
+  function syncMovingRung(r = movGov.rung) {
+    const fsScale = isFs() && r.scale > 0.85 ? 0.85 : r.scale;
+    movingPR = Math.min(PR * fsScale, exactPR); movingSpv = r.spv; movingShade = r.shade;
+    if (!benching) useMovingExact = r.exact === 1;
+  }
+  function stepGov(now) {
+    if (lastMoveRaf > 0) { const dt = now - lastMoveRaf; if (dt > 2 && dt < 250) syncMovingRung(movGov.push(dt)); }
+    lastMoveRaf = now;
+  }
   function render() { accK = 0; if (accT) { cancelAnimationFrame(accT); accT = 0; } if (rq) return; rq = true;
-    requestAnimationFrame(now => { rq = false; draw(!moving); if (stepFades(now)) render(); else if (!moving) refineLater(); }); }
+    requestAnimationFrame(now => { rq = false; if (moving) stepGov(now); else lastMoveRaf = 0; draw(!moving); if (stepFades(now)) render(); else if (!moving) refineLater(); }); }
   /* tune2: progressive refine frames while the view is still (each blends 1/(k+1) into the accumulation target) */
   function refineLater() { if (accT) return; accT = requestAnimationFrame(() => { accT = 0;
     if (moving || rq || accK === 0 || accK >= Math.min(ACC_N, docked === "thumb" ? THUMB.acc : accMax) || spinRaf || document.hidden || ctxLost) return; draw(true, true); refineLater(); }); }
   function setPR(pr) { if (Math.abs(pr - curPR) < 1e-6) return; curPR = pr; renderer.setPixelRatio(pr); renderer.setSize(stage.clientWidth || 600, stage.clientHeight || 400, false); }
-  function motion() { moving = true; clearTimeout(quietT); quietT = setTimeout(() => { moving = false; render(); }, 150); render(); }
+  function motion() { if (!moving) lastMoveRaf = 0; moving = true; clearTimeout(quietT); quietT = setTimeout(() => { moving = false; lastMoveRaf = 0; render(); }, 150); render(); }
   const accSize = new T.Vector2();
+  let keepTF2D = 0, keepShade = 0;
   function draw(exact = true, acc = false) {
     const th = docked === "thumb"; setPR(th ? PR : exact ? exactPR : Math.min(movingPR, exactPR));
     if (!acc) accK = 0;
     /* tune3: half-voxel steps for exact frames in close views (L2), so the finest grid shows no step banding; moving frames
-       scale resolution and ray steps adaptively with calibrated GPU speed and freeze uFrame so dither noise never boils */
+       scale resolution, ray steps, and 2D gradient fetches adaptively with the FPS governor and freeze uFrame so dither noise never boils */
     U.uSpv.value = th ? THUMB.spv : exact ? (hVis() < 30 ? 2.0 : 1.0) : movingSpv; U.uStarFloor.value = STAR_COMP.floor; U.uCompMode.value = STAR_COMP.mode; U.uOccRange.value.set(...[0, 1].map(i => STAR_CLOSE.occ[i] + (STAR_ZOOM.occWide[i] - STAR_CLOSE.occ[i]) * zoomW())); U.uGasW.value = STAR_CLOSE.gasW + (1 - STAR_CLOSE.gasW) * zoomW(); U.uExact.value = exact || useMovingExact ? 1 : 0;
+    const trimGrad = !exact && !th && !benching && movingShade < 1 && U.uTFOn.value === 1;
+    if (trimGrad) { keepTF2D = U.uTF2D.value; keepShade = U.uShade.value; if (movingShade <= 0) U.uTF2D.value = 0; U.uShade.value = keepShade * movingShade; }
     const c = camera.position; U.uCamDisk.value.set(c.dot(Xv), c.dot(Yv), c.dot(Lv)); if (exact) U.uFrame.value = (++frameNo) % 1024;
     U.uGasMix.value = species ? layer.gasMix : 0; U.uStarMix.value = layer.stars ? layer.starMix : 0;
     U.uStarQ.value = layer.Q; U.uStarSat.value = layer.sat; U.uStarS0.value = 10 ** (0.4 * (MU_ZERO - mu0Eff())); U.uStarBal.value.set(...layer.balance);
@@ -1283,7 +1333,8 @@ async function create(app, opts = {}) {
       renderer.autoClear = false; renderer.render(volScene, camera); renderer.setRenderTarget(null);
       renderer.autoClear = true; renderer.render(blitScene, blitCam); accK = k + 1;
     } else { U.uSub.value.set(0, 0); U.uAccW.value = 1; renderer.autoClear = true; renderer.render(volScene, camera); }
-    renderer.autoClear = false; renderer.render(scene, camera); renderer.autoClear = true; scale();
+    if (trimGrad) { U.uTF2D.value = keepTF2D; U.uShade.value = keepShade; }
+    renderer.autoClear = false; renderer.render(scene, camera); renderer.autoClear = true; if (exact || !scaleW) scale();
   }
   let ringR = 0;
   function guideFit() {
@@ -1298,15 +1349,22 @@ async function create(app, opts = {}) {
   /* tune4: 0 in close views → 1 in wide views (STAR_ZOOM) */
   function zoomW() { const t = Math.min(1, Math.max(0, (hVis() - STAR_ZOOM.h[0]) / (STAR_ZOOM.h[1] - STAR_ZOOM.h[0]))); return t * t * (3 - 2 * t); }
   function mu0Eff() { return layer.mu0 + STAR_ZOOM.dmag[0] + (STAR_ZOOM.dmag[1] - STAR_ZOOM.dmag[0]) * zoomW(); }
-  var lastMuTxt = "";   // var: legend() may run before this line is reached
+  var lastMuTxt = "", scaleH = 0, scaleW = "", scaleL = 0, scaleHidden = null;   // var: legend() may run before this line is reached
   function starLegend() { const t = `stars: g, r, i asinh (Q ${layer.Q}, μ₀,eff ${mu0Eff().toFixed(1)} mag/″²)`;
     if (t !== lastMuTxt) { q(".v3d-leg .st span").textContent = lastMuTxt = t; } }
   function scale() {   // a round length at the orbit target's distance, in CSS px
-    const sc = q(".v3d-scale"), d = camera.position.distanceTo(controls.target), pxPerKpc = stage.clientHeight / (2 * d * Math.tan(camera.fov * Math.PI / 360));
+    const sc = q(".v3d-scale"), h = scaleH || (scaleH = stage.clientHeight || 400), d = camera.position.distanceTo(controls.target);
+    const pxPerKpc = h / (2 * d * Math.tan(camera.fov * Math.PI / 360));
     let L = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(v => v * pxPerKpc >= 60) || 500;
-    starLegend(); sc.hidden = !scaleOn; sc.querySelector("i").style.width = (L * pxPerKpc).toFixed(1) + "px"; sc.querySelector("span").textContent = `${L} kpc`; }
-  function resize() { const p = calcPR(); if (Math.abs(p - PR) > 1e-6) { PR = exactPR = p; movingPR = Math.min(PR * (lowTier ? 0.55 : 0.85), exactPR); calibrated = ""; }
-    const w = stage.clientWidth || 600, h = stage.clientHeight || 400; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); render(); }
+    starLegend();
+    if (scaleHidden !== !scaleOn) sc.hidden = scaleHidden = !scaleOn;
+    const w = (L * pxPerKpc).toFixed(1) + "px"; if (w !== scaleW) sc.querySelector("i").style.width = scaleW = w;
+    if (L !== scaleL) { scaleL = L; sc.querySelector("span").textContent = `${L} kpc`; } }
+  function resize() { const p = calcPR(); scaleH = stage.clientHeight || 400;
+    if (Math.abs(p - PR) > 1e-6) { PR = exactPR = p; syncMovingRung(); calibrated = ""; }
+    const w = stage.clientWidth || 600, h = scaleH; curPR = exactPR; renderer.setPixelRatio(exactPR); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    if (calibrated && species && docked === "full") setTimeout(calibrate, 0);
+    render(); }
   let dprMq = null; const onDpr = () => { watchDpr(); resize(); };
   function watchDpr() { try { dprMq?.removeEventListener("change", onDpr); dprMq = matchMedia(`(resolution: ${devicePixelRatio || 1}dppx)`); dprMq.addEventListener("change", onDpr); } catch { dprMq = null; } }
   watchDpr();
@@ -1326,34 +1384,32 @@ async function create(app, opts = {}) {
   }
   function calibrate() {
     if (docked !== "full") return;     // Phase 3: calibrated on the full stage only (dock() calls it)
-    const sig = JSON.stringify(levels()); if (!species || sig === calibrated) return; calibrated = sig;
-    movingPR = PR * 0.5; movingSpv = 0.5;
+    const sig = JSON.stringify(levels()) + (isFs() ? "|fs" : ""); if (!species || sig === calibrated) return; calibrated = sig;
+    benching = true; movingPR = PR * 0.5; movingSpv = 0.5; movingShade = 1;
     const p0 = camera.position.clone(); const t = median(timeFrames(5, false, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
-    useMovingExact = t <= 1000 / 30;
-    /* scale moving-frame resolution and ray step density to the device's measured GPU speed so fast devices stay crisp while rotating */
-    const mScale = lowTier ? 0.55 : t <= 12 ? 1.0 : t <= 22 ? 0.85 : t <= 33 ? 0.75 : 0.5;
-    movingSpv = lowTier ? 0.6 : t <= 22 ? 1.0 : t <= 33 ? 0.8 : 0.5;
     /* fix-ui FE-09: on drawing buffers larger than the benchmarked 1366×702 (fullscreen, high DPR) time two exact frames and
        scale the exact-frame pixel ratio so one costs about EXACT_MS; slow exact frames also get fewer refine frames */
-    const bufPx = stage.clientWidth * stage.clientHeight * PR * PR;
+    const bufPx = (stage.clientWidth || 600) * (stage.clientHeight || 400) * PR * PR;
     if (bufPx > 1.3e6) { const te = median(timeFrames(2, true, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
       const pr0 = exactPR; if (te > EXACT_MS) exactPR = Math.max(Math.min(PR, 0.75), Math.min(PR, pr0 * Math.sqrt(EXACT_MS / te)));
-      accMax = te * (exactPR / pr0) ** 2 > 1.5 * EXACT_MS ? 3 : ACC_N; Object.assign(stats.calibration = {moving_exact_ms: t, moving_path: useMovingExact ? "exact" : "fast"}, {exact_ms: te, exact_pr: exactPR, refine_frames: accMax}); }
-    else { exactPR = PR; accMax = ACC_N; stats.calibration = {moving_exact_ms: t, moving_path: useMovingExact ? "exact" : "fast"}; }
-    movingPR = Math.min(PR * mScale, exactPR); Object.assign(stats.calibration, {moving_pr: movingPR, moving_spv: movingSpv});
+      accMax = te * (exactPR / pr0) ** 2 > 1.5 * EXACT_MS ? 3 : ACC_N; Object.assign(stats.calibration = {moving_exact_ms: t, moving_path: t <= 1000 / 30 ? "exact" : "fast"}, {exact_ms: te, exact_pr: exactPR, refine_frames: accMax}); }
+    else { exactPR = PR; accMax = ACC_N; stats.calibration = {moving_exact_ms: t, moving_path: t <= 1000 / 30 ? "exact" : "fast"}; }
+    benching = false;
+    movGov.reset(pickMovingRung(t, {lowTier, fs: isFs()})); syncMovingRung();
+    Object.assign(stats.calibration, {moving_pr: movingPR, moving_spv: movingSpv, moving_rung: movGov.rung.name, governor: movGov.state()});
     draw(true);
   }
   async function bench(n = 60) {
     const p0 = camera.position.clone(), r = {size: [canvas.width, canvas.height], pixelRatio: PR};
-    const keepPR = movingPR, keepSpv = movingSpv; movingPR = Math.min(PR * 0.5, exactPR); movingSpv = 0.5;
+    benching = true; movingPR = Math.min(PR * 0.5, exactPR); movingSpv = 0.5; movingShade = 1;
     const ex = timeFrames(Math.max(5, Math.round(n / 4)), true, true);
     const mvE = timeFrames(n, false, true), mvF = timeFrames(n, false, false);
-    movingPR = keepPR; movingSpv = keepSpv;
+    benching = false; syncMovingRung();
     camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
     Object.assign(r, {exact_ms_median: median(ex), moving_exact_ms_median: median(mvE), moving_fast_ms_median: median(mvF),
       moving_px: [Math.round(canvas.width * 0.5), Math.round(canvas.height * 0.5)], levels: levels(), gpu_bytes: gpuBytes()});
-    useMovingExact = r.moving_exact_ms_median <= 1000 / 30; r.moving_path = useMovingExact ? "exact" : "fast";
-    r.ms_per_frame = r.moving_exact_ms_median; r.fps = 1000 / (useMovingExact ? r.moving_exact_ms_median : r.moving_fast_ms_median);
+    r.moving_path = r.moving_exact_ms_median <= 1000 / 30 ? "exact" : "fast";
+    r.ms_per_frame = r.moving_exact_ms_median; r.fps = 1000 / (r.moving_path === "exact" ? r.moving_exact_ms_median : r.moving_fast_ms_median);
     setPR(PR); draw(true); stats.bench = r; return r;
   }
 
@@ -1613,7 +1669,7 @@ async function create(app, opts = {}) {
   Object.assign(viewer, {setPivot: p => (p === "galaxy" ? recentre() : p === "ray" ? pivotToRay() : Array.isArray(p) && p.length === 3 && p.every(Number.isFinite) ? pivotTo(p, "api") : false),
     recentre, pickPivot: (x, y) => pickPivot(x, y)});
   Object.assign(viewer, {drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setWeight, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
-    setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes, texKeys: () => [...TEX.keys()],
+    setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes, texKeys: () => [...TEX.keys()], movingQuality: () => movGov.state(),
     dispose() { loadTok++; anim++; progMsg = null; ENGINE = null; io?.disconnect(); if (spinRaf) cancelAnimationFrame(spinRaf); spinRaf = 0;
       document.removeEventListener("visibilitychange", spinKick); if (thumbHost && thumbClick) thumbHost.removeEventListener("click", thumbClick); ctlBox.remove(); clearTimeout(quietT); clearTimeout(progT); clearTimeout(liveT); if (accT) cancelAnimationFrame(accT); accT = 0;
       if (fallbackFs) toggleFullscreen(false); else if (fsEl() === el) document.exitFullscreen?.().catch(() => {});
@@ -1688,11 +1744,13 @@ async function create(app, opts = {}) {
     if (spinning()) { if (!spinRaf) { spinLast = 0; spinRaf = requestAnimationFrame(spinTick); } }
     else if (spinRaf) { cancelAnimationFrame(spinRaf); spinRaf = 0; render(); } }
   function spinTick(now) {
-    spinRaf = 0; if (!spinning()) { render(); return; }
+    spinRaf = 0; if (!spinning()) { lastMoveRaf = 0; render(); return; }
     const th = docked === "thumb", minDt = th ? 1000 / THUMB.fps - 2 : 0;
     if (!spinLast) spinLast = now - (th ? 1000 / THUMB.fps : 16);
     const dt = now - spinLast;
-    if (dt >= minDt) { spinLast = now;
+    if (dt >= minDt) {
+      if (!th) stepGov(now);
+      spinLast = now;
       const rate = th ? THUMB.degPerSec : orbitDeg, ang = rate * Math.min(dt, 250) / 1000 * Math.PI / 180;
       const ax = th ? Lv : orbitAxisVec();
       const off = camera.position.clone().sub(controls.target).applyAxisAngle(ax, ang);

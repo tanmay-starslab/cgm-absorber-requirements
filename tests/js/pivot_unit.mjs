@@ -4,7 +4,7 @@
 // a double-click) and pickAlongRay (the densest sample of nested byte cubes along the clicked ray, nearest first on ties,
 // finest cube where they overlap). The viewer's own checks (chip, animation, URL, double-click) are in viewer_browser.mjs.
 // Usage: node tests/js/pivot_unit.mjs
-import {PIVOT, parsePivot, formatPivot, offCentre, rayPivot, planePoint, pickAlongRay} from "../../docs/tng50/js/viewer3d.js";
+import {PIVOT, parsePivot, formatPivot, offCentre, rayPivot, planePoint, pickAlongRay, MOVING_LADDER, pickMovingRung, createMovingGovernor} from "../../docs/tng50/js/viewer3d.js";
 import {checker, sepHits} from "./lib/browser.mjs";
 
 const C = checker(), check = C.check;
@@ -60,5 +60,20 @@ const cube = (m, half, fill) => { const data = new Uint8Array(m * m * m); const 
 { /* camera inside the box: samples start at the camera */
   const L0 = cube(32, 400, [[[0, 0, 200], 200], [[0, 0, -100], 50]]), h = pickAlongRay([0, 0, 0], [0, 0, -1], [L0]);
   check(h && h.q === 50, `camera inside the box: only what is in front (${J(h)})`); }
+
+/* ---- moving-frame FPS & quality governor ---- */
+{ check(MOVING_LADDER.length === 5 && MOVING_LADDER[4].fps === 60 && MOVING_LADDER[4].exact === 1 && MOVING_LADDER[3].exact === 0 && MOVING_LADDER[0].fps === 24,
+    `MOVING_LADDER has 5 rungs from 24fps-lite to 60fps-crisp (${MOVING_LADDER.map(r => r.name).join(" -> ")})`);
+  check(pickMovingRung(5) === 4 && pickMovingRung(10) === 3 && pickMovingRung(18) === 2 && pickMovingRung(28) === 1 && pickMovingRung(45) === 0,
+    "pickMovingRung maps calibrated moving_exact_ms to the right starting rung (60 -> 30 -> 24 fps)");
+  check(pickMovingRung(6, {fs: true}) === 3 && pickMovingRung(5, {lowTier: true}) === 0,
+    "pickMovingRung accounts for fullscreen pixel load and lowTier floor");
+  const g = createMovingGovernor({start: 3, slowN: 4, fastN: 10});
+  for (let i = 0; i < 4; i++) g.push(24);
+  check(g.index === 2 && g.rung.name === "30fps-balanced", `governor drops 60fps-fast -> 30fps-balanced after 4 slow frames (${g.rung.name})`);
+  for (let i = 0; i < 4; i++) g.push(42);
+  check(g.index === 1 && g.rung.name === "30fps-fast", `governor drops 30fps-balanced -> 30fps-fast under heavy load (${g.rung.name})`);
+  for (let i = 0; i < 20; i++) g.push(10);
+  check(g.index === 3 && g.state().raises === 2, `governor climbs back up when frame times stay < 12 ms (${J(g.state())})`); }
 
 process.exit(C.finish());
