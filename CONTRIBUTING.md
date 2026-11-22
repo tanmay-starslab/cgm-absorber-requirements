@@ -1,7 +1,6 @@
 # Contributing
 
-Thank you for taking a look. Bug reports, ideas, science feedback and pull requests are all welcome, from anyone.
-The place to start is [GitHub Issues](https://github.com/tanmay-starslab/cgm-absorber-requirements/issues).
+Thank you for taking a look! This is a fun, fast-moving space for exploring galaxy halos and absorption spectra — bug reports, wild ideas, science feedback and pull requests are all warmly welcome. The place to start is [GitHub Issues](https://github.com/tanmay-starslab/cgm-absorber-requirements/issues).
 
 ## Ways to help
 
@@ -16,6 +15,12 @@ The place to start is [GitHub Issues](https://github.com/tanmay-starslab/cgm-abs
   and, if you can, a reference.
 - **Send a pull request** for code or docs. For anything larger than a small fix, open an issue first so we can
   agree on the approach.
+
+## Using AI tools
+
+This site was built heavily with **Claude** and **Antigravity**, and you are warmly encouraged to use AI coding and research tools to move fast, prototype ideas and accelerate your contributions!
+
+The one non-negotiable requirement is **scientific accuracy**: because the maintainer may not be able to inspect every generated line by hand, you are responsible for verifying that every equation, unit, atomic constant, physical claim and test in your contribution is scientifically sound and passes the test suite.
 
 ## Development setup
 
