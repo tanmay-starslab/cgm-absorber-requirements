@@ -1363,7 +1363,7 @@ async function create(app, opts = {}) {
     const step = now => { if (id !== anim) return; const f = dur ? Math.min(1, (now - start) / dur) : 1, e = f < 0.5 ? 2 * f * f : 1 - (-2 * f + 2) ** 2 / 2;
       camera.position.lerpVectors(p0, pos, e); controls.target.lerpVectors(t0, target, e); camera.up.lerpVectors(u0, up, e).normalize();
       camera.lookAt(controls.target); controls.update(); if (f < 1) requestAnimationFrame(step);
-      else { if (selId) select(selId, true); if (manifest && species) ensure().catch(() => {}); syncPivot(true); } };
+      else { clearTimeout(quietT); moving = false; render(); if (selId) select(selId, true); if (manifest && species) ensure().catch(() => {}); syncPivot(true); } };
     requestAnimationFrame(step);
   }
   function setPreset(p) {
@@ -1681,15 +1681,16 @@ async function create(app, opts = {}) {
     else if (spinRaf) { cancelAnimationFrame(spinRaf); spinRaf = 0; render(); } }
   function spinTick(now) {
     spinRaf = 0; if (!spinning()) { render(); return; }
-    if (!spinLast) spinLast = now - 1000 / THUMB.fps;
+    const th = docked === "thumb", minDt = th ? 1000 / THUMB.fps - 2 : 0;
+    if (!spinLast) spinLast = now - (th ? 1000 / THUMB.fps : 16);
     const dt = now - spinLast;
-    if (dt >= 1000 / THUMB.fps - 2) { spinLast = now;
-      const rate = docked === "thumb" ? THUMB.degPerSec : orbitDeg, ang = rate * Math.min(dt, 250) / 1000 * Math.PI / 180;
-      const ax = docked === "thumb" ? Lv : orbitAxisVec();
+    if (dt >= minDt) { spinLast = now;
+      const rate = th ? THUMB.degPerSec : orbitDeg, ang = rate * Math.min(dt, 250) / 1000 * Math.PI / 180;
+      const ax = th ? Lv : orbitAxisVec();
       const off = camera.position.clone().sub(controls.target).applyAxisAngle(ax, ang);
       if (ax !== Lv) camera.up.applyAxisAngle(ax, ang).normalize();   // a tumble turns the whole view rigidly
       camera.position.copy(controls.target).add(off); camera.lookAt(controls.target);
-      const t0 = performance.now(); accK = 0; draw(true); stats.thumbFrameMs = performance.now() - t0; }
+      const t0 = performance.now(); accK = 0; draw(th); stats.thumbFrameMs = performance.now() - t0; }
     spinRaf = requestAnimationFrame(spinTick); }
   document.addEventListener("visibilitychange", spinKick);
   /* the full stage: the page's square #v3d-stage, or the layout built here */

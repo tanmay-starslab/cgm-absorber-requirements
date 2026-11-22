@@ -132,9 +132,10 @@ export function initLiquidBg(opts = {}) {
     if (!gl) return; const P = {...(PALETTES[th] || PALETTES.dark), ...(opts.palette || {})};
     gl.uniform3fv(U.uLow, P.low); gl.uniform3fv(U.uBase, P.base); gl.uniform3fv(U.uMetal, P.metal); gl.uniform3fv(U.uHigh, P.high); gl.uniform3fv(U.uFlat, P.flat);
     gl.uniform1f(U.uAmt, P.amt); gl.uniform1f(U.uCalmAmt, P.calm); gl.uniform1f(U.uBand, P.band); gl.uniform1f(U.uGrain, P.grain); gl.uniform1f(U.uVig, P.vig); }
-  function size() { const r = cv.getBoundingClientRect(), w = Math.max(1, Math.round(r.width * SCALE)), h = Math.max(1, Math.round(r.height * SCALE));
+  let rect = null;
+  function size() { const r = rect = cv.getBoundingClientRect(), w = Math.max(1, Math.round(r.width * SCALE)), h = Math.max(1, Math.round(r.height * SCALE));
     if (w !== cv.width || h !== cv.height) { cv.width = w; cv.height = h; } S.w = w; S.h = h; if (gl) { gl.viewport(0, 0, w, h); gl.uniform2f(U.uRes, w, h); calm(); } }
-  function calm() { if (!gl) return; const el = opts.calm && opts.calm(), cr = cv.getBoundingClientRect();
+  function calm() { if (!gl) return; const el = opts.calm && opts.calm(), cr = rect = cv.getBoundingClientRect();
     if (!el || !el.getClientRects().length) { gl.uniform4f(U.uCalm, 0, 0, 0, 0); return; }
     const r = el.getBoundingClientRect(), k = SCALE;
     gl.uniform4f(U.uCalm, (r.left - cr.left) * k, (cr.bottom - r.bottom) * k, (r.right - cr.left) * k, (cr.bottom - r.top) * k); }
@@ -178,7 +179,8 @@ export function initLiquidBg(opts = {}) {
   function listen() {
     on(document, "visibilitychange", kick);
     on(cv, "webglcontextlost", e => { e.preventDefault(); S.lost = true; fallback(); });
-    on(window, "pointermove", e => { if (S.mode !== "anim") return; const r = cv.getBoundingClientRect();
+    on(window, "scroll", () => { rect = null; }, {passive: true});
+    on(window, "pointermove", e => { if (S.mode !== "anim") return; const r = rect || (rect = cv.getBoundingClientRect());
       mouse.tx = (e.clientX - r.left) * SCALE; mouse.ty = (r.bottom - e.clientY) * SCALE; mouse.tpush = 1; if (!mouse.seen) { mouse.x = mouse.tx; mouse.y = mouse.ty; mouse.seen = true; } }, {passive: true});
     const rmq = matchMedia("(prefers-reduced-motion: reduce)"), dmq = matchMedia("(prefers-color-scheme: dark)");
     on(rmq, "change", kick); on(dmq, "change", () => { applyTheme(); redraw(); });

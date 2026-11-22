@@ -44,10 +44,11 @@ export function createSpectra({box, cv, hitboxes, axis, axisCv, more}, P) {
   /* tick step: labels at least 40 px apart */
   function tickStep(pw, span) { for (let e = -1; e < 6; e++) for (const m of [1, 2, 5]) { const st = m * 10 ** e; if (st * pw / span >= 40) return st; } return 10000; }
 
+  let lastW = 0, lastH = 0, hbSig = "";
   function draw() {
     const t0 = performance.now(), S = P.S;
     G = geometry(); const dpr = pixelRatio();
-    cv.style.width = G.W + "px"; cv.style.height = G.H + "px";
+    if (G.W !== lastW || G.H !== lastH) { cv.style.width = G.W + "px"; cv.style.height = G.H + "px"; lastW = G.W; lastH = G.H; }
     const bw = Math.round(G.W * dpr), bh = Math.round(G.H * dpr); if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, G.W, G.H);
     const ink = css("--ink"), muted = css("--muted"), grid = css("--grid"), dataC = css("--data"), panelBg = css("--panel"), fitInk = css("--fit") || ink;
@@ -156,8 +157,12 @@ export function createSpectra({box, cv, hitboxes, axis, axisCv, more}, P) {
         for (let v = Math.ceil(v0 / step) * step; v <= v1 + 1e-9; v += step) { const x = X(v); if (x < p.x + 10 || x > p.x + p.w - 10) continue; ctx.fillText(minus(Math.round(v)), x, p.y + p.h + 5); }
         ctx.textAlign = "right"; ctx.fillText(axV(p.w), p.x + p.w, p.y + p.h + 18); ctx.textAlign = "left"; ctx.textBaseline = "middle"; }
     }
-    hitboxes.innerHTML = G.panels.map(p => { const [R, sn] = P.caseRS(p.ion, p.ci);
-      return `<div class="panel" role="img" data-ion="${p.ion}" data-case="${p.ci}" data-testid="panel-${p.ion}-${p.ci}" aria-label="${P.reg.ION[p.ion].label}, R ${nf.format(R)}, S/N ${sn}" style="left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px"></div>`; }).join("");
+    const nextHbSig = G.panels.map(p => `${p.ion}:${p.ci}:${p.x}:${p.y}:${p.w}:${p.h}:${P.caseRS(p.ion, p.ci).join("/")}`).join("|");
+    if (nextHbSig !== hbSig) {
+      hbSig = nextHbSig;
+      hitboxes.innerHTML = G.panels.map(p => { const [R, sn] = P.caseRS(p.ion, p.ci);
+        return `<div class="panel" role="img" data-ion="${p.ion}" data-case="${p.ci}" data-testid="panel-${p.ion}-${p.ci}" aria-label="${P.reg.ION[p.ion].label}, R ${nf.format(R)}, S/N ${sn}" style="left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px"></div>`; }).join("");
+    }
     axisUpdate();
     lastMs = performance.now() - t0; nDraw++;
     P.afterDraw && P.afterDraw(G);
