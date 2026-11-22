@@ -73,27 +73,42 @@ TIERS = {
              "fields": ("nH", "T", "Z", "HI", "MgII", "CIV", "OVI", "vx", "vy", "vz"), "gz": False},
 }
 
+_GID = r"(?:[0-9]{1,9}|[A-Za-z][A-Za-z0-9_]{1,23})"
+GAL_ID_RE = re.compile(rf"^{_GID}$")
 _SID = r"(face|edge|rand)_b\d{3}_a\d{3}(_s\d+)?"
 _CUBE = (r"viz/(gas/L[012]/[A-Za-z0-9]+\.[0-9a-f]{12}\.(p[0-3]\.webp|u8\.gz)"
          r"|stars/S[012]/gri\.[0-9a-f]{12}\.(p[0-3]\.webp|rgba\.gz))")
-PACK_RE = re.compile(rf"^(README\.md|\d+/(galaxy\.json|catalog\.json|components\.json|s/{_SID}\.bin"
+PACK_RE = re.compile(rf"^(README\.md|{_GID}/(galaxy\.json|catalog\.json|components\.json|s/{_SID}\.bin"
                      rf"|viz/manifest_v2\.json|viz/luts/luts\.json|{_CUBE}))$")
-CUTOUT_RE = re.compile(r"^(README\.md|trident/hm2012_ss_hr\.h5|\d+/(cutout_slim_R400\.hdf5|galaxy\.json))$")
-HEAVY_RE = re.compile(rf"^\d+/({_CUBE}|s/.*\.bin|cutout_slim_R400\.hdf5)$|^trident/")   # committed before the JSONs
+CUTOUT_RE = re.compile(rf"^(README\.md|trident/hm2012_ss_hr\.h5|{_GID}/(cutout_slim_R400\.hdf5|galaxy\.json))$")
+HEAVY_RE = re.compile(rf"^{_GID}/({_CUBE}|s/.*\.bin|cutout_slim_R400\.hdf5)$|^trident/")   # committed before the JSONs
 FORBIDDEN = re.compile(r"(^|/)(yt\.toml|config\.tri|\.env|token)$|\.(ewah|npy|npz|log)$|(^|/)\.")
 PRIVATE_KEYS = {"path", "source_path", "cutout_path", "src", "file"}
 ABS_PATH = re.compile(r"^(/(scratch|home|Users|Volumes|data|mnt|tmp|gpfs|packages)\b|[A-Za-z]:\\)")
 
 
-def shard(gid: int) -> int:
-    return int(gid) % N_SHARDS
+def norm_gid(gid: int | str) -> int | str:
+    s = str(gid).strip()
+    if not GAL_ID_RE.fullmatch(s):
+        raise ValueError(f"invalid galaxy id {s!r}")
+    return int(s) if s.isdigit() else s
 
 
-def pack_repo(gid: int) -> str:
+def _gid_sort_key(gid: int | str):
+    return (0, int(gid), "") if isinstance(gid, int) or str(gid).isdigit() else (1, 0, str(gid))
+
+
+def shard(gid: int | str) -> int:
+    if isinstance(gid, int) or str(gid).isdigit():
+        return int(gid) % N_SHARDS
+    return int(hashlib.sha256(str(gid).encode("utf-8")).hexdigest()[:8], 16) % N_SHARDS
+
+
+def pack_repo(gid: int | str) -> str:
     return PACK_REPO.format(k=shard(gid))
 
 
-def resolve_base(repo: str, gid: int) -> str:
+def resolve_base(repo: str, gid: int | str) -> str:
     return f"https://huggingface.co/datasets/{repo}/resolve/main/{gid}/"
 
 
@@ -500,17 +515,17 @@ def verify_pack(repo: str, gid: int, items, log=print) -> bool:
 
 
 # ------------------------------------------------------------------------------------------------ main
-def galaxy_ids(a, root: Path) -> list[int]:
+def galaxy_ids(a, root: Path) -> list[int | str]:
     if a.ids:
-        ids = [int(x) for x in a.ids.split(",") if x.strip()]
+        ids = [norm_gid(x) for x in a.ids.split(",") if x.strip()]
     elif a.ids_file:
         txt = a.ids_file.read_text()
-        ids = [int(x) for x in re.findall(r"\d+", txt)]
+        ids = [norm_gid(x) for x in re.findall(r"[A-Za-z0-9_]+", txt) if GAL_ID_RE.fullmatch(x)]
     else:
-        ids = sorted(int(p.name) for p in root.iterdir() if p.is_dir() and p.name.isdigit()) if root.is_dir() else []
+        ids = [norm_gid(p.name) for p in root.iterdir() if p.is_dir() and GAL_ID_RE.fullmatch(p.name)] if root.is_dir() else []
     if not a.include_reference:
-        ids = [i for i in ids if i != REFERENCE_ID]
-    return sorted(set(ids))
+        ids = [i for i in ids if i != REFERENCE_ID and str(i) != str(REFERENCE_ID)]
+    return sorted(set(ids), key=_gid_sort_key)
 
 
 def main(argv=None) -> int:

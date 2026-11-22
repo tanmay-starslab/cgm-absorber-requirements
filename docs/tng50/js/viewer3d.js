@@ -1653,9 +1653,9 @@ async function create(app, opts = {}) {
   const idEl = q("#v3-id");
   function idBadge() { if (!idEl) return; const g = app.config?.galaxy || G, id = (typeof app.galaxy === "function" ? app.galaxy() : null) ?? g.subhalo_id;
     idEl.hidden = id == null || typeof app.openCredits !== "function"; if (id == null) return;
-    const sim = g.sim || "TNG50-1", z = g.redshift ?? 0;
-    idEl.querySelector(".s").textContent = sim; idEl.querySelector(".g").textContent = `Subhalo ${id}`; idEl.querySelector(".z").textContent = `z = ${z}`;
-    idEl.setAttribute("aria-label", `${sim} subhalo ${id} at redshift ${z}, data credits`); }
+    const sim = g.sim || "TNG50-1", z = g.redshift ?? 0, fire = /^FIRE/i.test(sim);
+    idEl.querySelector(".s").textContent = sim; idEl.querySelector(".g").textContent = fire ? `Halo ${id}` : `Subhalo ${id}`; idEl.querySelector(".z").textContent = `z = ${z}`;
+    idEl.setAttribute("aria-label", `${sim} ${fire ? "halo" : "subhalo"} ${id} at redshift ${z}, data credits`); }
   idEl?.addEventListener("click", ev => { ev.stopPropagation(); app.openCredits?.(idEl); });
   idEl?.addEventListener("pointerdown", ev => ev.stopPropagation());
   const onGal = () => idBadge(); addEventListener("tng:galaxy", onGal); idBadge();

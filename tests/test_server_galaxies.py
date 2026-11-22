@@ -162,11 +162,14 @@ def sse(c, jid):
 # ------------------------------------------------------------------------------ ids, records, frame
 def test_check_galaxy_and_validate_record():
     assert GX.check_galaxy("488530") == "488530" and GX.check_galaxy(" 0123 ") == "123"
-    for bad in ("", "abc", "1" * 10, "12.5", "-3", "../x"):
+    assert GX.check_galaxy("m12i") == "m12i" and GX.check_galaxy(" Romeo ") == "Romeo" and GX.check_galaxy("m12f_res7100") == "m12f_res7100"
+    for bad in ("", "a", "1" * 10, "12.5", "-3", "../x", "9bad", "a" * 25):
         with pytest.raises(ValueError):
             GX.check_galaxy(bad)
     r = GX.validate_record(fake_record(), GID)
     assert r["id"] == GID and r["R200c_kpc"] == 180.0 and len(r["center_kpc"]) == 3
+    rf = GX.validate_record({**fake_record(), "sim": "FIRE-2", "subhalo_id": "m12i"}, "m12i")
+    assert rf["id"] == "m12i" and rf["subhalo_id"] == "m12i"
     rec = fake_record()
     rec.pop("center_kpc")
     rec["center_ckpch"] = (np.asarray(fake_record()["center_kpc"]) * rec["TNG_H"]).tolist()
@@ -315,7 +318,7 @@ def test_routes_take_a_galaxy(libdir, src):
         assert x["galaxy"]["subhalo_id"] == int(GID) and x["galaxy"]["R200c_kpc"] == 180.0 and x["entries"] == []
         assert c.get(f"/api/catalog?g=0{GID}").json() == x                    # canonical id
         assert c.get("/api/catalog?g=777").status_code == 404                 # not in the dataset
-        assert c.get("/api/catalog?g=abc").status_code == 422
+        assert c.get("/api/catalog?g=9bad").status_code == 422
         assert c.get("/api/sightline/face_b050_a090.bin").status_code == 200
         assert c.get(f"/api/sightline/face_b050_a090.bin?g={GID}").status_code == 404   # per-galaxy store
         assert c.get(f"/api/components?g={GID}").json()["entries"] == {}
@@ -327,7 +330,7 @@ def test_routes_take_a_galaxy(libdir, src):
         assert c.post("/api/geometry", json={**body, "galaxy": GID}).json()["geom"] == g1["geom"]
         r = c.post(f"/api/geometry?g={GID2}", json={**body, "galaxy": GID})
         assert r.status_code == 422 and "differs" in r.json()["detail"]
-        assert c.post("/api/geometry", json={**body, "galaxy": "x1"}).status_code == 422
+        assert c.post("/api/geometry", json={**body, "galaxy": "9x"}).status_code == 422
         gc_ = c.post(f"/api/geometry/custom?g={GID}", json=CUSTOM).json()
         assert np.allclose(np.asarray(gc_["geom"]["start_kpc"]) - fake_record()["center_kpc"], CUSTOM["p0_kpc"])
         h = c.get("/api/health").json()["galaxies"]

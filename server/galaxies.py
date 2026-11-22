@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np
 
 log = logging.getLogger("tngsight.server")
-GAL_ID_RE = re.compile(r"^[0-9]{1,9}$")
+GAL_ID_RE = re.compile(r"^(?:[0-9]{1,9}|[A-Za-z][A-Za-z0-9_]{1,23})$")
 CUTOUT_NAME = "cutout_slim_R400.hdf5"
 INDEX_NAME = "cutout.ewah"
 META_NAME = "galaxy.json"
@@ -56,8 +56,12 @@ class GalaxyUnavailable(RuntimeError):
 def check_galaxy(g) -> str:
     g = str(g).strip()
     if not GAL_ID_RE.fullmatch(g):
-        raise ValueError(f"invalid galaxy id {g[:20]!r} (a subhalo id: 1-9 digits)")
-    return str(int(g))                 # canonical: no leading zeros
+        raise ValueError(f"invalid galaxy id {g[:20]!r} (a subhalo or halo id)")
+    return str(int(g)) if g.isdigit() else g   # canonical: no leading zeros for numeric ids
+
+
+def _gal_sort_key(gid: str):
+    return (0, int(gid), "") if str(gid).isdigit() else (1, 0, str(gid))
 
 
 def public_label(what, e) -> str:
@@ -106,7 +110,7 @@ def validate_record(rec, gid: str) -> dict:
     if max(abs(L @ x), abs(L @ y), abs(x @ y)) > 1e-3:
         raise ValueError("Lhat, xhat, yhat are not orthogonal")
     out["id"] = gid
-    out.setdefault("subhalo_id", int(gid))
+    out.setdefault("subhalo_id", int(gid) if str(gid).isdigit() else gid)
     return out
 
 
@@ -597,7 +601,7 @@ class GalaxyHub:
 
     def open_ids(self) -> list:
         with self._lock:
-            return sorted(self._stores, key=lambda g: (g != self.default, int(g)))
+            return sorted(self._stores, key=lambda g: (g != self.default, _gal_sort_key(g)))
 
     # -- cutouts
     def has_cutout(self, gid) -> bool:
