@@ -87,6 +87,25 @@ try {
     await shot("3-options");
     await clickSel("#v3d-stage .v3d-hc .hc-q"); await sleep(400);
     const m4 = await step("guide from ?"); check(!!m4.ov.guide && !m4.ov.options, `${key}: "?" swaps the options for the guide`);
+    const errVis = await P.eval(`(() => { const m = document.querySelector("#v3d-stage .v3d-msg"), p = document.querySelector("#v3d-stage .v3d-hc");
+      if (!m || !p) return false; m.textContent = "The 3D data host is unreachable."; m.className = "v3d-ov v3d-msg bad"; m.dataset.prog = ""; m.dataset.transient = "";
+      const mr = m.getBoundingClientRect(), pr = p.getBoundingClientRect(), gr = document.querySelector("#v3d-stage .v3d-hg")?.getBoundingClientRect();
+      const s = getComputedStyle(m), gs = getComputedStyle(document.querySelector("#v3d-stage .v3d-hg"));
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      const ok = s.visibility !== "hidden" && mr.width > 0 && mr.height > 0 && !hit(mr, pr) && (gs.visibility === "hidden" || !hit(mr, gr));
+      m.textContent = ""; m.className = "v3d-ov v3d-msg"; return ok; })()`);
+    check(errVis, `${key}: persistent stage error (.v3d-msg.bad) remains visible below the pill without overlap`);
+    if (!touch) {
+      const fsOk = await P.eval(`(async () => { await tngViewer3d.toggleFullscreen(true); document.querySelector("#v3-ctl-toggle")?.click();
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const p = document.querySelector("#v3d-stage .v3d-hc")?.getBoundingClientRect(), g = document.querySelector("#v3d-stage .v3d-hg")?.getBoundingClientRect(), c = document.querySelector(".v3d .v3c")?.getBoundingClientRect();
+        const hit = (a, b) => a && b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        const ok = p && c && !hit(p, c) && (!g || !hit(g, c));
+        await tngViewer3d.toggleFullscreen(false);
+        document.querySelector("#v3-head")?.scrollIntoView({block: "nearest"});
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return ok; })()`);
+      check(fsOk, `${key}: in fullscreen with Controls open (.v3d-panel), pill and panel stay clear of .v3c`);
+    }
     await clickSel("#v3-head"); await sleep(500);
     const m5 = await step("stop"); check(!m5.ov.pill && !m5.ov.guide && !m5.ov.options, `${key}: Stop removes the pill and the panels`);
     await shot("4-stopped");

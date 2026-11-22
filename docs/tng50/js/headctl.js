@@ -44,12 +44,16 @@ const HOLD = {thumb: "👍", victory: "✌️", point: "☝️"};
 const CSS = `.v3d-stage{--hc-h:48px;--hc-b:32px;--hc-top:48px}
 @media (pointer:coarse){.v3d-stage{--hc-h:48px;--hc-b:44px}}
 @container (min-width:720px){.v3d-stage{--hc-top:10px}}
-.v3d-stage:has(.v3d-hc) .v3d-msg{visibility:hidden}
+.v3d-stage:has(.v3d-hc) .v3d-msg[data-prog="1"],.v3d-stage:has(.v3d-hc) .v3d-msg[data-transient="1"],.v3d-stage:has(.v3d-ho:not([hidden])) .v3d-msg{visibility:hidden}
+.v3d-stage:has(.v3d-hc) .v3d-msg{top:calc(var(--hc-top) + var(--hc-h) + 8px);max-width:min(340px,calc(100% - 24px))}
+.v3d-stage:has(.v3d-msg:not(:empty):not([data-prog="1"]):not([data-transient="1"])) .v3d-hg{visibility:hidden}
 #v3-head[aria-pressed=true]{border-color:var(--s-accent,#7db2f0)}
 .v3d-hc,.v3d-hp{position:absolute;left:12px;z-index:3;box-sizing:border-box;color:var(--s-ink,#eef0f7);
   background:var(--s-mat,rgba(12,16,22,.74));box-shadow:inset 0 0 0 1px var(--s-edge,rgba(200,215,240,.16)),var(--s-hi,none),0 6px 20px rgba(0,0,0,.3);
   backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));-webkit-backdrop-filter:var(--s-blur,blur(14px) saturate(1.5));border-radius:14px}
-@container (min-width:720px){.v3d-hc,.v3d-hp{left:50%;transform:translateX(-50%)}}
+@container (min-width:720px){.v3d-hc,.v3d-hp,.v3d-stage:has(.v3d-hc) .v3d-msg{left:50%;transform:translateX(-50%)}}
+@container (min-width:720px) and (max-width:1099px){.v3d-panel .v3d-hc,.v3d-panel .v3d-hp,.v3d-panel .v3d-stage:has(.v3d-hc) .v3d-msg{left:12px;transform:none}}
+.v3d:fullscreen .v3d-stage:has(.v3d-hc) .v3d-lines,.v3d.v3d-fs .v3d-stage:has(.v3d-hc) .v3d-lines{top:auto;bottom:110px}
 .v3d-hc{top:var(--hc-top);width:min(264px,calc(100% - 24px));height:var(--hc-h);display:flex;align-items:center;gap:7px;padding:4px;font:600 12px/15px system-ui,sans-serif}
 .v3d-hc .hc-cam{flex:none;height:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:rgba(255,255,255,.06)}
 .v3d-hc.tilt .hc-cam{display:none}
@@ -177,11 +181,15 @@ async function startCam(s) {
   const w = s.worker = main ? await mainTracker() : new Worker(new URL("./headworker.js", import.meta.url));
   await new Promise((res, rej) => {
     const to = setTimeout(() => rej({hc: MSG.load}), 120000);
-    w.onmessage = ({data: d}) => { if (d.type === "ready") { clearTimeout(to); s.delegate = d.delegate; res(); } else if (d.type === "error") { clearTimeout(to); console.warn("head control:", d.message); rej({hc: MSG.load}); } };
+    w.onmessage = ({data: d}) => { if (d.type === "ready") { clearTimeout(to); s.delegate = d.delegate; s.handsReady = !!s.T.hands; res(); } else if (d.type === "error") { clearTimeout(to); console.warn("head control:", d.message); rej({hc: MSG.load}); } };
     w.onerror = e => { clearTimeout(to); console.warn("head control worker:", e.message); rej({hc: MSG.load}); };
     w.postMessage({type: "init", base: VENDOR, face: s.T.face, hands: s.T.hands});
   });
-  w.onmessage = ({data: d}) => { s.busy = false; if (S !== s || d.type !== "res") return;
+  w.onmessage = ({data: d}) => { s.busy = false; if (S !== s) return;
+    if (d.type === "hands-ready") { s.handsLoading = false; s.handsReady = true; return; }
+    if (d.type === "hands-error" || (d.type === "error" && s.handsLoading)) { console.warn("hand control:", d.message); s.handsLoading = false; setHands(s, false); say(s.box, "Head only (hands unavailable)", true); return; }
+    if (d.type === "error") { fail(s, MSG.load); return; }
+    if (d.type !== "res") return;
     rate(s, d.ms);
     if ("m" in d) { const p = d.m ? poseFromMatrix(d.m) : null; p ? onPose(s, p, d.t) : idle(s); }
     if ("hand" in d && !s.fed && s.T.hands) onHand(s, d.hand, d.t); };
@@ -190,7 +198,7 @@ async function startCam(s) {
   const grab = now => { if (S !== s && s.worker !== w) return;
     if (s.busy || now - last < 1000 / s.fps - 2 || !v.videoWidth) return;
     last = now; s.busy = true;
-    const job = pickJob(s.T, k++, {ctrl: s.ctrl, mode: s.mode}), cw = job.hands ? HAND_W : FACE_W;
+    const job = pickJob(s.handsLoading ? {face: s.T.face, hands: false} : s.T, k++, {ctrl: s.ctrl, mode: s.mode}), cw = job.hands ? HAND_W : FACE_W;
     if (main) { w.postMessage({type: "frame", bmp: v, t: now, ...job}); return; }
     createImageBitmap(v, {resizeWidth: cw, resizeHeight: Math.round(cw * v.videoHeight / v.videoWidth), resizeQuality: "low"})
       .then(bmp => { if (s.worker) s.worker.postMessage({type: "frame", bmp, t: now, ...job}, [bmp]); else bmp.close(); }).catch(() => { s.busy = false; }); };
@@ -203,7 +211,7 @@ function setHands(s, on) {
   on = !!on && !s.tilt; if (s.T.hands === on) return;
   s.T.hands = on; s.track = s.tilt ? "tilt" : on ? "both" : "head"; s.gov?.setBoth(on);
   const cb = s.opts?.querySelector('[data-c="hands"]'); if (cb && cb.checked !== on) cb.checked = on;
-  if (on && s.worker) s.worker.postMessage({type: "hands", base: VENDOR});
+  if (on && s.worker && !s.handsReady && !s.handsLoading) { s.handsLoading = true; s.worker.postMessage({type: "hands", base: VENDOR}); }
   if (!on) { s.hc.reset(); s.arb.reset(); if (s.ctrl === "hand") { s.ctrl = "head"; if (s.mode === "orbit" && s.base && s.ref) rebase(s); } s.hand = "none"; s.sign = null; pill(s); }
 }
 

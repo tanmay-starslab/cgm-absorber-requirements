@@ -138,6 +138,8 @@ for (const [g, act] of [["Thumb_Up", "recentre"], ["Victory", "mode"], ["Pointin
   check(midDesk.camera === "ok" && !midDesk.hands, `quick: a mid 4-core desktop defaults to head-only (hands false) to stay fast (${JSON.stringify(midDesk)})`);
   const heavy3d = q({touch: false, tier: "mid", cores: 8, hasCam: true, movingMs: 50});
   check(heavy3d.camera === "ok" && !heavy3d.hands, `quick: a heavy 3D moving frame (> 35 ms) on mid tier defaults to head-only (${JSON.stringify(heavy3d)})`);
+  const heavyHigh = q({touch: false, tier: "high", cores: 8, hasCam: true, movingMs: 50});
+  check(heavyHigh.camera === "ok" && !heavyHigh.hands, `quick: a heavy 3D moving frame (> 35 ms) on high tier also defaults to head-only (${JSON.stringify(heavyHigh)})`);
   check(q({touch: true, tier: "high", cores: 8, hasCam: false}).camera === "none" && q({touch: true, hasCam: false}).def === "tilt", "quick: no camera, no camera option");
   check(q({touch: false, tier: "low", cores: 2, hasCam: true}).camera === "slow" && q({touch: false, tier: "low", cores: 2, hasCam: true}).def === "camera" && !q({touch: false, tier: "low", cores: 2, hasCam: true}).hands, "quick: a weak desktop keeps camera (no tilt) in head-only mode and says slow"); }
 { const b = decideBench;

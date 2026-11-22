@@ -130,7 +130,7 @@ export function decideQuick({touch = false, tier = "mid", cores = 4, mem, w = 10
   const big = Math.min(w, h) >= 700;                          // a tablet or larger viewport
   const strong = tier === "high" || (tier !== "low" && cores >= 6 && (mem == null || mem >= 4));
   const ok = tier !== "low" && cores >= 4 && (mem == null || mem >= 3) && (!touch || strong || big);
-  const hands = ok && (tier === "high" || (cores >= 6 && (mem == null || mem >= 4) && !(movingMs > 35)));
+  const hands = ok && !(movingMs > 35) && (tier === "high" || (cores >= 6 && (mem == null || mem >= 4)));
   return {camera: ok ? "ok" : "slow", def: !touch || ok ? "camera" : "tilt", hands};
 }
 
