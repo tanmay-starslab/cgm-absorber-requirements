@@ -360,8 +360,19 @@ def load_stars(cutout, cache=None, lock=None, log=None) -> dict:
 
 
 # ============================================================================== 3. deposit
+# Tightened minimum star kernel radius in voxels: 0.85 Δ on disk/ISM levels (S2, S3, S4) so star particles deposit into
+# crisp, resolved star-forming knots and spiral arms rather than smearing across 3x3x3 voxels; 1.2 Δ on halo levels
+# (S0, S1) to keep outer halo streams smooth.
+H_MIN_VOX = 0.85
+STAR_H_MIN_VOX = {"S0": 1.2, "S1": 1.2, "S2": H_MIN_VOX, "S3": H_MIN_VOX, "S4": H_MIN_VOX}
+
+
+def star_h_min_vox(level) -> float:
+    return float(STAR_H_MIN_VOX.get(level, H_MIN_VOX))
+
+
 def level_grid(level, n=None) -> D.Grid:
-    return D.Grid(_half_kpc(level), int(n or N))
+    return D.Grid(_half_kpc(level), int(n or N), h_min_vox=star_h_min_vox(level))
 
 
 def level_mask(level, n=None):
@@ -422,7 +433,10 @@ def dequantize_dust(q_dust, vmin=DUST_VMIN, vmax=DUST_VMAX) -> np.ndarray:
     return out
 
 
-def build_dust_level(level, *, gas_cache=None, cutout=None, workers=1, n=None, lock=None) -> np.ndarray:
+_DUST_CELL_CACHE: dict = {}
+
+
+def build_dust_level(level, *, gas_cache=None, cutout=None, workers=1, n=None, lock=None, mode: str = "skirt") -> np.ndarray:
     """Compute 3D dust opacity cube kappa_V [kpc^-1] (n,n,n) float64 for star level S0..S4.
     Uses pre-deposited L0..L4 gas cubes (nH, T, Z) from gas_cache when available, else scatters cold/warm gas cells
     from gas_cache/cells_*.npy or PartType0 of cutout."""
@@ -437,7 +451,7 @@ def build_dust_level(level, *, gas_cache=None, cutout=None, workers=1, n=None, l
             T = np.load(p_t).astype(np.float64)
             Z = np.load(p_z).astype(np.float64) * getattr(VP, "Z_SUN", 0.0127)
             if nH.shape == (n, n, n):
-                kv = kappa_v_from_gas(nH, T, Z)
+                kv = kappa_v_from_gas(nH, T, Z, mode=mode)
                 if mask is not None:
                     kv = np.where(mask, 0.0, kv)
                 return kv
@@ -447,44 +461,56 @@ def build_dust_level(level, *, gas_cache=None, cutout=None, workers=1, n=None, l
             h_kpc = np.load(c_paths["h"])
             v_kpc3 = np.load(c_paths["V_cm3"]) / (float(GALAXY["CM_PER_KPC"]) ** 3)
             kv_cell = kappa_v_from_gas(np.load(c_paths["nH"]), np.load(c_paths["T"]),
-                                       np.load(c_paths["Z"]) * getattr(VP, "Z_SUN", 0.0127))
+                                       np.load(c_paths["Z"]) * getattr(VP, "Z_SUN", 0.0127), mode=mode)
+            nz = kv_cell > 0
             grid = level_grid(level, n)
-            heff = np.maximum(h_kpc, 2.0 * grid.dx)
-            dep = D.scatter(pos_disk, heff, {"tau_v": kv_cell * v_kpc3}, grid, workers=workers)
-            kv = dep.grids["tau_v"] / (grid.dx ** 3)
+            if np.any(nz):
+                heff = np.maximum(h_kpc[nz], 1.25 * grid.dx)
+                dep = D.scatter(pos_disk[nz], heff, {"tau_v": kv_cell[nz] * v_kpc3[nz]}, grid, workers=workers)
+                kv = dep.grids["tau_v"] / (grid.dx ** 3)
+            else:
+                kv = np.zeros((n, n, n), dtype=np.float64)
             if mask is not None:
                 kv = np.where(mask, 0.0, kv)
             return kv
     if cutout is not None and Path(cutout).is_file():
-        import h5py
-        with heavy_lock(lock):
-            with h5py.File(str(cutout), "r") as fh:
-                if "PartType0" in fh:
-                    g0 = fh["PartType0"]
-                    h_hub = float(GALAXY["TNG_H"])
-                    x_kpc = g0["Coordinates"][()].astype(np.float64) / h_hub
-                    m_msun = g0["Masses"][()].astype(np.float64) * 1e10 / h_hub
-                    rho_code = g0["Density"][()].astype(np.float64)
-                    # code density (1e10 Msun/h)/(ckpc/h)^3 -> Msun/kpc^3 = rho_code * 1e10 * h^2
-                    v_kpc3 = m_msun / (rho_code * 1e10 * h_hub * h_hub)
-                    rho_cgs = rho_code * (1e10 * 1.98847e33 / h_hub) / (3.0856775814913673e21 / h_hub) ** 3
-                    xH = (g0["GFM_Metals"][:, 0].astype(np.float64) if "GFM_Metals" in g0 else np.full(m_msun.size, 0.75))
-                    nH = rho_cgs * np.clip(xH, 0.5, 0.76) / 1.6735575e-24
-                    u = g0["InternalEnergy"][()].astype(np.float64) * 1e10
-                    xe = g0["ElectronAbundance"][()].astype(np.float64) if "ElectronAbundance" in g0 else np.ones_like(u)
-                    mu = 4.0 / (1.0 + 3.0 * np.clip(xH, 0.5, 0.76) + 4.0 * np.clip(xH, 0.5, 0.76) * xe)
-                    T = (5.0 / 3.0 - 1.0) * u * mu * 1.6735575e-24 / 1.380649e-16
-                    Z = (g0["GFM_Metallicity"][()].astype(np.float64) if "GFM_Metallicity" in g0
-                         else g0["Metallicity"][:, 0].astype(np.float64))
-                    h_kpc = 2.0 * (3.0 * v_kpc3 / (4.0 * math.pi)) ** (1.0 / 3.0)
-                    kv_cell = kappa_v_from_gas(nH, T, Z)
-                    grid = level_grid(level, n)
-                    heff = np.maximum(h_kpc, 2.0 * grid.dx)
-                    dep = D.scatter(D.to_disk(x_kpc), heff, {"tau_v": kv_cell * v_kpc3}, grid, workers=workers)
-                    kv = dep.grids["tau_v"] / (grid.dx ** 3)
-                    if mask is not None:
-                        kv = np.where(mask, 0.0, kv)
-                    return kv
+        ckey = (str(Path(cutout).resolve()), mode)
+        if ckey not in _DUST_CELL_CACHE:
+            import h5py
+            with heavy_lock(lock):
+                with h5py.File(str(cutout), "r") as fh:
+                    if "PartType0" in fh:
+                        g0 = fh["PartType0"]
+                        h_hub = float(GALAXY["TNG_H"])
+                        x_kpc = g0["Coordinates"][()].astype(np.float64) / h_hub
+                        m_msun = g0["Masses"][()].astype(np.float64) * 1e10 / h_hub
+                        rho_code = g0["Density"][()].astype(np.float64)
+                        v_kpc3 = m_msun / (rho_code * 1e10 * h_hub * h_hub)
+                        rho_cgs = rho_code * (1e10 * 1.98847e33 / h_hub) / (3.0856775814913673e21 / h_hub) ** 3
+                        xH = (g0["GFM_Metals"][:, 0].astype(np.float64) if "GFM_Metals" in g0 else np.full(m_msun.size, 0.75))
+                        nH = rho_cgs * np.clip(xH, 0.5, 0.76) / 1.6735575e-24
+                        u = g0["InternalEnergy"][()].astype(np.float64) * 1e10
+                        xe = g0["ElectronAbundance"][()].astype(np.float64) if "ElectronAbundance" in g0 else np.ones_like(u)
+                        mu = 4.0 / (1.0 + 3.0 * np.clip(xH, 0.5, 0.76) + 4.0 * np.clip(xH, 0.5, 0.76) * xe)
+                        T = (5.0 / 3.0 - 1.0) * u * mu * 1.6735575e-24 / 1.380649e-16
+                        Z = (g0["GFM_Metallicity"][()].astype(np.float64) if "GFM_Metallicity" in g0
+                             else g0["Metallicity"][:, 0].astype(np.float64))
+                        h_kpc = 2.0 * (3.0 * v_kpc3 / (4.0 * math.pi)) ** (1.0 / 3.0)
+                        kv_cell = kappa_v_from_gas(nH, T, Z, mode=mode)
+                        nz = kv_cell > 0
+                        _DUST_CELL_CACHE[ckey] = (D.to_disk(x_kpc[nz]), h_kpc[nz], (kv_cell[nz] * v_kpc3[nz]))
+                    else:
+                        _DUST_CELL_CACHE[ckey] = None
+        cached = _DUST_CELL_CACHE.get(ckey)
+        if cached is not None and cached[0].shape[0] > 0:
+            p_nz, h_nz, tau_nz = cached
+            grid = level_grid(level, n)
+            heff = np.maximum(h_nz, 1.25 * grid.dx)
+            dep = D.scatter(p_nz, heff, {"tau_v": tau_nz}, grid, workers=workers)
+            kv = dep.grids["tau_v"] / (grid.dx ** 3)
+            if mask is not None:
+                kv = np.where(mask, 0.0, kv)
+            return kv
     return np.zeros((n, n, n), dtype=np.float64)
 
 
@@ -494,8 +520,9 @@ def build_level(arr, level, workers=1, n=None, progress=None):
     The DepositResult grids are the unmasked per-voxel totals (used for the conservation check); the returned
     densities have the level mask applied (S0: r > 400 kpc → 0)."""
     grid = level_grid(level, n)
+    h_eff = np.maximum(np.asarray(arr["h_kpc"], dtype=np.float64), star_h_min_vox(level) * grid.dx)
     qs = {QUANTITY[b]: arr[f"l_{b}"] for b in CHANNELS}
-    dep = D.scatter(arr["pos_disk"], arr["h_kpc"], qs, grid, workers=workers, progress=progress)
+    dep = D.scatter(arr["pos_disk"], h_eff, qs, grid, workers=workers, progress=progress)
     vol = grid.dx ** 3
     mask = level_mask(level, grid.n)
     cubes = {}

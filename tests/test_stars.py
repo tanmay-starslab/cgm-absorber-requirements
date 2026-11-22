@@ -36,6 +36,10 @@ def fake_pt4(n=40, seed=1, wind_every=7):
 # ------------------------------------------------------------------------------- API / constants
 def test_constants():
     assert S.STARS_VERSION == 1 and S.GENERATOR == "tngsight.stars/1"
+    assert S.H_MIN_VOX == 0.85
+    assert S.STAR_H_MIN_VOX == {"S0": 1.2, "S1": 1.2, "S2": 0.85, "S3": 0.85, "S4": 0.85}
+    assert S.level_grid("S0").h_min_vox == 1.2 and S.level_grid("S1").h_min_vox == 1.2
+    assert S.level_grid("S2").h_min_vox == 0.85 and S.level_grid("S3").h_min_vox == 0.85 and S.level_grid("S4").h_min_vox == 0.85
     assert S.STAR_LEVELS == {"S0": 400.0, "S1": 100.0, "S2": 25.0}
     assert S.ALL_STAR_LEVELS == {"S0": 400.0, "S1": 100.0, "S2": 25.0, "S3": 6.25, "S4": 1.5}
     assert S.BANDS == {"g": 4, "r": 5, "i": 6}

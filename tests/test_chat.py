@@ -562,7 +562,7 @@ def test_tools_and_prompt_cover_the_galaxy_sample():
     s3 = t["show_3d"]["input_schema"]["properties"]
     assert s3["mode"]["enum"] == ["integral", "volume"] and s3["tf"]["enum"] == ["ramp", "thor", "nelson16", "iso", "clouds"]
     p = chat.SYSTEM_PROMPT
-    assert "198 simulated" in p and "[page ...] snapshot" in p and "select_galaxy first" in p and "list_galaxies" in p
+    assert "221 simulated" in p and "[page ...] snapshot" in p and "select_galaxy first" in p and "list_galaxies" in p
     assert '"In general,"' in p and "never invent citations" in p and "THOR" in p and "FG11" in p and "HM2012" in p
     assert "say what the page can do instead" in p
     assert "one simulated" not in p and "if the tools cannot answer, say so" not in p

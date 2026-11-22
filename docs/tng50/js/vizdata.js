@@ -105,6 +105,9 @@ export function velRayMoment(key, samples, d) {
 }
 export const GAS_LEVELS = {L0: 400.0, L1: 100.0, L2: 25.0, L3: 6.25, L4: 1.5};
 export const STAR_LEVELS = {S0: 400.0, S1: 100.0, S2: 25.0, S3: 6.25, S4: 1.5};
+export const SMOOTH = {stars: [0, 0, 0, 0, 0]};
+export const STAR_COMP = {mode: 1, occ: [0.4, 0.9], floor: 0.035, core: 0.92, halo: 0.12};
+export const STAR_ZOOM = {h: [12, 90], dmag: [-0.5, 1.5], occWide: [0.08, 0.25]};
 export const MU_ZERO = 36.57212566588;                 // mag arcsec^-2 of 1 L_AB0 per kpc^2 (design §2.7)
 export const CM_PER_KPC = 3.0856775814913673e21;
 export const LUT_NAMES = ["tng_dusk", "tng_ice", "magma", "inferno", "viridis", "cividis", "grey"];

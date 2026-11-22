@@ -27,6 +27,6 @@ if (mS && mP) { const SMOOTH = Function(`return ${mS[1]}`)(), sp = Function("SMO
   const gas = ["nH", "T", "Z", "HI", "MgII", "SiII", "CII", "SiIII", "CIII", "SiIV", "CIV", "NV", "OVI", "NeVIII", "OVII", "vx"];
   const pre = gas.filter(k => (sp(k) || []).some(p => p > 0));
   check(pre.length === 0, `no gas field is prefiltered${pre.length ? ": " + pre.join(", ") : ""}`);
-  check(JSON.stringify(sp("stars")) === "[2,2,1]", `star cubes keep 2/2/1 passes (${JSON.stringify(sp("stars"))})`); }
+  check(JSON.stringify(sp("stars")) === "[0,0,0,0,0]", `star cubes keep 0 passes (${JSON.stringify(sp("stars"))})`); }
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nall checks passed");
 process.exit(fails ? 1 : 0);

@@ -66,9 +66,11 @@ class _Dep:
 def deposit_level(arr, level, cache: Path, workers, force):
     """Float cubes for `level` (from the cache when valid) + the deposit numbers."""
     npys, side = cache_files(cache, level)
+    h_min_vox = S.star_h_min_vox(level)
     if not force and side.is_file() and all(p.is_file() for p in npys.values()):
         meta = json.loads(side.read_text())
-        if meta.get("stars_version") == S.STARS_VERSION and meta.get("deposit") == S.D.GENERATOR:
+        if (meta.get("stars_version") == S.STARS_VERSION and meta.get("deposit") == S.D.GENERATOR
+                and meta.get("h_min_vox") == h_min_vox):
             print(f"[{level}] cached deposit ({meta['seconds']:.1f}s when built, cons "
                   f"{max(v['cons_rel'] for v in meta['conservation'].values()):.1e})", flush=True)
             return {b: np.load(p).astype(np.float64) for b, p in npys.items()}, _Dep(meta), meta
@@ -78,7 +80,7 @@ def deposit_level(arr, level, cache: Path, workers, force):
     worst = max(v["cons_rel"] for v in cons.values())
     if not worst <= CONS_GATE:
         raise SystemExit(f"[{level}] conservation {worst:.3e} > {CONS_GATE:g}; not writing anything")
-    meta = {"stars_version": S.STARS_VERSION, "deposit": S.D.GENERATOR, "level": level,
+    meta = {"stars_version": S.STARS_VERSION, "deposit": S.D.GENERATOR, "level": level, "h_min_vox": h_min_vox,
             "n_elements": dep.n_elements, "n_straddling": dep.n_straddling, "q_in": dep.q_in,
             "q_full_inside": dep.q_full_inside, "q_lost": dep.q_lost, "level_counts": dep.level_counts,
             "seconds": dep.seconds, "workers": workers, "pairs": dep.meta.get("pairs"), "conservation": cons}
