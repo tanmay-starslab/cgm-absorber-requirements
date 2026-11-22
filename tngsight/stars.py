@@ -381,14 +381,19 @@ def _keep(mask):
     return ~mask
 
 
-def kappa_v_from_gas(n_H, T, Z_massfrac, gamma: float = 1.0) -> np.ndarray:
-    """V-band dust optical depth per kpc kappa_V [kpc^-1] = 2.41 * n_H [cm^-3] * (Z / 0.02)^gamma for T < 1e5 K.
-    gamma = 1.0 gives linear dust-to-metal scaling (FIRE_studio / Pei 1992); gamma = 1.6 gives the non-linear
-    optical dust-to-metal scaling of temet/cosmo/stellarPop.py (Guiderdoni & Rocca-Volmerange 1987, Nelson+18)."""
+def kappa_v_from_gas(n_H, T, Z_massfrac, gamma: float = 1.0, mode: str = "default") -> np.ndarray:
+    """V-band dust optical depth per kpc kappa_V [kpc^-1] = 2.41 * n_H [cm^-3] * (Z / 0.02)^gamma.
+    - mode='default' / 'pei': cold/warm gas T < 1e5 K (FIRE_studio / Pei 1992).
+    - mode='skirt': SKIRT cold or star-forming ISM phase cut (T < 8000 K or n_H > 0.13 cm^-3; Camps+16, Trcka+22,
+      Baes+24 TNG50-SKIRT Atlas with THEMIS f_dust = 0.2)."""
     nH = np.asarray(n_H, dtype=np.float64)
     temp = np.asarray(T, dtype=np.float64)
     Z = np.asarray(Z_massfrac, dtype=np.float64)
-    ok = np.isfinite(nH) & np.isfinite(temp) & np.isfinite(Z) & (nH > 0) & (Z > 0) & (temp < DUST_T_MAX)
+    if mode == "skirt":
+        phase_ok = (temp < 8000.0) | (nH > 0.13)
+    else:
+        phase_ok = temp < DUST_T_MAX
+    ok = np.isfinite(nH) & np.isfinite(temp) & np.isfinite(Z) & (nH > 0) & (Z > 0) & phase_ok
     out = np.zeros(nH.shape, dtype=np.float64)
     out[ok] = DUST_KAPPA_COEFF * nH[ok] * ((Z[ok] / DUST_Z_REF) ** float(gamma))
     return out

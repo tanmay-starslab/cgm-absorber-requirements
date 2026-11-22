@@ -232,7 +232,8 @@ export function atlasToRaw(parts, n, kind) {
       let src = ((y0 + j) * W + x0) * 4, dst = n * (j + n * k);
       if (!stars) for (let i = 0; i < n; i++, src += 4) out[dst + i] = P[src];
       else for (let i = 0, d = 4 * dst; i < n; i++, src += 4, d += 4) {
-        const r = P[src], g = P[src + 1], b = P[src + 2]; out[d] = r; out[d + 1] = g; out[d + 2] = b; out[d + 3] = (r | g | b) ? 255 : 0; }
+        const r = P[src], g = P[src + 1], b = P[src + 2], a = P[src + 3];
+        out[d] = r; out[d + 1] = g; out[d + 2] = b; out[d + 3] = (a > 0 && a < 255) ? a : ((r | g | b) ? 255 : 0); }
     }
   }
   return out;
