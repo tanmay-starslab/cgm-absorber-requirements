@@ -553,30 +553,29 @@ async function create(app, opts = {}) {
     <button type="button" class="v3d-id" id="v3-id" data-testid="v3d-id" aria-controls="pop-licence" aria-expanded="false" aria-haspopup="dialog" data-tip="Data and credits" hidden><span class="s"></span><span class="g"></span><span class="z"></span></button></div>
     <div class="v3d-save-pop" id="v3-save-pop" role="dialog" aria-label="Save 3D view" hidden>
       <h3>Save 3D figure</h3>
-      <span class="k">Resolution</span>
+      <span class="k">Stage resolution</span>
       <div class="v3c-seg" role="radiogroup" aria-label="Export resolution">
-        <label><input type="radio" name="v3-exp-res" value="1" data-tip="Standard resolution matching the stage size"><span>1×</span></label>
-        <label><input type="radio" name="v3-exp-res" value="2" checked data-tip="High resolution up to 2048 pixels"><span>2×</span></label>
-        <label><input type="radio" name="v3-exp-res" value="4" data-tip="Print resolution up to 4096 pixels"><span>4×</span></label>
+        <label><input type="radio" name="v3-exp-res" value="1" data-tip="Standard stage render resolution"><span>1×</span></label>
+        <label><input type="radio" name="v3-exp-res" value="2" checked data-tip="High resolution stage render"><span>2×</span></label>
+        <label><input type="radio" name="v3-exp-res" value="4" data-tip="Print resolution stage render"><span>4×</span></label>
       </div>
-      <span class="k">Background</span>
-      <div class="v3c-seg two" role="radiogroup" aria-label="Export background">
-        <label><input type="radio" name="v3-exp-bg" value="dark" checked data-tip="Dark cosmic background matching the stage"><span>Dark</span></label>
-        <label><input type="radio" name="v3-exp-bg" value="transparent" data-tip="Transparent background for slide and figure overlays"><span>Transparent</span></label>
+      <span class="k">Figure frame</span>
+      <div class="v3c-seg two" role="radiogroup" aria-label="Export frame theme">
+        <label><input type="radio" name="v3-exp-bg" value="white" checked data-tip="White journal margin with black Computer Modern text"><span>Journal white</span></label>
+        <label><input type="radio" name="v3-exp-bg" value="dark" data-tip="Dark cosmic margin with light Computer Modern text"><span>Dark</span></label>
       </div>
-      <span class="k">Overlays</span>
+      <span class="k">Publication elements</span>
       <div class="v3s-checks">
-        <label><input type="checkbox" id="v3-exp-leg" checked data-tip="Include colour bar and field legend">Legend</label>
+        <label><input type="checkbox" id="v3-exp-leg" checked data-tip="Include vertical colour bar with LaTeX units">Vertical bar</label>
         <label><input type="checkbox" id="v3-exp-scale" checked data-tip="Include physical length scale bar">Scale bar</label>
         <label><input type="checkbox" id="v3-exp-lines" checked data-tip="Include sightlines and sightline legend">Sightlines</label>
-        <label><input type="checkbox" id="v3-exp-stamp" checked data-tip="Include simulation galaxy and redshift stamp">Galaxy stamp</label>
+        <label><input type="checkbox" id="v3-exp-stamp" checked data-tip="Include galaxy header stamp and figure caption">Stamp &amp; caption</label>
       </div>
       <div class="v3s-dl">
-        <button type="button" class="v3c-btn pri" id="v3-dl-png" data-tip="Download high-resolution accumulated PNG image">PNG</button>
-        <button type="button" class="v3c-btn" id="v3-dl-svg" data-tip="Download publication vector SVG with LaTeX caption">Vector SVG</button>
-        <button type="button" class="v3c-btn" id="v3-dl-pdf" data-tip="Download single-page vector publication PDF figure">Publication PDF</button>
-        <button type="button" class="v3c-btn" id="v3-dl-html" data-tip="Download offline interactive HTML sightline snapshot">Interactive HTML</button>
-        <button type="button" class="v3c-btn" id="v3-dl-json" data-tip="Download reproducible 3D scene state JSON">Scene JSON</button>
+        <button type="button" class="v3c-btn pri" id="v3-dl-pdf" data-tip="Download vector publication PDF with Computer Modern axes">Publication PDF</button>
+        <button type="button" class="v3c-btn" id="v3-dl-png" data-tip="Download 400 dpi publication figure PNG">400 dpi PNG</button>
+        <button type="button" class="v3c-btn" id="v3-dl-tex" data-tip="Copy LaTeX figure and caption snippet to clipboard">Copy LaTeX</button>
+        <button type="button" class="v3c-btn" id="v3-dl-html" data-tip="Download offline interactive HTML sightline figure card">Interactive HTML</button>
       </div>
     </div>`;
   const escH = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
@@ -1878,13 +1877,15 @@ vec3 starAt(vec3 p, int l) {`)
   function readExportOpts(extra = {}) {
     const resEl = el.querySelector('input[name="v3-exp-res"]:checked');
     const bgEl = el.querySelector('input[name="v3-exp-bg"]:checked');
+    const stampOn = q("#v3-exp-stamp")?.checked ?? true;
     return {
       scale: +(resEl?.value || 2),
-      background: bgEl?.value || "dark",
+      background: bgEl?.value || "white",
       legend: q("#v3-exp-leg")?.checked ?? true,
       scaleBar: q("#v3-exp-scale")?.checked ?? true,
       sightlines: q("#v3-exp-lines")?.checked ?? true,
-      stamp: q("#v3-exp-stamp")?.checked ?? true,
+      stamp: stampOn,
+      caption: stampOn,
       ...extra
     };
   }
@@ -1894,10 +1895,24 @@ vec3 starAt(vec3 p, int l) {`)
   const exportPDF = async (o = {}) => (await loadExport()).exportPDF(viewer, readExportOpts(o));
   const exportHTML = async (o = {}) => (await loadExport()).exportHTML(viewer, readExportOpts(o));
   const exportJSON = async (o = {}) => (await loadExport()).exportJSON(viewer, readExportOpts(o));
+  async function copyLatexFigure() {
+    const E = await loadExport();
+    const tex = E.buildLatexFigureBlock(viewer);
+    let ok = false;
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(tex); ok = true; } } catch { ok = false; }
+    if (!ok) {
+      const ta = document.createElement("textarea"); ta.value = tex; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(ta); ta.select(); try { ok = document.execCommand("copy"); } catch { ok = false; } ta.remove();
+    }
+    sfx(ok ? "copy" : "error");
+    say(ok ? "LaTeX figure and caption copied to clipboard." : "Could not copy LaTeX snippet.", !ok, true);
+    return tex;
+  }
   q("#v3-dl-png")?.addEventListener("click", () => { setSavePop(false); exportPNG(); });
-  q("#v3-dl-svg")?.addEventListener("click", () => { setSavePop(false); exportSVG(); });
   q("#v3-dl-pdf")?.addEventListener("click", () => { setSavePop(false); exportPDF(); });
+  q("#v3-dl-tex")?.addEventListener("click", () => { setSavePop(false); copyLatexFigure(); });
   q("#v3-dl-html")?.addEventListener("click", () => { setSavePop(false); exportHTML(); });
+  q("#v3-dl-svg")?.addEventListener("click", () => { setSavePop(false); exportSVG(); });
   q("#v3-dl-json")?.addEventListener("click", () => { setSavePop(false); exportJSON(); });
   const onDocClickSave = ev => {
     if (!savePop || savePop.hidden) return;

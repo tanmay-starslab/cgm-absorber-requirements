@@ -38,23 +38,41 @@ def rc(usetex=None, base=15.0) -> dict:
         "axes.labelsize": base + 3, "axes.titlesize": base + 1,
         "xtick.labelsize": base - 2, "ytick.labelsize": base - 2, "legend.fontsize": base - 2,
         "axes.linewidth": 1.6,
-        "xtick.direction": "in", "ytick.direction": "in", "xtick.top": True, "ytick.right": True,
+        "axes.spines.top": True, "axes.spines.right": True,
+        "axes.spines.bottom": True, "axes.spines.left": True,
+        "xtick.direction": "in", "ytick.direction": "in",
+        "xtick.top": True, "ytick.right": True,
+        "xtick.bottom": True, "ytick.left": True,
         "xtick.major.size": 8.0, "ytick.major.size": 8.0,
         "xtick.major.width": 1.4, "ytick.major.width": 1.4,
         "xtick.minor.size": 4.5, "ytick.minor.size": 4.5,
         "xtick.minor.width": 1.0, "ytick.minor.width": 1.0,
         "xtick.minor.visible": True, "ytick.minor.visible": True,
-        "legend.frameon": True, "legend.framealpha": 0.92, "legend.edgecolor": "0.55",
+        "legend.frameon": False, "legend.framealpha": 0.92, "legend.edgecolor": "0.55",
         "axes.grid": False, "figure.facecolor": "white", "savefig.facecolor": "white",
-        "figure.dpi": 110, "lines.solid_capstyle": "round",
+        "figure.dpi": 140, "savefig.dpi": 400, "lines.solid_capstyle": "round",
+        "pdf.fonttype": 42, "ps.fonttype": 42,
     }
     if usetex:
         r.update({"text.usetex": True, "font.serif": ["Computer Modern Roman"],
-                  "text.latex.preamble": r"\usepackage{amsmath}\usepackage{textcomp}"})
+                  "text.latex.preamble": r"\usepackage{amsmath}\usepackage{amssymb}\usepackage{textcomp}"})
     else:
         r.update({"text.usetex": False, "mathtext.fontset": "cm",
-                  "font.serif": ["cmr10", "DejaVu Serif"], "axes.formatter.use_mathtext": True})
+                  "font.serif": ["CMU Serif", "Computer Modern Roman", "cmr10", "DejaVu Serif"],
+                  "axes.formatter.use_mathtext": True})
     return r
+
+
+def box_ticks(ax, color: str | None = None) -> None:
+    """Enforce house publication style on an axis: 4-sided spines, inward major & minor ticks on all 4 sides."""
+    for sp in ax.spines.values():
+        sp.set_visible(True)
+    ax.minorticks_on()
+    kw = dict(direction="in", top=True, right=True, bottom=True, left=True)
+    if color is not None:
+        kw["color"] = color
+    ax.tick_params(which="both", **kw)
+    ax.grid(False)
 
 
 def set_style(usetex=None, base=15.0):
