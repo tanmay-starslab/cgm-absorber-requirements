@@ -36,8 +36,8 @@ how hot it is and how it moves. This site lets you do that across **221 simulate
 
 ### Fly through the gas
 
-<p align="center"><img src="docs/readme/gas-3d.webp" width="100%" alt="Six 3D views of the same galaxy: THOR gas phases, O VI column, line-of-sight velocity, gas density, face-on and edge-on"></p>
-<p align="center"><sub>Colour the halo by temperature, any ion, velocity or density, and turn it any way you like.</sub></p>
+<p align="center"><img src="docs/readme/gas-3d.webp" width="100%" alt="Six 3D renderings across TNG50 and FIRE-2 galaxies: THOR multi-phase volume transfer function, O VI column density, line-of-sight gas velocity, edge-on halo gas around a dust-laned stellar disk, and close-up face-on and edge-on 5-level stellar disks with 3D dust lanes"></p>
+<p align="center"><sub>Six ways to see the 3D volume across TNG50 and FIRE-2: multi-phase volume transfer functions (THOR gas phases, top left), any of twelve ions in column density (O VI, top middle), 3D gas kinematics (line-of-sight velocity v<sub>los</sub>, top right), edge-on circumgalactic gas wrapping a starlit disk (bottom left), and 5-level nested stellar + 3D dust cubes down to 12 pc voxels seen face-on and edge-on (bottom middle and right).</sub></p>
 
 ### Watch a spectrum form
 
