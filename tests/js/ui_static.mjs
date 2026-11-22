@@ -171,7 +171,7 @@ export const tipWords = s => String(s).replace(/\$\{[^}]*\}/g, "X").split(/\s+/)
     "3D head control button (viewer3d.js), lazy headctl.js": /id="v3-head"[^>]*data-tip="/.test(src("viewer3d.js")) && /import\("\.\/headctl\.js"\)/.test(src("viewer3d.js")) && !/^\s*import\b[^(]*headctl/m.test(src("viewer3d.js")),
     "3D view buttons (4)": ["face-on", "edge-on", "sightline", "reset"].every(p => new RegExp(`data-p="${p}" data-tip="`).test(src("viewer3d.js"))),
     "Pick ray endpoint inputs (picker.js inp)": /const inp = \(id, lab\)[\s\S]{0,400}"data-tip":/.test(src("picker.js")),
-    "Ask backend radios and New, Close (chat.js)": /const mode = \(value, label, id, tip\)[^\n]*"data-tip": tip/.test(src("chat.js")) && (src("chat.js").match(/mode\("(claude|local)", "[^"]+", "chat-be-\w+", "[^"]+"\)/g) || []).length === 2
+    "Ask New, Send and Close buttons (chat.js)": /send = el\("button", \{[^}]*"data-tip"/.test(src("chat.js"))
       && /closeBtn = el\("button", \{[^}]*"data-tip"/.test(src("chat.js")) && /clearBtn = el\("button", \{[^}]*"data-tip"/.test(src("chat.js")),
     "Find fields (app.js FIND_TIPS for search.js)": FIND_IDS.every(id => new RegExp(`\\b${id}:\\s*"`).test((src("app.js").match(/const FIND_TIPS = \{[\s\S]*?\};/) || [""])[0]))
       && FIND_IDS.every(id => src("search.js").includes(`"${id.replace(/_(lo|hi)$/, "")}"`))};

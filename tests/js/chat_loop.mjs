@@ -242,7 +242,8 @@ function galaxyApp() {
   const GALS = [
     {id: 488530, label: "Subhalo 488530", Mstar: 1.114e11, SFR: 7.08, M200c: 1.595e12, R200c: 246.4, central: true, n: 2, viz: true, src: "trident"},
     {id: 425719, label: "Subhalo 425719", Mstar: 1.242e11, SFR: 7.89, M200c: 3.329e12, R200c: 314.8, central: true, m31: true, n: 2, viz: true, src: "sbi", gas_poor: false},
-    {id: 358609, label: "Subhalo 358609", Mstar: 9.702e10, SFR: 0.312, M200c: 5.042e12, R200c: 361.6, central: false, n: 3, viz: true, src: "sbi", gas_poor: true}];
+    {id: 358609, label: "Subhalo 358609", Mstar: 9.702e10, SFR: 0.312, M200c: 5.042e12, R200c: 361.6, central: false, n: 3, viz: true, src: "sbi", gas_poor: true},
+    {id: "m12i", sim: "FIRE-2", simKey: "fire2", label: "Halo m12i", Mstar: 6.5e10, SFR: 5.2, M200c: 1.15e12, R200c: 215.0, central: true, mw: true, n: 1, viz: true, src: "trident"}];
   const LIB = {
     488530: {entries: [{id: "edge_b100_a090", orientation: "edge-on", b_kpc: 100, azimuth_deg: 90, logN: {OVI: 14.2}},
                        {id: "face_b050_a000", orientation: "face-on", b_kpc: 50, azimuth_deg: 0, logN: {OVI: 13.5}}],
@@ -250,7 +251,9 @@ function galaxyApp() {
     425719: {entries: [{id: "edge_b080_a045_s3", orientation: "edge-on", b_kpc: 80, azimuth_deg: 45, logN: {OVI: 14.4}},
                        {id: "edge_b150_a010_s9", orientation: "edge-on", b_kpc: 150, azimuth_deg: 10, logN: {OVI: 13.1}}],
              comps: {edge_b080_a045_s3: {OVI: [comp(-60, 14.1, 25), comp(45, 13.8, 28)]}, edge_b150_a010_s9: {OVI: [comp(5, 13.1, 20)]}}},
-    358609: {entries: [], comps: {}}};
+    358609: {entries: [], comps: {}},
+    m12i: {entries: [{id: "face_b050_a000", orientation: "face-on", b_kpc: 50, azimuth_deg: 0, logN: {OVI: 13.8}}],
+           comps: {face_b050_a000: {OVI: [comp(-10, 13.8, 22)]}}}};
   const log = [];
   let gal = 488530;
   const st = {id: "edge_b100_a090", tab: "spectra", layout: "1", ions: ["HI", "CIV", "OVI"], R: {uv: [20000], euv: [20000], xray: [500]}, sn: [10], vc: 0, vhw: 300, fit: false, job: null};
@@ -281,8 +284,14 @@ const {galaxySummary: C_galaxySummary} = await import(pathToFileURL(join(ROOT, "
   check(r.ok && r.galaxy.id === 488530 && r.galaxy.spectra === "Trident" && r.galaxy.logMstar === 11.05 && r.sightline.id === "edge_b100_a090" && r.instrument.layout === "1",
     `get_page_state returns the bridge snapshot (${J(r).slice(0, 140)}…)`);
   r = await ex("list_galaxies", {});
-  check(r.ok && r.n_total === 3 && r.n_sample === 3 && r.open === 488530 && J(r.results.map(g => g.id)) === J([425719, 488530, 358609]),
+  check(r.ok && r.n_total === 4 && r.n_sample === 4 && r.open === 488530 && J(r.results.map(g => g.id)) === J([425719, 488530, 358609, "m12i"]),
     `list_galaxies defaults to stellar mass, descending (${J(r.results.map(g => g.id))})`);
+  r = await ex("list_galaxies", {sim: "FIRE-2"});
+  check(r.ok && r.n_total === 1 && J(r.results.map(g => g.id)) === J(["m12i"]) && r.results[0].sim === "FIRE-2", "list_galaxies sim=FIRE-2 filter");
+  r = await ex("select_galaxy", {id: "M12I"});
+  check(r.ok && r.galaxy.id === "m12i" && r.galaxy.sim === "FIRE-2" && C.pagePrefix(app.pageState()).startsWith("[page g=m12i FIRE-2 "), "select_galaxy alphanumeric FIRE-2 id (case-insensitive) + pagePrefix");
+  await ex("select_galaxy", {id: 488530});
+  app.log.length = 0;
   r = await ex("list_galaxies", {sort: "M200c", limit: 1});
   check(r.ok && r.results.length === 1 && r.results[0].id === 358609 && r.results[0].logM200c === 12.7, `list_galaxies sort M200c, limit 1 (${J(r.results)})`);
   r = await ex("list_galaxies", {central: true, spectra: "THOR"});
