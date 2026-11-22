@@ -31,8 +31,8 @@ how hot it is and how it moves. This site lets you do that across **221 simulate
 
 ### Read the light
 
-<p align="center"><a href="https://galaxies.tanmaysingh.uk/"><img src="docs/readme/spectra.webp" width="100%" alt="The explorer comparing five absorption lines at two resolving powers, with fitted components"></a></p>
-<p align="center"><sub>Twelve ions along any sightline, through the telescope you choose.</sub></p>
+<p align="center"><a href="https://galaxies.tanmaysingh.uk/"><img src="docs/readme/spectra.webp" width="100%" alt="The explorer comparing five absorption lines at two resolving powers across TNG50 and FIRE-2 galaxies, with fitted Voigt components"></a></p>
+<p align="center"><sub>Twelve ions along any sightline across 198 TNG50-1 and 23 FIRE-2 galaxies, through the telescope you choose.</sub></p>
 
 ### Fly through the gas
 
@@ -51,8 +51,8 @@ how hot it is and how it moves. This site lets you do that across **221 simulate
 
 ### Take it anywhere
 
-<p align="center"><img src="docs/readme/mobile.webp" width="520" alt="The explorer on a phone: the spectra with the glass dock, and the control sheet pulled up"></p>
-<p align="center"><sub>Works on a phone, nothing to install.</sub></p>
+<p align="center"><img src="docs/readme/mobile.webp" width="520" alt="The explorer on a phone: top-bar TNG50 and FIRE-2 galaxy switcher, spectra with the glass dock, and the control sheet pulled up"></p>
+<p align="center"><sub>Works on a phone with full TNG50 and FIRE-2 galaxy switching, nothing to install.</sub></p>
 
 ## Three ways in
 
