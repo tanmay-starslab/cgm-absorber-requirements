@@ -4,7 +4,7 @@
 <p align="center"><sub>Gas around galaxy 488530 coloured by temperature, as the explorer's 3D view shows it at <a href="https://galaxies.tanmaysingh.uk/?tf=T~B4.5_0.03_0.25_2341af~B5_0.03_0.35_64b9ff~B5.5_0.03_0.5_ffd732~EnH_1~W4.4_6.3~FT#id=rand_b062_a062&ions=HI,MgII,SiIII,CIV,OVI&lay=1&R=uv:15000,50000;euv:15000,50000;xray:300,3000&sn=20,5&vc=0&vw=400&seed=0&fit=1&intr=1&tab=3d">this link</a>.</sub></p>
 
 > [!NOTE]
-> **Active development:** This project and [`galaxies.tanmaysingh.uk`](https://galaxies.tanmaysingh.uk/) are currently under active development and reflect a pre-publication working release. Features, data products and interfaces may change prior to the final published version.
+> Under active development — we would love to hear your [ideas, feedback or bugs](https://github.com/tanmay-starslab/cgm-absorber-requirements/issues)!
 
 <h1 align="center">Seeing the Circumgalactic Medium</h1>
 
