@@ -20,7 +20,7 @@ Thank you for taking a look! This is a fun, fast-moving space for exploring gala
 
 This site was built heavily with **Claude** and **Antigravity**, and you are warmly encouraged to use AI coding and research tools to move fast, prototype ideas and accelerate your contributions!
 
-The one non-negotiable requirement is **scientific accuracy**: because the maintainer may not be able to inspect every generated line by hand, you are responsible for verifying that every equation, unit, atomic constant, physical claim and test in your contribution is scientifically sound and passes the test suite.
+The most important requirement is **scientific accuracy**: because the maintainer may not be able to inspect every generated line by hand, you are responsible for verifying that every equation, unit, atomic constant, physical claim and test in your contribution is scientifically sound and passes the test suite.
 
 ## Development setup
 
