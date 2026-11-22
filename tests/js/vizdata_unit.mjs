@@ -4,7 +4,7 @@
 import {readFileSync} from "node:fs";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
-import {GAS_LEVELS, STAR_LEVELS, validateManifestV2, viewPlan, cubeRef} from "../../docs/tng50/js/vizdata.js";
+import {GAS_LEVELS, STAR_LEVELS, SMOOTH, STAR_COMP, STAR_ZOOM, validateManifestV2, viewPlan, cubeRef} from "../../docs/tng50/js/vizdata.js";
 import {FRAG} from "../../docs/tng50/js/raymarch.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, "../..");
@@ -75,20 +75,33 @@ const M = JSON.parse(readFileSync(join(ROOT, "docs/tng50/data/viz/manifest_v2.js
         vsrc.includes("${Math.round(best * 1000)} pc"),
     "viewer3d.js physical scale bar includes sub-kpc stops down to 0.05 kpc formatted in pc");
   check(vsrc.includes('id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label>'),
-    "viewer3d.js declares #v3-dust checkbox in star brightness details with <= 12-word data-tip");
+    "viewer3d.js declares #v3-dust checkbox in Layers card with <= 12-word data-tip");
+  check(vsrc.indexOf('id="v3-dust"') < vsrc.indexOf("<details><summary>star brightness</summary>") &&
+        vsrc.indexOf('id="v3-dust-law"') < vsrc.indexOf("<details><summary>star brightness</summary>"),
+    "viewer3d.js surfaces #v3-dust and #v3-dust-law directly in the Layers card above star brightness details");
   check(vsrc.includes('id="v3-dust-law"') && vsrc.includes("DUST_LAWS") && vsrc.includes("RM.uniforms.uDust = {value: 1.0}") &&
         vsrc.includes("uDustVec") && vsrc.includes("uDustScat") && vsrc.includes("dustDiskKv") &&
         vsrc.includes("[0.58, 0.78, 1.15]") && vsrc.includes("[0.68, 0.89, 1.17]") && vsrc.includes("[0.65, 0.84, 1.19]") &&
-        vsrc.includes("(-4.5 + sa * 6.0)"),
-    "viewer3d.js patches RM.material.fragmentShader with uDust, uDustVec, uDustScat, dustDiskKv and selectable SKIRT/Temet/Calzetti/Cardelli/Pei dust laws");
+        vsrc.includes("(-4.5 + sa * 6.0)") && vsrc.includes("texture(uStar0, u).a") &&
+        !vsrc.includes("cos(2.0 * phi") && !vsrc.includes("sin(p.x * 6.2") && !vsrc.includes("pow(tEff,"),
+    "viewer3d.js patches RM.material.fragmentShader with trilinear starDustAt, pure simulation-driven dustDiskKv (no procedural trig or post-asinh tEff hack), and filmic lupton shoulder");
+  check(JSON.stringify(SMOOTH.stars) === "[0,0,0,0,0]" && STAR_COMP.core === 0.92 && STAR_COMP.halo === 0.12 &&
+        JSON.stringify(STAR_ZOOM.occWide) === "[0.08,0.25]",
+    "SMOOTH.stars is [0,0,0,0,0], STAR_COMP is {core:0.92, halo:0.12}, and STAR_ZOOM.occWide is [0.08,0.25]");
   // Verify the shader patch matches target strings in raymarch.js FRAG
   const patched = FRAG
     .replace("in vec3 vPos;", "uniform float uDust; in vec3 vPos;")
     .replace("vec3 starAt(vec3 p, int l) {", "float starDustAt(vec3 p, int l) { return 0.0; }\nvec3 starAt(vec3 p, int l) {")
+    .replace("if (uStarKnee > 0.0 && m > uStarKnee) { float k = uStarKnee, r = 1.0 - k; c *= (k + r * (1.0 - exp(-(m - k) / r))) / m; }\n  else if (m > 1.0) c /= m;",
+      "if (m > 0.0) c *= (1.0 - exp(-1.15 * m * (0.55 + 0.65 * m))) / m;")
     .replace("vec3 sumS = vec3(0.0), C = vec3(0.0);", "vec3 sumS = vec3(0.0), transS = vec3(1.0), C = vec3(0.0);")
-    .replace("if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms); sumS += sv * hw; }", "/* dust patched */");
+    .replace("if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms); sumS += sv * hw; }", "/* dust patched */")
+    .replace("vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);", "vec3 star0 = starOn ? uStarMix * lupton(sumS0) : vec3(0.0); vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);")
+    .replace("float sm = max(star.r, max(star.g, star.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, sm);", "float sm = max(star.r, max(star.g, star.b)), dustT = 1.0, occ = 0.0;")
+    .replace("vec3 g = mix(uBg, gas, gm * (starOn ? uGasW : 1.0) * (1.0 - occ));", "vec3 g = mix(uBg, gas, gm * (starOn ? uGasW * dustT : 1.0) * (1.0 - occ));");
   check(patched.includes("uniform float uDust;") && patched.includes("float starDustAt") &&
-        patched.includes("transS = vec3(1.0)") && patched.includes("/* dust patched */"),
+        patched.includes("exp(-1.15 * m") && patched.includes("transS = vec3(1.0)") &&
+        patched.includes("/* dust patched */") && patched.includes("uGasW * dustT"),
     "viewer3d.js shader patch anchors match raymarch.js FRAG cleanly without modifying raymarch.js"); }
 
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nall checks passed");

@@ -79,7 +79,7 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const fb = x => Number.isInteger(+x) ? String(+x) : fmtNum(+x, 1);
 const isDark = () => getComputedStyle(document.documentElement).getPropertyValue("--scheme").trim() === "dark";
 const ionColor = k => ION[k] ? (isDark() ? ION[k].color_dark : ION[k].color) : "#888";
-const modUrl = f => new URL(CFG.js_base + f, location.href).href;
+const modUrl = f => new URL(`${CFG.js_base}${f}?v=${CFG.registry_tag || "20261122"}`, location.href).href;
 const strip = e => { const o = {}; for (const k in e) if (k[0] !== "_") o[k] = e[k]; return o; };
 const debounce = (f, ms) => { let t = 0; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
 

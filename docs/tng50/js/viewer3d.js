@@ -181,7 +181,7 @@ const CMAP_DEFAULT = {Z: "viridis"};
 const VOL = {k: 1.6, gain: 1.8, opacity: 0.6};
 /* tune3 composite (raymarch uCompMode 1): bright starlight (max channel 0.4 → 0.9) attenuates the gas layer, then the stars
    screen over it; the tune1 hue-replacement (mode 0, 0.04 → 0.45) tinted the faint envelope olive over the gas */
-const STAR_COMP = {mode: 1, occ: [0.4, 0.9], floor: 0.035};   // floor: the stellar envelope fades out below it (raymarch uStarFloor)
+const STAR_COMP = {mode: 1, occ: [0.4, 0.9], floor: 0.035, core: 0.92, halo: 0.12};   // floor: the stellar envelope fades out below it (raymarch uStarFloor)
 /* tune3: thinner (was 2.5 px), and dimmed where it passes over the galaxy (see selMat) */
 /* tune4: thinner and fainter again (1.25 px, α 0.6), and the fade over the galaxy is stronger and wider (to 0.15 / 0.06
    within 25 → 90 kpc of the centre), so it never outshines the disk in the default view or the presets */
@@ -193,7 +193,7 @@ const SEL_PX = 1.25, SEL_ALPHA = 0.6, SEL_GAL = {r0: 25, r1: 90, front: 0.15, ba
 /* tune4: with the lighter ion prefilter the levels carry the same texture, so the ions go back to L2 from 2 px per voxel */
 /* tf3d: no gas field is prefiltered any more (SMOOTH), so the ions switch levels at the same footprint as n_H; at 2 px
    per voxel H I was drawn from the next coarser level than n_H at the same zoom, which made it look blobbier */
-const LOD_C = {gas: 1.0, stars: 1.5, field: {}};
+const LOD_C = {gas: 1.0, stars: 0.75, field: {}};
 const lodField = k => (k && LOD_C.field[k]) || LOD_C.gas;
 /* tune2 near fade (raymarch.js uNear), as fractions of the camera–target distance */
 const NEAR = [0.35, 0.6];
@@ -206,7 +206,7 @@ const STAR_DEFAULT = {mu0: 22.3, sat: 1.3};
 /* tune4 zoom-dependent star brightness: the effective μ0 is μ0 + dmag[0] at hVis ≤ h[0] rising to μ0 + dmag[1] at hVis ≥ h[1]
    (smoothstep), so the stellar disk reads over the bright gas core in the default ±100 kpc view and the faint thick-disk
    envelope does not swell the disk in close views; the occlusion range of the composite follows (occ → occWide) */
-const STAR_ZOOM = {h: [12, 90], dmag: [-0.5, 1.5], occWide: [0.35, 0.85]};
+const STAR_ZOOM = {h: [12, 90], dmag: [-0.5, 1.5], occWide: [0.08, 0.25]};
 /* fix-ui V1: in close views (hVis ≤ STAR_ZOOM.h[0]) the composite dims the gas under the stars much more (occ from a lower
    starlight level, STAR_CLOSE.occ, and the whole gas layer × STAR_CLOSE.gasW); both relax to the tune4 values in wide views */
 const STAR_CLOSE = {occ: [0.06, 0.4], gasW: 0.55};
@@ -222,8 +222,8 @@ const STAR_CLOSE = {occ: [0.06, 0.4], gasW: 0.55};
 /* tf (H I check): every gas field is drawn raw, at the deposited resolution, like n_H. The ion passes widened each sub-voxel
    cloud from the 2 Δ deposit kernel (σ 0.55 voxel) to σ 0.89 voxel, merged the H I islands of the L0 face-on map from 143
    to 81 and moved the columns by a median 0.16 dex; the 2 Δ deposit floor already keeps the footprints round, so raw shows
-   no tiles. Only the star cubes keep their passes (single-particle grain) */
-const SMOOTH = {stars: [2, 2, 1]};   // passes per level 0, 1, 2 (stars: S0-S2, RGB); gas fields: none
+   no tiles. Star cubes also use 0 passes so S0..S4 stay crisp and unblurred. */
+const SMOOTH = {stars: [0, 0, 0, 0, 0]};   // passes per level 0..4 (stars: S0-S4, raw unblurred); gas fields: none
 const smoothPasses = k => SMOOTH[k] || null;
 let smoothW = null, smoothN = 0; const smoothP = new Map();
 function smoothAsync(q, n, vmin, vmax, passes, ch = 1) {
@@ -346,6 +346,7 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3c-seg.vel span{display:block;text-align:center;line-height:26px}.v3c-seg.vel sub{font-size:.8em;line-height:0;vertical-align:-.3em}
 .v3c-row{display:grid;grid-template-columns:62px minmax(0,1fr) 44px;align-items:center;gap:8px;min-height:26px}
 .v3c-row>label,.v3c-row>.lab{font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.v3c-row>.lab:only-child{grid-column:1/-1}
 .v3c-row output{font:500 11px var(--mono,ui-monospace,monospace);text-align:right;color:var(--ink,#eef0f7)}
 /* orbit speed: the label gets its own width and the value sits in a small box, so "orbit speed" and "30°/s" are never cut */
 .v3c-row.v3c-speed{grid-template-columns:auto minmax(0,1fr) auto}
@@ -630,7 +631,9 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
-      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div><div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div><div class="v3c-row"><label for="v3-dust-law">dust law</label><select id="v3-dust-law" data-tip="Dust radiative transfer law: SKIRT, Temet MW, Calzetti, CCM89, or Pei"><option value="skirt">SKIRT (THEMIS + HG)</option><option value="temet">Temet MW (Cardelli+89)</option><option value="calzetti">Calzetti+00 starburst</option><option value="cardelli">Milky Way (CCM89)</option><option value="pei">FIRE Studio (Pei+92)</option></select></div></details>
+      <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div>
+      <div class="v3c-row"><label for="v3-dust-law">dust law</label><select id="v3-dust-law" data-tip="Dust radiative transfer law: SKIRT, Temet MW, Calzetti, CCM89, or Pei"><option value="skirt">SKIRT (THEMIS + HG)</option><option value="temet">Temet MW (Cardelli+89)</option><option value="calzetti">Calzetti+00 starburst</option><option value="cardelli">Milky Way (CCM89)</option><option value="pei">FIRE Studio (Pei+92)</option></select></div>
+      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div></details>
       <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
     <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
@@ -716,36 +719,31 @@ async function create(app, opts = {}) {
     .replace("vec3 starAt(vec3 p, int l) {", `float starDustAt(vec3 p, int l) {
   if (l == 0 && length(p) > uMask0) return 0.0;
   float h = hl(l);
-  ivec3 tc = clamp(ivec3(floor((p / (2.0 * h) + 0.5) * uN)), ivec3(0), ivec3(int(uN) - 1));
-  float a = (l == 0 ? texelFetch(uStar0, tc, 0).a : l == 1 ? texelFetch(uStar1, tc, 0).a : texelFetch(uStar2, tc, 0).a) * 255.0;
-  float sa = a / 255.0;
+  vec3 u = p / (2.0 * h) + 0.5;
+  float d = 0.5 / uN;
+  if (any(lessThan(u, vec3(d))) || any(greaterThan(u, vec3(1.0 - d)))) return 0.0;
+  float sa = (l == 0 ? texture(uStar0, u).a : l == 1 ? texture(uStar1, u).a : texture(uStar2, u).a);
+  float a = sa * 255.0;
   return (a > 0.5 && a < 254.5) ? exp2(LOG2_10 * (-4.5 + sa * 6.0)) : -1.0; }
 float dustDiskKv(vec3 p, vec3 sv, float gv, float kvRaw) {
-  float rDisk = length(p.xy), zDisk = abs(p.z);
-  if (rDisk > 24.0 || zDisk > 2.2) return kvRaw > 0.0 ? 0.15 * kvRaw : 0.0;
-  float hz = 0.14 + 0.012 * rDisk;
-  float mid = exp(-(zDisk * zDisk) / (2.0 * hz * hz));
-  float phi = atan(p.y, p.x), lr = log(max(rDisk, 0.22));
-  float sp1 = 0.5 + 0.5 * cos(2.0 * phi - 3.8 * lr);
-  float sp2 = 0.5 + 0.5 * cos(3.0 * phi - 4.4 * lr + 1.7);
-  float fil = 0.5 + 0.5 * sin(p.x * 2.6 + 1.4 * cos(p.y * 2.3)) * cos(p.y * 2.5 - 1.3 * sin(p.x * 2.1));
-  float fil2 = 0.5 + 0.5 * sin(p.x * 6.2 - p.y * 5.7 + p.z * 9.0);
-  float lane = smoothstep(0.28, 0.85, (0.55 * sp1 + 0.45 * sp2) * (0.55 * fil + 0.45 * fil2));
-  float ring = smoothstep(0.25, 1.1, rDisk) * exp(-rDisk / 6.5);
-  if (kvRaw >= 0.0) {
-    return kvRaw * (0.20 + 2.8 * mid * (0.45 + 0.95 * lane));
-  }
-  float blue = sv.b > 1e3 ? clamp((log2(sv.b) / LOG2_10 - 4.2) / 3.2, 0.0, 1.6) : 0.0;
-  float gasBoost = gv > 0.08 ? clamp(1.2 * pow(gv, 0.65), 0.0, 3.5) : 0.0;
-  return mid * lane * (2.6 * ring * (0.35 + 0.65 * blue) + gasBoost);
+  if (kvRaw >= 0.0) return kvRaw;
+  float rDisk = length(p.xy);
+  if (rDisk > 22.0 || abs(p.z) > 0.6) return 0.0;
+  float mid = exp(-0.5 * (p.z / 0.12) * (p.z / 0.12));
+  float gasKv = gv > 0.08 ? clamp(1.8 * pow(gv - 0.08, 0.75), 0.0, 4.0) : 0.0;
+  float yb = max(sv.b - 0.65 * sv.r, 0.0);
+  float sfKv = yb > 1e3 ? clamp(0.45 * (log2(yb) / LOG2_10 - 3.0), 0.0, 2.2) : 0.0;
+  return mid * (gasKv + sfKv);
 }
 vec3 starAt(vec3 p, int l) {`)
+    .replace("if (uStarKnee > 0.0 && m > uStarKnee) { float k = uStarKnee, r = 1.0 - k; c *= (k + r * (1.0 - exp(-(m - k) / r))) / m; }\n  else if (m > 1.0) c /= m;",
+      "if (m > 0.0) c *= (1.0 - exp(-1.15 * m * (0.55 + 0.65 * m))) / m;")
     .replace("vec3 sumS = vec3(0.0), C = vec3(0.0);", "vec3 sumS = vec3(0.0), sumS0 = vec3(0.0), transS = vec3(1.0), C = vec3(0.0);")
     .replace("if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms); sumS += sv * hw; }",
-      `if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms);
+      `if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, mix(0.885, 1.0, ms));
         sumS0 += sv * hw;
         if (uDust > 0.0 && uStarHave != vec3(0.0)) {
-          float sa = starDustAt(p, ls); if (cs >= 0 && sa >= 0.0) { float sc2 = starDustAt(p, cs); if (sc2 >= 0.0) sa = mix(sc2, sa, ms); }
+          float sa = starDustAt(p, ls); if (cs >= 0 && sa >= 0.0) { float sc2 = starDustAt(p, cs); if (sc2 >= 0.0) sa = mix(sc2, sa, mix(0.885, 1.0, ms)); }
           float gv = lg >= 0 && !velMode && uKind == 0 ? gasVal(p, lg) : (lw >= 0 ? wVal(p, lw) : 0.0);
           float kV = dustDiskKv(p, sv, gv, sa);
           if (kV > 0.0) {
@@ -753,20 +751,18 @@ vec3 starAt(vec3 p, int l) {`)
             vec3 att = exp(-tau);
             float cosTh = dot(normalize(p + vec3(0.0, 0.0, 1e-4)), d);
             float hg = uDustScat * 0.28 * (1.0 - 0.30) / pow(max(1.0 + 0.30 - 1.10 * cosTh, 0.15), 1.5);
-            vec3 src = sv * (1.0 + hg * vec3(0.75, 0.92, 1.18));
+            vec3 src = sv * exp(-0.65 * tau) * (1.0 + hg * vec3(0.75, 0.92, 1.18));
             sumS += transS * src * hw * (1.0 - att) / max(tau, vec3(1e-5));
             transS *= att;
           } else { sumS += transS * sv * hw; }
         } else { sumS += sv * hw; } }`)
     .replace("vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);",
       `vec3 star0 = starOn ? uStarMix * lupton(sumS0) : vec3(0.0);
-  vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);
-  if (starOn && uDust > 0.0 && sumS0 != vec3(0.0)) {
-    vec3 tEff = clamp(vec3(sumS.r, sumS.g, sumS.b) / max(vec3(sumS0.r, sumS0.g, sumS0.b), vec3(1e-5)), 0.0, 1.0);
-    star *= pow(tEff, vec3(0.75, 0.85, 0.95));
-  }`)
+  vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);`)
     .replace("float sm = max(star.r, max(star.g, star.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, sm);",
-      "float sm = max(star.r, max(star.g, star.b)), sm0 = max(star0.r, max(star0.g, star0.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, max(sm, sm0));");
+      "float sm = max(star.r, max(star.g, star.b)), sm0 = max(star0.r, max(star0.g, star0.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, max(sm, sm0)), dustT = (starOn && uDust > 0.0 && sumS0 != vec3(0.0)) ? clamp((sumS.r + sumS.g + sumS.b) / max(sumS0.r + sumS0.g + sumS0.b, 1e-5), 0.0, 1.0) : 1.0;")
+    .replace("vec3 g = mix(uBg, gas, gm * (starOn ? uGasW : 1.0) * (1.0 - occ));",
+      "vec3 g = mix(uBg, gas, gm * (starOn ? uGasW * dustT : 1.0) * (1.0 - occ));");
   const half = lv => manifest?.levels?.[lv]?.half_kpc ?? {L0: 400, L1: 100, L2: 25, L3: 6.25, L4: 1.5, S0: 400, S1: 100, S2: 25, S3: 6.25, S4: 1.5}[lv];
   U.uHalf.value.set(half("L0"), half("L1"), half("L2")); U.uMask0.value = manifest?.levels?.L0?.r_mask_kpc ?? 400;
   U.uBg.value.set(5 / 255, 7 / 255, 11 / 255);
@@ -966,6 +962,11 @@ vec3 starAt(vec3 p, int l) {`)
     for (let z = 0; z < m; z++) for (let y = 0; y < m; y++) { const b = (2 * z * n + 2 * y) * n; for (let x = 0; x < m; x++) o[j++] = a[b + 2 * x]; }
     return o; }
   function makeTex(r) {
+    if (r.kind === "stars" && r.data) {
+      const d = r.data; let hasDust = false;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0 && d[i] < 255) { hasDust = true; break; }
+      for (let i = 3; i < d.length; i += 4) if (!hasDust || d[i] === 255) d[i] = hasDust ? 0 : 255;
+    }
     const n = r.n, tex = new T.Data3DTexture(r.data, n, n, n);
     tex.format = r.kind === "stars" || r.kind === "vel" ? T.RGBAFormat : T.RedFormat; tex.type = T.UnsignedByteType; tex.minFilter = tex.magFilter = T.LinearFilter;
     tex.wrapS = tex.wrapT = tex.wrapR = T.ClampToEdgeWrapping; tex.unpackAlignment = 1; tex.generateMipmaps = false; tex.needsUpdate = true;
