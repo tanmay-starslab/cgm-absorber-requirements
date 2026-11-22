@@ -619,28 +619,236 @@ function progress(stage, frac, extra) {
   sb.querySelectorAll("span").forEach((s, j) => { s.className = j < i ? "done" : ""; s.firstChild.style.width = j === i ? (f * 100).toFixed(0) + "%" : ""; });
   $("#stagenames").querySelectorAll("span").forEach((s, j) => { s.className = j === i ? "on" : ""; s.textContent = j === 0 && extra != null ? `queued ${extra}` : STAGES[j]; });
 }
+function encodeTNGS(vSys, lines, keys) {
+  const ks = keys.filter(k => lines[k]);
+  let total = 16;
+  for (const k of ks) total += 40 + 2 * lines[k].n;
+  const buf = new ArrayBuffer(total), dv = new DataView(buf);
+  dv.setUint8(0, 84); dv.setUint8(1, 78); dv.setUint8(2, 71); dv.setUint8(3, 83); // "TNGS"
+  dv.setUint8(4, 2); dv.setUint8(5, ks.length);
+  dv.setFloat64(8, Number.isFinite(vSys) ? vSys : 0, true);
+  let o = 16;
+  for (const k of ks) {
+    const L = lines[k];
+    for (let i = 0; i < Math.min(8, k.length); i++) dv.setUint8(o + i, k.charCodeAt(i));
+    dv.setUint32(o + 8, L.n, true);
+    dv.setFloat64(o + 16, L.u0, true);
+    dv.setFloat64(o + 24, L.du, true);
+    dv.setFloat64(o + 32, L.rest, true);
+    o += 40;
+    for (let i = 0; i < L.n; i++) {
+      const q = Math.round(clamp(L.flux[i], 0, 1) * 65535);
+      dv.setUint16(o + 2 * i, q, true);
+    }
+    o += 2 * L.n;
+  }
+  return buf;
+}
+async function castCubeRay(kind, body, fromBridge) {
+  const vc = vizCfg();
+  if (!vc || !vc.base) throw new Error("3D ion cubes are not configured for this galaxy");
+  const jg = GAL;
+  progress("queued", 0.5); geomsg(`Preparing 3D ion cubes for ${activeNoun()} ${GAL}`, "", "preparing");
+  const [VD, VL, Pk] = await Promise.all([import(modUrl("vizdata.js")), import(modUrl("vizload.js")), import(modUrl("picker.js"))]);
+  const mUrl = vc.manifest_override || vc.manifest || (vc.base.replace(/\/?$/, "/") + "manifest_v2.json");
+  progress("load", 0.15);
+  const manifest = await VD.loadManifestV2(mUrl, {fetchText: VL.fetchText});
+  const loader = VL.makeLoader({manifest, base: vc.base.replace(/\/?$/, "/"), fallbackBase: vc.fallback_base});
+  const mg = manifest.galaxy || {}, Lhat = mg.Lhat || CFG.frame?.Lhat || [0, 0, 1], xhat = mg.xhat || CFG.frame?.xhat || [1, 0, 0], yhat = mg.yhat || CFG.frame?.yhat || [0, 1, 0];
+  const r200 = +mg.R200c_kpc || +CFG.galaxy?.R200c_kpc || 200;
+  const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const unit3 = v => { const n = Math.hypot(v[0], v[1], v[2]); return n > 0 ? [v[0] / n, v[1] / n, v[2] / n] : [0, 0, 1]; };
+  const skyAxes = nLos => {
+    const dL = dot3(Lhat, nLos);
+    let eMin = [Lhat[0] - dL * nLos[0], Lhat[1] - dL * nLos[1], Lhat[2] - dL * nLos[2]];
+    if (Math.hypot(eMin[0], eMin[1], eMin[2]) < 1e-6) {
+      const dx = dot3(xhat, nLos), eMaj = unit3([xhat[0] - dx * nLos[0], xhat[1] - dx * nLos[1], xhat[2] - dx * nLos[2]]);
+      return [eMaj, unit3(cross3(nLos, eMaj))];
+    }
+    eMin = unit3(eMin);
+    return [unit3(cross3(nLos, eMin)), eMin];
+  };
+  let id, orientName, bKpc, azDeg, seed = null, p0, p1, nLos, halfKpc;
+  if (kind === "custom") {
+    const v = Pk.validate(body.p0_kpc, body.p1_kpc, Lhat);
+    if (!v.ok) throw new Error(v.errors.join("; "));
+    p0 = v.p0; p1 = v.p1; id = await Pk.customId(p0, p1);
+    orientName = "custom"; bKpc = Math.round(v.metrics.b * 10) / 10; halfKpc = Math.round(v.metrics.length * 5) / 10;
+    nLos = v.metrics.n_los;
+    const [eMaj, eMin] = skyAxes(nLos), rho = v.metrics.closest;
+    azDeg = bKpc < 1e-6 ? 0 : Math.round(((Math.atan2(dot3(rho, eMin), dot3(rho, eMaj)) * 180 / Math.PI) % 360 + 360) % 360);
+  } else {
+    orientName = body.orientation; bKpc = Math.round(+body.b_kpc); azDeg = ((Math.round(+body.azimuth_deg) % 360) + 360) % 360;
+    seed = orientName === "random" ? +body.seed : null;
+    const pref = orientName === "face-on" ? "face" : orientName === "edge-on" ? "edge" : "rand";
+    id = `${pref}_b${String(bKpc).padStart(3, "0")}_a${String(azDeg).padStart(3, "0")}${orientName === "random" && seed != null ? "_s" + seed : ""}`;
+    if (orientName === "face-on") nLos = [...Lhat];
+    else if (orientName === "edge-on") nLos = [...xhat];
+    else { const r = FITM.rng(seed ?? 1); nLos = unit3([FITM.gauss(r), FITM.gauss(r), FITM.gauss(r)]); }
+    const [eMaj, eMin] = skyAxes(nLos), phi = azDeg * Math.PI / 180, cp = Math.cos(phi), sp = Math.sin(phi);
+    const rho = [bKpc * (cp * eMaj[0] + sp * eMin[0]), bKpc * (cp * eMaj[1] + sp * eMin[1]), bKpc * (cp * eMaj[2] + sp * eMin[2])];
+    halfKpc = r200;
+    p0 = [rho[0] - halfKpc * nLos[0], rho[1] - halfKpc * nLos[1], rho[2] - halfKpc * nLos[2]];
+    p1 = [rho[0] + halfKpc * nLos[0], rho[1] + halfKpc * nLos[1], rho[2] + halfKpc * nLos[2]];
+  }
+  if (CAT.has(id) && SIGHT.has(id)) {
+    geomsg(`Loaded ${id} (already computed).`, "good", "ready");
+    await select(id, false, "job"); if (fromBridge) showTab("spectra");
+    return {status: "ready", id};
+  }
+  const rows = manifest.frame?.rows || [xhat, yhat, Lhat];
+  const toDisk = p => [dot3(rows[0], p), dot3(rows[1], p), dot3(rows[2], p)];
+  const p0d = toDisk(p0), p1d = toDisk(p1), nd = unit3([p1d[0] - p0d[0], p1d[1] - p0d[1], p1d[2] - p0d[2]]);
+  const needL1 = bKpc < 96 && !!manifest.levels?.L1, lvls = needL1 ? ["L0", "L1"] : ["L0"];
+  const fields = ["T", "vx", "vy", "vz", ...reg.KEYS].filter(k => manifest.gas?.fields?.[k]);
+  const cubes = {L0: {}, L1: {}};
+  let done = 0; const tot = fields.length * lvls.length;
+  progress("ray", 0.1); geomsg(`Tracing ray ${id} through 3D cubes`, "", "progress");
+  for (const L of lvls) {
+    await Promise.all(fields.map(async k => {
+      const c = await loader.load("gas", k, L, {prio: 0});
+      cubes[L][k] = {data: c.data, n: c.n, half: manifest.levels[L].half_kpc, vmin: manifest.gas.fields[k].vmin, vmax: manifest.gas.fields[k].vmax};
+      done++; progress("spectra", done / tot * 0.85);
+    }));
+  }
+  const nSteps = 512, dlKpc = Math.hypot(p1d[0] - p0d[0], p1d[1] - p0d[1], p1d[2] - p0d[2]) / nSteps, dlCm = dlKpc * VD.CM_PER_KPC;
+  const sampleAt = (k, x, y, z) => {
+    const L = (needL1 && Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) < 96 && cubes.L1[k]) ? "L1" : "L0";
+    const C = cubes[L][k]; if (!C) return NaN;
+    const n = C.n, h = C.half;
+    if (Math.abs(x) >= h || Math.abs(y) >= h || Math.abs(z) >= h) return NaN;
+    const ix = Math.min(n - 1, Math.max(0, Math.floor((x / h * 0.5 + 0.5) * n)));
+    const iy = Math.min(n - 1, Math.max(0, Math.floor((y / h * 0.5 + 0.5) * n)));
+    const iz = Math.min(n - 1, Math.max(0, Math.floor((z / h * 0.5 + 0.5) * n)));
+    const q = C.data[ix + n * (iy + n * iz)];
+    return q === 0 ? NaN : C.vmin + (q - 1) * (C.vmax - C.vmin) / 254;
+  };
+  const vBins = Array.from({length: nSteps}, (_, s) => {
+    const t = (s + 0.5) / nSteps, x = p0d[0] + t * (p1d[0] - p0d[0]), y = p0d[1] + t * (p1d[1] - p0d[1]), z = p0d[2] + t * (p1d[2] - p0d[2]);
+    const lgT = sampleAt("T", x, y, z), T = Number.isFinite(lgT) ? 10 ** lgT : 2e4;
+    const vx = sampleAt("vx", x, y, z), vy = sampleAt("vy", x, y, z), vz = sampleAt("vz", x, y, z);
+    const vlos = (Number.isFinite(vx) ? vx : 0) * nd[0] + (Number.isFinite(vy) ? vy : 0) * nd[1] + (Number.isFinite(vz) ? vz : 0) * nd[2];
+    return {x, y, z, T, vlos: clamp(vlos, -1480, 1480)};
+  });
+  const vGrid = FITM.arange(-1500, 1501, 1), nGrid = vGrid.length;
+  const lines = {}, logNMap = {}, compRows = {}, aodMap = {};
+  for (const k of reg.KEYS) {
+    const atom = ION[k], mass = atom?.mass_amu || 12, bMin = atom?.fit?.b_min || 3;
+    const byV = new Map();
+    let totN = 0;
+    for (const st of vBins) {
+      const lgN = sampleAt(k, st.x, st.y, st.z);
+      if (!Number.isFinite(lgN)) continue;
+      const dN = (10 ** lgN) * dlCm;
+      if (!(dN > 0)) continue;
+      totN += dN;
+      const b2 = Math.max(bMin * bMin, 0.016629 * st.T / mass + 64);
+      const vb = Math.round(st.vlos / 2) * 2;
+      const cur = byV.get(vb);
+      if (cur) { cur.vN += st.vlos * dN; cur.b2N += b2 * dN; cur.N += dN; }
+      else byV.set(vb, {vN: st.vlos * dN, b2N: b2 * dN, N: dN});
+    }
+    const vComps = [];
+    for (const c of byV.values()) {
+      if (c.N > 1e8) vComps.push([c.vN / c.N, Math.log10(c.N), Math.min(180, Math.sqrt(c.b2N / c.N))]);
+    }
+    const tau = FITM.tauVoigt(atom, vComps, vGrid), flux = new Float64Array(nGrid);
+    for (let i = 0; i < nGrid; i++) flux[i] = Math.exp(-tau[i]);
+    lines[k] = {n: nGrid, u0: -1500, du: 1, rest: atom.lam0_A, flux};
+    const logN = totN > 0 ? Math.round(Math.log10(totN) * 100) / 100 : 10.0;
+    logNMap[k] = logN;
+    // Build seed components from top velocity clusters for in-browser Voigt fitting
+    const sortedC = [...vComps].sort((a, b) => b[1] - a[1]);
+    const seeds = [];
+    for (const c of sortedC) {
+      if (c[1] < 11.2) continue;
+      const hit = seeds.find(s => Math.abs(s[0] - c[0]) < Math.max(18, 1.2 * s[2]));
+      if (hit) {
+        const n1 = 10 ** hit[1], n2 = 10 ** c[1], ns = n1 + n2;
+        hit[0] = (hit[0] * n1 + c[0] * n2) / ns;
+        hit[1] = Math.log10(ns);
+        hit[2] = Math.min(180, Math.sqrt((hit[2] * hit[2] * n1 + c[2] * c[2] * n2) / ns));
+      } else if (seeds.length < 5) seeds.push([...c]);
+    }
+    seeds.sort((a, b) => a[0] - b[0]);
+    compRows[k] = seeds.map(s => [Math.round(s[0] * 10) / 10, 1.0, Math.round(s[1] * 100) / 100, 0.08, Math.round(s[2] * 10) / 10, 1.5, 0, 0, null]);
+    if (seeds.length) {
+      const vlo = Math.max(-1480, Math.floor(Math.min(...seeds.map(s => s[0] - 2.5 * s[2])) - 15));
+      const vhi = Math.min(1480, Math.ceil(Math.max(...seeds.map(s => s[0] + 2.5 * s[2])) + 15));
+      aodMap[k] = [logN, [[0, vlo, vhi, logN, 0]]];
+    } else aodMap[k] = [null, []];
+  }
+  progress("fit", 0.92);
+  const entry = {
+    id, orientation: orientName, b_kpc: bKpc, azimuth_deg: azDeg, ...(seed != null ? {seed} : {}),
+    v_sys: 0, p0: p0.map(x => Math.round(x * 10) / 10), p1: p1.map(x => Math.round(x * 10) / 10),
+    half_kpc: halfKpc, logN: logNMap, showcase_ions: reg.KEYS.filter(k => logNMap[k] >= 13.5 && logNMap[k] <= 16.5),
+    generated: true, spectra: "trident"
+  };
+  progress("save", 1);
+  if (jg === GAL) {
+    upsert(entry, false);
+    const raw = normComps(compRows, DEF_KEYS, aodMap);
+    if (raw) COMPRAW.set(id, raw);
+    const buf = encodeTNGS(0, lines, reg.KEYS);
+    IDB.put(idbKey(id), {entry: strip(CAT.get(id)), bin: buf, galaxy: GAL});
+    putSight(id, decodeTNGS(buf, reg.KEYS));
+    catalogChanged();
+    geomsg(`Generated ${id} from the 3D ion cubes.`, "good", "job_done");
+    note(`generated ${id}`, "good");
+    setTimeout(() => progress(null), 1500);
+    emit("tng:done", {job_id: "local_" + id, id, entry: strip(CAT.get(id) || entry)});
+    await select(id, false, "job");
+    if (kind === "custom" || fromBridge) showTab("spectra");
+  }
+  return {status: "ready", id};
+}
 async function submitJob(kind, body, fromBridge) {
   if (JOB || busy) { geomsg("Another sightline is being generated.", "bad", "busy"); return {status: "error", message: "another sightline is being generated"}; }
+  if (kind === "geometry") {
+    const loc = findLocal(body);
+    if (loc) {
+      geomsg(`Loaded ${loc.id} from the library.`, "good", "ready");
+      await select(loc.id, false, "job"); if (fromBridge) showTab("spectra");
+      return {status: "ready", id: loc.id};
+    }
+  }
   busy = true; setGeoEnabled();
   try {
-    if (!API) { geomsg("Contacting the sightline server", "", "contacting"); await discover(15000, true); }
+    if (!activeIsFire()) {
+      if (!API) { geomsg("Contacting the sightline server", "", "contacting"); await discover(8000, true); }
+      if (API && galSrv()) {
+        geomsg("Submitting", "", "submitting");
+        let r = null, j = {};
+        try { r = await fetch(gq(API + (kind === "custom" ? "/api/sightlines/custom" : "/api/sightlines")), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+          j = await r.json().catch(() => ({})); }
+        catch { backendFailed(); r = null; }
+        if (r) {
+          const d = j.detail, det = typeof d === "string" ? d : Array.isArray(d) ? d.map(x => x.msg).join("; ") : "";
+          if (r.status === 429) { const ra = +r.headers.get("Retry-After");
+            const m = `Rate limit reached${ra ? `; try again in ${ra < 120 ? ra + " s" : Math.ceil(ra / 60) + " min"}` : ""}.`;
+            geomsg(m, "bad", "rate_limit"); return {status: "error", message: m}; }
+          if (r.ok) {
+            if (j.status === "ready") { upsert(j.entry || {id: j.id}, false); catalogChanged(); geomsg(`Loaded ${j.id} (already computed).`, "good", "ready");
+              await select(j.id, false, "job"); if (fromBridge) showTab("spectra"); return {status: "ready", id: j.id}; }
+            busy = false; track(j, kind, fromBridge);
+            return {status: "queued", id: j.id, job_id: j.job_id, position: j.position ?? null};
+          }
+          if (r.status !== 400 && r.status !== 404 && r.status !== 503 && !vizCfg()) {
+            const m = "Rejected: " + (det || `HTTP ${r.status}`); geomsg(m, "bad", "server_" + r.status); return {status: "error", message: m};
+          }
+        }
+      }
+    }
+    if (vizCfg()) {
+      try { return await castCubeRay(kind, body, fromBridge); }
+      catch (x) { progress(null); const m = "Generation failed: " + (x && x.message || "could not cast ray"); geomsg(m, "bad", "job_error"); return {status: "error", message: m}; }
+    }
     if (!API) return {status: "error", offline: true, message: "no sightline server is online"};
-    if (!galSrv()) { geomsg(`The sightline server serves only the default galaxy; subhalo ${GAL} has library sightlines only.`, "bad", "galaxy_unsupported");
-      return {status: "error", offline: true, message: `the sightline server does not serve subhalo ${GAL}`}; }
-    geomsg("Submitting", "", "submitting");
-    let r, j;
-    try { r = await fetch(gq(API + (kind === "custom" ? "/api/sightlines/custom" : "/api/sightlines")), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-      j = await r.json().catch(() => ({})); }
-    catch { geomsg("Could not reach the sightline server; retrying discovery.", "bad", "unreachable"); backendFailed(); return {status: "error", message: "could not reach the sightline server"}; }
-    const d = j.detail, det = typeof d === "string" ? d : Array.isArray(d) ? d.map(x => x.msg).join("; ") : "";
-    if (r.status === 429 || r.status === 503) { const ra = +r.headers.get("Retry-After");
-      const m = `${r.status === 429 ? "Rate limit reached" : det ? "Server busy: " + det : "Server busy (queue full)"}${ra ? `; try again in ${ra < 120 ? ra + " s" : Math.ceil(ra / 60) + " min"}` : ""}.`;
-      geomsg(m, "bad", r.status === 429 ? "rate_limit" : "server_busy"); return {status: "error", message: m}; }
-    if (!r.ok) { const m = "Rejected: " + (det || `HTTP ${r.status}`); geomsg(m, "bad", "server_" + r.status); return {status: "error", message: m}; }
-    if (j.status === "ready") { upsert(j.entry || {id: j.id}, false); catalogChanged(); geomsg(`Loaded ${j.id} (already computed).`, "good", "ready");
-      await select(j.id, false, "job"); if (fromBridge) showTab("spectra"); return {status: "ready", id: j.id}; }
-    busy = false; track(j, kind, fromBridge);
-    return {status: "queued", id: j.id, job_id: j.job_id, position: j.position ?? null};
+    if (!galSrv()) { geomsg(`The sightline server serves only the default galaxy; ${activeNoun()} ${GAL} has library sightlines only.`, "bad", "galaxy_unsupported");
+      return {status: "error", offline: true, message: `the sightline server does not serve ${activeNoun()} ${GAL}`}; }
+    return {status: "error", offline: true, message: "could not cast sightline"};
   } finally { busy = false; setGeoEnabled(); }
 }
 $("#geo").addEventListener("submit", async ev => {
