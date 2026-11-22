@@ -185,6 +185,7 @@ export function layoutCMText(str) {
           rho: ["i", "rho"], tau: ["i", "tau"],
           odot: ["sy", "odot"], propto: ["sy", "propto"], times: ["sy", "times"], cdot: ["sy", "cdot"],
           pm: ["sy", "pm"], approx: ["sy", "approx"], circ: ["sy", "circ"],
+          ast: ["sy", "ast"], star: ["sy", "star"],
           langle: ["ex", "langle"], rangle: ["ex", "rangle"]
         };
         if (SYM_MAP[cmd]) {
@@ -216,6 +217,7 @@ export function layoutCMText(str) {
         i++;
         continue;
       }
+      if (ch === "*") { const [adv, d] = lookupGlyph("sy", "*"); glyphs.push({d, x: cursorX, y: yOff, scale, adv}); cursorX += adv * scale; i++; continue; }
       if (ch === " ") {
         cursorX += (inMath ? 220 : 333.3) * scale;
         i++;
@@ -356,43 +358,91 @@ export function drawCMSvg(str, x, y, fontSizePx, {align = "left", color = "#1111
   return `<g transform="${tr}" fill="${color}">${paths.join("")}</g>`;
 }
 
-// Word-wrap a LaTeX-aware string to a maximum width in points using Computer Modern metrics
+// Word-wrap a LaTeX-aware string to a maximum width in points using Computer Modern metrics.
+// Keeps inline $...$ math expressions balanced across line breaks so math mode never leaks to the next line.
 export function wrapCMText(str, fontSizePt, maxWidthPt) {
   const words = String(str ?? "").trim().split(/\s+/);
   const lines = [];
   let cur = "";
+  const hasOddDollars = s => ((s.match(/\$/g) || []).length % 2) === 1;
   for (const w of words) {
     const cand = cur ? `${cur} ${w}` : w;
-    if (cur && measureCMText(cand, fontSizePt) > maxWidthPt) {
-      lines.push(cur);
-      cur = w;
+    const measureCand = hasOddDollars(cand) ? `${cand}$` : cand;
+    if (cur && measureCMText(measureCand, fontSizePt) > maxWidthPt) {
+      if (hasOddDollars(cur)) {
+        lines.push(`${cur}$`);
+        cur = `$${w}`;
+      } else {
+        lines.push(cur);
+        cur = w;
+      }
     } else {
       cur = cand;
     }
   }
-  if (cur) lines.push(cur);
+  if (cur) lines.push(hasOddDollars(cur) ? `${cur}$` : cur);
   return lines;
 }
 
 /* ---- Scene metadata & naming helpers ---- */
+const DUST_LAW_NAMES = {
+  temet: "Temet MW (Cardelli+89 + scattering)",
+  calzetti: "Calzetti+00 starburst",
+  cardelli: "Cardelli+89 Milky Way",
+  pei: "FIRE Studio (Pei+92)"
+};
+
+const DUST_LAW_SHORT = {
+  temet: "Cardelli+89 MW",
+  calzetti: "Calzetti+00",
+  cardelli: "CCM89 MW",
+  pei: "Pei+92"
+};
+
 export function sceneMeta(viewer) {
   const snap = typeof viewer.getSceneSnapshot === "function" ? viewer.getSceneSnapshot() : {};
   const app = viewer.app || (typeof window !== "undefined" ? window.tngApp : null);
   const cfg = app?.config || {};
   const g = cfg.galaxy || viewer.manifest?.galaxy || {};
-  const simRaw = String(g.sim || "TNG50-1");
+  const galId = (typeof app?.galaxy === "function" ? app.galaxy() : null) ?? g.subhalo_id ?? g.id ?? "galaxy";
+  const gixList = cfg.galaxies?.list || [];
+  const gixEntry = gixList.find(e => String(e?.id) === String(galId)) || null;
+  const simRaw = String(gixEntry?.sim || g.sim || (/^m\d|^Romeo|^Juliet|^Romulus|^Remus|^Thelma|^Louise/i.test(String(galId)) ? "FIRE-2" : "TNG50-1"));
   const isFire = /fire/i.test(simRaw);
   const prefix = isFire ? "fire2" : "tng50";
-  const galId = (typeof app?.galaxy === "function" ? app.galaxy() : null) ?? g.subhalo_id ?? g.id ?? "galaxy";
   const noun = isFire ? "Halo" : "Subhalo";
   const nounLower = isFire ? "halo" : "subhalo";
-  const z = g.redshift ?? 0;
+  const snapshot = g.snapshot ?? g.snap ?? gixEntry?.snapshot ?? (isFire ? 600 : 99);
+  const z = g.redshift ?? gixEntry?.redshift ?? 0;
   const species = viewer.species || snap.species || "nH";
   const mode = viewer.mode || snap.mode || "integral";
-  const R200c = viewer.frame?.R200c || g.R200c_kpc || 246.35;
-  const logMstar = g.log_Mstar ?? g.logMstar ?? null;
-  const logM200c = g.log_M200c ?? (g.M200c_Msun ? +(Math.log10(+g.M200c_Msun)).toFixed(2) : null);
-  return {prefix, sim: simRaw, isFire, noun, nounLower, galId, z, species, mode, R200c, logMstar, logM200c, snap, app};
+  const R200c = viewer.frame?.R200c || gixEntry?.R200c || g.R200c_kpc || 246.35;
+  const rawMstar = gixEntry?.Mstar ?? g.Mstar_Msun ?? g.Mstar ?? null;
+  const rawM200c = gixEntry?.M200c ?? g.M200c_Msun ?? g.M200c ?? null;
+  const logMstar = g.log_Mstar ?? g.logMstar ?? (Number.isFinite(+rawMstar) && +rawMstar > 0 ? +(Math.log10(+rawMstar)).toFixed(2) : null);
+  const logM200c = g.log_M200c ?? g.logM200c ?? (Number.isFinite(+rawM200c) && +rawM200c > 0 ? +(Math.log10(+rawM200c)).toFixed(2) : null);
+  const sfr = gixEntry?.SFR ?? g.SFR_Msun_yr ?? g.SFR ?? null;
+  const dustLaw = snap.layers?.dustLaw || "temet";
+  const dustLawName = DUST_LAW_NAMES[dustLaw] || DUST_LAW_NAMES.temet;
+  const dustLawShort = DUST_LAW_SHORT[dustLaw] || DUST_LAW_SHORT.temet;
+  return {
+    prefix, sim: simRaw, isFire, snapshot, noun, nounLower, galId, z, species, mode,
+    R200c, logMstar, logM200c, sfr, dustLaw, dustLawName, dustLawShort, snap, app
+  };
+}
+
+export function formatGalaxyHeaderLines(m) {
+  const line1 = `${m.sim} (Snap ${m.snapshot})    ${m.noun} ${m.galId}    $z = ${Number(m.z).toFixed(2)}$`;
+  const props = [];
+  if (m.logMstar !== null && Number.isFinite(+m.logMstar)) {
+    props.push(`$\\log_{10}(M_{*}/\\mathrm{M}_{\\odot}) = ${(+m.logMstar).toFixed(2)}$`);
+  }
+  if (m.logM200c !== null && Number.isFinite(+m.logM200c)) {
+    props.push(`$\\log_{10}(M_{200\\mathrm{c}}/\\mathrm{M}_{\\odot}) = ${(+m.logM200c).toFixed(2)}$`);
+  }
+  props.push(`$R_{200\\mathrm{c}} = ${Math.round(m.R200c)}\\ \\mathrm{kpc}$`);
+  const line2 = props.join("    ");
+  return {line1, line2};
 }
 
 export function buildFilename(viewer, W, H, ext) {
@@ -479,10 +529,12 @@ export function buildLatexCaption(viewer) {
   ));
   const fovKpc = +(2 * dist * Math.tan((viewer.camera?.fov || 22) * Math.PI / 360)).toFixed(1);
   const fovStr = fovKpc < 2 ? `${Math.round(fovKpc * 1000)}\\,\\mathrm{pc}` : `${Math.round(fovKpc)}\\,\\mathrm{kpc}`;
-  const rangeTex = `${info.lo} \\text{ to } ${info.hi}${fTex.unitTex ? `\\,\\mathrm{dex}` : ""}`;
-  const starsNote = viewer.stars ? `, composited with $g, r, i$ asinh stellar light${m.snap.layers?.dust !== false ? " and 3D Pei (1992) dust attenuation" : ""}` : "";
+  const starsNote = viewer.stars ? `, composited with $g, r, i$ asinh stellar light${m.snap.layers?.dust !== false ? ` and 3D ${m.dustLawName} dust attenuation` : ""}` : "";
   const sel = m.snap.selectedSightline ? `, with sightline \\texttt{${String(m.snap.selectedSightline).replace(/_/g, "\\_")}} highlighted` : "";
-  return `\\caption{Three-dimensional ${m.mode === "volume" ? "ray-marched volume rendering" : "projected integral map"} of ${fTex.desc} (${info.lo} to ${info.hi}) across the circumgalactic medium of ${m.sim} ${m.nounLower} ${m.galId} at $z = ${Number(m.z).toFixed(2)}$ ($R_{200\\mathrm{c}} = ${Math.round(m.R200c)}\\,\\mathrm{kpc}$, field of view ${fovStr}${starsNote}${sel}).}`;
+  const massTex = (m.logMstar !== null && m.logM200c !== null)
+    ? `$\\log_{10}(M_*/\\mathrm{M_\\odot}) = ${(+m.logMstar).toFixed(2)}$, $\\log_{10}(M_{200\\mathrm{c}}/\\mathrm{M_\\odot}) = ${(+m.logM200c).toFixed(2)}$, `
+    : "";
+  return `\\caption{Three-dimensional ${m.mode === "volume" ? "ray-marched volume rendering" : "projected integral map"} of ${fTex.desc} (${info.lo} to ${info.hi}) across the circumgalactic medium of ${m.sim} (Snap ${m.snapshot}) ${m.nounLower} ${m.galId} at $z = ${Number(m.z).toFixed(2)}$ (${massTex}$R_{200\\mathrm{c}} = ${Math.round(m.R200c)}\\,\\mathrm{kpc}$, field of view ${fovStr}${starsNote}${sel}).}`;
 }
 
 export function buildFigureVisualCaption(viewer) {
@@ -497,9 +549,12 @@ export function buildFigureVisualCaption(viewer) {
   );
   const fovKpc = 2 * dist * Math.tan((viewer.camera?.fov || 22) * Math.PI / 360);
   const fovStr = fovKpc < 2 ? `${Math.round(fovKpc * 1000)} pc` : `${Math.round(fovKpc)} kpc`;
-  const starsNote = viewer.stars ? `, with g, r, i stellar composite${m.snap.layers?.dust !== false ? " and 3D dust lanes" : ""}` : "";
+  const starsNote = viewer.stars ? `, with $g, r, i$ stellar composite${m.snap.layers?.dust !== false ? ` and 3D dust (${m.dustLawShort})` : ""}` : "";
   const sel = m.snap.selectedSightline ? `; selected ray ${m.snap.selectedSightline}` : "";
-  return `Figure: ${m.sim} ${m.nounLower} ${m.galId} ($z = ${Number(m.z).toFixed(2)}$, $R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc). ${m.mode === "volume" ? "Ray-marched 3D volume render" : "Projected 3D integral map"} of ${fTex.math} over [${info.lo}, ${info.hi}] across a ${fovStr} field of view${starsNote}${sel}.`;
+  const massNote = (m.logMstar !== null && m.logM200c !== null)
+    ? `, $\\log_{10}(M_{*}/\\mathrm{M}_{\\odot}) = ${(+m.logMstar).toFixed(2)}$, $\\log_{10}(M_{200\\mathrm{c}}/\\mathrm{M}_{\\odot}) = ${(+m.logM200c).toFixed(2)}$`
+    : "";
+  return `Figure: ${m.sim} (Snap ${m.snapshot}) ${m.nounLower} ${m.galId} ($z = ${Number(m.z).toFixed(2)}$${massNote}, $R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc). ${m.mode === "volume" ? "Ray-marched 3D volume render" : "Projected 3D map"} of ${fTex.math} over [${info.lo}, ${info.hi}] across a ${fovStr} field of view${starsNote}${sel}.`;
 }
 
 export function buildLatexFigureBlock(viewer, pdfFilename) {
@@ -864,28 +919,29 @@ export async function renderHighDPI(viewer, opts = {}) {
 
 /* ---- Publication Figure Layout Geometry (72 pt/inch base, scaled to target DPI) ----
    Follows pubplot.py (ApJ / MNRAS single/onehalf/double-column figure standards):
-   - Total width: 511.2 pt (7.10 in at 72 pt/in; 2840 px at 400 dpi)
-   - Square 3D plot panel: 360 x 360 pt (5.00 in) at left margin fx = 54 pt
-   - Full-height vertical colorbar on the right: cbX = 428 pt, cbW = 14 pt, cbH = 360 pt
-   - Boxed axes with 4-sided inward major (4.5 pt) and minor (2.2 pt) ticks on both the 3D panel and vertical colorbar
-   - Physical scale bar inside bottom-right of the 3D panel, R200c dashed circle, sightline legend inside top-left,
-     galaxy & simulation stamp inside top-right (or above the panel), and optional wrapped Computer Modern caption below.
+   - Total width: 540.0 pt (7.50 in at 72 pt/in; 3000 px at 400 dpi)
+   - Square 3D plot panel: 356 x 356 pt at left margin fx = 68 pt (centered visual composite)
+   - Full-height vertical colorbar on the right: cbX = 438 pt, cbW = 15 pt, cbH = 356 pt
+   - Larger, bold publication Computer Modern typography (12.2 pt axis & colorbar titles, 10.5 pt tick labels,
+     11.4 / 10.2 pt two-line galaxy properties header, 9.8 pt centered figure caption)
+   - Boxed axes with 4-sided inward major (5.5 pt) and minor (2.8 pt) ticks on both the 3D panel and vertical colorbar
 */
 export function getPubLayout(viewer, opts = {}) {
-  const PW = 511.2; // 7.10 inches * 72 pt/in (exact double-column width in pubplot.py)
-  const fx = 54, fw = 356, fh = 356;
-  const topPad = opts.stamp !== false ? 26 : 14;
-  const xAxisSpace = 38;
+  const PW = 540.0; // 7.50 inches * 72 pt/in (3000 px wide at 400 dpi)
+  const fx = 68, fw = 356, fh = 356;
+  const topPad = opts.stamp !== false ? 44 : 16;
+  const xAxisSpace = 44;
   const capText = opts.caption === false ? "" : buildFigureVisualCaption(viewer);
-  const capLines = capText ? wrapCMText(capText, 8.2, PW - fx - 20) : [];
-  const capSpace = capLines.length ? (capLines.length * 11.5 + 14) : 0;
+  const capLines = capText ? wrapCMText(capText, 9.8, 464) : [];
+  const capSpace = capLines.length ? (capLines.length * 14.0 + 16) : 0;
   const PH = +(topPad + fh + xAxisSpace + capSpace).toFixed(1);
   // In top-down coordinates (Canvas / SVG): frame top is fyTop = topPad
   const fyTop = topPad;
   // In bottom-up coordinates (PDF): frame bottom is fyPdf = xAxisSpace + capSpace
   const fyPdf = +(xAxisSpace + capSpace).toFixed(1);
-  const cbX = fx + fw + 12, cbW = 13;
-  return {PW, PH, fx, fw, fh, fyTop, fyPdf, cbX, cbW, capLines, xAxisSpace, capSpace};
+  const cbX = fx + fw + 14, cbW = 15;
+  const centerX = +(PW / 2).toFixed(1);
+  return {PW, PH, fx, fw, fh, fyTop, fyPdf, cbX, cbW, centerX, capLines, xAxisSpace, capSpace};
 }
 
 /* ---- 1. exportPNG: 400 DPI Publication PNG Figure (or clean stage-only PNG when opts.rawStage) ---- */
@@ -906,7 +962,7 @@ export async function exportPNG(viewer, opts = {}) {
   const transparent = opts.background === "transparent";
   const pageBg = darkTheme ? BG_HEX : "#ffffff";
   const ink = darkTheme ? "#e9eef4" : "#111111";
-  const muted = darkTheme ? "#b3bdc9" : "#333333";
+  const muted = darkTheme ? "#b3bdc9" : "#2b2b2b";
   const spineCol = darkTheme ? "#b3bdc9" : "#111111";
 
   if (!transparent) {
@@ -936,116 +992,115 @@ export async function exportPNG(viewer, opts = {}) {
     ctx.rect(fx, fy, fw, fh);
     ctx.clip();
     ctx.strokeStyle = "#d9c38c";
-    ctx.lineWidth = 0.9 * s;
-    ctx.setLineDash([4 * s, 3 * s]);
+    ctx.lineWidth = 1.05 * s;
+    ctx.setLineDash([4.5 * s, 3.2 * s]);
     ctx.beginPath();
     ctx.arc(fx + fw / 2, fy + fh / 2, r200Px, 0, 2 * Math.PI);
     ctx.stroke();
     ctx.setLineDash([]);
-    drawCMCanvas(ctx, `$R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc`, fx + fw / 2 + r200Px * 0.707 + 4 * s, fy + fh / 2 - r200Px * 0.707 - 3 * s, 7.8 * s, {color: "#d9c38c"});
+    drawCMCanvas(ctx, `$R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc`, fx + fw / 2 + r200Px * 0.707 + 5 * s, fy + fh / 2 - r200Px * 0.707 - 4 * s, 9.8 * s, {color: "#d9c38c"});
     ctx.restore();
   }
 
-  // Physical scale bar inside bottom-right of the 3D panel (clean publication rule + CM label, no UI card)
+  // Physical scale bar inside bottom-right of the 3D panel (clean publication rule + larger CM label)
   if (opts.scaleBar !== false) {
     const bw = sc.barPx * s;
-    const bx = fx + fw - 14 * s - bw, by = fy + fh - 14 * s;
+    const bx = fx + fw - 16 * s - bw, by = fy + fh - 16 * s;
     ctx.save();
-    ctx.strokeStyle = "rgba(5, 7, 11, 0.75)";
-    ctx.lineWidth = 3.0 * s;
+    ctx.strokeStyle = "rgba(5, 7, 11, 0.78)";
+    ctx.lineWidth = 3.4 * s;
     ctx.beginPath();
-    ctx.moveTo(bx, by - 3.5 * s); ctx.lineTo(bx, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by - 3.5 * s);
+    ctx.moveTo(bx, by - 4.2 * s); ctx.lineTo(bx, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by - 4.2 * s);
     ctx.stroke();
     ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.3 * s;
+    ctx.lineWidth = 1.6 * s;
     ctx.beginPath();
-    ctx.moveTo(bx, by - 3.5 * s); ctx.lineTo(bx, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by - 3.5 * s);
+    ctx.moveTo(bx, by - 4.2 * s); ctx.lineTo(bx, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by - 4.2 * s);
     ctx.stroke();
-    drawCMCanvas(ctx, sc.label, bx + bw / 2, by - 5.5 * s, 8.2 * s, {align: "center", color: "#ffffff"});
+    drawCMCanvas(ctx, sc.label, bx + bw / 2, by - 7.0 * s, 10.5 * s, {align: "center", color: "#ffffff"});
     ctx.restore();
   }
 
-  // Sightlines legend inside top-left of the 3D panel (frameless publication legend)
+  // Sightlines legend inside top-left of the 3D panel (frameless publication legend, larger font)
   if (opts.sightlines !== false && m.snap.linesMode !== "none") {
     const items = [
-      ["#e9eef4", "selected ray", 2.0],
-      ["#8d97a6", "library", 1.1],
-      ["#7db2f0", "generated", 1.1],
-      ["#f39a5c", "custom", 1.1]
+      ["#e9eef4", "selected ray", 2.2],
+      ["#8d97a6", "library", 1.3],
+      ["#7db2f0", "generated", 1.3],
+      ["#f39a5c", "custom", 1.3]
     ];
-    const lx = fx + 10 * s, ly = fy + 13 * s, rowH = 11.5 * s;
+    const lx = fx + 12 * s, ly = fy + 16 * s, rowH = 14.5 * s;
     ctx.save();
     items.forEach(([col, label, lw], idx) => {
       const ry = ly + idx * rowH;
       ctx.strokeStyle = col;
       ctx.lineWidth = lw * s;
       ctx.beginPath();
-      ctx.moveTo(lx, ry - 2.8 * s);
-      ctx.lineTo(lx + 14 * s, ry - 2.8 * s);
+      ctx.moveTo(lx, ry - 3.4 * s);
+      ctx.lineTo(lx + 18 * s, ry - 3.4 * s);
       ctx.stroke();
-      drawCMCanvas(ctx, label, lx + 18 * s, ry, 7.6 * s, {color: "#e9eef4"});
+      drawCMCanvas(ctx, label, lx + 23 * s, ry, 9.8 * s, {color: "#e9eef4"});
     });
     ctx.restore();
   }
 
   // Stars & dust annotation inside bottom-left of the 3D panel when star layer is active
   if (viewer.stars) {
-    const stTxt = m.snap.layers?.dust !== false ? "stars: $g, r, i$ asinh + 3D dust" : "stars: $g, r, i$ asinh";
-    drawCMCanvas(ctx, stTxt, fx + 10 * s, fy + fh - 10 * s, 7.6 * s, {color: "#d9c38c"});
+    const stTxt = m.snap.layers?.dust !== false ? `stars: $g, r, i$ asinh + 3D dust (${m.dustLawShort})` : "stars: $g, r, i$ asinh";
+    drawCMCanvas(ctx, stTxt, fx + 12 * s, fy + fh - 13 * s, 9.6 * s, {color: "#d9c38c"});
   }
 
-  // Boxed 4-sided spines + inward-pointing major & minor ticks on ALL FOUR SIDES (white ticks over dark 3D image per pubplot.py box_ticks)
+  // Boxed 4-sided spines + inward-pointing major & minor ticks on ALL FOUR SIDES
   ctx.save();
   ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 0.8 * s;
+  ctx.lineWidth = 1.0 * s;
   for (const t of sc.xTicks) {
     const tx = fx + t.frac * fw;
     ctx.beginPath();
-    ctx.moveTo(tx, fy + fh); ctx.lineTo(tx, fy + fh - 4.5 * s);
-    ctx.moveTo(tx, fy); ctx.lineTo(tx, fy + 4.5 * s);
+    ctx.moveTo(tx, fy + fh); ctx.lineTo(tx, fy + fh - 5.5 * s);
+    ctx.moveTo(tx, fy); ctx.lineTo(tx, fy + 5.5 * s);
     ctx.stroke();
-    drawCMCanvas(ctx, t.mathLabel, tx, fy + fh + 11 * s, 8.2 * s, {align: "center", color: ink});
+    drawCMCanvas(ctx, t.mathLabel, tx, fy + fh + 14.5 * s, 10.5 * s, {align: "center", color: ink});
   }
-  ctx.lineWidth = 0.6 * s;
+  ctx.lineWidth = 0.7 * s;
   for (const t of sc.xMinor) {
     const tx = fx + t.frac * fw;
     ctx.beginPath();
-    ctx.moveTo(tx, fy + fh); ctx.lineTo(tx, fy + fh - 2.2 * s);
-    ctx.moveTo(tx, fy); ctx.lineTo(tx, fy + 2.2 * s);
+    ctx.moveTo(tx, fy + fh); ctx.lineTo(tx, fy + fh - 2.8 * s);
+    ctx.moveTo(tx, fy); ctx.lineTo(tx, fy + 2.8 * s);
     ctx.stroke();
   }
-  ctx.lineWidth = 0.8 * s;
+  ctx.lineWidth = 1.0 * s;
   for (const t of sc.yTicks) {
     const ty = fy + t.frac * fh;
     ctx.beginPath();
-    ctx.moveTo(fx, ty); ctx.lineTo(fx + 4.5 * s, ty);
-    ctx.moveTo(fx + fw, ty); ctx.lineTo(fx + fw - 4.5 * s, ty);
+    ctx.moveTo(fx, ty); ctx.lineTo(fx + 5.5 * s, ty);
+    ctx.moveTo(fx + fw, ty); ctx.lineTo(fx + fw - 5.5 * s, ty);
     ctx.stroke();
-    drawCMCanvas(ctx, t.mathLabel, fx - 5 * s, ty + 2.8 * s, 8.2 * s, {align: "right", color: ink});
+    drawCMCanvas(ctx, t.mathLabel, fx - 6.5 * s, ty + 3.6 * s, 10.5 * s, {align: "right", color: ink});
   }
-  ctx.lineWidth = 0.6 * s;
+  ctx.lineWidth = 0.7 * s;
   for (const t of sc.yMinor) {
     const ty = fy + t.frac * fh;
     ctx.beginPath();
-    ctx.moveTo(fx, ty); ctx.lineTo(fx + 2.2 * s, ty);
-    ctx.moveTo(fx + fw, ty); ctx.lineTo(fx + fw - 2.2 * s, ty);
+    ctx.moveTo(fx, ty); ctx.lineTo(fx + 2.8 * s, ty);
+    ctx.moveTo(fx + fw, ty); ctx.lineTo(fx + fw - 2.8 * s, ty);
     ctx.stroke();
   }
   ctx.strokeStyle = spineCol;
-  ctx.lineWidth = 0.9 * s;
+  ctx.lineWidth = 1.05 * s;
   ctx.strokeRect(fx, fy, fw, fh);
   ctx.restore();
 
-  // Physical axis labels in Computer Modern with square-bracket units
-  drawCMCanvas(ctx, `$\\Delta x\\ [\\mathrm{${sc.unitLabel}}]$`, fx + fw / 2, fy + fh + 25 * s, 9.2 * s, {align: "center", color: ink});
-  drawCMCanvas(ctx, `$\\Delta y\\ [\\mathrm{${sc.unitLabel}}]$`, fx - 27 * s, fy + fh / 2, 9.2 * s, {align: "center", color: ink, rotateDeg: -90});
+  // Physical axis labels in Computer Modern with square-bracket units (12.2 pt)
+  drawCMCanvas(ctx, `$\\Delta x\\ [\\mathrm{${sc.unitLabel}}]$`, fx + fw / 2, fy + fh + 32 * s, 12.2 * s, {align: "center", color: ink});
+  drawCMCanvas(ctx, `$\\Delta y\\ [\\mathrm{${sc.unitLabel}}]$`, fx - 38 * s, fy + fh / 2, 12.2 * s, {align: "center", color: ink, rotateDeg: -90});
 
-  // Header stamp above the 3D panel
+  // Collective Galaxy Properties Header above the 3D panel (centered over the plot box, no "integral/volume mode")
   if (opts.stamp !== false) {
-    const headL = `${m.sim}  ${m.noun} ${m.galId}  ($z = ${Number(m.z).toFixed(2)}$, $R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc)`;
-    const headR = `${m.mode} mode`;
-    drawCMCanvas(ctx, headL, fx, fy - 7 * s, 9.0 * s, {align: "left", color: ink});
-    drawCMCanvas(ctx, headR, fx + fw, fy - 7 * s, 8.4 * s, {align: "right", color: muted});
+    const {line1, line2} = formatGalaxyHeaderLines(m);
+    drawCMCanvas(ctx, line1, fx + fw / 2, fy - 24 * s, 11.4 * s, {align: "center", color: ink});
+    drawCMCanvas(ctx, line2, fx + fw / 2, fy - 9 * s, 10.2 * s, {align: "center", color: muted});
   }
 
   // Full-height Vertical Colorbar on the right of the 3D panel
@@ -1061,37 +1116,37 @@ export async function exportPNG(viewer, opts = {}) {
     });
     // Inward ticks on left and right sides of the vertical colorbar
     ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 0.75 * s;
+    ctx.lineWidth = 0.9 * s;
     for (const tk of leg.ticks) {
       const ty = cbY + (1 - tk.frac) * cbH;
       ctx.beginPath();
-      ctx.moveTo(cbX, ty); ctx.lineTo(cbX + 3.2 * s, ty);
-      ctx.moveTo(cbX + cbW, ty); ctx.lineTo(cbX + cbW - 3.2 * s, ty);
+      ctx.moveTo(cbX, ty); ctx.lineTo(cbX + 4.0 * s, ty);
+      ctx.moveTo(cbX + cbW, ty); ctx.lineTo(cbX + cbW - 4.0 * s, ty);
       ctx.stroke();
-      drawCMCanvas(ctx, tk.mathLabel, cbX + cbW + 5 * s, ty + 2.8 * s, 8.2 * s, {align: "left", color: ink});
+      drawCMCanvas(ctx, tk.mathLabel, cbX + cbW + 6.5 * s, ty + 3.6 * s, 10.5 * s, {align: "left", color: ink});
     }
-    ctx.lineWidth = 0.55 * s;
+    ctx.lineWidth = 0.65 * s;
     for (const tk of leg.minorTicks) {
       const ty = cbY + (1 - tk.frac) * cbH;
       ctx.beginPath();
-      ctx.moveTo(cbX, ty); ctx.lineTo(cbX + 1.8 * s, ty);
-      ctx.moveTo(cbX + cbW, ty); ctx.lineTo(cbX + cbW - 1.8 * s, ty);
+      ctx.moveTo(cbX, ty); ctx.lineTo(cbX + 2.2 * s, ty);
+      ctx.moveTo(cbX + cbW, ty); ctx.lineTo(cbX + cbW - 2.2 * s, ty);
       ctx.stroke();
     }
     ctx.strokeStyle = spineCol;
-    ctx.lineWidth = 0.85 * s;
+    ctx.lineWidth = 1.0 * s;
     ctx.strokeRect(cbX, cbY, cbW, cbH);
-    // Vertical rotated LaTeX label to the right of colorbar tick numbers
-    drawCMCanvas(ctx, leg.titleMath, cbX + cbW + 41 * s, cbY + cbH / 2, 9.2 * s, {align: "center", color: ink, rotateDeg: -90});
+    // Vertical rotated LaTeX label to the right of colorbar tick numbers (12.2 pt)
+    drawCMCanvas(ctx, leg.titleMath, cbX + cbW + 50 * s, cbY + cbH / 2, 12.2 * s, {align: "center", color: ink, rotateDeg: -90});
     ctx.restore();
   }
 
-  // Publication caption block below the figure
+  // Centered publication caption block below the figure
   if (L.capLines.length) {
-    let cy = fy + fh + (L.xAxisSpace + 6) * s;
+    let cy = fy + fh + (L.xAxisSpace + 8) * s;
     for (const line of L.capLines) {
-      drawCMCanvas(ctx, line, fx, cy, 8.2 * s, {align: "left", color: muted});
-      cy += 11.5 * s;
+      drawCMCanvas(ctx, line, L.centerX * s, cy, 9.8 * s, {align: "center", color: muted});
+      cy += 14.0 * s;
     }
   }
 
@@ -1124,7 +1179,7 @@ export async function exportSVG(viewer, opts = {}) {
   const transparent = opts.background === "transparent";
   const pageBg = darkTheme ? BG_HEX : "#ffffff";
   const ink = darkTheme ? "#e9eef4" : "#111111";
-  const muted = darkTheme ? "#b3bdc9" : "#333333";
+  const muted = darkTheme ? "#b3bdc9" : "#2b2b2b";
   const spineCol = darkTheme ? "#b3bdc9" : "#111111";
 
   const fx = L.fx, fy = L.fyTop, fw = L.fw, fh = L.fh;
@@ -1138,85 +1193,86 @@ export async function exportSVG(viewer, opts = {}) {
 
   const xTickSvg = sc.xTicks.map(t => {
     const x = +(fx + t.frac * fw).toFixed(2);
-    return `<line x1="${x}" y1="${fy + fh}" x2="${x}" y2="${fy + fh - 4.5}" stroke="#ffffff" stroke-width="0.8"/>` +
-      `<line x1="${x}" y1="${fy}" x2="${x}" y2="${fy + 4.5}" stroke="#ffffff" stroke-width="0.8"/>` +
-      drawCMSvg(t.mathLabel, x, fy + fh + 11, 8.2, {align: "center", color: ink});
+    return `<line x1="${x}" y1="${fy + fh}" x2="${x}" y2="${fy + fh - 5.5}" stroke="#ffffff" stroke-width="1.0"/>` +
+      `<line x1="${x}" y1="${fy}" x2="${x}" y2="${fy + 5.5}" stroke="#ffffff" stroke-width="1.0"/>` +
+      drawCMSvg(t.mathLabel, x, fy + fh + 14.5, 10.5, {align: "center", color: ink});
   }).join("");
 
   const xMinorSvg = sc.xMinor.map(t => {
     const x = +(fx + t.frac * fw).toFixed(2);
-    return `<line x1="${x}" y1="${fy + fh}" x2="${x}" y2="${fy + fh - 2.2}" stroke="#ffffff" stroke-width="0.6"/>` +
-      `<line x1="${x}" y1="${fy}" x2="${x}" y2="${fy + 2.2}" stroke="#ffffff" stroke-width="0.6"/>`;
+    return `<line x1="${x}" y1="${fy + fh}" x2="${x}" y2="${fy + fh - 2.8}" stroke="#ffffff" stroke-width="0.7"/>` +
+      `<line x1="${x}" y1="${fy}" x2="${x}" y2="${fy + 2.8}" stroke="#ffffff" stroke-width="0.7"/>`;
   }).join("");
 
   const yTickSvg = sc.yTicks.map(t => {
     const y = +(fy + t.frac * fh).toFixed(2);
-    return `<line x1="${fx}" y1="${y}" x2="${fx + 4.5}" y2="${y}" stroke="#ffffff" stroke-width="0.8"/>` +
-      `<line x1="${fx + fw}" y1="${y}" x2="${fx + fw - 4.5}" y2="${y}" stroke="#ffffff" stroke-width="0.8"/>` +
-      drawCMSvg(t.mathLabel, fx - 5, y + 2.8, 8.2, {align: "right", color: ink});
+    return `<line x1="${fx}" y1="${y}" x2="${fx + 5.5}" y2="${y}" stroke="#ffffff" stroke-width="1.0"/>` +
+      `<line x1="${fx + fw}" y1="${y}" x2="${fx + fw - 5.5}" y2="${y}" stroke="#ffffff" stroke-width="1.0"/>` +
+      drawCMSvg(t.mathLabel, fx - 6.5, y + 3.6, 10.5, {align: "right", color: ink});
   }).join("");
 
   const yMinorSvg = sc.yMinor.map(t => {
     const y = +(fy + t.frac * fh).toFixed(2);
-    return `<line x1="${fx}" y1="${y}" x2="${fx + 2.2}" y2="${y}" stroke="#ffffff" stroke-width="0.6"/>` +
-      `<line x1="${fx + fw}" y1="${y}" x2="${fx + fw - 2.2}" y2="${y}" stroke="#ffffff" stroke-width="0.6"/>`;
+    return `<line x1="${fx}" y1="${y}" x2="${fx + 2.8}" y2="${y}" stroke="#ffffff" stroke-width="0.7"/>` +
+      `<line x1="${fx + fw}" y1="${y}" x2="${fx + fw - 2.8}" y2="${y}" stroke="#ffffff" stroke-width="0.7"/>`;
   }).join("");
 
   const linesSvg = lines.map(l => {
     const x1 = +(fx + l.x1).toFixed(2), y1 = +(fy + l.y1).toFixed(2);
     const x2 = +(fx + l.x2).toFixed(2), y2 = +(fy + l.y2).toFixed(2);
-    const sw = l.selected ? 2.0 : 1.05;
+    const sw = l.selected ? 2.2 : 1.1;
     const op = l.selected ? 0.92 : l.kind === "custom" ? 0.65 : l.kind === "generated" ? 0.45 : 0.25;
     return `<g data-sightline="${escXml(l.id)}">` +
       `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${l.color}" stroke-width="${sw}" stroke-opacity="${op}" stroke-linecap="round"/>` +
-      (l.selected ? `<circle cx="${x1}" cy="${y1}" r="2.2" fill="${l.color}"/><circle cx="${x2}" cy="${y2}" r="3.0" fill="${l.color}"/>` : "") +
+      (l.selected ? `<circle cx="${x1}" cy="${y1}" r="2.4" fill="${l.color}"/><circle cx="${x2}" cy="${y2}" r="3.2" fill="${l.color}"/>` : "") +
       `</g>`;
   }).join("");
 
   const guideSvg = (opts.guides !== false && r200Px > 14 && r200Px < fw * 0.68)
-    ? `<circle cx="${fx + fw / 2}" cy="${fy + fh / 2}" r="${r200Px.toFixed(2)}" fill="none" stroke="#d9c38c" stroke-width="0.9" stroke-dasharray="4 3" stroke-opacity="0.85"/>` +
-      drawCMSvg(`$R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc`, fx + fw / 2 + r200Px * 0.707 + 4, fy + fh / 2 - r200Px * 0.707 - 3, 7.8, {color: "#d9c38c"})
+    ? `<circle cx="${fx + fw / 2}" cy="${fy + fh / 2}" r="${r200Px.toFixed(2)}" fill="none" stroke="#d9c38c" stroke-width="1.05" stroke-dasharray="4.5 3.2" stroke-opacity="0.85"/>` +
+      drawCMSvg(`$R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc`, fx + fw / 2 + r200Px * 0.707 + 5, fy + fh / 2 - r200Px * 0.707 - 4, 9.8, {color: "#d9c38c"})
     : "";
 
   const scaleBarW = +sc.barPx.toFixed(2);
-  const sbX = +(fx + fw - 14 - scaleBarW).toFixed(2), sbY = fy + fh - 14;
+  const sbX = +(fx + fw - 16 - scaleBarW).toFixed(2), sbY = fy + fh - 16;
   const scaleSvg = opts.scaleBar !== false
     ? `<g id="scale-bar">` +
-      `<path d="M${sbX} ${sbY - 3.5} V${sbY} H${(sbX + scaleBarW).toFixed(2)} V${sbY - 3.5}" fill="none" stroke="#05070b" stroke-opacity="0.75" stroke-width="3.0"/>` +
-      `<path d="M${sbX} ${sbY - 3.5} V${sbY} H${(sbX + scaleBarW).toFixed(2)} V${sbY - 3.5}" fill="none" stroke="#ffffff" stroke-width="1.3"/>` +
-      drawCMSvg(sc.label, sbX + scaleBarW / 2, sbY - 5.5, 8.2, {align: "center", color: "#ffffff"}) +
+      `<path d="M${sbX} ${sbY - 4.2} V${sbY} H${(sbX + scaleBarW).toFixed(2)} V${sbY - 4.2}" fill="none" stroke="#05070b" stroke-opacity="0.78" stroke-width="3.4"/>` +
+      `<path d="M${sbX} ${sbY - 4.2} V${sbY} H${(sbX + scaleBarW).toFixed(2)} V${sbY - 4.2}" fill="none" stroke="#ffffff" stroke-width="1.6"/>` +
+      drawCMSvg(sc.label, sbX + scaleBarW / 2, sbY - 7.0, 10.5, {align: "center", color: "#ffffff"}) +
       `</g>`
     : "";
 
+  const hdr = formatGalaxyHeaderLines(m);
   const stampSvg = opts.stamp !== false
-    ? drawCMSvg(`${m.sim}  ${m.noun} ${m.galId}  ($z = ${Number(m.z).toFixed(2)}$, $R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc)`, fx, fy - 7, 9.0, {align: "left", color: ink}) +
-      drawCMSvg(`${m.mode} mode`, fx + fw, fy - 7, 8.4, {align: "right", color: muted})
+    ? drawCMSvg(hdr.line1, fx + fw / 2, fy - 24, 11.4, {align: "center", color: ink}) +
+      drawCMSvg(hdr.line2, fx + fw / 2, fy - 9, 10.2, {align: "center", color: muted})
     : "";
 
   const cbX = L.cbX, cbY = fy, cbW = L.cbW, cbH = fh;
   const cbTicks = leg.ticks.map(t => {
     const ty = +(cbY + (1 - t.frac) * cbH).toFixed(2);
-    return `<line x1="${cbX}" y1="${ty}" x2="${cbX + 3.2}" y2="${ty}" stroke="#ffffff" stroke-width="0.75"/>` +
-      `<line x1="${cbX + cbW}" y1="${ty}" x2="${cbX + cbW - 3.2}" y2="${ty}" stroke="#ffffff" stroke-width="0.75"/>` +
-      drawCMSvg(t.mathLabel, cbX + cbW + 5, ty + 2.8, 8.2, {align: "left", color: ink});
+    return `<line x1="${cbX}" y1="${ty}" x2="${cbX + 4.0}" y2="${ty}" stroke="#ffffff" stroke-width="0.9"/>` +
+      `<line x1="${cbX + cbW}" y1="${ty}" x2="${cbX + cbW - 4.0}" y2="${ty}" stroke="#ffffff" stroke-width="0.9"/>` +
+      drawCMSvg(t.mathLabel, cbX + cbW + 6.5, ty + 3.6, 10.5, {align: "left", color: ink});
   }).join("");
 
   const cbMinors = leg.minorTicks.map(t => {
     const ty = +(cbY + (1 - t.frac) * cbH).toFixed(2);
-    return `<line x1="${cbX}" y1="${ty}" x2="${cbX + 1.8}" y2="${ty}" stroke="#ffffff" stroke-width="0.55"/>` +
-      `<line x1="${cbX + cbW}" y1="${ty}" x2="${cbX + cbW - 1.8}" y2="${ty}" stroke="#ffffff" stroke-width="0.55"/>`;
+    return `<line x1="${cbX}" y1="${ty}" x2="${cbX + 2.2}" y2="${ty}" stroke="#ffffff" stroke-width="0.65"/>` +
+      `<line x1="${cbX + cbW}" y1="${ty}" x2="${cbX + cbW - 2.2}" y2="${ty}" stroke="#ffffff" stroke-width="0.65"/>`;
   }).join("");
 
   const legendSvg = opts.legend !== false
     ? `<g id="colorbar">` +
-      `<rect x="${cbX}" y="${cbY}" width="${cbW}" height="${cbH}" fill="url(#cmap-grad)" stroke="${spineCol}" stroke-width="0.85"/>` +
+      `<rect x="${cbX}" y="${cbY}" width="${cbW}" height="${cbH}" fill="url(#cmap-grad)" stroke="${spineCol}" stroke-width="1.0"/>` +
       cbTicks + cbMinors +
-      drawCMSvg(leg.titleMath, cbX + cbW + 41, cbY + cbH / 2, 9.2, {align: "center", color: ink, rotateDeg: -90}) +
+      drawCMSvg(leg.titleMath, cbX + cbW + 50, cbY + cbH / 2, 12.2, {align: "center", color: ink, rotateDeg: -90}) +
       `</g>`
     : "";
 
   const capSvg = L.capLines.map((line, idx) =>
-    drawCMSvg(line, fx, fy + fh + L.xAxisSpace + 6 + idx * 11.5, 8.2, {align: "left", color: muted})
+    drawCMSvg(line, L.centerX, fy + fh + L.xAxisSpace + 8 + idx * 14.0, 9.8, {align: "center", color: muted})
   ).join("");
 
   const metaJson = JSON.stringify({
@@ -1246,13 +1302,13 @@ export async function exportSVG(viewer, opts = {}) {
     ${linesSvg}
     ${scaleSvg}
   </g>
-  <rect x="${fx}" y="${fy}" width="${fw}" height="${fh}" fill="none" stroke="${spineCol}" stroke-width="0.9"/>
+  <rect x="${fx}" y="${fy}" width="${fw}" height="${fh}" fill="none" stroke="${spineCol}" stroke-width="1.05"/>
   ${xTickSvg}
   ${xMinorSvg}
   ${yTickSvg}
   ${yMinorSvg}
-  ${drawCMSvg(`$\\Delta x\\ [\\mathrm{${sc.unitLabel}}]$`, fx + fw / 2, fy + fh + 25, 9.2, {align: "center", color: ink})}
-  ${drawCMSvg(`$\\Delta y\\ [\\mathrm{${sc.unitLabel}}]$`, fx - 27, fy + fh / 2, 9.2, {align: "center", color: ink, rotateDeg: -90})}
+  ${drawCMSvg(`$\\Delta x\\ [\\mathrm{${sc.unitLabel}}]$`, fx + fw / 2, fy + fh + 32, 12.2, {align: "center", color: ink})}
+  ${drawCMSvg(`$\\Delta y\\ [\\mathrm{${sc.unitLabel}}]$`, fx - 38, fy + fh / 2, 12.2, {align: "center", color: ink, rotateDeg: -90})}
   ${legendSvg}
   ${capSvg}
 </svg>`;
@@ -1328,7 +1384,7 @@ export async function exportPDF(viewer, opts = {}) {
   const darkTheme = opts.background === "dark";
   const transparent = opts.background === "transparent";
   const inkRgb = darkTheme ? [0.914, 0.933, 0.957] : [0.067, 0.067, 0.067];
-  const mutedRgb = darkTheme ? [0.702, 0.741, 0.788] : [0.200, 0.200, 0.200];
+  const mutedRgb = darkTheme ? [0.702, 0.741, 0.788] : [0.169, 0.169, 0.169];
   const spineRgb = darkTheme ? [0.702, 0.741, 0.788] : [0.067, 0.067, 0.067];
 
   if (!transparent) {
@@ -1345,7 +1401,7 @@ export async function exportPDF(viewer, opts = {}) {
     const cx = fx + fw / 2, cy = fy + fh / 2, r = r200Pt, k = 0.55228475 * r;
     cmds.push(
       "q", `${fx} ${fy} ${fw} ${fh} re W n`,
-      "0.851 0.765 0.549 RG", "0.9 w", "[4 3] 0 d",
+      "0.851 0.765 0.549 RG", "1.05 w", "[4.5 3.2] 0 d",
       `${(cx + r).toFixed(2)} ${cy.toFixed(2)} m`,
       `${(cx + r).toFixed(2)} ${(cy + k).toFixed(2)} ${(cx + k).toFixed(2)} ${(cy + r).toFixed(2)} ${cx.toFixed(2)} ${(cy + r).toFixed(2)} c`,
       `${(cx - k).toFixed(2)} ${(cy + r).toFixed(2)} ${(cx - r).toFixed(2)} ${(cy + k).toFixed(2)} ${(cx - r).toFixed(2)} ${cy.toFixed(2)} c`,
@@ -1353,82 +1409,81 @@ export async function exportPDF(viewer, opts = {}) {
       `${(cx + k).toFixed(2)} ${(cy - r).toFixed(2)} ${(cx + r).toFixed(2)} ${(cy - k).toFixed(2)} ${(cx + r).toFixed(2)} ${cy.toFixed(2)} c S`,
       "[] 0 d"
     );
-    drawCMPdf(cmds, `$R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc`, cx + r * 0.707 + 4, cy + r * 0.707 + 3, 7.8, {rgb: [0.851, 0.765, 0.549]});
+    drawCMPdf(cmds, `$R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc`, cx + r * 0.707 + 5, cy + r * 0.707 + 4, 9.8, {rgb: [0.851, 0.765, 0.549]});
     cmds.push("Q");
   }
 
   // Vector physical scale bar inside bottom-right of the 3D frame
   if (opts.scaleBar !== false) {
     const bw = +sc.barPx.toFixed(2);
-    const bx = +(fx + fw - 14 - bw).toFixed(2), by = fy + 14;
+    const bx = +(fx + fw - 16 - bw).toFixed(2), by = fy + 16;
     cmds.push(
-      "0.020 0.027 0.043 RG", "2.8 w",
-      `${bx} ${by + 3.5} m ${bx} ${by} l ${(bx + bw).toFixed(2)} ${by} l ${(bx + bw).toFixed(2)} ${by + 3.5} l S`,
-      "1 1 1 RG", "1.3 w",
-      `${bx} ${by + 3.5} m ${bx} ${by} l ${(bx + bw).toFixed(2)} ${by} l ${(bx + bw).toFixed(2)} ${by + 3.5} l S`
+      "0.020 0.027 0.043 RG", "3.4 w",
+      `${bx} ${by + 4.2} m ${bx} ${by} l ${(bx + bw).toFixed(2)} ${by} l ${(bx + bw).toFixed(2)} ${by + 4.2} l S`,
+      "1 1 1 RG", "1.6 w",
+      `${bx} ${by + 4.2} m ${bx} ${by} l ${(bx + bw).toFixed(2)} ${by} l ${(bx + bw).toFixed(2)} ${by + 4.2} l S`
     );
-    drawCMPdf(cmds, sc.label, bx + bw / 2, by + 5.5, 8.2, {align: "center", rgb: [1, 1, 1]});
+    drawCMPdf(cmds, sc.label, bx + bw / 2, by + 7.0, 10.5, {align: "center", rgb: [1, 1, 1]});
   }
 
-  // Sightlines legend inside top-left of the 3D frame
+  // Sightlines legend inside top-left of the 3D frame (larger 9.8 pt font)
   if (opts.sightlines !== false && m.snap.linesMode !== "none") {
     const items = [
-      [[0.914, 0.933, 0.957], "selected ray", 2.0],
-      [[0.553, 0.592, 0.651], "library", 1.1],
-      [[0.490, 0.698, 0.941], "generated", 1.1],
-      [[0.953, 0.604, 0.361], "custom", 1.1]
+      [[0.914, 0.933, 0.957], "selected ray", 2.2],
+      [[0.553, 0.592, 0.651], "library", 1.3],
+      [[0.490, 0.698, 0.941], "generated", 1.3],
+      [[0.953, 0.604, 0.361], "custom", 1.3]
     ];
-    const lx = fx + 10, ly = fy + fh - 13, rowH = 11.5;
+    const lx = fx + 12, ly = fy + fh - 16, rowH = 14.5;
     items.forEach(([col, label, lw], idx) => {
       const ry = ly - idx * rowH;
-      cmds.push(`${col[0]} ${col[1]} ${col[2]} RG`, `${lw} w`, `${lx} ${(ry + 2.8).toFixed(2)} m ${lx + 14} ${(ry + 2.8).toFixed(2)} l S`);
-      drawCMPdf(cmds, label, lx + 18, ry, 7.6, {rgb: [0.914, 0.933, 0.957]});
+      cmds.push(`${col[0]} ${col[1]} ${col[2]} RG`, `${lw} w`, `${lx} ${(ry + 3.4).toFixed(2)} m ${lx + 18} ${(ry + 3.4).toFixed(2)} l S`);
+      drawCMPdf(cmds, label, lx + 23, ry, 9.8, {rgb: [0.914, 0.933, 0.957]});
     });
   }
 
   // Stars & dust note inside bottom-left of the 3D frame when stars are active
   if (viewer.stars) {
-    const stTxt = m.snap.layers?.dust !== false ? "stars: $g, r, i$ asinh + 3D dust" : "stars: $g, r, i$ asinh";
-    drawCMPdf(cmds, stTxt, fx + 10, fy + 10, 7.6, {rgb: [0.851, 0.765, 0.549]});
+    const stTxt = m.snap.layers?.dust !== false ? `stars: $g, r, i$ asinh + 3D dust (${m.dustLawShort})` : "stars: $g, r, i$ asinh";
+    drawCMPdf(cmds, stTxt, fx + 12, fy + 13, 9.6, {rgb: [0.851, 0.765, 0.549]});
   }
 
   // 4-sided inward major and minor ticks on the 3D panel (white over dark 3D image per pubplot.py box_ticks)
-  cmds.push("1 1 1 RG", "0.8 w");
+  cmds.push("1 1 1 RG", "1.0 w");
   for (const t of sc.xTicks) {
     const x = +(fx + t.frac * fw).toFixed(2);
-    cmds.push(`${x} ${fy} m ${x} ${(fy + 4.5).toFixed(2)} l S`, `${x} ${fy + fh} m ${x} ${(fy + fh - 4.5).toFixed(2)} l S`);
-    drawCMPdf(cmds, t.mathLabel, x, fy - 11, 8.2, {align: "center", rgb: inkRgb});
+    cmds.push(`${x} ${fy} m ${x} ${(fy + 5.5).toFixed(2)} l S`, `${x} ${fy + fh} m ${x} ${(fy + fh - 5.5).toFixed(2)} l S`);
+    drawCMPdf(cmds, t.mathLabel, x, fy - 14.5, 10.5, {align: "center", rgb: inkRgb});
   }
-  cmds.push("1 1 1 RG", "0.6 w");
+  cmds.push("1 1 1 RG", "0.7 w");
   for (const t of sc.xMinor) {
     const x = +(fx + t.frac * fw).toFixed(2);
-    cmds.push(`${x} ${fy} m ${x} ${(fy + 2.2).toFixed(2)} l S`, `${x} ${fy + fh} m ${x} ${(fy + fh - 2.2).toFixed(2)} l S`);
+    cmds.push(`${x} ${fy} m ${x} ${(fy + 2.8).toFixed(2)} l S`, `${x} ${fy + fh} m ${x} ${(fy + fh - 2.8).toFixed(2)} l S`);
   }
-  cmds.push("1 1 1 RG", "0.8 w");
+  cmds.push("1 1 1 RG", "1.0 w");
   for (const t of sc.yTicks) {
     const y = +(fy + (1 - t.frac) * fh).toFixed(2);
-    cmds.push(`${fx} ${y} m ${(fx + 4.5).toFixed(2)} ${y} l S`, `${fx + fw} ${y} m ${(fx + fw - 4.5).toFixed(2)} ${y} l S`);
-    drawCMPdf(cmds, t.mathLabel, fx - 5, y - 2.8, 8.2, {align: "right", rgb: inkRgb});
+    cmds.push(`${fx} ${y} m ${(fx + 5.5).toFixed(2)} ${y} l S`, `${fx + fw} ${y} m ${(fx + fw - 5.5).toFixed(2)} ${y} l S`);
+    drawCMPdf(cmds, t.mathLabel, fx - 6.5, y - 3.6, 10.5, {align: "right", rgb: inkRgb});
   }
-  cmds.push("1 1 1 RG", "0.6 w");
+  cmds.push("1 1 1 RG", "0.7 w");
   for (const t of sc.yMinor) {
     const y = +(fy + (1 - t.frac) * fh).toFixed(2);
-    cmds.push(`${fx} ${y} m ${(fx + 2.2).toFixed(2)} ${y} l S`, `${fx + fw} ${y} m ${(fx + fw - 2.2).toFixed(2)} ${y} l S`);
+    cmds.push(`${fx} ${y} m ${(fx + 2.8).toFixed(2)} ${y} l S`, `${fx + fw} ${y} m ${(fx + fw - 2.8).toFixed(2)} ${y} l S`);
   }
 
   // Boxed 4-sided frame border
-  cmds.push(`${spineRgb[0]} ${spineRgb[1]} ${spineRgb[2]} RG`, "0.9 w", `${fx} ${fy} ${fw} ${fh} re S`);
+  cmds.push(`${spineRgb[0]} ${spineRgb[1]} ${spineRgb[2]} RG`, "1.05 w", `${fx} ${fy} ${fw} ${fh} re S`);
 
-  // Physical axis labels in Computer Modern
-  drawCMPdf(cmds, `$\\Delta x\\ [\\mathrm{${sc.unitLabel}}]$`, fx + fw / 2, fy - 25, 9.2, {align: "center", rgb: inkRgb});
-  drawCMPdf(cmds, `$\\Delta y\\ [\\mathrm{${sc.unitLabel}}]$`, fx - 27, fy + fh / 2, 9.2, {align: "center", rgb: inkRgb, rotateDeg: 90});
+  // Physical axis labels in Computer Modern (12.2 pt)
+  drawCMPdf(cmds, `$\\Delta x\\ [\\mathrm{${sc.unitLabel}}]$`, fx + fw / 2, fy - 32, 12.2, {align: "center", rgb: inkRgb});
+  drawCMPdf(cmds, `$\\Delta y\\ [\\mathrm{${sc.unitLabel}}]$`, fx - 38, fy + fh / 2, 12.2, {align: "center", rgb: inkRgb, rotateDeg: 90});
 
-  // Header stamp above the 3D panel
+  // Collective Galaxy Properties Header above the 3D panel (centered over the plot box, no "integral/volume mode")
   if (opts.stamp !== false) {
-    const headL = `${m.sim}  ${m.noun} ${m.galId}  ($z = ${Number(m.z).toFixed(2)}$, $R_{200\\mathrm{c}} = ${Math.round(m.R200c)}$ kpc)`;
-    const headR = `${m.mode} mode`;
-    drawCMPdf(cmds, headL, fx, fy + fh + 7, 9.0, {align: "left", rgb: inkRgb});
-    drawCMPdf(cmds, headR, fx + fw, fy + fh + 7, 8.4, {align: "right", rgb: mutedRgb});
+    const {line1, line2} = formatGalaxyHeaderLines(m);
+    drawCMPdf(cmds, line1, fx + fw / 2, fy + fh + 24, 11.4, {align: "center", rgb: inkRgb});
+    drawCMPdf(cmds, line2, fx + fw / 2, fy + fh + 9, 10.2, {align: "center", rgb: mutedRgb});
   }
 
   // Full-height Vertical Colorbar on the right of the 3D panel
@@ -1440,34 +1495,34 @@ export async function exportPDF(viewer, opts = {}) {
       cmds.push(`${(r / 255).toFixed(3)} ${(g / 255).toFixed(3)} ${(b / 255).toFixed(3)} rg`, `${cbX} ${ry} ${cbW} ${(sh + 0.35).toFixed(2)} re f`);
     });
     // Inward ticks on both left and right spines of the vertical colorbar
-    cmds.push("1 1 1 RG", "0.75 w");
+    cmds.push("1 1 1 RG", "0.9 w");
     for (const tk of leg.ticks) {
       const ty = +(cbY + tk.frac * cbH).toFixed(2);
       cmds.push(
-        `${cbX} ${ty} m ${(cbX + 3.2).toFixed(2)} ${ty} l S`,
-        `${cbX + cbW} ${ty} m ${(cbX + cbW - 3.2).toFixed(2)} ${ty} l S`
+        `${cbX} ${ty} m ${(cbX + 4.0).toFixed(2)} ${ty} l S`,
+        `${cbX + cbW} ${ty} m ${(cbX + cbW - 4.0).toFixed(2)} ${ty} l S`
       );
-      drawCMPdf(cmds, tk.mathLabel, cbX + cbW + 5, ty - 2.8, 8.2, {align: "left", rgb: inkRgb});
+      drawCMPdf(cmds, tk.mathLabel, cbX + cbW + 6.5, ty - 3.6, 10.5, {align: "left", rgb: inkRgb});
     }
-    cmds.push("1 1 1 RG", "0.55 w");
+    cmds.push("1 1 1 RG", "0.65 w");
     for (const tk of leg.minorTicks) {
       const ty = +(cbY + tk.frac * cbH).toFixed(2);
       cmds.push(
-        `${cbX} ${ty} m ${(cbX + 1.8).toFixed(2)} ${ty} l S`,
-        `${cbX + cbW} ${ty} m ${(cbX + cbW - 1.8).toFixed(2)} ${ty} l S`
+        `${cbX} ${ty} m ${(cbX + 2.2).toFixed(2)} ${ty} l S`,
+        `${cbX + cbW} ${ty} m ${(cbX + cbW - 2.2).toFixed(2)} ${ty} l S`
       );
     }
-    cmds.push(`${spineRgb[0]} ${spineRgb[1]} ${spineRgb[2]} RG`, "0.85 w", `${cbX} ${cbY} ${cbW} ${cbH} re S`);
-    // Rotated vertical colorbar title with LaTeX math & square-bracket units
-    drawCMPdf(cmds, leg.titleMath, cbX + cbW + 41, cbY + cbH / 2, 9.2, {align: "center", rgb: inkRgb, rotateDeg: 90});
+    cmds.push(`${spineRgb[0]} ${spineRgb[1]} ${spineRgb[2]} RG`, "1.0 w", `${cbX} ${cbY} ${cbW} ${cbH} re S`);
+    // Rotated vertical colorbar title with LaTeX math & square-bracket units (12.2 pt)
+    drawCMPdf(cmds, leg.titleMath, cbX + cbW + 50, cbY + cbH / 2, 12.2, {align: "center", rgb: inkRgb, rotateDeg: 90});
   }
 
-  // Publication caption block below the x-axis label
+  // Centered publication caption block below the x-axis label
   if (L.capLines.length) {
-    let cy = fy - L.xAxisSpace - 6;
+    let cy = fy - L.xAxisSpace - 8;
     for (const line of L.capLines) {
-      drawCMPdf(cmds, line, fx, cy, 8.2, {align: "left", rgb: mutedRgb});
-      cy -= 11.5;
+      drawCMPdf(cmds, line, L.centerX, cy, 9.8, {align: "center", rgb: mutedRgb});
+      cy -= 14.0;
     }
   }
 
@@ -1518,14 +1573,15 @@ export async function exportPDF(viewer, opts = {}) {
 
 /* ---- 4. Client-Side Publication Spectra Figure Export (PDF & 400 dpi PNG when server is offline or non-default galaxy) ---- */
 export async function exportSpectraPublication(spectraCanvas, meta = {}, fmt = "pdf") {
-  const PW = 511.2; // 7.10 in * 72 pt/in
+  const PW = 540.0; // 7.50 in * 72 pt/in
   const cw = spectraCanvas.width || 800, ch = spectraCanvas.height || 600;
-  const fx = 42, fw = 452, fh = +(fw * (ch / Math.max(1, cw))).toFixed(1);
-  const topPad = 24, botPad = 36;
+  const fx = 52, fw = 466, fh = +(fw * (ch / Math.max(1, cw))).toFixed(1);
+  const topPad = 32, botPad = 42;
   const capText = meta.caption || `Figure: ${meta.sim || "TNG50-1"} ${meta.noun || "subhalo"} ${meta.galId || ""} (${meta.sightlineId || "sightline"}). Absorption spectra across [${meta.vLo ?? -400}, ${meta.vHi ?? 400}] km s$^{-1}$ relative to $V_{\\mathrm{sys}}$.`;
-  const capLines = wrapCMText(capText, 8.2, fw);
-  const capSpace = capLines.length * 11.5 + 10;
+  const capLines = wrapCMText(capText, 9.8, 464);
+  const capSpace = capLines.length * 14.0 + 14;
   const PH = +(topPad + fh + botPad + capSpace).toFixed(1);
+  const centerX = +(PW / 2).toFixed(1);
 
   if (fmt === "png") {
     const dpi = 400, s = dpi / 72;
@@ -1535,24 +1591,24 @@ export async function exportSpectraPublication(spectraCanvas, meta = {}, fmt = "
     const ctx = cv.getContext("2d");
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, W, H);
-    drawCMCanvas(ctx, `${meta.sim || "TNG50-1"}  ${meta.noun || "Subhalo"} ${meta.galId || ""}  Sightline ${meta.sightlineId || ""}`, fx * s, (topPad - 7) * s, 9.0 * s, {color: "#111111"});
+    drawCMCanvas(ctx, `${meta.sim || "TNG50-1"}    ${meta.noun || "Subhalo"} ${meta.galId || ""}    Sightline ${meta.sightlineId || ""}`, (fx + fw / 2) * s, (topPad - 10) * s, 11.2 * s, {align: "center", color: "#111111"});
     ctx.drawImage(spectraCanvas, fx * s, topPad * s, fw * s, fh * s);
     ctx.strokeStyle = "#111111";
-    ctx.lineWidth = 0.9 * s;
+    ctx.lineWidth = 1.05 * s;
     ctx.strokeRect(fx * s, topPad * s, fw * s, fh * s);
-    drawCMCanvas(ctx, "$V_{\\mathrm{LOS}} - V_{\\mathrm{sys}}\\ [\\mathrm{km\\,s^{-1}}]$", (fx + fw / 2) * s, (topPad + fh + 22) * s, 9.2 * s, {align: "center", color: "#111111"});
-    drawCMCanvas(ctx, "Normalized flux", (fx - 26) * s, (topPad + fh / 2) * s, 9.2 * s, {align: "center", color: "#111111", rotateDeg: -90});
-    let cy = (topPad + fh + botPad + 2) * s;
+    drawCMCanvas(ctx, "$V_{\\mathrm{LOS}} - V_{\\mathrm{sys}}\\ [\\mathrm{km\\,s^{-1}}]$", (fx + fw / 2) * s, (topPad + fh + 28) * s, 12.0 * s, {align: "center", color: "#111111"});
+    drawCMCanvas(ctx, "Normalized flux", (fx - 32) * s, (topPad + fh / 2) * s, 12.0 * s, {align: "center", color: "#111111", rotateDeg: -90});
+    let cy = (topPad + fh + botPad + 4) * s;
     for (const line of capLines) {
-      drawCMCanvas(ctx, line, fx * s, cy, 8.2 * s, {color: "#333333"});
-      cy += 11.5 * s;
+      drawCMCanvas(ctx, line, centerX * s, cy, 9.8 * s, {align: "center", color: "#2b2b2b"});
+      cy += 14.0 * s;
     }
     const rawBlob = await new Promise(res => cv.toBlob(res, "image/png"));
     const arr = new Uint8Array(await rawBlob.arrayBuffer());
     return new Blob([injectPngDpi(arr, 400)], {type: "image/png"});
   }
 
-  // Vector PDF 1.4 with Computer Modern axes & caption
+  // Vector PDF 1.4 with Computer Modern axes & centered caption
   const ctx = spectraCanvas.getContext("2d");
   const rgba = ctx.getImageData(0, 0, cw, ch).data;
   const rgb = new Uint8Array(cw * ch * 3);
@@ -1566,14 +1622,14 @@ export async function exportSpectraPublication(spectraCanvas, meta = {}, fmt = "
   const fy = +(botPad + capSpace).toFixed(1);
   const cmds = ["1 1 1 rg", `0 0 ${PW} ${PH} re f`];
   cmds.push("q", `${fw} 0 0 ${fh} ${fx} ${fy} cm`, "/Im0 Do", "Q");
-  cmds.push("0.067 0.067 0.067 RG", "0.9 w", `${fx} ${fy} ${fw} ${fh} re S`);
-  drawCMPdf(cmds, `${meta.sim || "TNG50-1"}  ${meta.noun || "Subhalo"} ${meta.galId || ""}  Sightline ${meta.sightlineId || ""}`, fx, fy + fh + 7, 9.0, {rgb: [0.07, 0.07, 0.07]});
-  drawCMPdf(cmds, "$V_{\\mathrm{LOS}} - V_{\\mathrm{sys}}\\ [\\mathrm{km\\,s^{-1}}]$", fx + fw / 2, fy - 22, 9.2, {align: "center", rgb: [0.07, 0.07, 0.07]});
-  drawCMPdf(cmds, "Normalized flux", fx - 26, fy + fh / 2, 9.2, {align: "center", rgb: [0.07, 0.07, 0.07], rotateDeg: 90});
-  let cy = fy - botPad - 2;
+  cmds.push("0.067 0.067 0.067 RG", "1.05 w", `${fx} ${fy} ${fw} ${fh} re S`);
+  drawCMPdf(cmds, `${meta.sim || "TNG50-1"}    ${meta.noun || "Subhalo"} ${meta.galId || ""}    Sightline ${meta.sightlineId || ""}`, fx + fw / 2, fy + fh + 10, 11.2, {align: "center", rgb: [0.07, 0.07, 0.07]});
+  drawCMPdf(cmds, "$V_{\\mathrm{LOS}} - V_{\\mathrm{sys}}\\ [\\mathrm{km\\,s^{-1}}]$", fx + fw / 2, fy - 28, 12.0, {align: "center", rgb: [0.07, 0.07, 0.07]});
+  drawCMPdf(cmds, "Normalized flux", fx - 32, fy + fh / 2, 12.0, {align: "center", rgb: [0.07, 0.07, 0.07], rotateDeg: 90});
+  let cy = fy - botPad - 4;
   for (const line of capLines) {
-    drawCMPdf(cmds, line, fx, cy, 8.2, {rgb: [0.2, 0.2, 0.2]});
-    cy -= 11.5;
+    drawCMPdf(cmds, line, centerX, cy, 9.8, {align: "center", rgb: [0.17, 0.17, 0.17]});
+    cy -= 14.0;
   }
   const contentBytes = new TextEncoder().encode(cmds.join("\n") + "\n");
   const compressedContent = await deflateBytes(contentBytes);
