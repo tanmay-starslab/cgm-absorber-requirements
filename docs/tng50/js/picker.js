@@ -100,7 +100,7 @@ export function attachPicker(viewer, root, app) {
     let id = null; if (v && v.ok) { try { id = await customId(v.p0, v.p1); } catch { id = null; } rows.push(["id", id || "—"]); }
     if (seq !== refreshSeq) return v;
     read.textContent = ""; for (const [k, val] of rows) read.appendChild(h("div", {}, h("b", {text: k}), h("span", {class: "num", text: val})));
-    const online = !!api();
+    const online = !!api() || !!app.config?.viz;
     bSub.disabled = !(v && v.ok) || !online || !!(app.getState().job);
     bSub.dataset.tip = !online ? "Needs a sightline server; none is online" : v && !v.ok ? "Fix the endpoints first; the message below says why" : SUB_TIP;
     if (v && !v.ok) setMsg(v.errors.join("; "), "bad");
