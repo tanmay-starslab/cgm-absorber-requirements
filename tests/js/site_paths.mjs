@@ -55,14 +55,15 @@ const ship = build("ship");
 check(!ship.err, `shipped index (${IX.schema}, picker ${JSON.stringify(IX.picker || "off")}) builds${ship.err ? ": " + ship.err.slice(0, 300) : ""}`);
 if (!ship.err && IX.picker !== "cases") check(!casePages(ship.out).length, `shipped index emits no case path (found: ${casePages(ship.out).join(", ") || "none"})`);
 if (!ship.err) {   // ux(a): the shared tokens.css and self-hosted fonts resolve from every page; fonts cached for a year
-  const miss = [["index.html", "/"], ["requirements/index.html", "/requirements/"], [`${STORY}/index.html`, `/${STORY}/`]].flatMap(([f, base]) =>
+  const miss = [["index.html", "/"], ["detect/index.html", "/detect/"], ["requirements/index.html", "/requirements/"], [`${STORY}/index.html`, `/${STORY}/`]].flatMap(([f, base]) =>
     [...readFileSync(join(ship.out, f), "utf8").matchAll(/href="([^"]*(?:tokens\.css|\.woff2))"/g)].map(m => new URL(m[1], "http://x" + base).pathname)
       .filter(p => !existsSync(join(ship.out, p))).map(p => `${f}: ${p}`));
   check(!miss.length, `font preloads and tokens.css resolve in dist${miss.length ? ": " + miss.join(", ") : ""}`);
   check(/^\/fonts\/\*\n {2}Cache-Control: public, max-age=31536000, immutable$/m.test(readFileSync(join(ship.out, "_headers"), "utf8")), "dist/_headers caches /fonts/* for a year");
-  // Detect & Resolve reuses the explorer's page.css and liquidtabs.js: every tng50/ reference is rewritten to the site root
-  const dr = readFileSync(join(ship.out, "requirements/index.html"), "utf8"), left = [...dr.matchAll(/(?:href|src)="tng50\/[^"]*"|from "tng50\/[^"]*"/g)].map(m => m[0]);
-  check(!left.length && existsSync(join(ship.out, "css/page.css")) && existsSync(join(ship.out, "js/liquidtabs.js")), `requirements page links resolve to the site root${left.length ? ": " + left.join(", ") : ""}`);
+  // Detect & Resolve reuses the explorer's page.css and liquidtabs.js at /detect/ (and legacy /requirements/): every tng50/ reference is rewritten to the site root
+  const dr = readFileSync(join(ship.out, "detect/index.html"), "utf8"), left = [...dr.matchAll(/(?:href|src)="tng50\/[^"]*"|from "tng50\/[^"]*"/g)].map(m => m[0]);
+  check(!left.length && existsSync(join(ship.out, "requirements/index.html")) && existsSync(join(ship.out, "observe/index.html")) && existsSync(join(ship.out, "css/page.css")) && existsSync(join(ship.out, "js/liquidtabs.js")), `detect (/detect/, /observe/, /requirements/) page links resolve to the site root${left.length ? ": " + left.join(", ") : ""}`);
+  check(readFileSync(join(ship.out, "index.html"), "utf8").includes('id="req-link"') && readFileSync(join(ship.out, "index.html"), "utf8").includes('href="/detect/"'), "dist index.html links #req-link to /detect/");
 }
 if (IX.picker === "cases") note("shipped index has picker \"cases\": its listed stories get paths (checked below with the test index)");
 /* perf R5 dist transforms: gzipped sightline bins that inflate to the repository's bytes, per-sightline component slices

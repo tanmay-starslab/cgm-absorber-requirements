@@ -2,9 +2,9 @@
 // Builds the Cloudflare site (galaxies.tanmaysingh.uk) from docs/ into dist/, no dependencies:
 //   /                                   the TNG50 explorer          (docs/tng50/)
 //   /learn/how-a-spectrum-is-made/      the explainer               (docs/tng50/learn/...)
-//   /requirements/                      Detect & Resolve            (docs/index.html)
-// The relative links inside the explorer and the explainer already work at this layout; only the two links between
-// Detect & Resolve and the explorer are rewritten. dist/_redirects keeps old /tng50/... paths working.
+//   /detect/                            Detect & Resolve            (docs/index.html, also served at /observe/ and /requirements/)
+// The relative links inside the explorer and the explainer already work at this layout; only the links between
+// Detect & Resolve and the explorer are rewritten. dist/_redirects keeps old /tng50/... and /requirements/ paths working.
 //   /learn/how-a-spectrum-is-made/<id>/ one page per listed Tier A story, only when data/index.json has picker "cases"
 // Used by Cloudflare Workers Builds (build command: node scripts/build_site.mjs) and locally.
 // Test hooks (tests/js/site_paths.mjs): BUILD_SITE_OUT (output dir), BUILD_SITE_INDEX (an index.json used as the shipped one).
@@ -23,17 +23,21 @@ rmSync(OUT, {recursive: true, force: true});
 mkdirSync(OUT, {recursive: true});
 cpSync(join(SRC, "tng50"), OUT, {recursive: true, filter: src => !skip(src)});
 
-// Detect & Resolve at /requirements/: its links to tng50/... now point at the site root
-mkdirSync(join(OUT, "requirements"), {recursive: true});
+// Detect & Resolve at /detect/ (with /observe/ and /requirements/ also populated so every short or legacy URL serves HTTP 200):
 let dr = readFileSync(join(SRC, "index.html"), "utf8");
 dr = dr.replaceAll('href="tng50/learn/', 'href="/learn/').replaceAll('href="tng50/"', 'href="/"').replaceAll('href="tng50/favicon.ico"', 'href="/favicon.ico"').replaceAll('href="tng50/img/icon/', 'href="/img/icon/').replaceAll('href="tng50/site.webmanifest"', 'href="/site.webmanifest"')
   .replaceAll('href="tng50/css/', 'href="/css/').replaceAll('href="tng50/fonts/', 'href="/fonts/')   // shared tokens.css, page.css and fonts
   .replaceAll('from "tng50/js/', 'from "/js/');                                            // the explorer's liquidtabs.js
-writeFileSync(join(OUT, "requirements", "index.html"), dr);
+for (const slug of ["detect", "observe", "requirements"]) {
+  mkdirSync(join(OUT, slug), {recursive: true});
+  writeFileSync(join(OUT, slug, "index.html"), dr);
+}
 
-// the explorer's companion link (was ../ on GitHub Pages)
+// the explorer's companion links (were ../ on GitHub Pages)
 const ix = join(OUT, "index.html");
-writeFileSync(ix, readFileSync(ix, "utf8").replaceAll('<a href="../">Detect and resolve', '<a href="/requirements/">Detect and resolve'));
+writeFileSync(ix, readFileSync(ix, "utf8").replaceAll('href="../" data-req=""', 'href="/detect/" data-req=""')
+  .replaceAll('data-req="" href="../"', 'data-req="" href="/detect/"')
+  .replaceAll('<a href="../">Detect and resolve', '<a href="/detect/">Detect and resolve'));
 
 // perf R5, dist only (docs/ keeps the raw files the tests and the local server read):
 //  - data/s/*.bin gzipped in place (about 72 -> 9 kB each; js/app.js and the explainer's engine.js fetchBin inflate gzip magic);

@@ -94,7 +94,10 @@ const run = (C, frames, t0 = 0, dt = 1000 / 12) => frames.map((f, i) => C.update
   const o = run(C, F), moved = o.slice(5).reduce((a, r) => a + r.yaw, 0);
   check(o.every(r => r.state === "rotate") && moved > 1 && o.every(r => !r.action), `controller: an open palm moving to the person's right drags the view right (${moved.toFixed(1)} deg), no action`);
   const still = run(C, Array.from({length: 12}, () => ({lm: hand(0.48, 0.5), g: "Open_Palm", score: 0.9})), 2000);
-  check(still.slice(6).every(r => Math.abs(r.yaw) < 1e-9 && Math.abs(r.pitch) < 1e-9), "controller: the view stops when the hand stops"); }
+  check(still.slice(6).every(r => Math.abs(r.yaw) < 1e-9 && Math.abs(r.pitch) < 1e-9), "controller: the view stops when the hand stops");
+  const C2 = handController(), F2 = Array.from({length: 8}, (_, i) => ({lm: hand(0.6 - 0.01 * i, 0.5 - 0.01 * i), g: i % 2 ? "None" : "Open_Palm", score: 0.9}));
+  const o2 = run(C2, F2);
+  check(o2[1].yaw > 0 && o2.slice(1).every(r => r.state === "rotate" && r.yaw > 0), "controller: open palm rotates from frame 2 without dropping out when MediaPipe reports None mid-move"); }
 { const C = handController(), F = [];
   for (let i = 0; i < 4; i++) F.push({lm: hand(0.5, 0.5, 0.2, 0.2), g: "None", score: 0.5});
   for (let i = 0; i < 10; i++) F.push({lm: hand(0.5, 0.5, 0.2 + 0.006 * i, 0.2), g: "None", score: 0.5});

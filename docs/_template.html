@@ -9,9 +9,9 @@
 <link rel="apple-touch-icon" href="tng50/img/icon/icon-180.png">
 <link rel="manifest" href="tng50/site.webmanifest">
 <meta name="description" content="The S/N and spectral resolution needed to detect and resolve circumgalactic absorbers in twelve transitions.">
-<link rel="canonical" href="https://galaxies.tanmaysingh.uk/requirements/">
+<link rel="canonical" href="https://galaxies.tanmaysingh.uk/detect/">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://galaxies.tanmaysingh.uk/requirements/">
+<meta property="og:url" content="https://galaxies.tanmaysingh.uk/detect/">
 <meta property="og:title" content="Detect and resolve: CGM absorbers">
 <meta property="og:description" content="The S/N and spectral resolution needed to detect and resolve circumgalactic absorbers in twelve transitions.">
 <meta property="og:image" content="https://galaxies.tanmaysingh.uk/img/og/explorer.jpg">
@@ -404,7 +404,8 @@ function paintIon() {   // the line colour drives the profile curves, the chips 
   const o = ion(); document.documentElement.style.setProperty("--truth", ionCol(o));
   $("#ions").querySelectorAll(".chip").forEach(b => { b.style.setProperty("--ic", ionCol(ions[+b.dataset.i])); b.setAttribute("aria-pressed", +b.dataset.i === S.i); });
   const k = regKey(o), inExplorer = k in ION_COLORS, a = $("#go-explorer");
-  a.href = EXPLORER + (inExplorer ? `#ions=${k}&lay=1` : ""); a.setAttribute("aria-disabled", !inExplorer); a.tabIndex = inExplorer ? 0 : -1;
+  const rBand = o.lam < 100 ? "xray" : o.lam < 912 ? "euv" : "uv", rVal = Math.round(S.R), snVal = Math.round(S.snr);
+  a.href = EXPLORER + (inExplorer ? `#ions=${k}&lay=1&R=${rBand}:${rVal},${rVal}&sn=${snVal},${snVal}` : ""); a.setAttribute("aria-disabled", !inExplorer); a.tabIndex = inExplorer ? 0 : -1;
   $("#go-ion").textContent = o.ion; $("#dk-ion").textContent = o.ion;
   const cover = new Set(instrFor(o.lam).map(m => m.label));
   $("#presets").querySelectorAll("[data-r]").forEach(b => { const on = cover.has(b.dataset.label); b.classList.toggle("off", !on);
@@ -425,6 +426,11 @@ function writeOutputs() {
   $("#dk-R").textContent = S.R >= 1e4 ? fmt(S.R / 1e3, S.R < 1e5 ? 1 : 0).replace(/\.0$/, "") + "k" : fmt(S.R); $("#dk-S").textContent = $("#oS").textContent;
   $("#presets").querySelectorAll("[data-r]").forEach(b => b.setAttribute("aria-pressed", Math.abs(S.R - +b.dataset.r) < 0.5));
   document.querySelectorAll("#side input[type=range]").forEach(el => { const lo = +el.min, hi = +el.max; el.style.setProperty("--pc", (hi > lo ? 100 * (+el.value - lo) / (hi - lo) : 0) + "%"); });
+  const o = ion(), k = regKey(o);
+  if (k in ION_COLORS) {
+    const rBand = o.lam < 100 ? "xray" : o.lam < 912 ? "euv" : "uv", rVal = Math.round(S.R), snVal = Math.round(S.snr);
+    $("#go-explorer").href = EXPLORER + `#ions=${k}&lay=1&R=${rBand}:${rVal},${rVal}&sn=${snVal},${snVal}`;
+  }
 }
 [["#cR", v => S.R = Math.pow(10, v)], ["#cS", v => S.snr = Math.pow(10, v)], ["#cN", v => S.logN = v], ["#cB", v => S.b = Math.pow(10, v)], ["#cV", v => S.dv = Math.pow(10, v)]]
   .forEach(([id, set]) => $(id).addEventListener("input", e => { set(+e.target.value); writeOutputs(); update(); }));
@@ -722,7 +728,17 @@ function update(full) {
   if (pending) return; pending = true;
   requestAnimationFrame(() => { pending = false; if (!anim1) draw1(); else draw1(); compute2(full ? 220 : 120); draw2(); drawMaps(); drawTable(); });
 }
-buildIonChips(); defaults(); paintIon(); syncControls();
+function applyHash() {
+  const h = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const ik = h.get("ion");
+  if (ik) { const idx = ions.findIndex(o => o.key === ik || regKey(o) === ik); if (idx >= 0) S.i = idx; }
+  defaults();
+  const r = +h.get("R"), sn = +h.get("sn");
+  if (Number.isFinite(r) && r > 0) S.R = clamp(r, 1e3, 1e5);
+  if (Number.isFinite(sn) && sn > 0) S.snr = clamp(sn, 3, 100);
+}
+buildIonChips(); applyHash(); paintIon(); syncControls();
+addEventListener("hashchange", () => { applyHash(); paintIon(); syncControls(); update(true); });
 stage1 = 3; update(true);
 window.addEventListener("resize", () => update());
 new MutationObserver(() => { paintIon(); update(); }).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
