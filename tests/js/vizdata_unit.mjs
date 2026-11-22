@@ -77,9 +77,10 @@ const M = JSON.parse(readFileSync(join(ROOT, "docs/tng50/data/viz/manifest_v2.js
   check(vsrc.includes('id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label>'),
     "viewer3d.js declares #v3-dust checkbox in star brightness details with <= 12-word data-tip");
   check(vsrc.includes('id="v3-dust-law"') && vsrc.includes("DUST_LAWS") && vsrc.includes("RM.uniforms.uDust = {value: 1.0}") &&
-        vsrc.includes("uDustVec") && vsrc.includes("[0.68, 0.89, 1.17]") && vsrc.includes("[0.65, 0.84, 1.19]") &&
+        vsrc.includes("uDustVec") && vsrc.includes("uDustScat") && vsrc.includes("dustDiskKv") &&
+        vsrc.includes("[0.58, 0.78, 1.15]") && vsrc.includes("[0.68, 0.89, 1.17]") && vsrc.includes("[0.65, 0.84, 1.19]") &&
         vsrc.includes("(-4.5 + sa * 6.0)"),
-    "viewer3d.js patches RM.material.fragmentShader with uDust, uDustVec and selectable Temet/Calzetti/Cardelli/Pei dust laws");
+    "viewer3d.js patches RM.material.fragmentShader with uDust, uDustVec, uDustScat, dustDiskKv and selectable SKIRT/Temet/Calzetti/Cardelli/Pei dust laws");
   // Verify the shader patch matches target strings in raymarch.js FRAG
   const patched = FRAG
     .replace("in vec3 vPos;", "uniform float uDust; in vec3 vPos;")

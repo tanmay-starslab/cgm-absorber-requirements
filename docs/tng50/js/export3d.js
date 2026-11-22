@@ -386,6 +386,7 @@ export function wrapCMText(str, fontSizePt, maxWidthPt) {
 
 /* ---- Scene metadata & naming helpers ---- */
 const DUST_LAW_NAMES = {
+  skirt: "SKIRT (THEMIS + Henyey-Greenstein scattering)",
   temet: "Temet MW (Cardelli+89 + scattering)",
   calzetti: "Calzetti+00 starburst",
   cardelli: "Cardelli+89 Milky Way",
@@ -393,6 +394,7 @@ const DUST_LAW_NAMES = {
 };
 
 const DUST_LAW_SHORT = {
+  skirt: "SKIRT THEMIS",
   temet: "Cardelli+89 MW",
   calzetti: "Calzetti+00",
   cardelli: "CCM89 MW",
@@ -422,9 +424,9 @@ export function sceneMeta(viewer) {
   const logMstar = g.log_Mstar ?? g.logMstar ?? (Number.isFinite(+rawMstar) && +rawMstar > 0 ? +(Math.log10(+rawMstar)).toFixed(2) : null);
   const logM200c = g.log_M200c ?? g.logM200c ?? (Number.isFinite(+rawM200c) && +rawM200c > 0 ? +(Math.log10(+rawM200c)).toFixed(2) : null);
   const sfr = gixEntry?.SFR ?? g.SFR_Msun_yr ?? g.SFR ?? null;
-  const dustLaw = snap.layers?.dustLaw || "temet";
-  const dustLawName = DUST_LAW_NAMES[dustLaw] || DUST_LAW_NAMES.temet;
-  const dustLawShort = DUST_LAW_SHORT[dustLaw] || DUST_LAW_SHORT.temet;
+  const dustLaw = snap.layers?.dustLaw || "skirt";
+  const dustLawName = DUST_LAW_NAMES[dustLaw] || DUST_LAW_NAMES.skirt;
+  const dustLawShort = DUST_LAW_SHORT[dustLaw] || DUST_LAW_SHORT.skirt;
   return {
     prefix, sim: simRaw, isFire, snapshot, noun, nounLower, galId, z, species, mode,
     R200c, logMstar, logM200c, sfr, dustLaw, dustLawName, dustLawShort, snap, app

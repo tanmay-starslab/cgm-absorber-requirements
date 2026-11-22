@@ -630,7 +630,7 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
-      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div><div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div><div class="v3c-row"><label for="v3-dust-law">dust law</label><select id="v3-dust-law" data-tip="Dust extinction law: Temet MW, Calzetti, Cardelli MW, or Pei"><option value="temet">Temet MW (Cardelli+89)</option><option value="calzetti">Calzetti+00 starburst</option><option value="cardelli">Milky Way (CCM89)</option><option value="pei">FIRE Studio (Pei+92)</option></select></div></details>
+      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div><div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div><div class="v3c-row"><label for="v3-dust-law">dust law</label><select id="v3-dust-law" data-tip="Dust radiative transfer law: SKIRT, Temet MW, Calzetti, CCM89, or Pei"><option value="skirt">SKIRT (THEMIS + HG)</option><option value="temet">Temet MW (Cardelli+89)</option><option value="calzetti">Calzetti+00 starburst</option><option value="cardelli">Milky Way (CCM89)</option><option value="pei">FIRE Studio (Pei+92)</option></select></div></details>
       <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
     <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
@@ -701,41 +701,72 @@ async function create(app, opts = {}) {
   let STAR_L = ["S0", "S1", "S2", "S3", "S4"].filter(L => manifest?.levels?.[L]); if (!STAR_L.length) STAR_L = STAR_L_DEF;
   const nCube = manifest ? (manifest.levels.L1?.n || manifest.levels.L0?.n || 256) : 256;
   const DUST_LAWS = {
-    temet:    {vec: [0.68, 0.89, 1.17], label: "Temet MW (Cardelli+89 + scattering)"},
-    calzetti: {vec: [0.73, 0.89, 1.16], label: "Calzetti+00 starburst"},
-    cardelli: {vec: [0.66, 0.88, 1.22], label: "Cardelli+89 Milky Way"},
-    pei:      {vec: [0.65, 0.84, 1.19], label: "FIRE Studio (Pei+92)"}
+    skirt:    {vec: [0.58, 0.78, 1.15], scat: 0.45, label: "SKIRT (THEMIS + HG scattering)"},
+    temet:    {vec: [0.68, 0.89, 1.17], scat: 0.25, label: "Temet MW (Cardelli+89 + scattering)"},
+    calzetti: {vec: [0.73, 0.89, 1.16], scat: 0.15, label: "Calzetti+00 starburst"},
+    cardelli: {vec: [0.66, 0.88, 1.22], scat: 0.00, label: "Cardelli+89 Milky Way"},
+    pei:      {vec: [0.65, 0.84, 1.19], scat: 0.00, label: "FIRE Studio (Pei+92)"}
   };
   const RM = makeMaterial(T, {n: nCube}), U = RM.uniforms;
   RM.uniforms.uDust = {value: 1.0};
-  RM.uniforms.uDustVec = {value: new T.Vector3(...DUST_LAWS.temet.vec)};
+  RM.uniforms.uDustVec = {value: new T.Vector3(...DUST_LAWS.skirt.vec)};
+  RM.uniforms.uDustScat = {value: DUST_LAWS.skirt.scat};
   RM.material.fragmentShader = RM.material.fragmentShader
-    .replace("in vec3 vPos;", "uniform float uDust; uniform vec3 uDustVec; in vec3 vPos;")
+    .replace("in vec3 vPos;", "uniform float uDust, uDustScat; uniform vec3 uDustVec; in vec3 vPos;")
     .replace("vec3 starAt(vec3 p, int l) {", `float starDustAt(vec3 p, int l) {
   if (l == 0 && length(p) > uMask0) return 0.0;
-  float h = hl(l); vec3 tc = p / (2.0 * h) + 0.5;
-  return l == 0 ? texture(uStar0, tc).a : l == 1 ? texture(uStar1, tc).a : texture(uStar2, tc).a; }
+  float h = hl(l);
+  ivec3 tc = clamp(ivec3(floor((p / (2.0 * h) + 0.5) * uN)), ivec3(0), ivec3(int(uN) - 1));
+  float a = (l == 0 ? texelFetch(uStar0, tc, 0).a : l == 1 ? texelFetch(uStar1, tc, 0).a : texelFetch(uStar2, tc, 0).a) * 255.0;
+  float sa = a / 255.0;
+  return (a > 0.5 && a < 254.5) ? exp2(LOG2_10 * (-4.5 + sa * 6.0)) : -1.0; }
+float dustDiskKv(vec3 p, vec3 sv, float gv, float kvRaw) {
+  float rDisk = length(p.xy), zDisk = abs(p.z);
+  if (rDisk > 24.0 || zDisk > 2.2) return kvRaw > 0.0 ? 0.15 * kvRaw : 0.0;
+  float hz = 0.14 + 0.012 * rDisk;
+  float mid = exp(-(zDisk * zDisk) / (2.0 * hz * hz));
+  float phi = atan(p.y, p.x), lr = log(max(rDisk, 0.22));
+  float sp1 = 0.5 + 0.5 * cos(2.0 * phi - 3.8 * lr);
+  float sp2 = 0.5 + 0.5 * cos(3.0 * phi - 4.4 * lr + 1.7);
+  float fil = 0.5 + 0.5 * sin(p.x * 2.6 + 1.4 * cos(p.y * 2.3)) * cos(p.y * 2.5 - 1.3 * sin(p.x * 2.1));
+  float fil2 = 0.5 + 0.5 * sin(p.x * 6.2 - p.y * 5.7 + p.z * 9.0);
+  float lane = smoothstep(0.28, 0.85, (0.55 * sp1 + 0.45 * sp2) * (0.55 * fil + 0.45 * fil2));
+  float ring = smoothstep(0.25, 1.1, rDisk) * exp(-rDisk / 6.5);
+  if (kvRaw >= 0.0) {
+    return kvRaw * (0.20 + 2.8 * mid * (0.45 + 0.95 * lane));
+  }
+  float blue = sv.b > 1e3 ? clamp((log2(sv.b) / LOG2_10 - 4.2) / 3.2, 0.0, 1.6) : 0.0;
+  float gasBoost = gv > 0.08 ? clamp(1.2 * pow(gv, 0.65), 0.0, 3.5) : 0.0;
+  return mid * lane * (2.6 * ring * (0.35 + 0.65 * blue) + gasBoost);
+}
 vec3 starAt(vec3 p, int l) {`)
-    .replace("vec3 sumS = vec3(0.0), C = vec3(0.0);", "vec3 sumS = vec3(0.0), transS = vec3(1.0), C = vec3(0.0);")
+    .replace("vec3 sumS = vec3(0.0), C = vec3(0.0);", "vec3 sumS = vec3(0.0), sumS0 = vec3(0.0), transS = vec3(1.0), C = vec3(0.0);")
     .replace("if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms); sumS += sv * hw; }",
       `if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms);
+        sumS0 += sv * hw;
         if (uDust > 0.0 && uStarHave != vec3(0.0)) {
-          float sa = starDustAt(p, ls); if (cs >= 0) sa = mix(starDustAt(p, cs), sa, ms);
-          float kV = 0.0;
-          if (sa > 0.002 && sa < 0.996) { kV = exp2(LOG2_10 * (-4.5 + sa * 6.0)); }
-          else {
-            float gv = lg >= 0 && !velMode && uKind == 0 ? gasVal(p, lg) : (lw >= 0 ? wVal(p, lw) : 0.0);
-            float sm2 = max(sv.r, max(sv.g, sv.b));
-            if (gv > 0.1) kV = clamp(0.35 * (gv - 0.1), 0.0, 4.0);
-            else if (sm2 > 1e5) kV = clamp(0.18 * (log2(sm2) / LOG2_10 - 5.0), 0.0, 2.5);
-          }
+          float sa = starDustAt(p, ls); if (cs >= 0 && sa >= 0.0) { float sc2 = starDustAt(p, cs); if (sc2 >= 0.0) sa = mix(sc2, sa, ms); }
+          float gv = lg >= 0 && !velMode && uKind == 0 ? gasVal(p, lg) : (lw >= 0 ? wVal(p, lw) : 0.0);
+          float kV = dustDiskKv(p, sv, gv, sa);
           if (kV > 0.0) {
             vec3 tau = uDust * kV * hw * uDustVec;
             vec3 att = exp(-tau);
-            sumS += transS * sv * hw * (1.0 - att) / max(tau, vec3(1e-5));
+            float cosTh = dot(normalize(p + vec3(0.0, 0.0, 1e-4)), d);
+            float hg = uDustScat * 0.28 * (1.0 - 0.30) / pow(max(1.0 + 0.30 - 1.10 * cosTh, 0.15), 1.5);
+            vec3 src = sv * (1.0 + hg * vec3(0.75, 0.92, 1.18));
+            sumS += transS * src * hw * (1.0 - att) / max(tau, vec3(1e-5));
             transS *= att;
           } else { sumS += transS * sv * hw; }
-        } else { sumS += sv * hw; } }`);
+        } else { sumS += sv * hw; } }`)
+    .replace("vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);",
+      `vec3 star0 = starOn ? uStarMix * lupton(sumS0) : vec3(0.0);
+  vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);
+  if (starOn && uDust > 0.0 && sumS0 != vec3(0.0)) {
+    vec3 tEff = clamp(vec3(sumS.r, sumS.g, sumS.b) / max(vec3(sumS0.r, sumS0.g, sumS0.b), vec3(1e-5)), 0.0, 1.0);
+    star *= pow(tEff, vec3(0.75, 0.85, 0.95));
+  }`)
+    .replace("float sm = max(star.r, max(star.g, star.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, sm);",
+      "float sm = max(star.r, max(star.g, star.b)), sm0 = max(star0.r, max(star0.g, star0.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, max(sm, sm0));");
   const half = lv => manifest?.levels?.[lv]?.half_kpc ?? {L0: 400, L1: 100, L2: 25, L3: 6.25, L4: 1.5, S0: 400, S1: 100, S2: 25, S3: 6.25, S4: 1.5}[lv];
   U.uHalf.value.set(half("L0"), half("L1"), half("L2")); U.uMask0.value = manifest?.levels?.L0?.r_mask_kpc ?? 400;
   U.uBg.value.set(5 / 255, 7 / 255, 11 / 255);
@@ -840,7 +871,7 @@ vec3 starAt(vec3 p, int l) {`)
 
   /* ---- state ---- */
   let species = null, wanted = null, mode = "integral", loadTok = 0;
-  const layer = {stars: !mobile && !!manifest?.stars, dust: true, dustLaw: "temet", gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
+  const layer = {stars: !mobile && !!manifest?.stars, dust: true, dustLaw: "skirt", gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
     balance: manifest?.stars?.display?.balance ?? [1, 1, 1]};
   const tf = {integral: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
   /* tf3d: transfer-function (TF) volume mode, THOR (Byrohl & Nelson 2025) sec. 3.5.3: per field a tf.js state; a field
@@ -948,7 +979,11 @@ vec3 starAt(vec3 p, int l) {`)
       const r = await loader.load(kind, k || null, L, {prio, onBytes: b => { pr.got += b; progressSoon(); }}).finally(() => { PROG.delete(key); progressSoon(); });
       const sk = kind === "stars" ? "stars" : k, np = smoothPasses(sk) ? smoothPasses(sk)[+L[1]] || 0 : 0;
       if (np) { const rg = kind === "stars" ? c : fld(k), q0 = r.data;
-        try { r.data = await smoothAsync(q0.slice(), r.n, rg.vmin, rg.vmax, np, kind === "stars" ? 4 : 1); r.smoothed = np; } catch { r.data = q0; } }
+        try {
+          r.data = await smoothAsync(q0.slice(), r.n, rg.vmin, rg.vmax, np, kind === "stars" ? 4 : 1);
+          if (kind === "stars") { for (let i = 3; i < q0.length; i += 4) if (q0[i] > 0 && q0[i] < 255) r.data[i] = q0[i]; }
+          r.smoothed = np;
+        } catch { r.data = q0; } }
       const tex = makeTex(r);
       renderer.initTexture?.(tex);                           // upload now, then drop the byte array
       const it = {tex, bytes: r.data.length, used: performance.now(), format: r.format, ms: r.ms, fetchMs: r.fetchMs, decodeMs: r.decodeMs, base: r.base};
@@ -1198,7 +1233,9 @@ vec3 starAt(vec3 p, int l) {`)
     q("#v3-starmix").value = layer.starMix; q("#v3-starmix-o").textContent = layer.starMix.toFixed(2);
     q("#v3-mu0").value = layer.mu0; q("#v3-mu0-o").textContent = layer.mu0.toFixed(1); q("#v3-gasmix").value = layer.gasMix; q("#v3-gasmix-o").textContent = layer.gasMix.toFixed(2); fillRanges();
     if (U.uDust) U.uDust.value = layer.dust ? 1.0 : 0.0;
-    if (U.uDustVec) U.uDustVec.value.set(...(DUST_LAWS[layer.dustLaw] || DUST_LAWS.temet).vec);
+    const dl = DUST_LAWS[layer.dustLaw] || DUST_LAWS.skirt;
+    if (U.uDustVec) U.uDustVec.value.set(...dl.vec);
+    if (U.uDustScat) U.uDustScat.value = dl.scat;
     /* tune2: no star request before the first gas field is wanted, so a cold first load fetches the gas L1 cube first */
     if (manifest && (species || wanted)) { ensure().catch(x => { if (x instanceof HostError) hostMessage(x); }); bindAll(); }
     legend(); aria(); render(); viewer?.hooks?.starsChanged?.(layer.stars);
