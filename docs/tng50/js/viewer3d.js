@@ -566,15 +566,15 @@ async function create(app, opts = {}) {
       </div>
       <span class="k">Publication elements</span>
       <div class="v3s-checks">
+        <label><input type="checkbox" id="v3-exp-stamp" checked data-tip="Show simulation, snapshot, ID, redshift, stellar and halo mass">Galaxy info</label>
+        <label><input type="checkbox" id="v3-exp-cap" checked data-tip="Include centered figure caption below the plot">Figure caption</label>
         <label><input type="checkbox" id="v3-exp-leg" checked data-tip="Include vertical colour bar with LaTeX units">Vertical bar</label>
         <label><input type="checkbox" id="v3-exp-scale" checked data-tip="Include physical length scale bar">Scale bar</label>
         <label><input type="checkbox" id="v3-exp-lines" checked data-tip="Include sightlines and sightline legend">Sightlines</label>
-        <label><input type="checkbox" id="v3-exp-stamp" checked data-tip="Include galaxy header stamp and figure caption">Stamp &amp; caption</label>
       </div>
       <div class="v3s-dl">
         <button type="button" class="v3c-btn pri" id="v3-dl-pdf" data-tip="Download vector publication PDF with Computer Modern axes">Publication PDF</button>
         <button type="button" class="v3c-btn" id="v3-dl-png" data-tip="Download 400 dpi publication figure PNG">400 dpi PNG</button>
-        <button type="button" class="v3c-btn" id="v3-dl-tex" data-tip="Copy LaTeX figure and caption snippet to clipboard">Copy LaTeX</button>
         <button type="button" class="v3c-btn" id="v3-dl-html" data-tip="Download offline interactive HTML sightline figure card">Interactive HTML</button>
       </div>
     </div>`;
@@ -630,7 +630,7 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
-      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div><div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div></details>
+      <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div><div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div><div class="v3c-row"><label for="v3-dust-law">dust law</label><select id="v3-dust-law" data-tip="Dust extinction law: Temet MW, Calzetti, Cardelli MW, or Pei"><option value="temet">Temet MW (Cardelli+89)</option><option value="calzetti">Calzetti+00 starburst</option><option value="cardelli">Milky Way (CCM89)</option><option value="pei">FIRE Studio (Pei+92)</option></select></div></details>
       <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
     <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
@@ -700,10 +700,17 @@ async function create(app, opts = {}) {
   let GAS_L = ["L0", "L1", "L2", "L3", "L4"].filter(L => manifest?.levels?.[L]); if (!GAS_L.length) GAS_L = GAS_L_DEF;
   let STAR_L = ["S0", "S1", "S2", "S3", "S4"].filter(L => manifest?.levels?.[L]); if (!STAR_L.length) STAR_L = STAR_L_DEF;
   const nCube = manifest ? (manifest.levels.L1?.n || manifest.levels.L0?.n || 256) : 256;
+  const DUST_LAWS = {
+    temet:    {vec: [0.68, 0.89, 1.17], label: "Temet MW (Cardelli+89 + scattering)"},
+    calzetti: {vec: [0.73, 0.89, 1.16], label: "Calzetti+00 starburst"},
+    cardelli: {vec: [0.66, 0.88, 1.22], label: "Cardelli+89 Milky Way"},
+    pei:      {vec: [0.65, 0.84, 1.19], label: "FIRE Studio (Pei+92)"}
+  };
   const RM = makeMaterial(T, {n: nCube}), U = RM.uniforms;
   RM.uniforms.uDust = {value: 1.0};
+  RM.uniforms.uDustVec = {value: new T.Vector3(...DUST_LAWS.temet.vec)};
   RM.material.fragmentShader = RM.material.fragmentShader
-    .replace("in vec3 vPos;", "uniform float uDust; in vec3 vPos;")
+    .replace("in vec3 vPos;", "uniform float uDust; uniform vec3 uDustVec; in vec3 vPos;")
     .replace("vec3 starAt(vec3 p, int l) {", `float starDustAt(vec3 p, int l) {
   if (l == 0 && length(p) > uMask0) return 0.0;
   float h = hl(l); vec3 tc = p / (2.0 * h) + 0.5;
@@ -723,7 +730,7 @@ vec3 starAt(vec3 p, int l) {`)
             else if (sm2 > 1e5) kV = clamp(0.18 * (log2(sm2) / LOG2_10 - 5.0), 0.0, 2.5);
           }
           if (kV > 0.0) {
-            vec3 tau = uDust * kV * hw * vec3(0.65, 0.84, 1.19);
+            vec3 tau = uDust * kV * hw * uDustVec;
             vec3 att = exp(-tau);
             sumS += transS * sv * hw * (1.0 - att) / max(tau, vec3(1e-5));
             transS *= att;
@@ -833,7 +840,7 @@ vec3 starAt(vec3 p, int l) {`)
 
   /* ---- state ---- */
   let species = null, wanted = null, mode = "integral", loadTok = 0;
-  const layer = {stars: !mobile && !!manifest?.stars, dust: true, gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
+  const layer = {stars: !mobile && !!manifest?.stars, dust: true, dustLaw: "temet", gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
     balance: manifest?.stars?.display?.balance ?? [1, 1, 1]};
   const tf = {integral: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
   /* tf3d: transfer-function (TF) volume mode, THOR (Byrohl & Nelson 2025) sec. 3.5.3: per field a tf.js state; a field
@@ -1180,15 +1187,18 @@ vec3 starAt(vec3 p, int l) {`)
   function setStars(o = {}) {
     if (o.on !== undefined) layer.stars = !!o.on && !!manifest?.stars;
     if (o.dust !== undefined) layer.dust = !!o.dust;
+    if (o.dustLaw && DUST_LAWS[o.dustLaw]) layer.dustLaw = o.dustLaw;
     if (Number.isFinite(+o.mix) && o.mix !== null && o.mix !== undefined) layer.starMix = Math.min(1, Math.max(0, +o.mix));
     if (Number.isFinite(+o.Q) && o.Q) layer.Q = Math.min(40, Math.max(0.5, +o.Q));
     if (Number.isFinite(+o.sat) && o.sat !== null && o.sat !== undefined) layer.sat = Math.min(3, Math.max(0, +o.sat));
     if (Number.isFinite(+o.mu0) && o.mu0) layer.mu0 = Math.min(28, Math.max(14, +o.mu0));
     if (Number.isFinite(+o.gasMix) && o.gasMix !== null && o.gasMix !== undefined) layer.gasMix = Math.min(1, Math.max(0, +o.gasMix));
     q("#v3-stars").checked = layer.stars; if (q("#v3-dust")) q("#v3-dust").checked = layer.dust;
+    if (q("#v3-dust-law")) q("#v3-dust-law").value = layer.dustLaw;
     q("#v3-starmix").value = layer.starMix; q("#v3-starmix-o").textContent = layer.starMix.toFixed(2);
     q("#v3-mu0").value = layer.mu0; q("#v3-mu0-o").textContent = layer.mu0.toFixed(1); q("#v3-gasmix").value = layer.gasMix; q("#v3-gasmix-o").textContent = layer.gasMix.toFixed(2); fillRanges();
     if (U.uDust) U.uDust.value = layer.dust ? 1.0 : 0.0;
+    if (U.uDustVec) U.uDustVec.value.set(...(DUST_LAWS[layer.dustLaw] || DUST_LAWS.temet).vec);
     /* tune2: no star request before the first gas field is wanted, so a cold first load fetches the gas L1 cube first */
     if (manifest && (species || wanted)) { ensure().catch(x => { if (x instanceof HostError) hostMessage(x); }); bindAll(); }
     legend(); aria(); render(); viewer?.hooks?.starsChanged?.(layer.stars);
@@ -1722,8 +1732,8 @@ vec3 starAt(vec3 p, int l) {`)
   speciesUnits();
   for (const c of CMAPS) { const o = document.createElement("option"); o.value = c; o.textContent = c; q("#v3-cmap").appendChild(o); }
   for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) i.disabled = !manifest;
-  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-dust", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
-  if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0", "#v3-dust"]) q(id).disabled = true;
+  for (const id of ["#v3-lo", "#v3-hi", "#v3-op", "#v3-cmap", "#v3-gasmix", "#v3-starmix", "#v3-mu0", "#v3-stars", "#v3-dust", "#v3-dust-law", "#v3-vw", "#v3-weight"]) q(id).disabled = !manifest;
+  if (!manifest?.stars) for (const id of ["#v3-stars", "#v3-starmix", "#v3-mu0", "#v3-dust", "#v3-dust-law"]) q(id).disabled = true;
   q("#v3-species").addEventListener("change", ev => { if (ev.target.name === "v3-species" && ev.target.checked) { sfx("select"); setSpecies(ev.target.value); } });
   q("#v3-mode").addEventListener("change", ev => { if (ev.target.name === "v3-mode" && ev.target.checked) { sfx("select"); setMode(ev.target.value); } });
   q("#v3-lo").addEventListener("input", ev => tfWinMode() ? setTfWin(+ev.target.value, null) : setTransfer({lo: Math.min(+ev.target.value, fieldTf(species).hi - 0.1)}));
@@ -1737,6 +1747,7 @@ vec3 starAt(vec3 p, int l) {`)
   q("#v3-mu0").addEventListener("input", ev => setStars({mu0: +ev.target.value}));
   q("#v3-stars").addEventListener("change", ev => setStars({on: ev.target.checked}));
   q("#v3-dust").addEventListener("change", ev => setStars({dust: ev.target.checked}));
+  q("#v3-dust-law").addEventListener("change", ev => setStars({dustLaw: ev.target.value}));
   q("#v3-guides").addEventListener("change", ev => setGuides({ring: ev.target.checked}));
   q("#v3-scale").addEventListener("change", ev => setGuides({scale: ev.target.checked}));
   q("#v3-lines").addEventListener("change", ev => setLines(ev.target.value));
@@ -1816,7 +1827,7 @@ vec3 starAt(vec3 p, int l) {`)
     if (snap.transfer && typeof snap.transfer === "object") setTransfer(snap.transfer);
     if (snap.tf) setTf(snap.tf);
     if (snap.layers && typeof snap.layers === "object") {
-      setStars({on: snap.layers.stars, gasMix: snap.layers.gasMix, mix: snap.layers.starMix, mu0: snap.layers.mu0, Q: snap.layers.Q, sat: snap.layers.sat});
+      setStars({on: snap.layers.stars, dust: snap.layers.dust, dustLaw: snap.layers.dustLaw, gasMix: snap.layers.gasMix, mix: snap.layers.starMix, mu0: snap.layers.mu0, Q: snap.layers.Q, sat: snap.layers.sat});
       setGuides({ring: snap.layers.guides, scale: snap.layers.scaleBar});
     }
     if (snap.linesMode) setLines(snap.linesMode);
@@ -1878,6 +1889,7 @@ vec3 starAt(vec3 p, int l) {`)
     const resEl = el.querySelector('input[name="v3-exp-res"]:checked');
     const bgEl = el.querySelector('input[name="v3-exp-bg"]:checked');
     const stampOn = q("#v3-exp-stamp")?.checked ?? true;
+    const capOn = q("#v3-exp-cap")?.checked ?? stampOn;
     return {
       scale: +(resEl?.value || 2),
       background: bgEl?.value || "white",
@@ -1885,7 +1897,7 @@ vec3 starAt(vec3 p, int l) {`)
       scaleBar: q("#v3-exp-scale")?.checked ?? true,
       sightlines: q("#v3-exp-lines")?.checked ?? true,
       stamp: stampOn,
-      caption: stampOn,
+      caption: capOn,
       ...extra
     };
   }
@@ -1895,22 +1907,8 @@ vec3 starAt(vec3 p, int l) {`)
   const exportPDF = async (o = {}) => (await loadExport()).exportPDF(viewer, readExportOpts(o));
   const exportHTML = async (o = {}) => (await loadExport()).exportHTML(viewer, readExportOpts(o));
   const exportJSON = async (o = {}) => (await loadExport()).exportJSON(viewer, readExportOpts(o));
-  async function copyLatexFigure() {
-    const E = await loadExport();
-    const tex = E.buildLatexFigureBlock(viewer);
-    let ok = false;
-    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(tex); ok = true; } } catch { ok = false; }
-    if (!ok) {
-      const ta = document.createElement("textarea"); ta.value = tex; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;left:-9999px;top:0";
-      document.body.appendChild(ta); ta.select(); try { ok = document.execCommand("copy"); } catch { ok = false; } ta.remove();
-    }
-    sfx(ok ? "copy" : "error");
-    say(ok ? "LaTeX figure and caption copied to clipboard." : "Could not copy LaTeX snippet.", !ok, true);
-    return tex;
-  }
   q("#v3-dl-png")?.addEventListener("click", () => { setSavePop(false); exportPNG(); });
   q("#v3-dl-pdf")?.addEventListener("click", () => { setSavePop(false); exportPDF(); });
-  q("#v3-dl-tex")?.addEventListener("click", () => { setSavePop(false); copyLatexFigure(); });
   q("#v3-dl-html")?.addEventListener("click", () => { setSavePop(false); exportHTML(); });
   q("#v3-dl-svg")?.addEventListener("click", () => { setSavePop(false); exportSVG(); });
   q("#v3-dl-json")?.addEventListener("click", () => { setSavePop(false); exportJSON(); });

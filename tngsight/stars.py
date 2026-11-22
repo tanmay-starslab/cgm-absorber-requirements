@@ -235,9 +235,14 @@ BANDS = dict(VP.BANDS)
 MU_ZERO = float(VP.MU_ZERO)
 DISPLAY = {"Q": 8.0, "mu0": 21.5, "mu_zero": round(MU_ZERO, 11), "balance": [1.0, 1.0, 1.0],
            "formula": "lupton2004"}
-# Pei (1992) V-band dust opacity channel packed into the 4th byte (.a) when --dust is enabled:
-# kappa_V [kpc^-1] = 2.41 * n_H [cm^-3] * (Z / 0.02) for cold/warm gas T < 1e5 K, quantized as log10(kappa_V) in
-# [-4.5, 1.5] -> uint8 0..254 (0 = no dust / empty; 255 remains the legacy unattenuated star alpha sentinel).
+# 3D V-band dust optical depth per kpc (kappa_V [kpc^-1]) packed into the 4th RGBA byte (.a) when --dust is enabled.
+# Supports selectable wavelength extinction laws in the WebGL2 ray-marcher (viewer3d.js):
+#   - 'temet': Cardelli, Clayton & Mathis (1989) Milky Way (R_V = 3.1) extinction curve + Calzetti et al. (1994)
+#              internal scattering albedo f_scat(lambda), following temet/cosmo/stellarPop.py (Nelson et al. 2018)
+#   - 'calzetti': Calzetti et al. (2000) starburst attenuation law (R'_V = 4.05)
+#   - 'cardelli': Cardelli, Clayton & Mathis (1989) Milky Way screen extinction (R_V = 3.1)
+#   - 'pei': FIRE Studio / Pei (1992) SMC/MW extinction curve (firestudio/utils/stellar_utils/cross_section.py)
+# Quantized as log10(kappa_V [kpc^-1]) in [-4.5, 1.5] -> uint8 1..254 (0 = no dust / empty; 255 = legacy unattenuated).
 DUST_VMIN = -4.5
 DUST_VMAX = 1.5
 DUST_T_MAX = 1.0e5
@@ -376,14 +381,16 @@ def _keep(mask):
     return ~mask
 
 
-def kappa_v_from_gas(n_H, T, Z_massfrac) -> np.ndarray:
-    """Pei (1992) V-band dust opacity kappa_V [kpc^-1] = 2.41 * n_H [cm^-3] * (Z / 0.02) for cold/warm gas T < 1e5 K."""
+def kappa_v_from_gas(n_H, T, Z_massfrac, gamma: float = 1.0) -> np.ndarray:
+    """V-band dust optical depth per kpc kappa_V [kpc^-1] = 2.41 * n_H [cm^-3] * (Z / 0.02)^gamma for T < 1e5 K.
+    gamma = 1.0 gives linear dust-to-metal scaling (FIRE_studio / Pei 1992); gamma = 1.6 gives the non-linear
+    optical dust-to-metal scaling of temet/cosmo/stellarPop.py (Guiderdoni & Rocca-Volmerange 1987, Nelson+18)."""
     nH = np.asarray(n_H, dtype=np.float64)
     temp = np.asarray(T, dtype=np.float64)
     Z = np.asarray(Z_massfrac, dtype=np.float64)
     ok = np.isfinite(nH) & np.isfinite(temp) & np.isfinite(Z) & (nH > 0) & (Z > 0) & (temp < DUST_T_MAX)
     out = np.zeros(nH.shape, dtype=np.float64)
-    out[ok] = DUST_KAPPA_COEFF * nH[ok] * (Z[ok] / DUST_Z_REF)
+    out[ok] = DUST_KAPPA_COEFF * nH[ok] * ((Z[ok] / DUST_Z_REF) ** float(gamma))
     return out
 
 
