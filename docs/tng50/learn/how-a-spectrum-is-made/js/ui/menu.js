@@ -21,7 +21,6 @@ export const ENTRIES = Object.freeze([
   {id: "musicTrack", label: "Music", stay: true},                // label and hint from hooks.musicTrackLabel()
   {id: "keys", label: "Keys and help"},
   {id: "credits", label: "Data and credits"},
-  {id: "detect", label: "Detect and resolve", href: "/detect/"},
   {id: "source", label: "Source code", href: "https://github.com/tanmay-starslab/cgm-absorber-requirements"},
   {id: "explorer", label: "Back to the explorer", href: true},
 ]);
@@ -34,7 +33,7 @@ export function createMenu(button, sheet, hooks = {}) {
   const labelOf = e => (dyn(e) || e).label;
   const hintOf = e => (e.id === "watch" && hooks.watchHint ? hooks.watchHint() : (dyn(e) || e).hint);
   sheet.innerHTML = list.map(e => e.href
-    ? `<a class="mn-i" role="menuitem" href="${e.href === true ? hooks.explorerHref() : (/^https?:/.test(e.href) ? `${e.href}" target="_blank" rel="noopener` : e.href)}" data-id="${e.id}"><span class="mn-l">${e.label}</span></a>`
+    ? `<a class="mn-i" role="menuitem" href="${e.href === true ? hooks.explorerHref() : `${e.href}" target="_blank" rel="noopener`}" data-id="${e.id}"><span class="mn-l">${e.label}</span></a>`
     : `<button class="mn-i" role="${e.toggle ? "menuitemcheckbox" : "menuitem"}" type="button" data-id="${e.id}"${e.toggle ? ' aria-checked="false"' : ""}>` +
       `<span class="mn-l">${labelOf(e)}</span>${hintOf(e) ? `<span class="mn-h" data-num>${hintOf(e)}</span>` : ""}</button>`).join("");
   const items = () => [...sheet.querySelectorAll(".mn-i")];
