@@ -125,11 +125,12 @@ def build_tools(ions=None, query_schema=None) -> list:
                         "view and the instrument. The [page ...] snapshot before each user message is its short form.",
          "input_schema": {"type": "object", "additionalProperties": False, "properties": {}}},
         {"name": "list_galaxies",
-         "description": f"List galaxies of the sample ({N_GALAXIES} TNG50-1 Milky Way and M31 analogues at z = 0), "
+         "description": f"List galaxies of the sample ({N_GALAXIES} TNG50-1 Milky Way and M31 analogues plus FIRE-2 zoom-in galaxies at z = 0), "
                         "filtered and sorted. Masses are log10 solar masses, SFR solar masses per year. Most massive: "
-                        "sort Mstar, order desc. query takes picker words: an id prefix, central, satellite, mw, m31, "
+                        "sort Mstar, order desc. query takes picker words: an id or name prefix (e.g. m12i, Romeo), fire2, tng50, central, satellite, mw, m31, "
                         "gas-poor, m*>10.8, sfr<1. Default sort Mstar desc, limit 10.",
          "input_schema": {"type": "object", "additionalProperties": False, "properties": {
+             "sim": {"type": "string", "enum": ["TNG50", "FIRE-2"]},
              "sort": {"type": "string", "enum": ["Mstar", "M200c", "SFR", "id"]},
              "order": {"type": "string", "enum": ["desc", "asc"]},
              "central": {"type": "boolean"},
@@ -144,11 +145,13 @@ def build_tools(ions=None, query_schema=None) -> list:
              "query": {"type": "string", "maxLength": 80},
              "limit": {"type": "integer", "minimum": 1, "maximum": 20}}}},
         {"name": "select_galaxy",
-         "description": "Open another galaxy of the sample by subhalo id. Its sightline library replaces the current "
+         "description": "Open another galaxy of the sample by TNG50 subhalo id (integer) or FIRE-2 halo id (e.g. m12i, m12b, Romeo, Juliet, m11b, m09). Its sightline library replaces the current "
                         "one, so search_sightlines and select_sightline then act on it. Returns its properties, how "
                         "many sightlines it has and the sightline now shown.",
          "input_schema": {"type": "object", "additionalProperties": False, "required": ["id"],
-                          "properties": {"id": {"type": "integer", "minimum": 1, "maximum": 999999999}}}},
+                          "properties": {"id": {"anyOf": [
+                              {"type": "integer", "minimum": 1, "maximum": 999999999},
+                              {"type": "string", "pattern": r"^(?:\d{1,9}|[A-Za-z][A-Za-z0-9_]{1,23})$"}]}}}},
         {"name": "set_view",
          "description": "Switch the main view to the spectra or the 3D tab.",
          "input_schema": {"type": "object", "additionalProperties": False, "required": ["tab"],
@@ -177,18 +180,18 @@ def build_prompt(ions=None) -> str:
                              f"({d['note']}). ")
     s = ions.SNR
     text = (
-        "You are the assistant of the TNG50 sightline explorer, a web page showing mock quasar absorption "
+        "You are the assistant of the TNG50 and FIRE-2 sightline explorer, a web page showing mock quasar absorption "
         f"spectra of {len(rows)} ions ({labels}) through the circumgalactic medium of {N_GALAXIES} simulated "
-        "Milky Way and M31 analogues from TNG50-1 at z = 0. "
+        "Milky Way and M31 analogues from TNG50-1 at z = 0 plus FIRE-2 zoom-in galaxies (Latte MW hosts m12b to m12z, Elvis pairs Romeo, Juliet, Romulus, Remus, Thelma, Louise, and Core dwarfs m11b to m09). "
         "Each user message starts with a [page ...] snapshot of the screen, which you can rely on: g is the open "
-        "galaxy (subhalo id, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, "
+        "galaxy (subhalo or halo id, simulation, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, "
         "number of sightlines), s the shown sightline (id, orientation, impact parameter b in kpc, azimuth), tab, "
         "the 3D view and the instrument. "
         f"Tool arguments name the ions by key: {', '.join(ions.KEYS)}. "
         + "".join(notes) +
         "You act on the page only by calling the provided tools; the page executes them and returns JSON results. "
         "search_sightlines and select_sightline work on the open galaxy: to act on another galaxy, call "
-        "select_galaxy first (list_galaxies finds galaxies by mass, SFR or type), then search or select. "
+        "select_galaxy first (list_galaxies finds galaxies by simulation, mass, SFR or type), then search or select. "
         "Use set_instrument for the resolving power R per band "
         f"({bands}), the S/N per resolution element ({int(s['min'])} to {int(s['max'])}), the layout, the ions "
         "shown and the velocity window, show_3d for the gas distribution, set_view to switch tabs, and "
@@ -199,16 +202,17 @@ def build_prompt(ions=None) -> str:
         "data tools cannot answer, say what the page can do instead. "
         "You may answer general questions about the field from your own knowledge: CGM physics, ionisation, "
         "O VI and Ne VIII, Lyman-limit and damped systems, Voigt profiles, column densities, spectral resolution "
-        "and S/N, HST/COS, TNG50 and how these mock spectra were made. Mark such answers plainly, starting with "
+        "and S/N, HST/COS, TNG50, FIRE-2 and how these mock spectra were made. Mark such answers plainly, starting with "
         "\"In general,\", and never invent citations. The mock spectra: for the "
         f"{N_SBI} THOR galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions "
-        f"under the FG11 UV background; for subhalo {DEFAULT_GALAXY}, Trident with the HM2012 background. "
+        f"under the FG11 UV background; for subhalo {DEFAULT_GALAXY} and FIRE-2 galaxies, Trident with the HM2012 background. "
+        "The 3D tab raymarches nested 256^3 cubes from +-400 kpc (L0) to +-25 kpc (L2), and on FIRE-2 down to +-6.25 kpc (L3) and +-1.5 kpc (L4, 12 pc voxels) with 3D dust lanes on starlight, a log shell width slider (0.01 to 2 dex), one-click Hands-free webcam head and hand control (camera video stays on device), and a Save button for PNG export and ?cam= deep links. "
         "The show_3d velocity views are mass-weighted gas velocities in the "
         "galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr "
         "positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the "
         "galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component "
         "given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, "
-        "never quote it as a measured column. Keep answers short and friendly, and when useful suggest one "
+        "never quote it as a measured column. Companion pages cover How a Spectrum Is Made (3D sightline story) and Detect and Resolve Requirements (3-sigma detection and two-component separation across R and S/N). Keep answers short and friendly, and when useful suggest one "
         "concrete next step on the page.")
     bad = [c for c in FORBIDDEN if c in text]
     if bad:

@@ -55,14 +55,14 @@ export const PAGE_MAX = 600;              // chars of the [page ...] snapshot be
 /* Generated from tngsight/ions.json by `python -m server.make_chat_tools` (identical to server/chat_tools.json;
    tests/js/chat_tools_sync.mjs enforces deep equality). Do not edit between the markers. */
 /*__GEN:TOOLS__*/
-export const TOOLS = [{"name":"set_instrument","description":"Set the spectrograph and view. R: resolving power per band (one value, or two for the two R cases). snr: S/N per resolution element (one value, or two for the two S/N cases). layout: 1 case, 2 cases varying R, 2 cases varying S/N, or the 2x2 grid. ions: the ions to plot. vhw: half-width of the velocity window (km/s). vc: window centre (km/s). fit: overplot on-the-fly component fits.","input_schema":{"type":"object","additionalProperties":false,"properties":{"R":{"type":"object","additionalProperties":false,"properties":{"uv":{"anyOf":[{"type":"integer","minimum":5000,"maximum":150000},{"type":"array","items":{"type":"integer","minimum":5000,"maximum":150000},"minItems":2,"maxItems":2}]},"euv":{"anyOf":[{"type":"integer","minimum":5000,"maximum":150000},{"type":"array","items":{"type":"integer","minimum":5000,"maximum":150000},"minItems":2,"maxItems":2}]},"xray":{"anyOf":[{"type":"integer","minimum":100,"maximum":5000},{"type":"array","items":{"type":"integer","minimum":100,"maximum":5000},"minItems":2,"maxItems":2}]}}},"snr":{"anyOf":[{"type":"integer","minimum":2,"maximum":100},{"type":"array","items":{"type":"integer","minimum":2,"maximum":100},"minItems":2,"maxItems":2}]},"layout":{"type":"string","enum":["1","2R","2SN","4"]},"ions":{"type":"array","items":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"minItems":1,"maxItems":12,"uniqueItems":true},"vhw":{"type":"integer","minimum":10,"maximum":1500},"vc":{"type":"number","minimum":-1500,"maximum":1500},"fit":{"type":"boolean"}}}},{"name":"select_sightline","description":"Show an existing sightline by id (as returned by search_sightlines or request_*).","input_schema":{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"type":"string","pattern":"^((face|edge|rand)_b\\d{3}_a\\d{3}(_s\\d+)?|cust_[0-9a-f]{10})$"}}}},{"name":"search_sightlines","description":"Find sightlines by their fitted Voigt components. Returns ranked ids with reasons. Saturated or degenerate components are lower limits on log N, never measurements: one meets logN_min when its lower limit does, and never meets a logN_max below the ion's ceiling (22.5 for HI, 19 otherwise). Reasons count them as lower limits.","input_schema":{"type":"object","additionalProperties":false,"required":["query"],"properties":{"query":{"type":"object","additionalProperties":false,"required":["ion"],"properties":{"ion":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"n_min":{"type":"integer","minimum":0,"maximum":30},"n_max":{"type":"integer","minimum":0,"maximum":30},"sep_kms":{"type":"array","items":{"type":"number","minimum":0,"maximum":3000},"minItems":2,"maxItems":2},"logN_min":{"type":"number","minimum":10,"maximum":22.5},"logN_max":{"type":"number","minimum":10,"maximum":22.5},"b_min":{"type":"number","minimum":0,"maximum":150},"b_max":{"type":"number","minimum":0,"maximum":150},"b_kpc":{"type":"array","items":{"type":"number","minimum":0,"maximum":400},"minItems":2,"maxItems":2},"orientation":{"type":"string","enum":["face-on","edge-on","random","custom"]},"sort":{"type":"string","enum":["score","b_kpc","n"]},"limit":{"type":"integer","minimum":1,"maximum":200}}}}}},{"name":"request_sightline","description":"Load or generate the sightline with this orientation, impact parameter b (kpc) and azimuth (deg from the projected major axis). seed is required for random orientation.","input_schema":{"type":"object","additionalProperties":false,"required":["orientation","b_kpc","azimuth_deg"],"properties":{"orientation":{"type":"string","enum":["face-on","edge-on","random"]},"b_kpc":{"type":"number","minimum":0,"maximum":300},"azimuth_deg":{"type":"number","minimum":0,"maximum":360},"seed":{"type":"integer","minimum":0,"maximum":4294967295}}}},{"name":"request_custom_ray","description":"Generate a straight ray between two points given in kpc relative to the galaxy centre (simulation box axes). |p| <= 395 kpc, length 20-800 kpc.","input_schema":{"type":"object","additionalProperties":false,"required":["p0_kpc","p1_kpc"],"properties":{"p0_kpc":{"type":"array","items":{"type":"number","minimum":-395,"maximum":395},"minItems":3,"maxItems":3},"p1_kpc":{"type":"array","items":{"type":"number","minimum":-395,"maximum":395},"minItems":3,"maxItems":3}}}},{"name":"show_3d","description":"Open the 3D tab, optionally choosing the gas field, camera preset, render mode (integral: projected; volume: volume rendering) and volume colour preset tf (ramp default, thor gas phases on temperature, nelson16 temperature shells of Nelson+16, iso bands, clouds; tf implies volume mode). Velocity views (km/s, galaxy rest frame): vlos line-of-sight velocity, vr radial, vphi rotational, vmag speed, sigmalos line-of-sight dispersion; vlos and sigmalos follow the camera.","input_schema":{"type":"object","additionalProperties":false,"properties":{"species":{"type":"string","enum":["nH","T","Z","HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII","vlos","vr","vphi","vmag","sigmalos"]},"preset":{"type":"string","enum":["face-on","edge-on","sightline"]},"mode":{"type":"string","enum":["integral","volume"]},"tf":{"type":"string","enum":["ramp","thor","nelson16","iso","clouds"]}}}},{"name":"get_page_state","description":"The full page state: the open galaxy and its properties, the shown sightline, the tab, the 3D view and the instrument. The [page ...] snapshot before each user message is its short form.","input_schema":{"type":"object","additionalProperties":false,"properties":{}}},{"name":"list_galaxies","description":"List galaxies of the sample (198 TNG50-1 Milky Way and M31 analogues at z = 0), filtered and sorted. Masses are log10 solar masses, SFR solar masses per year. Most massive: sort Mstar, order desc. query takes picker words: an id prefix, central, satellite, mw, m31, gas-poor, m*>10.8, sfr<1. Default sort Mstar desc, limit 10.","input_schema":{"type":"object","additionalProperties":false,"properties":{"sort":{"type":"string","enum":["Mstar","M200c","SFR","id"]},"order":{"type":"string","enum":["desc","asc"]},"central":{"type":"boolean"},"gas_poor":{"type":"boolean"},"spectra":{"type":"string","enum":["THOR","Trident"]},"logMstar_min":{"type":"number","minimum":8,"maximum":13},"logMstar_max":{"type":"number","minimum":8,"maximum":13},"logM200c_min":{"type":"number","minimum":9,"maximum":15},"logM200c_max":{"type":"number","minimum":9,"maximum":15},"sfr_min":{"type":"number","minimum":0,"maximum":1000},"sfr_max":{"type":"number","minimum":0,"maximum":1000},"query":{"type":"string","maxLength":80},"limit":{"type":"integer","minimum":1,"maximum":20}}}},{"name":"select_galaxy","description":"Open another galaxy of the sample by subhalo id. Its sightline library replaces the current one, so search_sightlines and select_sightline then act on it. Returns its properties, how many sightlines it has and the sightline now shown.","input_schema":{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"type":"integer","minimum":1,"maximum":999999999}}}},{"name":"set_view","description":"Switch the main view to the spectra or the 3D tab.","input_schema":{"type":"object","additionalProperties":false,"required":["tab"],"properties":{"tab":{"type":"string","enum":["spectra","3d"]}}}}];
+export const TOOLS = [{"name":"set_instrument","description":"Set the spectrograph and view. R: resolving power per band (one value, or two for the two R cases). snr: S/N per resolution element (one value, or two for the two S/N cases). layout: 1 case, 2 cases varying R, 2 cases varying S/N, or the 2x2 grid. ions: the ions to plot. vhw: half-width of the velocity window (km/s). vc: window centre (km/s). fit: overplot on-the-fly component fits.","input_schema":{"type":"object","additionalProperties":false,"properties":{"R":{"type":"object","additionalProperties":false,"properties":{"uv":{"anyOf":[{"type":"integer","minimum":5000,"maximum":150000},{"type":"array","items":{"type":"integer","minimum":5000,"maximum":150000},"minItems":2,"maxItems":2}]},"euv":{"anyOf":[{"type":"integer","minimum":5000,"maximum":150000},{"type":"array","items":{"type":"integer","minimum":5000,"maximum":150000},"minItems":2,"maxItems":2}]},"xray":{"anyOf":[{"type":"integer","minimum":100,"maximum":5000},{"type":"array","items":{"type":"integer","minimum":100,"maximum":5000},"minItems":2,"maxItems":2}]}}},"snr":{"anyOf":[{"type":"integer","minimum":2,"maximum":100},{"type":"array","items":{"type":"integer","minimum":2,"maximum":100},"minItems":2,"maxItems":2}]},"layout":{"type":"string","enum":["1","2R","2SN","4"]},"ions":{"type":"array","items":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"minItems":1,"maxItems":12,"uniqueItems":true},"vhw":{"type":"integer","minimum":10,"maximum":1500},"vc":{"type":"number","minimum":-1500,"maximum":1500},"fit":{"type":"boolean"}}}},{"name":"select_sightline","description":"Show an existing sightline by id (as returned by search_sightlines or request_*).","input_schema":{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"type":"string","pattern":"^((face|edge|rand)_b\\d{3}_a\\d{3}(_s\\d+)?|cust_[0-9a-f]{10})$"}}}},{"name":"search_sightlines","description":"Find sightlines by their fitted Voigt components. Returns ranked ids with reasons. Saturated or degenerate components are lower limits on log N, never measurements: one meets logN_min when its lower limit does, and never meets a logN_max below the ion's ceiling (22.5 for HI, 19 otherwise). Reasons count them as lower limits.","input_schema":{"type":"object","additionalProperties":false,"required":["query"],"properties":{"query":{"type":"object","additionalProperties":false,"required":["ion"],"properties":{"ion":{"type":"string","enum":["HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII"]},"n_min":{"type":"integer","minimum":0,"maximum":30},"n_max":{"type":"integer","minimum":0,"maximum":30},"sep_kms":{"type":"array","items":{"type":"number","minimum":0,"maximum":3000},"minItems":2,"maxItems":2},"logN_min":{"type":"number","minimum":10,"maximum":22.5},"logN_max":{"type":"number","minimum":10,"maximum":22.5},"b_min":{"type":"number","minimum":0,"maximum":150},"b_max":{"type":"number","minimum":0,"maximum":150},"b_kpc":{"type":"array","items":{"type":"number","minimum":0,"maximum":400},"minItems":2,"maxItems":2},"orientation":{"type":"string","enum":["face-on","edge-on","random","custom"]},"sort":{"type":"string","enum":["score","b_kpc","n"]},"limit":{"type":"integer","minimum":1,"maximum":200}}}}}},{"name":"request_sightline","description":"Load or generate the sightline with this orientation, impact parameter b (kpc) and azimuth (deg from the projected major axis). seed is required for random orientation.","input_schema":{"type":"object","additionalProperties":false,"required":["orientation","b_kpc","azimuth_deg"],"properties":{"orientation":{"type":"string","enum":["face-on","edge-on","random"]},"b_kpc":{"type":"number","minimum":0,"maximum":300},"azimuth_deg":{"type":"number","minimum":0,"maximum":360},"seed":{"type":"integer","minimum":0,"maximum":4294967295}}}},{"name":"request_custom_ray","description":"Generate a straight ray between two points given in kpc relative to the galaxy centre (simulation box axes). |p| <= 395 kpc, length 20-800 kpc.","input_schema":{"type":"object","additionalProperties":false,"required":["p0_kpc","p1_kpc"],"properties":{"p0_kpc":{"type":"array","items":{"type":"number","minimum":-395,"maximum":395},"minItems":3,"maxItems":3},"p1_kpc":{"type":"array","items":{"type":"number","minimum":-395,"maximum":395},"minItems":3,"maxItems":3}}}},{"name":"show_3d","description":"Open the 3D tab, optionally choosing the gas field, camera preset, render mode (integral: projected; volume: volume rendering) and volume colour preset tf (ramp default, thor gas phases on temperature, nelson16 temperature shells of Nelson+16, iso bands, clouds; tf implies volume mode). Velocity views (km/s, galaxy rest frame): vlos line-of-sight velocity, vr radial, vphi rotational, vmag speed, sigmalos line-of-sight dispersion; vlos and sigmalos follow the camera.","input_schema":{"type":"object","additionalProperties":false,"properties":{"species":{"type":"string","enum":["nH","T","Z","HI","MgII","SiII","CII","SiIII","CIII","SiIV","CIV","NV","OVI","NeVIII","OVII","vlos","vr","vphi","vmag","sigmalos"]},"preset":{"type":"string","enum":["face-on","edge-on","sightline"]},"mode":{"type":"string","enum":["integral","volume"]},"tf":{"type":"string","enum":["ramp","thor","nelson16","iso","clouds"]}}}},{"name":"get_page_state","description":"The full page state: the open galaxy and its properties, the shown sightline, the tab, the 3D view and the instrument. The [page ...] snapshot before each user message is its short form.","input_schema":{"type":"object","additionalProperties":false,"properties":{}}},{"name":"list_galaxies","description":"List galaxies of the sample (198 TNG50-1 Milky Way and M31 analogues plus FIRE-2 zoom-in galaxies at z = 0), filtered and sorted. Masses are log10 solar masses, SFR solar masses per year. Most massive: sort Mstar, order desc. query takes picker words: an id or name prefix (e.g. m12i, Romeo), fire2, tng50, central, satellite, mw, m31, gas-poor, m*>10.8, sfr<1. Default sort Mstar desc, limit 10.","input_schema":{"type":"object","additionalProperties":false,"properties":{"sim":{"type":"string","enum":["TNG50","FIRE-2"]},"sort":{"type":"string","enum":["Mstar","M200c","SFR","id"]},"order":{"type":"string","enum":["desc","asc"]},"central":{"type":"boolean"},"gas_poor":{"type":"boolean"},"spectra":{"type":"string","enum":["THOR","Trident"]},"logMstar_min":{"type":"number","minimum":8,"maximum":13},"logMstar_max":{"type":"number","minimum":8,"maximum":13},"logM200c_min":{"type":"number","minimum":9,"maximum":15},"logM200c_max":{"type":"number","minimum":9,"maximum":15},"sfr_min":{"type":"number","minimum":0,"maximum":1000},"sfr_max":{"type":"number","minimum":0,"maximum":1000},"query":{"type":"string","maxLength":80},"limit":{"type":"integer","minimum":1,"maximum":20}}}},{"name":"select_galaxy","description":"Open another galaxy of the sample by TNG50 subhalo id (integer) or FIRE-2 halo id (e.g. m12i, m12b, Romeo, Juliet, m11b, m09). Its sightline library replaces the current one, so search_sightlines and select_sightline then act on it. Returns its properties, how many sightlines it has and the sightline now shown.","input_schema":{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"anyOf":[{"type":"integer","minimum":1,"maximum":999999999},{"type":"string","pattern":"^(?:\\d{1,9}|[A-Za-z][A-Za-z0-9_]{1,23})$"}]}}}},{"name":"set_view","description":"Switch the main view to the spectra or the 3D tab.","input_schema":{"type":"object","additionalProperties":false,"required":["tab"],"properties":{"tab":{"type":"string","enum":["spectra","3d"]}}}}];
 /*__END__*/
 export const TOOL_NAMES = TOOLS.map(t => t.name);
 const TOOL_BY_NAME = new Map(TOOLS.map(t => [t.name, t]));
 
 /* Generated: the text of server/chat_system_prompt.txt (server/chat.py SYSTEM_PROMPT). */
 /*__GEN:PROMPT__*/
-export const SYSTEM_PROMPT = "You are the assistant of the TNG50 sightline explorer, a web page showing mock quasar absorption spectra of 12 ions (H I 1216, Mg II 2796, Si II 1260, C II 1335, Si III 1206, C III 977, Si IV 1403, C IV 1548, N V 1239, O VI 1032, Ne VIII 770, O VII 21.6) through the circumgalactic medium of 198 simulated Milky Way and M31 analogues from TNG50-1 at z = 0. Each user message starts with a [page ...] snapshot of the screen, which you can rely on: g is the open galaxy (subhalo id, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, number of sightlines), s the shown sightline (id, orientation, impact parameter b in kpc, azimuth), tab, the 3D view and the instrument. Tool arguments name the ions by key: HI, MgII, SiII, CII, SiIII, CIII, SiIV, CIV, NV, OVI, NeVIII, OVII. Ne VIII 770 is in the EUV band (rest-frame EUV, observable only as a redshifted analogue). You act on the page only by calling the provided tools; the page executes them and returns JSON results. search_sightlines and select_sightline work on the open galaxy: to act on another galaxy, call select_galaxy first (list_galaxies finds galaxies by mass, SFR or type), then search or select. Use set_instrument for the resolving power R per band (UV 5000 to 150000, EUV 5000 to 150000, X-ray 100 to 5000), the S/N per resolution element (2 to 100), the layout, the ions shown and the velocity window, show_3d for the gas distribution, set_view to switch tabs, and request_sightline or request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes and the page opens it when ready). Every number, id or property about this data (sightline and galaxy ids, galaxy properties, log N, components, b) must come from a tool result, the page snapshot or the user; never invent ids. If the data tools cannot answer, say what the page can do instead. You may answer general questions about the field from your own knowledge: CGM physics, ionisation, O VI and Ne VIII, Lyman-limit and damped systems, Voigt profiles, column densities, spectral resolution and S/N, HST/COS, TNG50 and how these mock spectra were made. Mark such answers plainly, starting with \"In general,\", and never invent citations. The mock spectra: for the 197 THOR galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions under the FG11 UV background; for subhalo 488530, Trident with the HM2012 background. The show_3d velocity views are mass-weighted gas velocities in the galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it as a measured column. Keep answers short and friendly, and when useful suggest one concrete next step on the page.";
+export const SYSTEM_PROMPT = "You are the assistant of the TNG50 and FIRE-2 sightline explorer, a web page showing mock quasar absorption spectra of 12 ions (H I 1216, Mg II 2796, Si II 1260, C II 1335, Si III 1206, C III 977, Si IV 1403, C IV 1548, N V 1239, O VI 1032, Ne VIII 770, O VII 21.6) through the circumgalactic medium of 198 simulated Milky Way and M31 analogues from TNG50-1 at z = 0 plus FIRE-2 zoom-in galaxies (Latte MW hosts m12b to m12z, Elvis pairs Romeo, Juliet, Romulus, Remus, Thelma, Louise, and Core dwarfs m11b to m09). Each user message starts with a [page ...] snapshot of the screen, which you can rely on: g is the open galaxy (subhalo or halo id, simulation, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, number of sightlines), s the shown sightline (id, orientation, impact parameter b in kpc, azimuth), tab, the 3D view and the instrument. Tool arguments name the ions by key: HI, MgII, SiII, CII, SiIII, CIII, SiIV, CIV, NV, OVI, NeVIII, OVII. Ne VIII 770 is in the EUV band (rest-frame EUV, observable only as a redshifted analogue). You act on the page only by calling the provided tools; the page executes them and returns JSON results. search_sightlines and select_sightline work on the open galaxy: to act on another galaxy, call select_galaxy first (list_galaxies finds galaxies by simulation, mass, SFR or type), then search or select. Use set_instrument for the resolving power R per band (UV 5000 to 150000, EUV 5000 to 150000, X-ray 100 to 5000), the S/N per resolution element (2 to 100), the layout, the ions shown and the velocity window, show_3d for the gas distribution, set_view to switch tabs, and request_sightline or request_custom_ray only when the user asks for a new sightline (generation takes one to two minutes and the page opens it when ready). Every number, id or property about this data (sightline and galaxy ids, galaxy properties, log N, components, b) must come from a tool result, the page snapshot or the user; never invent ids. If the data tools cannot answer, say what the page can do instead. You may answer general questions about the field from your own knowledge: CGM physics, ionisation, O VI and Ne VIII, Lyman-limit and damped systems, Voigt profiles, column densities, spectral resolution and S/N, HST/COS, TNG50, FIRE-2 and how these mock spectra were made. Mark such answers plainly, starting with \"In general,\", and never invent citations. The mock spectra: for the 197 THOR galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions under the FG11 UV background; for subhalo 488530 and FIRE-2 galaxies, Trident with the HM2012 background. The 3D tab raymarches nested 256^3 cubes from +-400 kpc (L0) to +-25 kpc (L2), and on FIRE-2 down to +-6.25 kpc (L3) and +-1.5 kpc (L4, 12 pc voxels) with 3D dust lanes on starlight, a log shell width slider (0.01 to 2 dex), one-click Hands-free webcam head and hand control (camera video stays on device), and a Save button for PNG export and ?cam= deep links. The show_3d velocity views are mass-weighted gas velocities in the galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, never quote it as a measured column. Companion pages cover How a Spectrum Is Made (3D sightline story) and Detect and Resolve Requirements (3-sigma detection and two-component separation across R and S/N). Keep answers short and friendly, and when useful suggest one concrete next step on the page.";
 /*__END__*/
 
 const ID_SRC = "(?:face|edge|rand)_b\\d{3}_a\\d{3}(?:_s\\d+)?|cust_[0-9a-f]{10}";
@@ -223,7 +223,7 @@ const joinR = r => (Array.isArray(r) ? r.join("/") : String(r));
 export function pagePrefix(p) {
   if (!p || typeof p !== "object") return "";
   const parts = [], g = p.galaxy, s = p.sightline, v = p.view3d, ins = p.instrument;
-  if (g) parts.push([`g=${g.id}`, g.logMstar != null && `logM*=${g.logMstar}`, g.logM200c != null && `logM200c=${g.logM200c}`,
+  if (g) parts.push([`g=${g.id}`, g.sim === "FIRE-2" && "FIRE-2", g.logMstar != null && `logM*=${g.logMstar}`, g.logM200c != null && `logM200c=${g.logM200c}`,
     g.R200c_kpc != null && `R200c=${g.R200c_kpc}kpc`, g.SFR != null && `SFR=${g.SFR}`, g.central === true ? "central" : g.central === false ? "satellite" : "",
     g.gas_poor && "gas-poor", g.spectra, g.n_sightlines != null && `n=${g.n_sightlines}`].filter(Boolean).join(" "));
   if (s) parts.push([`s=${s.id}`, s.orientation, s.b_kpc != null && `b=${s.b_kpc}kpc`, s.azimuth_deg != null && `az=${s.azimuth_deg}`].filter(Boolean).join(" "));
@@ -397,7 +397,10 @@ export function createToolExecutor(app, opts = {}) {
       const lg = x => (Number.isFinite(+x) && +x > 0 ? Math.log10(+x) : NaN);
       const inR = (x, lo, hi) => (lo === undefined || x >= lo) && (hi === undefined || x <= hi);
       const want = a.spectra === "THOR" ? "sbi" : a.spectra === "Trident" ? "trident" : null;
-      const L = all.filter(e => (a.central === undefined || e.central === a.central) && (a.gas_poor === undefined || !!e.gas_poor === a.gas_poor)
+      const wantSim = a.sim === "FIRE-2" ? "fire2" : a.sim === "TNG50" ? "tng50" : null;
+      const simKeyOf = e => e.simKey || (/^fire/i.test(String(e.sim || "")) || /^m\d|^Romeo|^Juliet|^Romulus|^Remus|^Thelma|^Louise/i.test(String(e.id ?? "")) ? "fire2" : "tng50");
+      const L = all.filter(e => (!wantSim || simKeyOf(e) === wantSim)
+        && (a.central === undefined || e.central === a.central) && (a.gas_poor === undefined || !!e.gas_poor === a.gas_poor)
         && (!want || srcOf(e) === want) && inR(lg(e.Mstar), a.logMstar_min, a.logMstar_max) && inR(lg(e.M200c), a.logM200c_min, a.logM200c_max)
         && ((a.sfr_min === undefined && a.sfr_max === undefined) || (e.SFR != null && inR(+e.SFR, a.sfr_min, a.sfr_max)))
         && (!a.query || matchGalaxy(e, a.query)));
@@ -406,15 +409,18 @@ export function createToolExecutor(app, opts = {}) {
         results: sortGalaxies(L, a.sort || "Mstar", a.order === "asc" ? 1 : -1).slice(0, a.limit || 10).map(galaxySummary)};
     },
     async select_galaxy(a) {
-      const all = app.galaxies ? app.galaxies() : [], e = all.find(g => +g.id === a.id);
-      if (!e) return {ok: false, error: all.length ? `subhalo ${a.id} is not in this sample; list_galaxies shows the ${all.length} galaxies` : "this page shows one galaxy only"};
+      const all = app.galaxies ? app.galaxies() : [];
+      const qid = String(a.id).trim().toLowerCase();
+      const e = all.find(g => g.id === a.id || +g.id === +a.id || String(g.id).toLowerCase() === qid);
+      if (!e) return {ok: false, error: all.length ? `galaxy ${a.id} is not in this sample; list_galaxies shows the ${all.length} galaxies` : "this page shows one galaxy only"};
+      const targetId = e.id;
       const st = app.getState ? app.getState() : {};
-      if (st.job && app.galaxy() !== a.id) return {ok: false, error: "a sightline is being generated; switch galaxies when it is done"};
+      if (st.job && app.galaxy() !== targetId) return {ok: false, error: "a sightline is being generated; switch galaxies when it is done"};
       const was = app.galaxy();
-      const okSw = await app.selectGalaxy(a.id, {source: "chat"});
-      if (!okSw || app.galaxy() !== a.id) return {ok: false, error: `could not open subhalo ${a.id}: its data did not load`};
+      const okSw = await app.selectGalaxy(targetId, {source: "chat"});
+      if (!okSw || app.galaxy() !== targetId) return {ok: false, error: `could not open galaxy ${targetId}: its data did not load`};
       const s = app.getState(), cur = s.id && app.entry ? app.entry(s.id) : null;
-      return {ok: true, ...(was === a.id ? {note: "already open"} : {}), galaxy: {...galaxySummary(e), n_sightlines: app.entries().length},
+      return {ok: true, ...(was === targetId ? {note: "already open"} : {}), galaxy: {...galaxySummary(e), n_sightlines: app.entries().length},
         sightline: cur ? pick(cur, ["id", "orientation", "b_kpc", "azimuth_deg"]) : null};
     },
     async set_view(a) {
@@ -613,26 +619,11 @@ const STYLE = `
 .cb.primary{background:var(--cg-gloss),var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 14px -4px var(--accent-glow,var(--accent))}
 .cb.primary:hover{filter:brightness(1.08);background:var(--cg-gloss),var(--accent)}
 .cb.primary:active:not(:disabled){filter:brightness(.92);box-shadow:inset 0 1px 3px rgba(0,0,0,.22)}
-.chat-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin:0 12px;padding:3px;border-radius:var(--r-s,10px);background:var(--cg-well);box-shadow:inset 0 0 0 1px var(--cg-edge),inset 0 1px 2px rgba(0,0,0,.12)}
-.chat-mode label{position:relative;cursor:pointer}
-.chat-mode input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
-.chat-mode span{display:flex;flex-direction:column;align-items:center;padding:5px 6px;border-radius:8px;font-weight:600;font-size:12.5px;line-height:1.25}
-.chat-mode small{font:400 10.5px var(--mono);color:var(--muted)}
-.chat-mode label:hover input:not(:checked):not(:disabled)+span{background:var(--cg-tint)}
-.chat-mode input:checked+span{background:var(--cg-raised);box-shadow:var(--cg-hi),inset 0 0 0 1px var(--accent),0 2px 8px rgba(0,0,0,.16)}
-.chat-mode input:focus-visible+span{outline:2px solid var(--accent)}
-.chat-mode input:disabled+span{opacity:.45;cursor:not-allowed}
-.chat-notice{margin:8px 14px 0;font-size:11.5px;color:var(--muted)}
+.chat-notice{margin:4px 14px 0;font-size:11.5px;color:var(--muted)}
 .chat-notice summary{cursor:pointer;list-style:none}
 .chat-notice summary::-webkit-details-marker{display:none}
 .chat-notice summary b{font-weight:500;color:var(--accent);margin-left:4px}
 .chat-notice p{margin:6px 0 0}
-.chat-load{margin:10px 12px 0;padding:12px;border:1px solid var(--cg-edge);border-radius:var(--r-m,16px);background:var(--cg-tint);box-shadow:var(--cg-hi)}
-.chat-load h3{margin:0 0 3px;font:600 13px var(--sans)}
-.chat-load p{margin:0 0 10px;font-size:12px;color:var(--muted)}
-.chat-load .cb{width:100%;height:36px}
-.chat-load progress{width:100%;margin-top:8px;accent-color:var(--accent)}
-.chat-load .st{margin-top:6px;font-size:11.5px;color:var(--muted)}
 .chat-log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:9px;margin-top:8px;border-top:1px solid var(--gline)}
 .chat-empty{margin:auto 0;display:flex;flex-direction:column;gap:8px}
 .chat-empty h3{margin:0 0 2px;font:500 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
@@ -725,36 +716,23 @@ const LOCAL_DETAIL = "The local model needs WebGPU and about 2 GB of GPU memory.
   LOCAL_HOSTS.join(", ") + " (WebLLM, the model library and the Qwen2.5-1.5B-Instruct weights), each pinned to a fixed version and hash-checked where the files are code.";
 
 /* mount(root, app, opts) -> {open(), close(), destroy()}.  `app` = window.tngApp. Opens immediately unless
-   opts.open === false. opts: {opener, fetch, loadSearch, generateFactory, webgpu} (the last ones for tests).
-   Backend: Claude through the sightline server when it offers chat (no download), else the in-browser model;
-   an explicit choice by the user is kept. */
+   opts.open === false. opts: {opener, fetch, loadSearch}. Uses Claude via the sightline server (no model download). */
 export async function mount(root, app, opts = {}) {
   if (!document.getElementById("chat-style")) document.head.append(el("style", {id: "chat-style"}, STYLE));
   const fetchImpl = opts.fetch || ((...a) => fetch(...a));
   const myJobs = new Set();
   const exec = createToolExecutor(app, {loadSearch: opts.loadSearch, onSubmitted: j => j.job_id && myJobs.add(j.job_id)});
   const knownId = id => !!(app.entry && app.entry(id));
-  let backend = "local", generate = null, busy = false, opener = opts.opener || null, claudeOk = false, userChose = false;
+  const backend = "claude";
+  let busy = false, opener = opts.opener || null, claudeOk = false;
   const hist = {messages: []};
 
-  const mode = (value, label, id, tip) => { const cap = el("small"); const inp = el("input", {type: "radio", name: "chat-backend", id, value, "data-tip": tip});
-    return {inp, cap, node: el("label", {for: id}, inp, el("span", {}, label, cap))}; };
-  const mClaude = mode("claude", "Claude", "chat-be-claude", "Claude answers through the sightline server; your messages leave the browser"),
-    mLocal = mode("local", "In browser", "chat-be-local", "Local model (Qwen2.5 1.5B, about 1 GB) on WebGPU; messages stay here");
-  mLocal.cap.textContent = "private, 1 GB once";
-  const modeBar = el("div", {class: "chat-mode", role: "radiogroup", "aria-label": "Model"}, mClaude.node, mLocal.node);
   const noticeText = el("span"), noticeMore = el("p");
   const notice = el("details", {class: "chat-notice"}, el("summary", {}, noticeText, el("b", {text: "More"})), noticeMore);
 
-  const prog = el("progress", {max: "1", value: "0", hidden: true});
-  const progText = el("div", {class: "st", "aria-live": "polite"});
-  const loadBtn = el("button", {type: "button", class: "cb primary"}, "Download and start");
-  const load = el("div", {class: "chat-load"}, el("h3", {text: "Run the model in your browser"}),
-    el("p", {text: "Qwen2.5 1.5B, about 1 GB, downloaded once and cached by the browser. Needs WebGPU."}), loadBtn, prog, progText);
-
   const log = el("div", {class: "chat-log", role: "log", "aria-live": "polite", "aria-relevant": "additions"});
   const ta = el("textarea", {id: "chat-input", rows: "1", placeholder: "Ask about the sightlines"});
-  const send = el("button", {type: "submit", class: "cb primary sq", "aria-label": "Send"}, svg("send"));
+  const send = el("button", {type: "submit", class: "cb primary sq", "aria-label": "Send", "data-tip": "Send your question (Enter)"}, svg("send"));
   const form = el("form", {class: "chat-form"}, el("label", {for: "chat-input", class: "sr-only", style: "position:absolute;left:-9999px"}, "Question"), ta, send);
   const closeBtn = el("button", {type: "button", class: "cb sq", "aria-label": "Close chat", "data-tip": "Close the chat (Esc)"}, svg("close"));
   const clearBtn = el("button", {type: "button", class: "cb", "data-tip": "Start a new conversation; the page keeps its state"}, svg("reset"), "New");
@@ -764,7 +742,7 @@ export async function mount(root, app, opts = {}) {
   const drawer = el("div", {class: "chat-drawer", role: "dialog", "aria-modal": "true", "aria-label": "Ask about the sightlines", tabindex: "-1"},
     el("div", {class: "chat-head"}, el("div", {class: "chat-logo"}, svg("chat")),
       el("div", {class: "chat-title"}, el("h2", {text: "Ask"}), el("p", {text: "Drive the explorer in plain language"})), clearBtn, closeBtn),
-    modeBar, notice, load, log, form,
+    notice, log, form,
     el("p", {class: "chat-disc", text: "Data numbers not found on the page or in the tool results are marked unverified."}));
   root.replaceChildren(drawer);
   log.append(empty);
@@ -782,17 +760,13 @@ export async function mount(root, app, opts = {}) {
   };
   const defaults = () => { try { return (app.config && app.config.backends) || []; } catch { return []; } };
   const curApi = () => { try { return app.getState().api; } catch { return null; } };
-  const ready = () => backend === "claude" ? claudeOk : !!generate;
+  const ready = () => claudeOk;
   function refresh() {
-    mClaude.inp.checked = backend === "claude"; mLocal.inp.checked = backend === "local";
-    mClaude.inp.disabled = !claudeOk || busy; mLocal.inp.disabled = busy;
-    mClaude.cap.textContent = claudeOk ? (isOverrideApi(curApi(), defaults()) ? `via ${hostOf(curApi())}` : "via the server") : "server offline";
-    noticeText.textContent = noticeShort(backend, curApi(), defaults());
-    noticeMore.textContent = backend === "claude" ? claudeNote(curApi(), defaults()) : LOCAL_DETAIL;
-    load.hidden = backend !== "local" || !!generate;
-    ta.disabled = busy || !ready(); send.disabled = busy || !ready() ;
-    for (const b of sugs) b.disabled = busy;
-    ta.placeholder = ready() ? "Ask about the sightlines" : backend === "local" ? "Start the in-browser model above first" : "The server is offline";
+    noticeText.textContent = claudeOk ? noticeShort("claude", curApi(), defaults()) : "Connecting to the sightline server…";
+    noticeMore.textContent = claudeNote(curApi(), defaults());
+    ta.disabled = busy || !ready(); send.disabled = busy || !ready();
+    for (const b of sugs) b.disabled = busy || !ready();
+    ta.placeholder = ready() ? "Ask about the sightlines" : "The server is offline";
     send.replaceChildren(svg(busy ? "busy" : "send")); send.setAttribute("aria-busy", String(busy));
     if (busy && !typing.isConnected) { log.append(typing); log.scrollTop = log.scrollHeight; } else if (!busy) typing.remove();
   }
@@ -801,35 +775,22 @@ export async function mount(root, app, opts = {}) {
     const api = curApi();
     claudeOk = false;
     if (api) try { const r = await fetchImpl(api + "/api/health", {cache: "no-store"}); if (r.ok) { const h = await r.json(); claudeOk = !!(h.chat && h.chat.claude === true); } } catch { claudeOk = false; }
-    if (!claudeOk && backend === "claude") { backend = "local"; claudeApi = null; add("chat-note", "The server's chat is no longer available; switched to the in-browser model."); }
-    else if (claudeOk && backend === "local" && !userChose && !generate && !hist.messages.length && !busy) { backend = "claude"; claudeApi = api; }
-    else if (claudeOk && backend === "claude" && normApi(api) !== normApi(claudeApi)) {      // the server changed under us: say so before anything is sent
+    if (!claudeOk) {
+      claudeApi = null;
+      noticeText.textContent = "The sightline server is currently offline.";
+    } else if (claudeApi && normApi(api) !== normApi(claudeApi)) {      // the server changed under us: say so before anything is sent
       claudeApi = api; hist.messages = []; add("chat-note", "The sightline server changed. " + claudeNote(api, defaults()));
+    } else {
+      claudeApi = api;
     }
-    refresh(); return claudeOk ? api : null;
+    refresh();
+    if (!claudeOk) noticeText.textContent = "The sightline server is currently offline.";
+    return claudeOk ? api : null;
   }
-  function choose(v) {
-    if (busy || v === backend) { refresh(); return; }
-    backend = v; userChose = true; hist.messages = []; log.replaceChildren(empty);
-    claudeApi = backend === "claude" ? curApi() : null;
-    refresh(); (ready() ? ta : backend === "local" ? loadBtn : closeBtn).focus();
-  }
-  for (const m of [mClaude, mLocal]) m.inp.addEventListener("change", () => choose(m.inp.value));
-  loadBtn.addEventListener("click", async () => {
-    loadBtn.disabled = true; progText.textContent = "Checking WebGPU…";
-    const st = await (opts.webgpu || webgpuStatus)();
-    if (!st.ok) { progText.textContent = st.reason + (claudeOk ? " Choose Claude above instead." : ""); loadBtn.disabled = false; return; }
-    prog.hidden = false; progText.textContent = "Downloading the model…";
-    try {
-      generate = await (opts.generateFactory || createLocalGenerate)(r => { if (r && Number.isFinite(r.progress)) prog.value = r.progress; if (r && r.text) progText.textContent = r.text; });
-      add("chat-note", "In-browser model ready.");
-    } catch (e) { progText.textContent = "Could not load the local model: " + errMsg(e); loadBtn.disabled = false; }
-    refresh(); if (generate) ta.focus();
-  });
   function ask(q) {
     if (busy) return;
     ta.value = q; grow();
-    if (ready()) form.requestSubmit(); else (backend === "local" ? loadBtn : ta).focus();
+    if (ready()) form.requestSubmit(); else ta.focus();
   }
   form.addEventListener("submit", async ev => {
     ev.preventDefault(); const q = ta.value.trim(); if (!q || busy || !ready()) return;
@@ -838,11 +799,9 @@ export async function mount(root, app, opts = {}) {
     let res;
     const page = pagePrefix(pageSnapshot(app));
     try {
-      if (backend === "claude") {
-        const api = curApi();
-        if (normApi(api) !== normApi(claudeApi)) { await checkClaude(); throw new Error("The sightline server changed; read the note above and send again."); }
-        res = await runClaudeTurn({post: createClaudePost(api, fetchImpl), state: hist, userText: q, exec, onEvent, knownId, page});
-      } else res = await runLocalTurn({generate, state: hist, userText: q, exec, onEvent, knownId, page});
+      const api = curApi();
+      if (normApi(api) !== normApi(claudeApi)) { await checkClaude(); throw new Error("The sightline server changed; read the note above and send again."); }
+      res = await runClaudeTurn({post: createClaudePost(api, fetchImpl), state: hist, userText: q, exec, onEvent, knownId, page});
     } catch (e) { res = {answer: null, error: errMsg(e), unverified: []}; }
     pending.length = 0;
     busy = false; refresh();
@@ -877,7 +836,7 @@ export async function mount(root, app, opts = {}) {
     async open() {
       opener = opener || document.activeElement; root.hidden = false; document.body.classList.add("chat-on");
       refresh(); drawer.focus(); await checkClaude();
-      if (!root.hidden) (ready() ? ta : backend === "local" && !load.hidden ? loadBtn : closeBtn).focus();
+      if (!root.hidden) (ready() ? ta : closeBtn).focus();
     },
     close() { root.hidden = true; document.body.classList.remove("chat-on"); if (opener && opener.focus) opener.focus(); },
     destroy() { window.removeEventListener("tng:done", onDone); window.removeEventListener("tng:error", onErr); window.removeEventListener("tng:backend", onBackend); root.replaceChildren(); root.hidden = true; document.body.classList.remove("chat-on"); },

@@ -407,11 +407,18 @@
  },
  {
   "name": "list_galaxies",
-  "description": "List galaxies of the sample (198 TNG50-1 Milky Way and M31 analogues at z = 0), filtered and sorted. Masses are log10 solar masses, SFR solar masses per year. Most massive: sort Mstar, order desc. query takes picker words: an id prefix, central, satellite, mw, m31, gas-poor, m*>10.8, sfr<1. Default sort Mstar desc, limit 10.",
+  "description": "List galaxies of the sample (198 TNG50-1 Milky Way and M31 analogues plus FIRE-2 zoom-in galaxies at z = 0), filtered and sorted. Masses are log10 solar masses, SFR solar masses per year. Most massive: sort Mstar, order desc. query takes picker words: an id or name prefix (e.g. m12i, Romeo), fire2, tng50, central, satellite, mw, m31, gas-poor, m*>10.8, sfr<1. Default sort Mstar desc, limit 10.",
   "input_schema": {
    "type": "object",
    "additionalProperties": false,
    "properties": {
+    "sim": {
+     "type": "string",
+     "enum": [
+      "TNG50",
+      "FIRE-2"
+     ]
+    },
     "sort": {
      "type": "string",
      "enum": [
@@ -485,7 +492,7 @@
  },
  {
   "name": "select_galaxy",
-  "description": "Open another galaxy of the sample by subhalo id. Its sightline library replaces the current one, so search_sightlines and select_sightline then act on it. Returns its properties, how many sightlines it has and the sightline now shown.",
+  "description": "Open another galaxy of the sample by TNG50 subhalo id (integer) or FIRE-2 halo id (e.g. m12i, m12b, Romeo, Juliet, m11b, m09). Its sightline library replaces the current one, so search_sightlines and select_sightline then act on it. Returns its properties, how many sightlines it has and the sightline now shown.",
   "input_schema": {
    "type": "object",
    "additionalProperties": false,
@@ -494,9 +501,17 @@
    ],
    "properties": {
     "id": {
-     "type": "integer",
-     "minimum": 1,
-     "maximum": 999999999
+     "anyOf": [
+      {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 999999999
+      },
+      {
+       "type": "string",
+       "pattern": "^(?:\\d{1,9}|[A-Za-z][A-Za-z0-9_]{1,23})$"
+      }
+     ]
     }
    }
   }

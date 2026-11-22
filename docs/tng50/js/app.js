@@ -932,7 +932,7 @@ function mountFind() { if (FINDP) return; FINDP = import(modUrl("search.js")).th
 let CHAT = null;
 $("#chat-open").hidden = !(CFG.chat && CFG.chat.enabled);
 $("#chat-open").addEventListener("click", async () => { backendCatalog(); try { if (!CHAT) { const m = await import(modUrl("chat.js")), root = $("#chat-root"); root.hidden = false;
-    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); initLiquidSeg(root.querySelector(".chat-mode")); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
+    CHAT = await m.mount(root, window.tngApp, {opener: $("#chat-open")}); } CHAT.open && CHAT.open(); } catch (x) { CHAT = null; note("the chat could not be loaded: " + x.message, "bad"); } });
 
 /* ---------------- side column (collapsible, remembered) and the phone drawer ---------------- */
 function setSide(on) { document.body.classList.toggle("side-off", !on); const b = $("#side-toggle"); b.setAttribute("aria-expanded", String(on));

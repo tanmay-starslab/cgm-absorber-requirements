@@ -556,7 +556,8 @@ def test_tools_and_prompt_cover_the_galaxy_sample():
     assert lg["additionalProperties"] is False and "required" not in lg
     assert lg["properties"]["sort"]["enum"] == ["Mstar", "M200c", "SFR", "id"] and lg["properties"]["limit"]["maximum"] == 20
     sg = t["select_galaxy"]["input_schema"]
-    assert sg["required"] == ["id"] and sg["properties"]["id"]["type"] == "integer"
+    assert sg["required"] == ["id"] and "anyOf" in sg["properties"]["id"]
+    assert lg["properties"]["sim"]["enum"] == ["TNG50", "FIRE-2"]
     assert t["set_view"]["input_schema"]["properties"]["tab"]["enum"] == ["spectra", "3d"]
     s3 = t["show_3d"]["input_schema"]["properties"]
     assert s3["mode"]["enum"] == ["integral", "volume"] and s3["tf"]["enum"] == ["ramp", "thor", "nelson16", "iso", "clouds"]

@@ -670,7 +670,7 @@ html[data-tier=low] *,html[data-tier=low] *::before,html[data-tier=low] *::after
 /* ---- liquid tab drop BEGIN: Liquid navbar effect adapted from Nimbus UI Liquid Navbar (Waterline) by guglielmogiannattasio.it.
    CSS only (js/liquidtabs.js adds the span and sets --dl/--dr). Leading edge = lead spring k 210 c 25, trailing edge =
    tail spring k 72 c 13 starting 70 ms late; both springs sampled into linear(). Reduced motion: instant.
-   2026-11: the same drop behind the radio segmented rows (.seg Layout, .v3c-seg 3D Field and Render mode, .chat-mode);
+   2026-11: the same drop behind the radio segmented rows (.seg Layout, .v3c-seg 3D Field and Render mode);
    there it keeps the accent ring of the old selected pill, and fades out (.off) when the row has no selection. ---- */
 .liquid{position:relative;isolation:isolate;
   --lead:linear(0,.001,.051,.153,.276,.403,.521,.626,.715,.788,.846,.892,.926,.951,.97,.983,.991,.997,1.001,1.003,1.003,1.004,1.004,1.003,1.003,1.002,1.002,1);
@@ -678,14 +678,14 @@ html[data-tier=low] *,html[data-tier=low] *::before,html[data-tier=low] *::after
 #tabs.liquid [role=tab]{position:relative;z-index:1;transition:color .2s}
 #tabs.liquid [role=tab][aria-selected=true]{background:none;box-shadow:none}
 #tabs.liquid [role=tab][aria-selected=false]:hover{background:var(--mat-tint)}
-:is(.seg,.v3c-seg,.chat-mode).liquid>label{z-index:1}
-:is(.seg,.v3c-seg,.chat-mode).liquid input:checked+span{background:none;box-shadow:none;transition:color .2s}
+:is(.seg,.v3c-seg).liquid>label{z-index:1}
+:is(.seg,.v3c-seg).liquid input:checked+span{background:none;box-shadow:none;transition:color .2s}
 .ldrop{position:absolute;z-index:0;top:3px;bottom:3px;left:var(--dl,3px);right:var(--dr,50%);border-radius:8px;pointer-events:none;
   background:radial-gradient(120% 70% at 50% 0%,rgba(255,255,255,.26),rgba(255,255,255,0) 62%),
     radial-gradient(90% 60% at 50% 115%,var(--accent-glow),transparent 70%),var(--mat-raised);
   box-shadow:var(--mat-highlight),inset 0 -1px 0 rgba(255,255,255,.05),0 0 0 1px var(--mat-edge-c),0 2px 8px rgba(0,0,0,.18);
   transform-origin:50% 60%}
-:is(.seg,.v3c-seg,.chat-mode)>.ldrop{box-shadow:var(--mat-highlight),inset 0 0 0 1px var(--accent),0 2px 8px rgba(0,0,0,.16)}
+:is(.seg,.v3c-seg)>.ldrop{box-shadow:var(--mat-highlight),inset 0 0 0 1px var(--accent),0 2px 8px rgba(0,0,0,.16)}
 .ldrop.off{opacity:0;transform:scale(.72,.6)}
 .liquid.ready>.ldrop{transition:left .97s var(--tail) 70ms,right .54s var(--lead),opacity .2s,transform .5s var(--tail)}
 .liquid.ready[data-dir=l]>.ldrop{transition:left .54s var(--lead),right .97s var(--tail) 70ms,opacity .2s,transform .5s var(--tail)}
