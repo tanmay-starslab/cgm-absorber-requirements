@@ -35,10 +35,20 @@ M_P_G, K_B, G_CGS, MSUN_G, KPC_CM = 1.67262192e-24, 1.380649e-16, 6.6743e-8, 1.9
 MU = 0.59
 SF_MIN_CELLS = 50
 CITE = ["nelson19a", "pillepich24"]
+FIRE2_SIM, FIRE2_SNAP = "FIRE-2", 600
+FIRE2_CITE = ["hopkins18", "wetzel23"]
+FIRE2_IDS = (
+    "m12b", "m12c", "m12f", "m12i", "m12m", "m12r", "m12w", "m12z",
+    "Romeo", "Juliet", "Romulus", "Remus", "Thelma", "Louise",
+    "m11b", "m11d", "m11e", "m11h", "m11i", "m11q", "m10q", "m10v", "m09",
+)
+RHO_CRIT_0_H2_MSUN_KPC3 = 277.536627  # 3 H0^2 / (8 pi G) in h^2 Msun / kpc^3
 
 
-def slug(sim: str, snap: int, sid: int) -> str:
-    return f"{sim.lower()}-{int(snap):03d}-{int(sid)}"
+def slug(sim: str, snap: int, sid: int | str) -> str:
+    s = "fire2" if sim.upper() in ("FIRE-2", "FIRE2") else sim.lower()
+    sid_str = str(int(sid)) if isinstance(sid, int) or str(sid).isdigit() else str(sid)
+    return f"{s}-{int(snap):03d}-{sid_str}"
 
 
 def unit(v):
@@ -404,8 +414,252 @@ def write(rec: dict, out: Path) -> Path:
 
 
 def load(slug_or_id, out: Path = OUT_DEFAULT) -> dict:
-    s = slug_or_id if isinstance(slug_or_id, str) and "-" in slug_or_id else slug(SIM, SNAP, int(slug_or_id))
+    if isinstance(slug_or_id, str) and "-" in slug_or_id:
+        s = slug_or_id
+    elif isinstance(slug_or_id, str) and slug_or_id in FIRE2_IDS:
+        s = slug(FIRE2_SIM, FIRE2_SNAP, slug_or_id)
+    else:
+        s = slug(SIM, SNAP, int(slug_or_id))
     return json.loads((Path(out) / f"{s}.json").read_text())
+
+
+def fire2_root() -> Path:
+    import os
+    from . import config
+    v = os.environ.get("TNG_FIRE2_ROOT")
+    if v:
+        return Path(v).expanduser()
+    cand = config.work_root() / "data" / "gal_fire2"
+    if cand.is_dir():
+        return cand
+    return Path("/data/sborthak/cgm_absorber_requirements/fire2")
+
+
+def measure_fire2(gdir: Path, hid: str) -> dict:
+    """Measure the Phase-4 galaxy/1 registry record body for one FIRE-2 zoom-in halo from its slim cutout and galaxy.json."""
+    import h5py
+    d = definitions.load()
+    t0 = time.time()
+    gmeta_path = gdir / "galaxy.json"
+    if not gmeta_path.is_file():
+        gmeta_path = gdir / "record.json"
+    gmeta = json.loads(gmeta_path.read_text())
+    src = gdir / "cutout_slim_R400.hdf5"
+    with h5py.File(src, "r") as f:
+        hd = dict(f["Header"].attrs)
+        h = float(hd.get("HubbleParam", gmeta["TNG_H"]))
+        om0 = float(hd.get("Omega0", 0.272))
+        centre_kpc = np.asarray(gmeta["center_kpc"], dtype=np.float64)
+        vel_kms = np.asarray(gmeta["SubhaloVel_kms"], dtype=np.float64)
+
+        xg = _read(f, 0, "Coordinates").astype(np.float64) / h - centre_kpc
+        rg = np.linalg.norm(xg, axis=1)
+        mg = _read(f, 0, "Masses").astype(np.float64) * 1e10 / h
+        vg = _read(f, 0, "Velocities").astype(np.float64)
+        XH = _read(f, 0, "GFM_Metals")[:, 0].astype(np.float64)
+        T = temperature(_read(f, 0, "InternalEnergy"), _read(f, 0, "ElectronAbundance").astype(np.float64), XH)
+        logT = np.log10(T)
+        rho = _read(f, 0, "Density").astype(np.float64) * (1e10 * MSUN_G / h) / (KPC_CM / h) ** 3
+        nH = rho * np.clip(XH, 0.5, 0.76) / M_H_G
+        if "StarFormationRate" in f["PartType0"]:
+            sfr_arr = _read(f, 0, "StarFormationRate").astype(np.float64)
+            sf = sfr_arr > 0
+        else:
+            sfr_arr = None
+            sf = np.zeros(len(rg), dtype=bool)
+
+        xs = _read(f, 4, "Coordinates").astype(np.float64) / h - centre_kpc
+        rs = np.linalg.norm(xs, axis=1)
+        ms = _read(f, 4, "Masses").astype(np.float64) * 1e10 / h
+        vs = _read(f, 4, "Velocities").astype(np.float64)
+        sft_key = "GFM_StellarFormationTime" if "GFM_StellarFormationTime" in f["PartType4"] else "StellarFormationTime"
+        sft = _read(f, 4, sft_key).astype(np.float64)
+
+    rho_crit = RHO_CRIT_0_H2_MSUN_KPC3 * (h ** 2)
+    m200c = float(gmeta["M200c_Msun"])
+    r200 = float(gmeta["R200c_kpc"])
+    mvir = float(gmeta.get("Mvir_Msun") or gmeta.get("catalogue", {}).get("HaloMass_Mdyn") or m200c)
+    rvir = float((3.0 * mvir / (4.0 * math.pi * delta_bn(om0) * rho_crit)) ** (1.0 / 3.0))
+    m200m = float(gmeta.get("M200m_Msun") or mvir)
+    r200m = float(gmeta.get("R200m_kpc") or (3.0 * m200m / (4.0 * math.pi * 200.0 * om0 * rho_crit)) ** (1.0 / 3.0))
+    lim = 400.0
+    so = {
+        "R200c": {"R_kpc": r200, "M_Msun": m200c, "extrapolated": False},
+        "R200m": {"R_kpc": r200m, "M_Msun": m200m, "extrapolated": bool(r200m > lim)},
+        "Rvir_BN": {"R_kpc": rvir, "M_Msun": mvir, "extrapolated": bool(rvir > lim)},
+    }
+
+    r_gal = max(0.15 * r200, 20.0)
+    bound_s = (rs < r_gal) & (sft > 0)
+    if not bound_s.any():
+        bound_s = sft > 0
+    rhalf = half_mass_radius(rs[bound_s], ms[bound_s])
+    s10 = bound_s & (rs < d["frame"]["stellar_L"]["bulk_velocity_r_kpc"])
+    vbulk = np.average(vs[s10], weights=ms[s10], axis=0) if s10.any() else np.average(vs[bound_s], weights=ms[bound_s], axis=0)
+    ap = bound_s & (rs < d["frame"]["stellar_L"]["aperture_rhalf"] * rhalf)
+    if ap.sum() < 3:
+        ap = bound_s
+    fr = stellar_frame(xs[ap], vs[ap], ms[ap], vbulk)
+    Lst = fr["L"]
+
+    aper = max(APER_FRAC * r200, APER_MIN_KPC)
+    cold = ((T < COLD_T_MAX) | (nH > COLD_NH_MIN)) & (rg < aper)
+    ang_cold = None
+    if cold.sum() >= SF_MIN_CELLS:
+        vc = np.average(vg[cold], weights=mg[cold], axis=0)
+        ang_cold = angle(np.sum(np.cross(xg[cold], (vg[cold] - vc) * mg[cold, None]), axis=0), Lst)
+
+    bound_g = rg < r200
+    sfa = sf & bound_g & (rg < d["frame"]["alternatives"]["sf_gas_L"]["aperture_rhalf"] * rhalf)
+    ang_sf = (angle(np.sum(np.cross(xg[sfa], (vg[sfa] - vbulk) * mg[sfa, None]), axis=0), Lst)
+              if sfa.sum() >= SF_MIN_CELLS else None)
+
+    lhat_cat = np.asarray(gmeta.get("Lhat", fr["R"][2]), dtype=np.float64)
+    ang_cut = angle(Lst, lhat_cat)
+    cut_det = 1
+
+    shell = (rg >= 0.15 * r200) & (rg < r200)
+    cgm = shell & ~sf
+    outsk = (rg >= r200) & (rg < 2 * r200) & ~sf
+    cgm_phases = phase_masses(logT, mg, cgm, d)
+    rec_masses = {
+        "cgm": {**cgm_phases, "total": float(sum(cgm_phases.values()))},
+        "cgm_exclude_bound": dict(cgm_phases),
+        "ism": float(mg[(sf & (rg < r200)) | (rg < 0.15 * r200)].sum()),
+        "outskirts": phase_masses(logT, mg, outsk, d),
+        "outskirts_complete": bool(2 * r200 <= lim),
+        "cgm_sf_excluded": float(mg[shell & sf].sum()),
+    }
+    t200_K = t200(m200c, r200)
+    sfr_val = float(sfr_arr[bound_g].sum()) if sfr_arr is not None and sfr_arr[bound_g].sum() > 0 else float(gmeta["SFR_Msun_yr"])
+    no_sf = not bool((sf & bound_g).any()) and (sfr_val <= 0.0)
+    flags = {
+        "fof_satellite": False,
+        "host_unknown": False,
+        "no_sf_gas": no_sf,
+        "few_sf_cells": ang_sf is None,
+        "misaligned_cold": ang_cold is not None and ang_cold > d["frame"]["misalignment_flag_deg"],
+        "misaligned_sf": ang_sf is not None and ang_sf > d["frame"]["misalignment_flag_deg"],
+        "R200m_extrapolated": so["R200m"]["extrapolated"],
+        "R200c_beyond_cutout": r200 > lim,
+        "outskirts_incomplete": not rec_masses["outskirts_complete"],
+    }
+    s30 = (rs < 30.0) & (sft > 0)
+    mstar_bound = float(ms[bound_s].sum())
+    mstar_30 = float(ms[s30].sum())
+    mstar_2rh = float(ms[ap].sum())
+    cat_meta = gmeta.get("catalogue", {})
+    nmem = gmeta.get("checks", {}).get("n_members") or {"PartType0": int(len(rg)), "PartType4": int(len(rs))}
+    return {
+        "sim": FIRE2_SIM, "snap": FIRE2_SNAP, "subhalo_id": hid,
+        "central": True,
+        "host_subhalo_id": hid,
+        "pos_kpc": centre_kpc.tolist(),
+        "vel_kms": vel_kms.tolist(),
+        "so": so,
+        "T200_K": t200_K,
+        "rhalf_star_kpc": rhalf,
+        "Mstar_Msun": mstar_bound,
+        "Mstar_30kpc_Msun": mstar_30,
+        "Mstar_2rhalf_Msun": mstar_2rh,
+        "Mgas_Msun": float(mg[bound_g].sum()),
+        "SFR_Msun_yr": sfr_val,
+        "frame": {
+            "R": fr["R"].tolist(),
+            "v_bulk_kms": vbulk.tolist(),
+            "n_stars": int(ap.sum()),
+            "aperture_kpc": 2 * rhalf,
+        },
+        "misalignment_deg": {
+            "cold_gas": ang_cold,
+            "sf_gas": ang_sf,
+            "tng_cutout_raw": ang_cut,
+            "tng_cutout": fold(ang_cut),
+        },
+        "tng_cutout_handedness": int(cut_det),
+        "sat_gas_frac": 0.0,
+        "masses_Msun": rec_masses,
+        "r_complete_kpc": lim,
+        "flags": flags,
+        "catalogue": {
+            "R200c_kpc": r200,
+            "M200c_Msun": m200c,
+            "Mstar_30kpc_Msun": mstar_30,
+            "Mstar_all_Msun": mstar_bound,
+            "Mstar_2rh_Msun": mstar_2rh,
+            "SFR_inst_Msun_yr": sfr_val,
+            "SFR_50Myr_Msun_yr": float(cat_meta.get("SFR_50Myr", sfr_val)),
+            "FlagCentral": True,
+        },
+        "n_members": {str(k): int(v) for k, v in nmem.items()},
+        "wall_s": round(time.time() - t0, 1),
+    }
+
+
+def record_fire2(body: dict, gdir: Path) -> dict:
+    """Wrap a measure_fire2() body with schema id, slug, units and FIRE-2 provenance."""
+    gmeta_path = gdir / "galaxy.json"
+    if not gmeta_path.is_file():
+        gmeta_path = gdir / "record.json"
+    gmeta = json.loads(gmeta_path.read_text()) if gmeta_path.is_file() else {}
+    sim_dir = Path(gmeta.get("source", {}).get("sim_dir", ""))
+    sim_run = gmeta.get("sim_run", body["subhalo_id"])
+    dl = sim_dir / "DONE.download.json" if sim_dir.is_dir() else Path("/nonexistent")
+    dl_meta = json.loads(dl.read_text()) if dl.is_file() else {}
+    sha = None
+    for fentry in dl_meta.get("files", []):
+        if fentry.get("filename", "").startswith("halo_600.hdf5") and fentry.get("sha256"):
+            sha = fentry["sha256"]
+            break
+    if not sha and (sim_dir / "halo_600.hdf5").is_file():
+        import hashlib
+        sha = hashlib.sha256((sim_dir / "halo_600.hdf5").read_bytes()).hexdigest()
+    base_url = dl_meta.get("base_url") or f"https://users.flatironinstitute.org/~mgrudic/fire2_public_release/core/{sim_run}"
+    return {
+        "schema": SCHEMA_ID,
+        "slug": slug(body["sim"], body["snap"], body["subhalo_id"]),
+        **{k: v for k, v in body.items() if k != "wall_s"},
+        "units": {"length": "kpc physical", "mass": "Msun", "velocity": "km/s", "T": "K", "SFR": "Msun/yr",
+                  "angle": "deg"},
+        "provenance": {
+            "source": base_url,
+            "sha256": sha,
+            "definitions": definitions.load()["version"],
+            "built": time.strftime("%Y-%m-%d", time.gmtime()),
+            "methods": {
+                "pos_vel": "iterative shrinking-sphere maximum stellar density + minimum Potential within 30 kpc of Rockstar host; velocity = mass-weighted mean of stars within 15 kpc",
+                "so": "Rockstar halo_600.hdf5 M200c, Mvir (Bryan & Norman 1998), and M200m spherical overdensities about the host",
+                "Mstar": "stars within max(0.15 R200c, 20 kpc), < 30 kpc, and < 2 r_1/2",
+                "Mgas_SFR": "gas within R200c; instantaneous StarFormationRate or 100 Myr stellar mass formed",
+                "host": "isolated central or Elvis Local Group paired central (central = true, host_subhalo_id = subhalo_id)",
+                "catalogue": "Rockstar halo_600.hdf5 + star_600.hdf5 (Wetzel+23 FIRE-2 public data release)",
+            },
+            "citations": FIRE2_CITE,
+        },
+    }
+
+
+def _build_fire2_one(args):
+    hid, root_str, out_str = args
+    gdir = Path(root_str) / str(hid)
+    body = measure_fire2(gdir, str(hid))
+    p = write(_round(record_fire2(body, gdir)), Path(out_str))
+    return hid, body["so"]["R200c"]["R_kpc"], body["T200_K"], p.name, body["wall_s"]
+
+
+def build_fire2(ids=None, out: Path = OUT_DEFAULT, root: Path | None = None, workers: int = 1) -> None:
+    import multiprocessing as mp
+    ids = list(ids or FIRE2_IDS)
+    froot = Path(root) if root else fire2_root()
+    tasks = [(str(hid), str(froot), str(out)) for hid in ids]
+    if workers > 1 and len(tasks) > 1:
+        with mp.get_context("spawn").Pool(min(workers, len(tasks))) as pool:
+            for hid, r200, t200_val, pname, wall in pool.imap_unordered(_build_fire2_one, tasks):
+                print(f"{hid}: R200c {r200:.2f} T200 {t200_val:.3g} -> {pname} [{wall} s]", flush=True)
+    else:
+        for t in tasks:
+            hid, r200, t200_val, pname, wall = _build_fire2_one(t)
+            print(f"{hid}: R200c {r200:.2f} T200 {t200_val:.3g} -> {pname} [{wall} s]", flush=True)
 
 
 def build(ids, out: Path) -> None:
@@ -424,9 +678,16 @@ def build(ids, out: Path) -> None:
 def check(out: Path) -> dict:
     """Cross-checks of every record against the catalogue (and the d8 summary when given)."""
     sch = load_schema()
-    recs = [json.loads(p.read_text()) for p in sorted(Path(out).glob("tng50-1-099-*.json"))]
-    rep = {"n": len(recs), "schema_errors": {r["slug"]: e for r in recs if (e := schema_errors(sch, r))}}
-    cen = [r for r in recs if r["central"]]
+    all_recs = [json.loads(p.read_text()) for p in sorted(Path(out).glob("*.json"))]
+    recs = [r for r in all_recs if r.get("sim") == SIM]
+    fire2_recs = [r for r in all_recs if r.get("sim") == FIRE2_SIM]
+    rep = {
+        "n": len(all_recs),
+        "n_tng50": len(recs),
+        "n_fire2": len(fire2_recs),
+        "schema_errors": {r["slug"]: e for r in all_recs if (e := schema_errors(sch, r))},
+    }
+    cen = [r for r in all_recs if r["central"]]
 
     def rel(a, b):
         return a / b - 1.0
@@ -451,29 +712,45 @@ def check(out: Path) -> dict:
         rep["satellites"].append(e)
     for key, ck in (("Mstar_30kpc_Msun", "Mstar_30kpc_Msun"), ("Mstar_Msun", "Mstar_all_Msun"),
                     ("Mstar_2rhalf_Msun", "Mstar_2rh_Msun"), ("SFR_Msun_yr", "SFR_inst_Msun_yr")):
-        v = np.array([rel(r[key], r["catalogue"][ck]) for r in recs if r["catalogue"][ck] > 0])
+        v = np.array([rel(r[key], r["catalogue"][ck]) for r in all_recs if r["catalogue"].get(ck, 0) > 0])
         rep[f"{key}_vs_{ck}"] = {"median": float(np.median(v)), "p05": float(np.percentile(v, 5)),
                                  "p95": float(np.percentile(v, 95)), "max_abs": float(np.abs(v).max())}
-    rep["flags"] = {k: [r["subhalo_id"] for r in recs if r["flags"][k]] for k in recs[0]["flags"]} if recs else {}
+    rep["flags"] = {k: [r["subhalo_id"] for r in all_recs if r["flags"][k]] for k in all_recs[0]["flags"]} if all_recs else {}
     return rep
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m tngsight.registry")
-    ap.add_argument("cmd", choices=("build", "check"))
-    ap.add_argument("--ids", type=int, nargs="*")
+    ap.add_argument("cmd", choices=("build", "build_fire2", "check"))
+    ap.add_argument("--sim", choices=("tng50", "fire2", "all"), default="tng50")
+    ap.add_argument("--ids", nargs="*")
     ap.add_argument("--chunk", help="i/n: build the i-th of n chunks of the sample (SLURM arrays)")
+    ap.add_argument("--workers", type=int, default=1, help="Parallel worker processes for FIRE-2 build")
+    ap.add_argument("--fire2-root", type=Path, default=None, help="FIRE-2 galaxy root directory")
     ap.add_argument("--out", type=Path, default=OUT_DEFAULT)
     a = ap.parse_args(argv)
     if a.cmd == "check":
         print(json.dumps(check(a.out), indent=1))
         return 0
+    if a.cmd == "build_fire2" or a.sim == "fire2":
+        ids = [str(x) for x in a.ids] if a.ids else list(FIRE2_IDS)
+        if a.chunk:
+            i, n = map(int, a.chunk.split("/"))
+            ids = ids[i::n]
+        build_fire2(ids, a.out, root=a.fire2_root, workers=a.workers)
+        return 0
     from . import galaxy as G
-    ids = a.ids or G.sample_ids()
+    ids = [int(x) for x in a.ids] if a.ids else G.sample_ids()
     if a.chunk:
         i, n = map(int, a.chunk.split("/"))
         ids = ids[i::n]
     build(ids, a.out)
+    if a.sim == "all":
+        fids = list(FIRE2_IDS)
+        if a.chunk:
+            i, n = map(int, a.chunk.split("/"))
+            fids = fids[i::n]
+        build_fire2(fids, a.out, root=a.fire2_root, workers=a.workers)
     return 0
 
 

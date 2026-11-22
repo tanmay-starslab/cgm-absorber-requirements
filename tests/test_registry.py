@@ -53,12 +53,31 @@ def test_definitions_validate_catches(breakit, msg):
 
 # ---------------------------------------------------------------------------------------------- records
 def test_all_records_present_and_valid():
-    assert len(RECS) == 198, "galaxies/ must hold the 198 TNG50-1 MW/M31 records"
+    assert len(RECS) == 221, "galaxies/ must hold the 221 records (198 TNG50-1 + 23 FIRE-2)"
+    tng_recs = [p for p in RECS if p.name.startswith("tng50-1-099-")]
+    fire2_recs = [p for p in RECS if p.name.startswith("fire2-600-")]
+    assert len(tng_recs) == 198 and len(fire2_recs) == 23
     sch = R.load_schema()
     bad = {p.name: e for p in RECS if (e := R.schema_errors(sch, json.loads(p.read_text())))}
     assert not bad, list(bad.items())[:3]
     total = sum(p.stat().st_size for p in RECS)
-    assert max(p.stat().st_size for p in RECS) < 8000 and total < 2_000_000
+    assert max(p.stat().st_size for p in RECS) < 8000 and total < 2_500_000
+
+
+def test_fire2_records_present_and_complete():
+    fire2_recs = {p.stem.split("-", 2)[-1]: json.loads(p.read_text()) for p in RECS if p.name.startswith("fire2-600-")}
+    assert set(fire2_recs) == set(R.FIRE2_IDS)
+    for hid, r in fire2_recs.items():
+        assert r["schema"] == "galaxy/1"
+        assert r["slug"] == f"fire2-600-{hid}"
+        assert r["sim"] == "FIRE-2" and r["snap"] == 600
+        assert r["subhalo_id"] == hid and r["central"] is True and r["host_subhalo_id"] == hid
+        assert r["sat_gas_frac"] == 0.0
+        assert r["provenance"]["citations"] == ["hopkins18", "wetzel23"]
+        cgm = r["masses_Msun"]["cgm"]
+        assert cgm["total"] == pytest.approx(cgm["cool"] + cgm["warm"] + cgm["hot"], rel=1e-5)
+        assert R.load(hid)["slug"] == r["slug"]
+        assert R.load(r["slug"])["subhalo_id"] == hid
 
 
 def test_records_self_consistent():

@@ -209,6 +209,8 @@
     "hummels19": {"text": "Hummels et al. 2019", "arxiv": null, "for": ["resolution"]},
     "vandevoort19": {"text": "van de Voort et al. 2019", "arxiv": null, "for": ["resolution"]},
     "peeples19": {"text": "Peeples et al. 2019", "arxiv": null, "for": ["resolution"]},
-    "gible": {"text": "GIBLE (Ramesh and Nelson 2024)", "arxiv": null, "for": ["resolution"]}
+    "gible": {"text": "GIBLE (Ramesh and Nelson 2024)", "arxiv": null, "for": ["resolution"]},
+    "hopkins18": {"text": "Hopkins et al. 2018 (FIRE-2)", "arxiv": "1702.06148", "for": ["sample"]},
+    "wetzel23": {"text": "Wetzel et al. 2023 (FIRE-2 public data release)", "arxiv": "2202.06969", "for": ["sample"]}
   }
 }
