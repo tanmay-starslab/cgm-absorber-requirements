@@ -92,7 +92,15 @@ const cube = (m, half, fill) => { const data = new Uint8Array(m * m * m); const 
   const dl = E3D.buildDeepLink(mockV);
   check(dl.includes("cam=0,-450,260,0,0,1") && dl.includes("pv=10,-20,5") && dl.includes("tf=OVI"), `buildDeepLink encodes cam, pv and tf (${dl})`);
   const cap = E3D.buildLatexCaption(mockV);
-  check(cap.startsWith("\\caption{") && cap.includes("OVI") && cap.includes("R_{200\\mathrm{c}}"), `buildLatexCaption generates LaTeX caption`);
+  check(cap.startsWith("\\caption{") && cap.includes("O\\,VI") && cap.includes("R_{200\\mathrm{c}}"), `buildLatexCaption generates LaTeX caption`);
+  const figBlk = E3D.buildLatexFigureBlock(mockV);
+  check(figBlk.includes("\\begin{figure}") && figBlk.includes("\\includegraphics") && figBlk.includes("\\end{figure}"), "buildLatexFigureBlock wraps includegraphics and caption");
+  const cmLayout = E3D.layoutCMText("$\\log_{10} N_{\\mathrm{O\\,VI}}\\ [\\mathrm{cm^{-2}}]$");
+  check(cmLayout.glyphs.length >= 12 && cmLayout.widthEm > 4, `layoutCMText lays out Computer Modern vector glyphs (${cmLayout.glyphs.length} glyphs, ${cmLayout.widthEm.toFixed(2)} em)`);
+  const legInfo = E3D.getLegendInfo(mockV);
+  check(legInfo.stops.length === 128 && legInfo.ticks.length >= 2 && legInfo.minorTicks.length >= 4 && legInfo.titleMath.includes("O\\,VI"), "getLegendInfo produces 128 vertical stops, major+minor ticks, and LaTeX math title");
+  const scInfo = E3D.getScaleInfo(mockV, 356, 356);
+  check(scInfo.xTicks.length >= 3 && scInfo.xMinor.length >= 8 && scInfo.yTicks.length >= 3 && scInfo.yMinor.length >= 8, "getScaleInfo produces 4-sided major and minor ticks");
   const jsonRes = E3D.exportJSON(mockV, {download: false});
   check(jsonRes.filename.endsWith(".json") && JSON.parse(jsonRes.json).scene.species === "OVI", "exportJSON serialises scene snapshot"); }
 

@@ -562,7 +562,7 @@ function pill() { const p = $("#pill");
   else { const warm = !!HEALTH.warm; p.dataset.state = warm ? "live" : "warming";
     p.textContent = warm ? `live ${apiMs != null ? (apiMs / 1000).toFixed(1) + " s" : ""}`.trim() : "warming";
     p.title = `${HEALTH.node || new URL(API).host}: queue ${HEALTH.queue?.queued ?? 0} queued, ${HEALTH.queue?.running ?? 0} running`; }
-  $("#dlpdf").disabled = !API; }
+  $("#dlpdf").disabled = false; }
 function renderBackends() { $("#backends").innerHTML = PROBES.length ? PROBES.map(p => `<span>${p.url === API ? "● " : "○ "}${esc(p.url)}  ${p.h ? (p.h.warm ? "warm" : "warming") + (p.h.node ? ", " + esc(p.h.node) : "") : esc(p.err)}</span>`).join("") : "<span>no candidate URLs</span>"; }
 async function mergeBackendCatalog() { if (!SRV()) return; const g0 = GAL;
   try { const r = await fetch(gq(API + "/api/catalog")); if (g0 !== GAL) return; if (!r.ok) throw new Error(); const c = await r.json();
@@ -704,21 +704,32 @@ function figureBody(fmtx) {
   return b;
 }
 async function download(fmtx) {
-  closePops(); if (!S.id) return; const name = `tng50_${S.id}_${S.ions.join("-")}_sn${S.sn.join("-")}`;
+  closePops(); if (!S.id) return; const name = `${activeIsFire() ? "fire2" : "tng50"}_${GAL}_${S.id}_${S.ions.join("-")}_sn${S.sn.join("-")}`;
   const e = CAT.get(S.id);
+  const clientFallback = async reason => {
+    try {
+      const E = await import(modUrl("export3d.js"));
+      const blob = await E.exportSpectraPublication($("#cv"), {
+        sim: activeSim(), noun: activeNoun(true), galId: GAL, sightlineId: S.id,
+        vLo: Math.round(S.vc - S.vhw), vHi: Math.round(S.vc + S.vhw)
+      }, fmtx);
+      save(blob, `${name}.${fmtx}`);
+      note(`saved publication ${fmtx.toUpperCase()} (${reason})`, "good");
+    } catch {
+      $("#cv").toBlob(b => b && save(b, `${name}_screen.png`), "image/png");
+    }
+  };
   /* the server holds the npz of the default galaxy and of rays cast on it, not the library rays of the other galaxies
-     (review2 F3): those get the screen, with the reason, instead of a 404 */
+     (review2 F3): those get the client-side publication PDF/PNG figure */
   if (SRV() && !isDefGal() && e && kindOf(e) === "library") {
-    note(`the server figure covers rays you cast; library sightlines of subhalo ${GAL}: screen PNG saved`, "bad");
-    $("#cv").toBlob(b => b && save(b, `${name}_screen.png`), "image/png"); return; }
+    await clientFallback(`library sightline of ${activeNoun()} ${GAL}`); return; }
   if (SRV()) { note(`rendering the ${fmtx.toUpperCase()} figure`);
     try { const r = await fetch(gq(API + "/api/figure"), {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify(figureBody(fmtx))});
       if (!r.ok) throw new Error(r.status === 429 ? "rate limit reached" : "HTTP " + r.status);
       save(await r.blob(), `${name}.${fmtx}`); note(`${fmtx.toUpperCase()} figure saved; its noise draw differs from the screen`, "good"); return;
-    } catch (x) { note(`server figure failed (${x.message}); saved the screen instead`, "bad"); } }
-  else if (fmtx === "pdf") { note("the publication PDF needs the sightline server; saved the screen as PNG", "bad"); }
-  $("#cv").toBlob(b => b && save(b, `${name}_screen.png`), "image/png");
+    } catch (x) { await clientFallback(`server unavailable: ${x.message}`); return; } }
+  await clientFallback("client publication renderer");
 }
 $("#dlpng").addEventListener("click", () => download("png")); $("#dlpdf").addEventListener("click", () => download("pdf"));
 

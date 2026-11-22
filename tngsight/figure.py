@@ -146,6 +146,7 @@ def _build(p, ions, cases, vc, vhw, intrinsic, seed):
             if vc - vhw <= 0.0 <= vc + vhw:
                 a.axvline(0.0, color="0.4", ls=":", lw=1.1, zorder=1)
             a.set_xlim(vc - vhw, vc + vhw); a.set_ylim(-0.08, 1.32)
+            CS.box_ticks(a)
             a.text(0.97, 0.07, rf"$R$ = {_fmt_R(R)}", transform=a.transAxes, ha="right", va="bottom",
                    fontsize=rcp["xtick.labelsize"], color="0.25")
             if r == 0:
