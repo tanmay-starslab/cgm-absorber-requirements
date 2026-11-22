@@ -125,7 +125,7 @@ export function galaxyAria(e) {
   return p.join(", ");
 }
 export function galaxyTip(e) {
-  if (!e) return "Pick a galaxy of the TNG50 Milky Way and M31 sample";
+  if (!e) return "Pick a galaxy from the TNG50 and FIRE-2 sample";
   return [galWord(e), isFire(e) ? "FIRE-2" : "", kindWord(e), e.n ? `${e.n} sightlines` : "", e.gas_poor ? "gas-poor" : "", e.viz ? "" : "no 3D data"].filter(Boolean).join(", ");
 }
 

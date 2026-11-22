@@ -860,6 +860,8 @@ function galaxyUI() {
   const fire = activeIsFire(), ttl = $("#title"), sk = fire ? "fire2" : "tng50";
   if (GAL != null) LAST_BY_SIM[sk] = GAL;
   if (ttl) ttl.textContent = fire ? "FIRE-2 sightlines" : "TNG50 sightlines";
+  const cf = $("#credits-foot span");
+  if (cf) cf.textContent = fire ? "Simulation: FIRE-2 (FIRE Collaboration)" : "Simulation: IllustrisTNG TNG50-1 (TNG Collaboration)";
   if (topSimEl) for (const r of topSimEl.querySelectorAll('input[name="top-sim"]')) r.checked = r.value === sk;
   const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
   const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");
@@ -891,16 +893,19 @@ function methodsText(sbi) {
   if (!("tau" in MEL)) { const n = ag.nextElementSibling; MEL.tau = n && !n.id && /Trident/.test(n.textContent) ? n : null;
     MEL.ions = $("#methods-ions"); MEL.atomic = $("#methods-atomic");
     MEL.lic = $("#lic-spectra"); MEL.lic2 = MEL.lic && MEL.lic.nextElementSibling;
+    MEL.simTng = $("#lic-sim-tng"); MEL.simFire = $("#lic-sim-fire");
     const pv = document.createElement("p"); pv.id = "methods-source"; pv.hidden = true; ag.after(pv); MEL.src = pv; }
+  const fire = activeIsFire();
   const SBI_TXT = {
     tau: "Optical depths from a GPU Voigt renderer (fp64) at 0.5 km/s over ±1500 km/s, resampled by velocity; sightlines ±2 R200c long. Velocities are relative to the galaxy's systemic velocity.",
     ions: "Spectra: rays through the TNG50 Voronoi mesh traced by THOR (Byrohl & Nelson 2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background (Faucher-Giguère et al. 2009) and Rahmati et al. (2013) self-shielding for H I. 3D ion cubes: Trident HM2012 (H I from the TNG neutral fraction) within r ≤ 400 kpc, so a sightline drawn through a cube can differ from its spectrum by a few tenths of a dex.",
     atomic: "Atomic data: the profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits."};
-  /* Data and credits: both spectra paragraphs are always shown; the one that applies to this galaxy's library leads with "This galaxy" */
-  for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi]]) { if (!el) continue; let t = el.querySelector(".cur-l");
+  const FIRE_IONS = "H I: FIRE-2 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked FIRE-2 element abundances.";
+  /* Data and credits: both simulation and spectra paragraphs are shown; the ones that apply to this galaxy lead with "This galaxy" */
+  for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi], [MEL.simTng, !fire], [MEL.simFire, fire]]) { if (!el) continue; let t = el.querySelector(".cur-l");
     if (on && !t) { t = document.createElement("strong"); t.className = "cur-l"; t.textContent = "This galaxy: "; el.prepend(t); } else if (!on && t) t.remove(); }
   for (const k of ["tau", "ions", "atomic"]) { const el = MEL[k]; if (!el) continue; if (!(k in MTX)) MTX[k] = el.innerHTML;
-    if (sbi) el.textContent = SBI_TXT[k]; else el.innerHTML = MTX[k]; }
+    if (sbi) el.textContent = SBI_TXT[k]; else if (k === "ions" && fire) el.textContent = FIRE_IONS; else el.innerHTML = MTX[k]; }
   MEL.src.hidden = !sbi; MEL.src.textContent = sbi ? (SRC.text || "") : "";
 }
 function aboutText() {
