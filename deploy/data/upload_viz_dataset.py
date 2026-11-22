@@ -50,8 +50,8 @@ from tngsight import ions as _ions  # noqa: E402  (the gas fields are nH, T, Z, 
 _GAS = "|".join(["nH", "T", "Z"] + [re.escape(k) for k in _ions.KEYS] + ["vx", "vy", "vz"])
 ALLOW_RE = re.compile(
     r"^(README\.md|manifest_v2\.json|luts/luts\.json|previews/[a-z0-9_]+\.png"
-    rf"|gas/L[012]/({_GAS})\.[0-9a-f]{{12}}\.(p[0-3]\.webp|u8\.gz)"
-    r"|stars/S[012]/gri\.[0-9a-f]{12}\.(p[0-3]\.webp|rgba\.gz))$")
+    rf"|gas/L[0-4]/({_GAS})\.[0-9a-f]{{12}}\.(p[0-3]\.webp|u8\.gz)"
+    r"|stars/S[0-4]/gri\.[0-9a-f]{12}\.(p[0-3]\.webp|rgba\.gz))$")
 CUBE_RE = re.compile(r"^(gas|stars)/")       # ALLOW_RE is applied with fullmatch: "$" alone would accept a trailing "\n"
 
 

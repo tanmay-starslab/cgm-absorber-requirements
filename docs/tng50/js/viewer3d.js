@@ -737,7 +737,7 @@ float dustDiskKv(vec3 p, vec3 sv, float gv, float kvRaw) {
 }
 vec3 starAt(vec3 p, int l) {`)
     .replace("if (uStarKnee > 0.0 && m > uStarKnee) { float k = uStarKnee, r = 1.0 - k; c *= (k + r * (1.0 - exp(-(m - k) / r))) / m; }\n  else if (m > 1.0) c /= m;",
-      "if (m > 0.0) c *= (1.0 - exp(-1.15 * m * (0.55 + 0.65 * m))) / m;")
+      "if (m > 0.70) c *= (0.70 + 0.30 * (1.0 - exp(-(m - 0.70) / 0.45))) / m;")
     .replace("vec3 sumS = vec3(0.0), C = vec3(0.0);", "vec3 sumS = vec3(0.0), sumS0 = vec3(0.0), transS = vec3(1.0), C = vec3(0.0);")
     .replace("if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, ms); sumS += sv * hw; }",
       `if (ls >= 0) { vec3 sv = starVal(p, ls); if (cs >= 0) sv = mix(starVal(p, cs), sv, mix(0.885, 1.0, ms));
@@ -750,15 +750,21 @@ vec3 starAt(vec3 p, int l) {`)
             vec3 tau = uDust * kV * hw * uDustVec;
             vec3 att = exp(-tau);
             float cosTh = dot(normalize(p + vec3(0.0, 0.0, 1e-4)), d);
-            float hg = uDustScat * 0.28 * (1.0 - 0.30) / pow(max(1.0 + 0.30 - 1.10 * cosTh, 0.15), 1.5);
-            vec3 src = sv * exp(-0.65 * tau) * (1.0 + hg * vec3(0.75, 0.92, 1.18));
+            float hg = uDustScat * 0.22 * (1.0 - 0.30) / pow(max(1.0 + 0.30 - 1.10 * cosTh, 0.15), 1.5);
+            vec3 src = sv * exp(-0.75 * tau) * (1.0 + min(hg, 0.35) * exp(-1.2 * tau) * vec3(0.75, 0.92, 1.18));
             sumS += transS * src * hw * (1.0 - att) / max(tau, vec3(1e-5));
             transS *= att;
           } else { sumS += transS * sv * hw; }
         } else { sumS += sv * hw; } }`)
     .replace("vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);",
       `vec3 star0 = starOn ? uStarMix * lupton(sumS0) : vec3(0.0);
-  vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);`)
+  vec3 starPre = starOn ? uStarMix * lupton(sumS) : vec3(0.0);
+  vec3 tBand = clamp(sumS / max(sumS0, vec3(1e-5)), 0.0, 1.0);
+  float tBol = clamp(dot(sumS, vec3(0.30, 0.45, 0.25)) / max(dot(sumS0, vec3(0.30, 0.45, 0.25)), 1e-5), 0.0, 1.0);
+  vec3 redd = clamp(tBand / max(tBol, 1e-4), 0.35, 1.35);
+  float coreGrey = clamp(tBol / 0.35, 0.0, 1.0);
+  vec3 reddEff = 1.0 + (redd - 1.0) * (0.30 + 0.70 * coreGrey);
+  vec3 star = (starOn && uDust > 0.0 && sumS0 != vec3(0.0)) ? clamp(0.35 * starPre + 0.65 * (star0 * (0.10 + 0.90 * pow(tBol, 0.62)) * reddEff), 0.0, 1.0) : starPre;`)
     .replace("float sm = max(star.r, max(star.g, star.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, sm);",
       "float sm = max(star.r, max(star.g, star.b)), sm0 = max(star0.r, max(star0.g, star0.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, max(sm, sm0)), dustT = (starOn && uDust > 0.0 && sumS0 != vec3(0.0)) ? clamp((sumS.r + sumS.g + sumS.b) / max(sumS0.r + sumS0.g + sumS0.b, 1e-5), 0.0, 1.0) : 1.0;")
     .replace("vec3 g = mix(uBg, gas, gm * (starOn ? uGasW : 1.0) * (1.0 - occ));",
