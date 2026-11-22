@@ -372,7 +372,9 @@ async function boot() {
     if (gateBg) { const b = gateBg; gateBg = null; setTimeout(() => b.destroy(), 700); } }
 
   /* ---------------- the frame ---------------- */
-  const insetsOf = () => { const cs = getComputedStyle($("stage")), n = v => parseFloat(cs.getPropertyValue(v)) || 0; return {top: n("--sat"), right: n("--sar"), bottom: n("--sab"), left: n("--sal")}; };
+  let cachedInsets = null;
+  window.addEventListener("resize", () => { cachedInsets = null; }, {passive: true});
+  const insetsOf = () => { if (cachedInsets) return cachedInsets; const cs = getComputedStyle($("stage")), n = v => parseFloat(cs.getPropertyValue(v)) || 0; return (cachedInsets = {top: n("--sat"), right: n("--sar"), bottom: n("--sab"), left: n("--sal")}); };
   const perfMs = {frame: [], vol: []};
   function frame() {
     const tf0 = performance.now();

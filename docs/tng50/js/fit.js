@@ -190,14 +190,20 @@ function makePlan(vOut, V) {
 // LSF: centre jc = floor((v - V_0)/du + 1/2), taps jc-h..jc+h, Gaussian at the true offsets with lsfWidth(R, du, box),
 // normalised, indices clamped to [0, n-1] (edge extend); outputs outside [V_0, V_{n-1}] get `fill`. Without an LSF:
 // numpy-style linear interpolation. The weights are built once; sample(g, out, fill) applies them.
+const SAMPLERS = new Map(), LINE_LSF = new WeakMap(), NOISE_Z = new Map();
 function makeSampler(vOut, u0, du, n, vSys, R, box, jLo = 0, jHi = n - 1) {
   const m = vOut.length, Vat = j => (u0 + j * du) + vSys, V0 = Vat(0), Vn = Vat(n - 1);
+  const full = jLo === 0 && jHi === n - 1 && m >= 2;
+  const sKey = full ? `${u0}|${du}|${n}|${vSys}|${R}|${box}|${m}|${vOut[0]}|${vOut[m - 1]}` : "";
+  if (sKey && SAMPLERS.has(sKey)) { const hit = SAMPLERS.get(sKey); SAMPLERS.delete(sKey); SAMPLERS.set(sKey, hit); return hit; }
   if (noLSF(R)) {
     const V = new Float64Array(jHi - jLo + 1); for (let i = 0; i < V.length; i++) V[i] = Vat(jLo + i);
     const plan = makePlan(vOut, V);
-    return {sample(g, out, fill = 1) {
+    const res = {sample(g, out, fill = 1) {
       for (let k = 0; k < m; k++) { const a = plan.lo[k]; if (a < 0) { out[k] = fill; continue; } const t = plan.t[k], ga = g[plan.U[a]]; out[k] = t === 0 ? ga : ga + (g[plan.U[plan.hi[k]]] - ga) * t; }
       return out; }};
+    if (sKey) { SAMPLERS.set(sKey, res); if (SAMPLERS.size > 32) SAMPLERS.delete(SAMPLERS.keys().next().value); }
+    return res;
   }
   const {s, h} = lsfWidth(R, du, box), L = 2 * h + 1, j0 = new Int32Array(m), inside = new Uint8Array(m), w = new Float64Array(m * L);
   for (let k = 0; k < m; k++) {
@@ -206,7 +212,7 @@ function makeSampler(vOut, u0, du, n, vSys, R, box, jLo = 0, jHi = n - 1) {
     let sum = 0; for (let t = 0; t < L; t++) { const e = (x - Vat(jc - h + t)) / s, q = Math.exp(-0.5 * e * e); w[o + t] = q; sum += q; }
     for (let t = 0; t < L; t++) w[o + t] /= sum;
   }
-  return {sample(g, out, fill = 1) {
+  const res = {sample(g, out, fill = 1) {
     for (let k = 0; k < m; k++) {
       if (!inside[k]) { out[k] = fill; continue; }
       const a = j0[k], o = k * L; let acc = 0;
@@ -215,6 +221,8 @@ function makeSampler(vOut, u0, du, n, vSys, R, box, jLo = 0, jHi = n - 1) {
       out[k] = acc;
     }
     return out; }};
+  if (sKey) { SAMPLERS.set(sKey, res); if (SAMPLERS.size > 32) SAMPLERS.delete(SAMPLERS.keys().next().value); }
+  return res;
 }
 
 // Degrade a decoded intrinsic line to (R, S/N) (design-3 sections 3.4 and 5.2, Phase-3 D1; tngsight.degrade.degrade_v).
@@ -222,15 +230,27 @@ function makeSampler(vOut, u0, du, n, vSys, R, box, jLo = 0, jHi = n - 1) {
 // point samples). o = {vwin, vcenter, seed, pix}. Returns {v, flux (noisy, clipped at 0), model, sigma (per pixel)}.
 export function degradeV(line, R, snr, vSys, o = {}) {
   const pix = o.pix ?? PIX_PER_RESEL, n = line.n, du = line.du, u0 = line.u0;
-  const dvPix = noLSF(R) ? du * pix : (C_KMS / R) / pix;
-  let lo = (u0 + 0 * du) + vSys, hi = (u0 + (n - 1) * du) + vSys;
-  if (o.vwin != null) { const vc = o.vcenter ?? 0; lo = vc - o.vwin; hi = vc + o.vwin; }
-  const v = arange(lo, hi + dvPix, dvPix);
-  const g = line.flux instanceof Float64Array ? line.flux : Float64Array.from(line.flux);
-  const model = makeSampler(v, u0, du, n, vSys, R, line.box ?? du).sample(g, new Float64Array(v.length), 1);
-  const sigma = snr > 0 ? Math.sqrt(pix) / snr : 0, flux = new Float64Array(v.length);
-  if (snr > 0) { const r = rng(o.seed ?? 0); for (let i = 0; i < v.length; i++) flux[i] = Math.max(0, model[i] + sigma * gauss(r)); }
-  else for (let i = 0; i < v.length; i++) flux[i] = Math.max(0, model[i]);
+  let lCache = LINE_LSF.get(line); if (!lCache) { lCache = new Map(); LINE_LSF.set(line, lCache); }
+  const lKey = `${R}|${vSys}|${pix}|${o.vwin ?? ""}|${o.vcenter ?? ""}`;
+  let base = lCache.get(lKey);
+  if (!base) {
+    const dvPix = noLSF(R) ? du * pix : (C_KMS / R) / pix;
+    let lo = (u0 + 0 * du) + vSys, hi = (u0 + (n - 1) * du) + vSys;
+    if (o.vwin != null) { const vc = o.vcenter ?? 0; lo = vc - o.vwin; hi = vc + o.vwin; }
+    const v = arange(lo, hi + dvPix, dvPix);
+    const g = line.flux instanceof Float64Array ? line.flux : Float64Array.from(line.flux);
+    const model = makeSampler(v, u0, du, n, vSys, R, line.box ?? du).sample(g, new Float64Array(v.length), 1);
+    base = {v, model}; lCache.set(lKey, base); if (lCache.size > 8) lCache.delete(lCache.keys().next().value);
+  } else { lCache.delete(lKey); lCache.set(lKey, base); }
+  const {v, model} = base, sigma = snr > 0 ? Math.sqrt(pix) / snr : 0, flux = new Float64Array(v.length);
+  if (snr > 0) {
+    const seed = o.seed ?? 0, zKey = `${seed}|${v.length}`;
+    let z = NOISE_Z.get(zKey);
+    if (!z) { const r = rng(seed); z = new Float64Array(v.length); for (let i = 0; i < v.length; i++) z[i] = gauss(r);
+      NOISE_Z.set(zKey, z); if (NOISE_Z.size > 64) NOISE_Z.delete(NOISE_Z.keys().next().value); }
+    else { NOISE_Z.delete(zKey); NOISE_Z.set(zKey, z); }
+    for (let i = 0; i < v.length; i++) flux[i] = Math.max(0, model[i] + sigma * z[i]);
+  } else for (let i = 0; i < v.length; i++) flux[i] = Math.max(0, model[i]);
   return {v, flux, model, sigma};
 }
 

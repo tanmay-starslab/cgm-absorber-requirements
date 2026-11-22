@@ -319,8 +319,10 @@ function nelderMead(f, x0, scale, iters) {
   }
   const i0 = Y.indexOf(Math.min(...Y)); return {x: P[i0], y: Y[i0]};
 }
-let warm = null;
+let warm = null, sepCacheKey = "", sepCacheVal = null;
 function separation(ion, lN, b, dv, R, iters = 160) {
+  const key = `${ion.key}|${lN}|${b}|${dv}|${R}|${iters}`;
+  if (key === sepCacheKey && sepCacheVal) return sepCacheVal;
   const g = vgrid(dv, b, R), truth = observed(g, ion, [[lN, b, -dv / 2], [lN, b, dv / 2]]);
   const obj = (x) => { const m = observed(g, ion, [[x[0], Math.exp(clamp(x[1], -3, 8)), x[2]]]).F;
     let s = 0; for (let i = 0; i < g.n; i++) s += (truth.F[i] - m[i]) ** 2; return s * g.step / g.fwhm; };
@@ -330,7 +332,9 @@ function separation(ion, lN, b, dv, R, iters = 160) {
   for (const s of starts) { const r = nelderMead(obj, s, [0.15, 0.2, Math.max(2, dv / 6)], iters); if (r.y < best.y) best = r; }
   warm = best.x;
   const fit = observed(g, ion, [[best.x[0], Math.exp(clamp(best.x[1], -3, 8)), best.x[2]]]);
-  return {g, truth, fit, G: best.y, par: best.x, Kblend: sdetK(g, truth.F)};
+  const res = {g, truth, fit, G: best.y, par: best.x, Kblend: sdetK(g, truth.F)};
+  sepCacheKey = key; sepCacheVal = res;
+  return res;
 }
 
 /* ---------------- grids from the paper pipeline ---------------- */
@@ -595,23 +599,28 @@ function ramp(cols, t) { t = clamp(t, 0, 1) * (cols.length - 1); const i = Math.
 const MAPBOX = cv => ({x: 52, y: 14, w: cv.clientWidth - 112, h: +cv.getAttribute("height") - 62});
 function drawMap(cv, kind) {
   const o = ion(), {ctx, w, h} = setup(cv), box = MAPBOX(cv), nx = 110, ny = 70;
-  const img = ctx.createImageData(nx, ny), vals = [];
   let lo, hi, cols, label;
   if (kind === "det") { lo = o.det.logN[0]; hi = o.det.logN[o.det.logN.length - 1]; cols = BLUES; label = "min log N (3σ)"; }
   else { lo = Math.log10(o.sep.dv[0]); hi = Math.log10(300); cols = BLUES; label = "Δv_min [km/s] (3σ)"; }
-  for (let ix = 0; ix < nx; ix++) {
-    const R = Math.pow(10, 3 + 2 * (ix + 0.5) / nx);
-    const col = kind === "det" ? detColumn(o, S.b, R) : sepColumn(o, S.logN, R);
-    for (let iy = 0; iy < ny; iy++) {
-      const snr = Math.pow(10, Math.log10(3) + (2 - Math.log10(3)) * (1 - (iy + 0.5) / ny));
-      let v = kind === "det" ? logNmin(o, col, snr) : Math.log10(dvmin(o, col, snr));
-      const k = 4 * (iy * nx + ix); let rgb;
-      if (!Number.isFinite(v)) rgb = v > 0 ? [185, 184, 178] : hex(cols[0]);
-      else rgb = ramp(cols, (v - lo) / (hi - lo));
-      img.data[k] = rgb[0]; img.data[k + 1] = rgb[1]; img.data[k + 2] = rgb[2]; img.data[k + 3] = 255;
+  const offSig = kind === "det" ? `${o.key}|${S.b}` : `${o.key}|${S.logN}`;
+  let off = cv._off;
+  if (!off || cv._offSig !== offSig) {
+    const img = ctx.createImageData(nx, ny);
+    for (let ix = 0; ix < nx; ix++) {
+      const R = Math.pow(10, 3 + 2 * (ix + 0.5) / nx);
+      const col = kind === "det" ? detColumn(o, S.b, R) : sepColumn(o, S.logN, R);
+      for (let iy = 0; iy < ny; iy++) {
+        const snr = Math.pow(10, Math.log10(3) + (2 - Math.log10(3)) * (1 - (iy + 0.5) / ny));
+        let v = kind === "det" ? logNmin(o, col, snr) : Math.log10(dvmin(o, col, snr));
+        const k = 4 * (iy * nx + ix); let rgb;
+        if (!Number.isFinite(v)) rgb = v > 0 ? [185, 184, 178] : hex(cols[0]);
+        else rgb = ramp(cols, (v - lo) / (hi - lo));
+        img.data[k] = rgb[0]; img.data[k + 1] = rgb[1]; img.data[k + 2] = rgb[2]; img.data[k + 3] = 255;
+      }
     }
+    off = cv._off || document.createElement("canvas"); off.width = nx; off.height = ny; off.getContext("2d").putImageData(img, 0, 0);
+    cv._off = off; cv._offSig = offSig;
   }
-  const off = document.createElement("canvas"); off.width = nx; off.height = ny; off.getContext("2d").putImageData(img, 0, 0);
   ctx.imageSmoothingEnabled = true; ctx.drawImage(off, box.x, box.y, box.w, box.h);
   const F = frame(ctx, box, {xr: [1e3, 1e5], yr: [3, 100], xlog: true, ylog: true, xticks: [1e3, 3e3, 1e4, 3e4, 1e5], yticks: [3, 5, 10, 20, 50, 100],
     xfmt: t => t >= 1e4 ? (t / 1e3) + "k" : fmt(t), xlabel: "resolving power R", ylabel: "S/N per res. element"});
