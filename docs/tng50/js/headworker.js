@@ -31,7 +31,7 @@
             runningMode: "VIDEO", numHands: 1}));
         }
         return {type: "hands-ready"};
-      } catch (x) { return {type: "error", message: String(x && x.message || x)}; }
+      } catch (x) { return {type: "hands-error", message: String(x && x.message || x)}; }
     }
     if (d.type === "frame") {
       const r = {type: "res", t: d.t}, t0 = performance.now();
