@@ -4,7 +4,8 @@
 // a double-click) and pickAlongRay (the densest sample of nested byte cubes along the clicked ray, nearest first on ties,
 // finest cube where they overlap). The viewer's own checks (chip, animation, URL, double-click) are in viewer_browser.mjs.
 // Usage: node tests/js/pivot_unit.mjs
-import {PIVOT, parsePivot, formatPivot, offCentre, rayPivot, planePoint, pickAlongRay, MOVING_LADDER, pickMovingRung, createMovingGovernor} from "../../docs/tng50/js/viewer3d.js";
+import {PIVOT, parsePivot, formatPivot, parseCam, formatCam, offCentre, rayPivot, planePoint, pickAlongRay, MOVING_LADDER, pickMovingRung, createMovingGovernor} from "../../docs/tng50/js/viewer3d.js";
+import * as E3D from "../../docs/tng50/js/export3d.js";
 import {checker, sepHits} from "./lib/browser.mjs";
 
 const C = checker(), check = C.check;
@@ -75,5 +76,24 @@ const cube = (m, half, fill) => { const data = new Uint8Array(m * m * m); const 
   check(g.index === 1 && g.rung.name === "30fps-fast", `governor drops 30fps-balanced -> 30fps-fast under heavy load (${g.rung.name})`);
   for (let i = 0; i < 20; i++) g.push(10);
   check(g.index === 3 && g.state().raises === 2, `governor climbs back up when frame times stay < 12 ms (${J(g.state())})`); }
+
+/* ---- camera deep-link & export3d pure helpers ---- */
+{ const c = parseCam("120.456,-250.1,300,0,0,1");
+  check(c && near(c.p, [120.46, -250.1, 300]) && near(c.u, [0, 0, 1]), `parseCam parses and normalises camera pose (${J(c)})`);
+  check(parseCam("1,2,3") === null && parseCam("1,2,3,0,0,0") === null && parseCam("") === null, "parseCam rejects malformed or zero-up inputs");
+  check(formatCam([120.456, -250.1, 300], [0, 0, 1]) === "120.46,-250.1,300,0,0,1", `formatCam formats to 0.01 (${formatCam([120.456, -250.1, 300], [0, 0, 1])})`);
+  const mockV = {
+    species: "OVI", mode: "volume", frame: {R200c: 240},
+    camera: {fov: 22, position: {distanceTo: () => 520}},
+    controls: {target: {x: 0, y: 0, z: 0}},
+    getSceneSnapshot: () => ({species: "OVI", mode: "volume", transfer: {lo: 13.6, hi: 15.2, cmap: "tng_dusk"}, camera: {position: [0, -450, 260], target: [0, 0, 0], up: [0, 0, 1]}, pivot: [10, -20, 5], selectedSightline: "edge_b100_a090"})
+  };
+  check(E3D.buildFilename(mockV, 2048, 2048, "png") === "tng50_galaxy_OVI_volume_2048x2048.png", `buildFilename produces expected filename (${E3D.buildFilename(mockV, 2048, 2048, "png")})`);
+  const dl = E3D.buildDeepLink(mockV);
+  check(dl.includes("cam=0,-450,260,0,0,1") && dl.includes("pv=10,-20,5") && dl.includes("tf=OVI"), `buildDeepLink encodes cam, pv and tf (${dl})`);
+  const cap = E3D.buildLatexCaption(mockV);
+  check(cap.startsWith("\\caption{") && cap.includes("OVI") && cap.includes("R_{200\\mathrm{c}}"), `buildLatexCaption generates LaTeX caption`);
+  const jsonRes = E3D.exportJSON(mockV, {download: false});
+  check(jsonRes.filename.endsWith(".json") && JSON.parse(jsonRes.json).scene.species === "OVI", "exportJSON serialises scene snapshot"); }
 
 process.exit(C.finish());

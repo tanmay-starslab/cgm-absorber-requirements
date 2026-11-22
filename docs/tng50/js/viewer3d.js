@@ -64,6 +64,17 @@ export function parsePivot(s) {
 }
 /* [x, y, z] -> "x,y,z" to 0.1 kpc; "" at the centre */
 export const formatPivot = p => (offCentre(p) ? p.map(r1).join(",") : "");
+const r2 = x => { const v = Math.round(x * 100) / 100; return Object.is(v, -0) ? 0 : v; };
+/* "px,py,pz,ux,uy,uz" -> {p: [px, py, pz], u: [ux, uy, uz]} or null */
+export function parseCam(s) {
+  const t = String(s ?? "").split(",").map(x => x.trim());
+  if (t.length !== 6 || t.some(x => x === "")) return null;
+  const v = t.map(Number); if (!v.every(Number.isFinite)) return null;
+  const p = v.slice(0, 3).map(x => Math.max(-5600, Math.min(5600, x))), u = v.slice(3, 6);
+  const uLen = Math.hypot(u[0], u[1], u[2]); if (uLen < 1e-6) return null;
+  return {p: p.map(r2), u: u.map(x => r2(x / uLen))};
+}
+export const formatCam = (p, u) => (p && u ? [...p.slice(0, 3), ...u.slice(0, 3)].map(r2).join(",") : "");
 /* a sightline's pivot: its closest approach to the galaxy centre, clamped to the segment p0-p1 (the midpoint if it is
    degenerate) */
 export function rayPivot(p0, p1) {
@@ -367,6 +378,19 @@ const CSS = `.v3d{position:relative;width:100%;height:100%;min-width:0;
 .v3d-fsb:focus-visible{outline:2px solid var(--s-accent,#7db2f0);outline-offset:2px}
 .v3d:fullscreen .v3d-fsb,.v3d.v3d-fs .v3d-fsb{top:48px}
 .v3d-thumb .v3d-fsb{display:none}
+.v3d-svb{right:44px}
+.v3d-save-pop{position:absolute;top:46px;right:10px;z-index:12;width:min(284px,calc(100% - 20px));padding:11px 12px 12px;border:1px solid var(--s-edge,rgba(200,215,240,.16));border-radius:var(--r-m,16px);
+  background:var(--mat-thick,color-mix(in srgb,#0c1016 88%,transparent));backdrop-filter:var(--mat-blur-thick,blur(40px) saturate(1.8));-webkit-backdrop-filter:var(--mat-blur-thick,blur(40px) saturate(1.8));
+  box-shadow:var(--s-hi,inset 0 1px 0 rgba(255,255,255,.10)),0 20px 50px rgba(0,0,0,.55);color:var(--s-ink,#e9eef4);font:12.5px/1.4 var(--sans,system-ui,sans-serif);color-scheme:dark}
+.v3d:fullscreen .v3d-save-pop,.v3d.v3d-fs .v3d-save-pop{top:84px}
+.v3d-save-pop[hidden],.v3d-thumb .v3d-save-pop{display:none}
+.v3d-save-pop h3{margin:0 0 8px;font:600 11px var(--mono,ui-monospace,monospace);letter-spacing:.12em;text-transform:uppercase;color:var(--s-ink2,#b3bdc9)}
+.v3d-save-pop .k{display:block;font:500 10px var(--mono,ui-monospace,monospace);color:var(--s-ink2,#b3bdc9);margin:6px 0 4px}
+.v3d-save-pop .v3s-checks{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;margin:6px 0 9px;font-size:12px;color:var(--s-ink,#e9eef4)}
+.v3d-save-pop .v3s-checks label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.v3d-save-pop .v3s-dl{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px}
+.v3d-save-pop .v3s-dl .v3c-btn{height:29px;color:var(--s-ink,#e9eef4);border-color:var(--s-edge,rgba(200,215,240,.22));background:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.03))}
+.v3d-save-pop .v3s-dl .v3c-btn.pri{grid-column:1/-1;background:linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,0) 60%),var(--s-accent,#7db2f0);border-color:var(--s-accent,#7db2f0);color:#080c14;font-weight:600}
 .v3c-sw{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--muted,#98a0b8)}
 .v3c-sw label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}.v3c-sw input{margin:0}
 .v3c details{margin-top:2px}.v3c summary{cursor:pointer;font:500 11px var(--mono,ui-monospace,monospace);color:var(--muted,#98a0b8);padding:3px 0}
@@ -465,6 +489,8 @@ function stub(msg, frame) {
   const v = {webgl2: false, message: msg, frame, hooks: {}, setSpecies: async () => false, setPreset: () => false, setTransfer: no, setLines: no, select: no,
     refreshLines: no, resize: no, render: no, setMode: () => false, setStars: no, setGuides: no, toggleFullscreen: async () => false, dock: () => false, docked: null,
     levels: () => ({gas: {}, stars: {}}), gpuBytes: () => 0, stats: {},
+    getSceneSnapshot: () => ({}), applySceneSnapshot: async () => false,
+    exportPNG: async () => null, exportSVG: async () => null, exportPDF: async () => null, exportHTML: async () => null, exportJSON: async () => null,
     _attachFull(root) { const p = note(root, msg, "msg bad v3d-fallback"); p.style.padding = "18px 14px"; },
     _attachThumb(host) { const p = note(host, "3D needs WebGL2", "v3d-fallback"); p.style.cssText = "margin:0;padding:10px;font:11px var(--mono,monospace);opacity:.7";
       return {viewer: v, host, active: false, setSpin: no, dispose: () => p.remove()}; },
@@ -516,6 +542,7 @@ async function create(app, opts = {}) {
   el.innerHTML = `<div class="v3d-stage"><canvas tabindex="0" role="img" aria-label="3D view"></canvas>
     <div class="v3d-ov v3d-msg"></div><div class="v3d-sr" id="v3-live" role="status" aria-live="polite"></div>
     <button type="button" class="v3d-orb" id="v3-orbit" aria-pressed="false" aria-label="Orbit" data-tip="Slowly turn the galaxy: tilt it if face-on, else spin it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/></svg><span>orbit</span></button>
+    <button type="button" class="v3d-fsb v3d-svb" id="v3-save-stage" data-testid="v3-save-stage" aria-haspopup="dialog" aria-controls="v3-save-pop" aria-expanded="false" aria-label="Save 3D figure" data-tip="Save 3D figure or interactive snapshot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2v7.6M4.8 6.8 8 10l3.2-3.2M2.8 13.2h10.4"/></svg></button>
     <button type="button" class="v3d-fsb" id="v3-fs-stage" data-testid="v3-fs-stage" aria-pressed="false" aria-label="Fullscreen" data-tip="Fullscreen (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg></button>
     <button type="button" class="v3d-pv" id="v3-pivot" hidden aria-label="Re-centre on the galaxy" data-tip="Orbit centre moved; return to the galaxy (C)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg><span>re-centre</span></button>
     <div class="v3d-tr"><button type="button" id="v3-ctl-toggle" aria-expanded="true" aria-controls="v3-ctl" data-tip="Show or hide the 3D settings">Controls</button><button type="button" id="v3-fs-exit" data-tip="Back to the page (Esc)">Exit fullscreen</button></div>
@@ -523,7 +550,35 @@ async function create(app, opts = {}) {
     <div class="v3d-ov v3d-leg" hidden><div class="ttl"></div><div class="bar"></div><div class="ticks"></div><div class="ends" hidden><span></span><span></span></div><div class="st" hidden><i></i><span></span></div><div class="off" hidden>stars off (Layers)</div><div class="gd" hidden></div></div>
     <div class="v3d-ov v3d-lines" aria-hidden="true"><span><i style="border-color:var(--lib-line)"></i>library</span><span><i style="border-color:var(--s-accent)"></i>generated</span><span><i style="border-color:var(--s-fit)"></i>custom</span><span><i class="sel" style="border-color:var(--s-ink)"></i>selected</span></div>
     <div class="v3d-tt" aria-hidden="true"><span class="f"></span><span>3D</span></div>
-    <button type="button" class="v3d-id" id="v3-id" data-testid="v3d-id" aria-controls="pop-licence" aria-expanded="false" aria-haspopup="dialog" data-tip="Data and credits" hidden><span class="s"></span><span class="g"></span><span class="z"></span></button></div>`;
+    <button type="button" class="v3d-id" id="v3-id" data-testid="v3d-id" aria-controls="pop-licence" aria-expanded="false" aria-haspopup="dialog" data-tip="Data and credits" hidden><span class="s"></span><span class="g"></span><span class="z"></span></button></div>
+    <div class="v3d-save-pop" id="v3-save-pop" role="dialog" aria-label="Save 3D view" hidden>
+      <h3>Save 3D figure</h3>
+      <span class="k">Resolution</span>
+      <div class="v3c-seg" role="radiogroup" aria-label="Export resolution">
+        <label><input type="radio" name="v3-exp-res" value="1" data-tip="Standard resolution matching the stage size"><span>1×</span></label>
+        <label><input type="radio" name="v3-exp-res" value="2" checked data-tip="High resolution up to 2048 pixels"><span>2×</span></label>
+        <label><input type="radio" name="v3-exp-res" value="4" data-tip="Print resolution up to 4096 pixels"><span>4×</span></label>
+      </div>
+      <span class="k">Background</span>
+      <div class="v3c-seg two" role="radiogroup" aria-label="Export background">
+        <label><input type="radio" name="v3-exp-bg" value="dark" checked data-tip="Dark cosmic background matching the stage"><span>Dark</span></label>
+        <label><input type="radio" name="v3-exp-bg" value="transparent" data-tip="Transparent background for slide and figure overlays"><span>Transparent</span></label>
+      </div>
+      <span class="k">Overlays</span>
+      <div class="v3s-checks">
+        <label><input type="checkbox" id="v3-exp-leg" checked data-tip="Include colour bar and field legend">Legend</label>
+        <label><input type="checkbox" id="v3-exp-scale" checked data-tip="Include physical length scale bar">Scale bar</label>
+        <label><input type="checkbox" id="v3-exp-lines" checked data-tip="Include sightlines and sightline legend">Sightlines</label>
+        <label><input type="checkbox" id="v3-exp-stamp" checked data-tip="Include simulation galaxy and redshift stamp">Galaxy stamp</label>
+      </div>
+      <div class="v3s-dl">
+        <button type="button" class="v3c-btn pri" id="v3-dl-png" data-tip="Download high-resolution accumulated PNG image">PNG</button>
+        <button type="button" class="v3c-btn" id="v3-dl-svg" data-tip="Download publication vector SVG with LaTeX caption">Vector SVG</button>
+        <button type="button" class="v3c-btn" id="v3-dl-pdf" data-tip="Download single-page vector publication PDF figure">Publication PDF</button>
+        <button type="button" class="v3c-btn" id="v3-dl-html" data-tip="Download offline interactive HTML sightline snapshot">Interactive HTML</button>
+        <button type="button" class="v3c-btn" id="v3-dl-json" data-tip="Download reproducible 3D scene state JSON">Scene JSON</button>
+      </div>
+    </div>`;
   const escH = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
   /* tips: one line per field button; speciesUnits() adds what is drawn and its unit, a disabled button gives the reason */
   const GAS_TIP = {nH: "Hydrogen number density nH", T: "Gas temperature, nH-weighted", Z: "Gas metallicity, nH-weighted"};
@@ -549,10 +604,10 @@ async function create(app, opts = {}) {
   const TABS = [["field", "Field"], ["view", "View"], ["layers", "Layers"], ["pick", "Pick"]];
   ctlBox.dataset.tab = "field";
   /* phone sheet (page.css <= 820 px): .v3c-head is its drag handle (app.js), with the Done button; hidden elsewhere */
-  ctlBox.innerHTML = `<div class="v3c-head"><button type="button" class="grab" aria-label="Resize the 3D settings"></button><span class="gl">3D settings</span>
+  ctlBox.innerHTML = `<div class="v3c-head"><button type="button" class="grab" aria-label="Resize the 3D settings" data-tip="Drag or tap to resize the 3D settings sheet"></button><span class="gl">3D settings</span>
       <button type="button" class="v3c-btn v3c-done" data-tip="Close the 3D settings">Done</button></div>
     <div class="v3c-tabbar"><div class="v3c-seg v3c-tabs" role="radiogroup" aria-label="Settings group">${TABS.map(([k, t], i) =>
-      `<label><input type="radio" name="v3-tab" value="${k}" data-tab="${k}"${i ? "" : " checked"}><span>${t}</span></label>`).join("")}</div></div>
+      `<label><input type="radio" name="v3-tab" value="${k}" data-tab="${k}" data-tip="Show ${t.toLowerCase()} controls"${i ? "" : " checked"}><span>${t}</span></label>`).join("")}</div></div>
     <div class="v3c-body"><div class="v3c-col" data-col="a"><section class="v3c-card" data-group="field" data-tab="field"><h2>Field</h2>
       <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div>
@@ -565,17 +620,19 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="view" data-tab="view"><h2>View</h2>
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
-      <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select></div>
+      <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto">auto</option><option value="spin">rotation axis</option><option value="major">major axis</option><option value="minor">minor axis</option></select></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="45" step="1" value="20" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">20°/s</output></div>
       <div class="v3c-pair"><button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
       ${(t => `<button type="button" class="v3c-btn v3c-wide" id="v3-head" data-testid="v3-head" aria-pressed="false" data-tip="${t ? "Head, hands or tilt." : "Head steers, hands act."} Your camera video stays on your device."><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 8.5V3.6a1.1 1.1 0 0 1 2.2 0V7.5M7.7 7V2.6a1.1 1.1 0 0 1 2.2 0V7.3M9.9 7.3V3.6a1.1 1.1 0 0 1 2.2 0v5.6c0 3-1.9 5.3-4.6 5.3-2 0-3.1-1-4.2-2.7L2 9.4a1.1 1.1 0 0 1 1.8-1.2l1.7 1.7"/></svg><span>Hands-free</span></button>`)(matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches)}</div>
+      <div class="v3c-pair v3c-save-row"><button type="button" class="v3c-btn v3c-wide" id="v3-save-open" aria-haspopup="dialog" aria-controls="v3-save-pop" aria-expanded="false" data-tip="Save publication PNG, vector SVG or PDF, or HTML snapshot"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.2v7.6M4.8 6.8 8 10l3.2-3.2M2.8 13.2h10.4"/></svg><span>Save view</span></button>
+      <button type="button" class="v3c-btn v3c-wide" id="v3-copy-link" data-tip="Copy a link to this exact 3D camera view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M6.6 9.4 9.4 6.6"/><path d="M7.4 4.6 8.6 3.4a2.6 2.6 0 0 1 3.7 3.7l-1.2 1.2M8.6 11.4l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7l1.2-1.2"/></svg><span>Copy link</span></button></div>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
       <details id="v3-pv-more"><summary data-tip="Type an orbit centre in kpc, galaxy box axes">kpc</summary><form class="v3tf-g v3c-pvxyz" id="v3-pv-form"><input id="v3-pv-x" type="number" step="1" min="-400" max="400" aria-label="centre x, kpc" placeholder="x" data-tip="x in kpc from the galaxy centre"><input id="v3-pv-y" type="number" step="1" min="-400" max="400" aria-label="centre y, kpc" placeholder="y" data-tip="y in kpc from the galaxy centre"><input id="v3-pv-z" type="number" step="1" min="-400" max="400" aria-label="centre z, kpc" placeholder="z" data-tip="z in kpc from the galaxy centre"><button type="submit" class="v3c-btn" data-tip="Move the orbit centre there">go</button></form></details></section>
     <section class="v3c-card" data-group="layers" data-tab="layers"><h2>Layers</h2>
       <div class="v3c-row"><label for="v3-gasmix">gas</label><input id="v3-gasmix" type="range" min="0" max="1" step="0.05" data-tip="Strength of the gas layer; 0 hides it"><output id="v3-gasmix-o" for="v3-gasmix"></output></div>
       <div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-stars" data-tip="Starlight as a g, r, i colour composite, asinh stretched">stars</label><input id="v3-starmix" type="range" min="0" max="1" step="0.05" aria-label="star layer" data-tip="Strength of the star layer"><output id="v3-starmix-o" for="v3-starmix"></output></div>
       <details><summary>star brightness</summary><div class="v3c-row"><label for="v3-mu0">μ₀ base</label><input id="v3-mu0" type="range" min="17" max="26" step="0.1" data-tip="Asinh stretch level, mag/arcsec²; higher shows fainter starlight"><output id="v3-mu0-o" for="v3-mu0"></output></div><div class="v3c-row"><label class="lab"><input type="checkbox" id="v3-dust" checked data-tip="Attenuate starlight through cold dust lanes along the ray">dust lanes</label></div></details>
-      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase" title="Sightlines with several clean, unsaturated absorbers, plus rays you made">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
+      <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
     <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
       <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
@@ -584,6 +641,7 @@ async function create(app, opts = {}) {
     <section class="v3c-card" data-group="pick" data-tab="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section></div></div>
     <div class="v3c-lod" id="v3-lod" aria-hidden="true"></div>`;
   ctlBox.querySelectorAll(".v3c-seg").forEach(initLiquidSeg);
+  el.querySelectorAll(".v3c-seg").forEach(initLiquidSeg);
   const q = s => el.querySelector(s) || ctlBox.querySelector(s), canvas = q("canvas"), stage = q(".v3d-stage"), msgEl = q(".v3d-msg");
   /* tune1 F1: the page's range style fills the track up to --pc; keep it at each slider's value (set from code and on input) */
   const fillRanges = () => { for (const i of ctlBox.querySelectorAll('input[type=range]')) { const a = i.min === "" ? 0 : +i.min, b = i.max === "" ? 100 : +i.max;
@@ -1553,10 +1611,13 @@ vec3 starAt(vec3 p, int l) {`)
     return pivotTo(rayPivot(e.p0, e.p1), "ray"); }
   { const boot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("pv="));
       return raw ? parsePivot(decodeURIComponent(raw.slice(3))) : null; } catch { return null; } })();
-    if (boot) { const t = V3(boot); camera.position.copy(t).addScaledVector(DEF_DIR, DEF_D); controls.target.copy(t); camera.lookAt(t); controls.update(); pivotUrlLast = formatPivot(boot); } }
+    if (boot) { const t = V3(boot); camera.position.copy(t).addScaledVector(DEF_DIR, DEF_D); controls.target.copy(t); camera.lookAt(t); controls.update(); pivotUrlLast = formatPivot(boot); }
+    const camBoot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("cam="));
+      return raw ? parseCam(decodeURIComponent(raw.slice(4))) : null; } catch { return null; } })();
+    if (camBoot) { camera.position.set(...camBoot.p); camera.up.set(...camBoot.u).normalize(); camera.lookAt(controls.target); controls.update(); } }
 
   /* ---- picking a line: nearest within 8 px in screen space ---- */
-  const viewer = {webgl2: true, THREE: T, camera, scene, renderer, controls, frame, canvas, el: stage, hooks: {}, picking: false, stats,
+  const viewer = {webgl2: true, THREE: T, camera, scene, renderer, controls, frame, canvas, el: stage, app, hooks: {}, picking: false, stats,
     lod: LOD_C, uniforms: U,
     presetError: null, loadError: null, get manifest() { return manifest; }, get species() { return species; },
     get res() { const lv = levels(); return GAS_L.filter(L => lv.gas[L] === "bound").pop() || null; }, get wanted() { return wanted; },
@@ -1723,9 +1784,133 @@ vec3 starAt(vec3 p, int l) {`)
   Object.defineProperty(viewer, "pivot", {get: () => pivotArr().map(r1), enumerable: true});
   Object.assign(viewer, {setPivot: p => (p === "galaxy" ? recentre() : p === "ray" ? pivotToRay() : Array.isArray(p) && p.length === 3 && p.every(Number.isFinite) ? pivotTo(p, "api") : false),
     recentre, pickPivot: (x, y) => pickPivot(x, y)});
-  Object.assign(viewer, {drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setWeight, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
+
+  /* ---- 3D save, publication export & camera deep-link ---- */
+  function getSceneSnapshot() {
+    const tr = species ? {...fieldTf(species)} : null;
+    const tfSt = species && tfs[species] ? JSON.parse(JSON.stringify(tfs[species])) : null;
+    const tfEnc = species && tfOk(species) && tfs[species] ? encodeTF(tfs[species], tfCtx(species)) : "";
+    return {
+      species: species || wanted || "nH",
+      mode,
+      weight: velW,
+      transfer: tr,
+      tf: tfSt,
+      tfEncoded: tfEnc,
+      camera: {
+        position: camera.position.toArray().map(r2),
+        target: controls.target.toArray().map(r2),
+        up: camera.up.toArray().map(r2),
+        fov: camera.fov
+      },
+      pivot: pivotArr().map(r1),
+      layers: {...layer, stars: !!layer.stars, guides: !!guides.visible, scaleBar: !!scaleOn},
+      linesMode,
+      selectedSightline: selId
+    };
+  }
+  async function applySceneSnapshot(snap = {}) {
+    if (!snap || typeof snap !== "object") return false;
+    if (snap.species && canShow(snap.species)) await setSpecies(snap.species);
+    if (snap.mode && ["integral", "volume"].includes(snap.mode)) setMode(snap.mode);
+    if (snap.weight) setWeight(snap.weight);
+    if (snap.transfer && typeof snap.transfer === "object") setTransfer(snap.transfer);
+    if (snap.tf) setTf(snap.tf);
+    if (snap.layers && typeof snap.layers === "object") {
+      setStars({on: snap.layers.stars, gasMix: snap.layers.gasMix, mix: snap.layers.starMix, mu0: snap.layers.mu0, Q: snap.layers.Q, sat: snap.layers.sat});
+      setGuides({ring: snap.layers.guides, scale: snap.layers.scaleBar});
+    }
+    if (snap.linesMode) setLines(snap.linesMode);
+    if (snap.selectedSightline !== undefined) select(snap.selectedSightline);
+    if (Array.isArray(snap.pivot) && snap.pivot.length === 3) {
+      controls.target.set(+snap.pivot[0] || 0, +snap.pivot[1] || 0, +snap.pivot[2] || 0);
+    }
+    if (snap.camera && typeof snap.camera === "object") {
+      if (Array.isArray(snap.camera.target) && snap.camera.target.length === 3) controls.target.set(...snap.camera.target);
+      if (Array.isArray(snap.camera.position) && snap.camera.position.length === 3) camera.position.set(...snap.camera.position);
+      if (Array.isArray(snap.camera.up) && snap.camera.up.length === 3) camera.up.set(...snap.camera.up).normalize();
+      camera.lookAt(controls.target);
+      controls.update();
+    }
+    syncPivot(true);
+    draw(true);
+    return true;
+  }
+  function writeCamUrl() {
+    const camVal = formatCam(camera.position.toArray(), camera.up.toArray());
+    const pvVal = formatPivot(pivotArr());
+    const tfOnNow = !!species && mode === "volume" && (tfOk(species) || isVel(species));
+    const tfVal = tfOnNow ? (species + "~" + (tfOk(species) ? encodeTF(tfState(species), tfCtx(species)) : "")).replace(/~$/, "") : "";
+    try {
+      const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !/^(cam|pv|tf)=/.test(x));
+      if (camVal) parts.push("cam=" + camVal);
+      if (pvVal) parts.push("pv=" + pvVal);
+      if (tfVal) parts.push("tf=" + tfVal);
+      const search = parts.length ? "?" + parts.join("&") : "";
+      if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash);
+    } catch { /* sandboxed */ }
+    return location.href;
+  }
+  async function copyCamLink() {
+    const url = writeCamUrl();
+    let ok = false;
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(url); ok = true; } } catch { ok = false; }
+    if (!ok) {
+      const ta = document.createElement("textarea"); ta.value = url; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(ta); ta.select(); try { ok = document.execCommand("copy"); } catch { ok = false; } ta.remove();
+    }
+    sfx(ok ? "copy" : "error");
+    const btn = q("#v3-copy-link"), sp = btn?.querySelector("span");
+    if (sp) { const prev = sp.textContent; sp.textContent = ok ? "Copied" : "Link ready"; setTimeout(() => { sp.textContent = prev; }, 1400); }
+    say(ok ? "3D camera link copied to clipboard." : "Address bar updated with 3D camera link.", false, true);
+    return url;
+  }
+  const savePop = q("#v3-save-pop"), saveStageBtn = q("#v3-save-stage"), saveOpenBtn = q("#v3-save-open");
+  function setSavePop(open) {
+    const on = open === undefined ? savePop.hidden : !!open;
+    savePop.hidden = !on;
+    saveStageBtn?.setAttribute("aria-expanded", String(on));
+    saveOpenBtn?.setAttribute("aria-expanded", String(on));
+  }
+  saveStageBtn?.addEventListener("click", ev => { ev.stopPropagation(); setSavePop(); });
+  saveOpenBtn?.addEventListener("click", ev => { ev.stopPropagation(); setSavePop(); });
+  q("#v3-copy-link")?.addEventListener("click", () => copyCamLink());
+  function readExportOpts(extra = {}) {
+    const resEl = el.querySelector('input[name="v3-exp-res"]:checked');
+    const bgEl = el.querySelector('input[name="v3-exp-bg"]:checked');
+    return {
+      scale: +(resEl?.value || 2),
+      background: bgEl?.value || "dark",
+      legend: q("#v3-exp-leg")?.checked ?? true,
+      scaleBar: q("#v3-exp-scale")?.checked ?? true,
+      sightlines: q("#v3-exp-lines")?.checked ?? true,
+      stamp: q("#v3-exp-stamp")?.checked ?? true,
+      ...extra
+    };
+  }
+  const loadExport = () => import("./export3d.js");
+  const exportPNG = async (o = {}) => (await loadExport()).exportPNG(viewer, readExportOpts(o));
+  const exportSVG = async (o = {}) => (await loadExport()).exportSVG(viewer, readExportOpts(o));
+  const exportPDF = async (o = {}) => (await loadExport()).exportPDF(viewer, readExportOpts(o));
+  const exportHTML = async (o = {}) => (await loadExport()).exportHTML(viewer, readExportOpts(o));
+  const exportJSON = async (o = {}) => (await loadExport()).exportJSON(viewer, readExportOpts(o));
+  q("#v3-dl-png")?.addEventListener("click", () => { setSavePop(false); exportPNG(); });
+  q("#v3-dl-svg")?.addEventListener("click", () => { setSavePop(false); exportSVG(); });
+  q("#v3-dl-pdf")?.addEventListener("click", () => { setSavePop(false); exportPDF(); });
+  q("#v3-dl-html")?.addEventListener("click", () => { setSavePop(false); exportHTML(); });
+  q("#v3-dl-json")?.addEventListener("click", () => { setSavePop(false); exportJSON(); });
+  const onDocClickSave = ev => {
+    if (!savePop || savePop.hidden) return;
+    if (!savePop.contains(ev.target) && !saveStageBtn?.contains(ev.target) && !saveOpenBtn?.contains(ev.target)) setSavePop(false);
+  };
+  document.addEventListener("pointerdown", onDocClickSave);
+
+  Object.assign(viewer, {getSceneSnapshot, applySceneSnapshot, getDeepLink: writeCamUrl, copyCamLink,
+    exportPNG, exportSVG, exportPDF, exportHTML, exportJSON,
+    drawNow: () => draw(true), volScene, setSpecies, setPreset, setTransfer, setWeight, setLines, select: id => select(id), refreshLines, resize, render, bench, nearestLine,
     setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes, texKeys: () => [...TEX.keys()], movingQuality: () => movGov.state(),
     dispose() { loadTok++; anim++; progMsg = null; ENGINE = null; io?.disconnect(); if (spinRaf) cancelAnimationFrame(spinRaf); spinRaf = 0;
+      document.removeEventListener("pointerdown", onDocClickSave);
       document.removeEventListener("visibilitychange", spinKick); if (thumbHost && thumbClick) thumbHost.removeEventListener("click", thumbClick); ctlBox.remove(); clearTimeout(quietT); clearTimeout(progT); clearTimeout(liveT); if (accT) cancelAnimationFrame(accT); accT = 0;
       if (fallbackFs) toggleFullscreen(false); else if (fsEl() === el) document.exitFullscreen?.().catch(() => {});
       try { dprMq?.removeEventListener("change", onDpr); } catch { /* ignore */ }
