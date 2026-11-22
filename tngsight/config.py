@@ -45,10 +45,13 @@ def galaxy_record_path(galaxy_id=None) -> Path:
         if v:
             return Path(v).expanduser()
         galaxy_id = os.environ.get("TNG_GALAXY") or DEFAULT_GALAXY_ID
-    gid = int(galaxy_id)
+    gid = int(galaxy_id) if str(galaxy_id).isdigit() else str(galaxy_id)
     if gid == DEFAULT_GALAXY_ID:
         return PACKAGED_GALAXY
-    return gal_root() / str(gid) / "galaxy.json"
+    p = gal_root() / str(gid) / "galaxy.json"
+    if not p.is_file() and (gal_root() / str(gid) / "record.json").is_file():
+        return gal_root() / str(gid) / "record.json"
+    return p
 
 
 def load_galaxy(galaxy_id=None) -> dict:
@@ -61,12 +64,15 @@ def load_galaxy(galaxy_id=None) -> dict:
 
 
 def npz_prefix(galaxy: dict | None = None) -> str:
-    return f"cgm_sid{int((galaxy or GALAXY)['subhalo_id'])}_"
+    sid = (galaxy or GALAXY)["subhalo_id"]
+    sid = int(sid) if str(sid).isdigit() else sid
+    return f"cgm_sid{sid}_"
 
 
 R_SLIM_KPC = 400.0
 B_MAX_KPC = 300.0               # sqrt(400² − 246.35²) = 315 kpc → 300 is safe inside the slim cutout
 GALAXY: dict = {}               # filled below (after work_root is defined): the selected galaxy record
+LINES: dict = {}
 NPZ_PREFIX = "cgm_sid488530_"
 
 
@@ -86,7 +92,8 @@ def _env_path(var, default) -> Path:
 def cutout_path() -> Path:
     """$TNG_CUTOUT, else the 488530 slim cutout for the default galaxy and <gal_root>/<id>/cutout_slim_R400.hdf5 for
     another selected galaxy."""
-    gid = int(GALAXY.get("subhalo_id", DEFAULT_GALAXY_ID))
+    raw_gid = GALAXY.get("subhalo_id", DEFAULT_GALAXY_ID)
+    gid = int(raw_gid) if str(raw_gid).isdigit() else str(raw_gid)
     default = (work_root() / "data" / "cutout_slim_R400_sub488530.hdf5" if gid == DEFAULT_GALAXY_ID
                else gal_root() / str(gid) / "cutout_slim_R400.hdf5")
     return _env_path("TNG_CUTOUT", default)
@@ -108,18 +115,23 @@ def use_galaxy(record) -> dict:
     global NPZ_PREFIX
     if isinstance(record, dict):
         rec = dict(record)
-    elif isinstance(record, (str, Path)) and not str(record).isdigit():
+    elif isinstance(record, (str, Path)) and not str(record).isdigit() and Path(str(record)).is_file():
         rec = json.loads(Path(record).read_text())
     else:
-        rec = load_galaxy(int(record))
+        rec = load_galaxy(int(record) if str(record).isdigit() else str(record))
     GALAXY.clear()
     GALAXY.update(rec)
+    LINES.clear()
+    LINES.update(GALAXY.get("lines") or {})
     NPZ_PREFIX = npz_prefix(GALAXY)
     import sys as _sys
     pkg = __name__.rsplit(".", 1)[0]
     for name, mod in list(_sys.modules.items()):
-        if name.startswith(pkg + ".") and mod is not None and isinstance(getattr(mod, "NPZ_PREFIX", None), str):
-            mod.NPZ_PREFIX = NPZ_PREFIX
+        if name.startswith(pkg + ".") and mod is not None:
+            if isinstance(getattr(mod, "NPZ_PREFIX", None), str):
+                mod.NPZ_PREFIX = NPZ_PREFIX
+            if "TNG_H" in GALAXY and hasattr(mod, "TNG_H"):
+                mod.TNG_H = float(GALAXY["TNG_H"])
     geo = _sys.modules.get(pkg + ".geometry")
     if geo is not None:
         geo._refresh()
@@ -145,4 +157,8 @@ def figdir() -> Path:
 
 
 GALAXY.update(load_galaxy())
+if "lines" not in GALAXY and PACKAGED_GALAXY.is_file():
+    LINES.update(json.loads(PACKAGED_GALAXY.read_text()).get("lines", {}))
+else:
+    LINES.update(GALAXY.get("lines") or {})
 NPZ_PREFIX = npz_prefix(GALAXY)

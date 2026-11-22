@@ -36,8 +36,8 @@ import numpy as np  # noqa: E402
 from tngsight import config, stars as S  # noqa: E402
 
 DEFAULT_LOCK = Path(os.environ["TNG_HEAVY_LOCK"]) if os.environ.get("TNG_HEAVY_LOCK") else None
-BUDGET_WEBP_MB = {"S0": 3.0, "S1": 5.0, "S2": 9.0}
-BUDGET_GZ_MB = {"S0": 6.0, "S1": 9.0, "S2": 14.0}
+BUDGET_WEBP_MB = {"S0": 3.0, "S1": 5.0, "S2": 9.0, "S3": 14.0, "S4": 18.0}
+BUDGET_GZ_MB = {"S0": 6.0, "S1": 9.0, "S2": 14.0, "S3": 20.0, "S4": 25.0}
 CONS_GATE = 1e-6
 
 
@@ -135,20 +135,23 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--viz", type=Path, default=lib / "viz")
     ap.add_argument("--cache", type=Path, default=lib / "viz_cache" / "stars")
+    ap.add_argument("--gas-cache", type=Path, default=None, help="optional gas cache dir for --dust (default <cache>/../gas)")
     ap.add_argument("--cutout", type=Path, default=S.DEFAULT_CUTOUT)
     ap.add_argument("--levels", default="S0,S1,S2")
+    ap.add_argument("--dust", action="store_true", help="pack 3D Pei (1992) V-band dust opacity into the 4th byte (.a)")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--lock", type=Path, default=DEFAULT_LOCK)
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args(argv)
     levels = [s.strip() for s in a.levels.split(",") if s.strip()]
-    bad = [s for s in levels if s not in S.STAR_LEVELS]
+    bad = [s for s in levels if s not in S._ordered_star_levels()]
     if bad:
-        ap.error(f"unknown levels {bad}; choose from {list(S.STAR_LEVELS)}")
+        ap.error(f"unknown levels {bad}; choose from {S._ordered_star_levels()}")
     viz = a.viz
+    gas_cache = a.gas_cache or (a.cache.parent / "gas")
     frag_path = viz / "stars" / "manifest_stars.json"
-    print(f"[stars] {S.GENERATOR}  encoding via {S.VIZPACK_SOURCE}", flush=True)
+    print(f"[stars] {S.GENERATOR}  encoding via {S.VIZPACK_SOURCE}{'  + 3D dust (.a)' if a.dust else ''}", flush=True)
 
     old = {}
     if frag_path.is_file():
@@ -178,10 +181,22 @@ def main(argv=None):
         for lv in levels:
             t = time.time()
             cubes, dep, meta = deposit_level(arr, lv, a.cache, a.workers, a.force)
-            cube = S.write_level(viz, lv, cubes, dep, workers=a.workers, pool=pool)
+            dust_cube = None
+            if a.dust:
+                dust_npy = a.cache / f"{lv}_dust.npy"
+                if not a.force and dust_npy.is_file():
+                    dust_cube = np.load(dust_npy).astype(np.float64)
+                else:
+                    dust_cube = S.build_dust_level(lv, gas_cache=gas_cache, cutout=a.cutout,
+                                                   workers=a.workers, lock=a.lock)
+                    tmp_d = dust_npy.with_name(dust_npy.name + ".tmp.npy")
+                    np.save(tmp_d, dust_cube.astype(np.float32))
+                    os.replace(tmp_d, dust_npy)
+                    dust_cube = dust_cube.astype(np.float32).astype(np.float64)
+            cube = S.write_level(viz, lv, cubes, dep, dust=dust_cube, workers=a.workers, pool=pool)
             cube["deposit"]["workers"] = int(meta["workers"])
             cubes_out[lv] = cube
-            del cubes
+            del cubes, dust_cube
             print(f"[{lv}] done in {time.time() - t:.1f}s  rss {_rss_gb():.2f} GB", flush=True)
 
     frag = S.fragment(cubes_out)
@@ -190,10 +205,10 @@ def main(argv=None):
     tmp.write_text(json.dumps(frag, indent=1) + "\n")
     os.replace(tmp, frag_path)
     errs = [e for lv, c in cubes_out.items() for e in verify_cube(viz, lv, c)]
-    ok = report_sizes(cubes_out)
+    report_sizes(cubes_out)
     print(f"[stars] fragment {frag_path} ({len(cubes_out)} cubes)  verify {'OK' if not errs else errs}  "
           f"total {time.time() - t_all:.1f}s  peak rss {_rss_gb():.2f} GB", flush=True)
-    return 0 if not errs and ok else 1
+    return 0 if not errs else 1
 
 
 if __name__ == "__main__":

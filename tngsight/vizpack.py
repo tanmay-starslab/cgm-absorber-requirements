@@ -43,6 +43,8 @@ GENERATOR = "tngsight.vizpack/1"
 N = 256
 GAS_LEVELS = {"L0": 400.0, "L1": 100.0, "L2": 25.0}
 STAR_LEVELS = {"S0": 400.0, "S1": 100.0, "S2": 25.0}
+ALL_GAS_LEVELS = {"L0": 400.0, "L1": 100.0, "L2": 25.0, "L3": 6.25, "L4": 1.5}
+ALL_STAR_LEVELS = {"S0": 400.0, "S1": 100.0, "S2": 25.0, "S3": 6.25, "S4": 1.5}
 R_MASK_KPC = {"L0": 400.0, "S0": 400.0}
 VOL_KEYS = ("nH", "T", "Z") + tuple(_ions.KEYS)          # gas fields: nH, T, Z + the 12 registry ions
 Z_SUN = 0.0127
@@ -189,9 +191,12 @@ def raw_gas(q3) -> bytes:
     return np.ascontiguousarray(np.asarray(q3, dtype=np.uint8).transpose(2, 1, 0)).tobytes()
 
 
-def raw_stars(q_i, q_r, q_g) -> bytes:
+def raw_stars(q_i, q_r, q_g, q_dust=None) -> bytes:
     q_i, q_r, q_g = (np.asarray(x, dtype=np.uint8) for x in (q_i, q_r, q_g))
-    a = np.where((q_i > 0) | (q_r > 0) | (q_g > 0), 255, 0).astype(np.uint8)
+    if q_dust is None:
+        a = np.where((q_i > 0) | (q_r > 0) | (q_g > 0), 255, 0).astype(np.uint8)
+    else:
+        a = np.asarray(q_dust, dtype=np.uint8)
     return np.ascontiguousarray(np.stack([q_i, q_r, q_g, a], axis=-1).transpose(2, 1, 0, 3)).tobytes()
 
 
@@ -215,28 +220,33 @@ def atlas_parts(q) -> list:
 
 
 def atlas_to_raw(parts, n, channels) -> bytes:
-    """Inverse of `atlas_parts` → raw bytes (§2.2). channels = 1 (gas; a decoded RGB/RGBA image uses channel 0) or 3
-    (stars; A rebuilt by the §2.2 rule). Mirrors the JS decoder."""
+    """Inverse of `atlas_parts` → raw bytes (§2.2). channels = 1 (gas; a decoded RGB/RGBA image uses channel 0), 3
+    (stars; A rebuilt by the §2.2 rule, or preserved when parts are 4-channel RGBA) or 4 (RGBA stars with q_dust)."""
     n = int(n)
-    q = np.zeros((n, n, n) if channels == 1 else (n, n, n, 3), dtype=np.uint8)
+    a0 = np.asarray(parts[0])
+    has_alpha = (channels == 4) or (channels == 3 and a0.ndim == 3 and a0.shape[2] == 4)
+    ch = 1 if channels == 1 else (4 if has_alpha else 3)
+    q = np.zeros((n, n, n) if ch == 1 else (n, n, n, ch), dtype=np.uint8)
     for k in range(n):
         p, s = divmod(k, SLICES_PER_PART)
         c, r = s % COLS, s // COLS
         a = np.asarray(parts[p])
-        if channels == 1 and a.ndim == 3:
+        if ch == 1 and a.ndim == 3:
             a = a[..., 0]
-        elif channels == 3 and a.ndim == 3 and a.shape[2] > 3:
+        elif ch == 3 and a.ndim == 3 and a.shape[2] > 3:
             a = a[..., :3]
         q[:, :, k] = np.swapaxes(a[r * n:(r + 1) * n, c * n:(c + 1) * n], 0, 1)
-    if channels == 1:
+    if ch == 1:
         return raw_gas(q)
+    if ch == 4:
+        return raw_stars(q[..., 0], q[..., 1], q[..., 2], q_dust=q[..., 3])
     return raw_stars(q[..., 0], q[..., 1], q[..., 2])
 
 
 def encode_webp(img) -> bytes:
     from PIL import Image
     a = np.ascontiguousarray(img, dtype=np.uint8)
-    mode = "L" if a.ndim == 2 else "RGB"
+    mode = "L" if a.ndim == 2 else ("RGBA" if a.shape[2] == 4 else "RGB")
     buf = io.BytesIO()
     Image.fromarray(a, mode).save(buf, "WEBP", lossless=True, quality=100, method=6, exact=True)
     return buf.getvalue()
@@ -433,7 +443,8 @@ def validate_manifest_v2(obj, base_dir=None, *, sections=("gas", "stars")) -> No
                        ("levels", isobj)] + [(k, isobj) for k in sections])
     need(obj["generator"], "generator", [(k, isstr) for k in ("deposit", "vizpack", "pillow", "libwebp", "numpy")
                                          + sections])
-    need(obj["galaxy"], "galaxy", [("sim", isstr), ("snapshot", _int), ("redshift", _num), ("subhalo_id", _int),
+    need(obj["galaxy"], "galaxy", [("sim", isstr), ("snapshot", _int), ("redshift", _num),
+                                   ("subhalo_id", lambda x: _int(x) or isstr(x)),
                                    ("TNG_H", _num), ("center_kpc", lambda x: _vec(x, 3)), ("R200c_kpc", _num),
                                    ("Lhat", lambda x: _vec(x, 3)), ("xhat", lambda x: _vec(x, 3)),
                                    ("yhat", lambda x: _vec(x, 3)), ("SubhaloVel_kms", lambda x: _vec(x, 3))])
@@ -449,12 +460,14 @@ def validate_manifest_v2(obj, base_dir=None, *, sections=("gas", "stars")) -> No
                                                   ("cols", lambda x: x == 16), ("rows", lambda x: x == 4),
                                                   ("lossless", lambda x: x is True)])
     levels = obj["levels"]
+    g_lv = {**ALL_GAS_LEVELS, **GAS_LEVELS}
+    s_lv = {**ALL_STAR_LEVELS, **STAR_LEVELS}
     for L, lv in levels.items():
-        if L not in GAS_LEVELS and L not in STAR_LEVELS:
+        if L not in g_lv and L not in s_lv:
             bad(f"levels.{L}", "unknown level")
         need(lv, f"levels.{L}", [("half_kpc", _num), ("n", lambda x: _int(x) and x > 0), ("voxel_kpc", _num),
                                  ("r_mask_kpc", lambda x: x is None or _num(x))])
-        exp_half = GAS_LEVELS.get(L, STAR_LEVELS.get(L))
+        exp_half = g_lv.get(L, s_lv.get(L))
         if lv["half_kpc"] != exp_half:
             bad(f"levels.{L}.half_kpc", f"{lv['half_kpc']} != {exp_half}")
         if abs(lv["voxel_kpc"] - 2.0 * lv["half_kpc"] / lv["n"]) > 1e-12 * lv["half_kpc"]:
@@ -515,7 +528,8 @@ def validate_manifest_v2(obj, base_dir=None, *, sections=("gas", "stars")) -> No
 
 
 def _validate_gas(gas, need, bad, cube, isstr, isobj):
-    need(gas, "gas", [("levels", lambda x: isinstance(x, list) and len(x) > 0 and all(L in GAS_LEVELS for L in x)),
+    g_lv = {**ALL_GAS_LEVELS, **GAS_LEVELS}
+    need(gas, "gas", [("levels", lambda x: isinstance(x, list) and len(x) > 0 and all(L in g_lv for L in x)),
                       ("fields", lambda x: isinstance(x, dict) and len(x) > 0)])
     for k, f in gas["fields"].items():
         w = f"gas.fields.{k}"
@@ -607,7 +621,8 @@ def merge_gas_fields(viz_dir, frag, keys) -> dict:
 
 
 def _validate_stars(st, need, bad, cube, isstr, isobj):
-    need(st, "stars", [("levels", lambda x: isinstance(x, list) and len(x) > 0 and all(L in STAR_LEVELS for L in x)),
+    s_lv = {**ALL_STAR_LEVELS, **STAR_LEVELS}
+    need(st, "stars", [("levels", lambda x: isinstance(x, list) and len(x) > 0 and all(L in s_lv for L in x)),
                        ("bands", lambda x: x == ["i", "r", "g"]), ("units", isstr), ("photometry", isstr),
                        ("exclude", isstr), ("display", isobj), ("cubes", isobj)])
     need(st["display"], "stars.display", [("Q", _num), ("mu0", _num), ("mu_zero", _num),
@@ -638,8 +653,10 @@ def merge(viz_dir) -> dict:
     man = {"schema": SCHEMA, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "generator": gen}
     man.update(constant_blocks())
     lv = {}
-    for L in list(GAS_LEVELS) + list(STAR_LEVELS):
-        src = g["levels"].get(L) if L in GAS_LEVELS else s["levels"].get(L)
+    g_lv = {**ALL_GAS_LEVELS, **GAS_LEVELS}
+    s_lv = {**ALL_STAR_LEVELS, **STAR_LEVELS}
+    for L in list(g_lv) + list(s_lv):
+        src = g["levels"].get(L) if L in g_lv else s["levels"].get(L)
         if src is not None:
             lv[L] = src
     man["levels"] = lv
