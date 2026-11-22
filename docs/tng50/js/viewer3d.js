@@ -566,7 +566,7 @@ async function create(app, opts = {}) {
       <div class="v3c-btns presets"><button type="button" class="v3c-btn" data-p="face-on" data-tip="Look down the disk normal (F)">Face-on</button><button type="button" class="v3c-btn" data-p="edge-on" data-tip="Look at the disk from its side (E)">Edge-on</button>
         <button type="button" class="v3c-btn" data-p="sightline" data-tip="Look along the selected sightline, as its spectrum sees it (A)">Along ray</button><button type="button" class="v3c-btn" data-p="reset" data-tip="Default camera view (R)">Reset</button></div>
       <div class="v3c-row v3c-speed"><label for="v3-orbit-axis">orbit axis</label><select id="v3-orbit-axis" data-testid="v3-orbit-axis" data-tip="Axis the orbit turns around"><option value="auto" title="Tilts the disk when seen face-on, else turns around it">auto</option><option value="spin" title="Turns around the disk's rotation axis">rotation axis</option><option value="major" title="Tilts the disk between face-on and edge-on">major axis</option><option value="minor" title="Rocks the disk sideways">minor axis</option></select></div>
-      <div class="v3c-row v3c-speed"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="30" step="1" value="5" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">5°/s</output></div>
+      <div class="v3c-row v3c-speed"><label for="v3-orbit-speed">orbit speed</label><input id="v3-orbit-speed" data-testid="v3-orbit-speed" type="range" min="1" max="45" step="1" value="20" data-tip="How fast the orbit turns (degrees per second)"><output id="v3-orbit-speed-o">20°/s</output></div>
       <div class="v3c-pair"><button type="button" class="v3c-btn v3c-wide" id="v3-fs" aria-pressed="false" data-tip="Fill the screen with the 3D view (Shift+F)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Fullscreen</span></button>
       ${(t => `<button type="button" class="v3c-btn v3c-wide" id="v3-head" data-testid="v3-head" aria-pressed="false" data-tip="${t ? "Head, hands or tilt." : "Head steers, hands act."} Your camera video stays on your device."><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 8.5V3.6a1.1 1.1 0 0 1 2.2 0V7.5M7.7 7V2.6a1.1 1.1 0 0 1 2.2 0V7.3M9.9 7.3V3.6a1.1 1.1 0 0 1 2.2 0v5.6c0 3-1.9 5.3-4.6 5.3-2 0-3.1-1-4.2-2.7L2 9.4a1.1 1.1 0 0 1 1.8-1.2l1.7 1.7"/></svg><span>Hands-free</span></button>`)(matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches)}</div>
       <div class="v3c-row v3c-pvrow" id="v3-pv-row"><span class="lab">centre</span><div class="v3c-btns v3c-pvb"><button type="button" class="v3c-btn" id="v3-pv-gal" aria-pressed="true" data-tip="Orbit about the galaxy centre (C); double-click elsewhere to move">galaxy</button><button type="button" class="v3c-btn" id="v3-pv-ray" aria-pressed="false" data-tip="Orbit about the selected sightline's closest point">ray</button></div></div>
@@ -1630,7 +1630,7 @@ async function create(app, opts = {}) {
   q("#v3-pivot").addEventListener("click", () => { recentre(); canvas.focus({preventScroll: true}); });
   q("#v3-orbit").addEventListener("click", () => { sfx(fullOrbit ? "pause" : "play"); setOrbit(!fullOrbit); });
   q("#v3-orbit-axis").addEventListener("change", ev => { orbitAxis = ["auto", "spin", "major", "minor"].includes(ev.target.value) ? ev.target.value : "auto"; orbitAxisNow = null; orbitTip(); });
-  q("#v3-orbit-speed").addEventListener("input", ev => { orbitDeg = Math.max(1, Math.min(30, +ev.target.value || 5)); q("#v3-orbit-speed-o").textContent = orbitDeg + "°/s"; });
+  q("#v3-orbit-speed").addEventListener("input", ev => { orbitDeg = Math.max(1, Math.min(45, +ev.target.value || 20)); q("#v3-orbit-speed-o").textContent = orbitDeg + "°/s"; });
   /* owner 2026-11-14: zooming, panning or turning the view no longer stops the orbit; only the stop button (or O) does */
   q("#v3-pv-gal").addEventListener("click", recentre);
   q("#v3-pv-ray").addEventListener("click", pivotToRay);
@@ -1715,7 +1715,7 @@ async function create(app, opts = {}) {
   let fullOrbit = false;   // the full stage's orbit button (O): the same slow turn as the thumbnail, started by the user
   const spinning = () => !!species && !document.hidden && !ctxLost && (docked === "thumb" ? thumbSpin && !reduced() && (io ? vis.thumb : true) : fullOrbit);
   const ORBIT_SVG = '<path d="M13.5 8A5.5 5.5 0 1 1 8 2.5"/><path d="M8 .8 10.2 2.5 8 4.2"/>', STOP_SVG = '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor" stroke="none"/>';
-  let orbitDeg = 5, orbitAxis = "auto";
+  let orbitDeg = 20, orbitAxis = "auto";
   /* owner 2026-11-14: the orbit axis, fixed when the orbit starts (or the axis changes) so the turn is one smooth rotation.
      rotation axis = the disk's spin axis (seen face-on this only spins the picture); major axis = the disk's major axis as
      seen at the start (the screen's horizontal, projected into the disk plane): turning about it tumbles the disk from
