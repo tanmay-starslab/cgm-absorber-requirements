@@ -37,12 +37,34 @@ def fake_pt4(n=40, seed=1, wind_every=7):
 def test_constants():
     assert S.STARS_VERSION == 1 and S.GENERATOR == "tngsight.stars/1"
     assert S.STAR_LEVELS == {"S0": 400.0, "S1": 100.0, "S2": 25.0}
+    assert S.ALL_STAR_LEVELS == {"S0": 400.0, "S1": 100.0, "S2": 25.0, "S3": 6.25, "S4": 1.5}
     assert S.BANDS == {"g": 4, "r": 5, "i": 6}
     assert S.CHANNELS == ("i", "r", "g")
     assert abs(S.MU_ZERO - 36.57212566588) < 1e-9
     assert S.DISPLAY["Q"] == 8.0 and S.DISPLAY["mu0"] == 21.5 and S.DISPLAY["balance"] == [1.0, 1.0, 1.0]
     assert S.PT4_FIELDS == ("Coordinates", "Masses", "StellarHsml", "GFM_StellarPhotometrics",
                             "GFM_StellarFormationTime")
+
+
+def test_dust_opacity_and_write_level_dust(tmp_path):
+    nH = np.array([1.0, 1.0, 0.01, 0.0])
+    T = np.array([1.0e4, 2.0e5, 5.0e3, 1.0e4])
+    Z = np.array([0.02, 0.02, 0.01, 0.02])
+    kv = S.kappa_v_from_gas(nH, T, Z)
+    np.testing.assert_allclose(kv, [2.41, 0.0, 2.41 * 0.01 * 0.5, 0.0], rtol=1e-12)
+    qd = S.quantize_dust(np.array([0.0, 10 ** (-4.5), 10 ** 1.5, 10 ** (-1.5)]))
+    assert qd.dtype == np.uint8 and qd.tolist() == [0, 1, 254, 1 + round(3.0 / 6.0 * 253)]
+    dec = S.dequantize_dust(qd)
+    assert np.isnan(dec[0]) and abs(dec[1] - (-4.5)) < 1e-12 and abs(dec[2] - 1.5) < 1e-12
+    arr = _synthetic_stars(n=300, spread=0.5)
+    cubes, dep = S.build_level(arr, "S4", n=16)
+    dust_cube = np.full((16, 16, 16), 0.1, dtype=np.float64)
+    dust_cube[0, 0, 0] = 0.0
+    cube = S.write_level(tmp_path, "S4", cubes, dep, dust=dust_cube, n=16, log=None)
+    q = S.decode_cube_gz(tmp_path, cube)
+    assert q["a"][0, 0, 0] == 0 and q["a"][1, 1, 1] == S.quantize_dust([0.1])[0] < 255
+    frag = S.fragment({"S4": cube}, n=16)
+    assert frag["levels"]["S4"]["half_kpc"] == 1.5
 
 
 # ------------------------------------------------------------------------------- star_arrays
