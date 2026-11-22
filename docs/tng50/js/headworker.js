@@ -6,7 +6,7 @@
 // numbers} | null, hand frames)} | {type: "error", message}. Frames are never kept, stored or sent anywhere.
 // Without OffscreenCanvas (older iOS) headctl.js loads this file as a page script and calls self.HeadTrack directly.
 (() => {
-  let face = null, hands = null;
+  let face = null, hands = null, handsP = null;
   async function make(T, fs, opts) {   // XNNPACK on the CPU; the GPU delegate only as a fallback
     try { return [await T.createFromOptions(fs, opts("CPU")), "CPU"]; } catch { return [await T.createFromOptions(fs, opts("GPU")), "GPU"]; }
   }
@@ -26,9 +26,12 @@
     if (d.type === "hands") {
       try {
         if (!hands && d.base) {
-          const {FilesetResolver, GestureRecognizer} = self.Vision, fs = await FilesetResolver.forVisionTasks(d.base + "wasm");
-          [hands] = await make(GestureRecognizer, fs, delegate => ({baseOptions: {modelAssetPath: d.base + "gesture_recognizer.task", delegate},
-            runningMode: "VIDEO", numHands: 1}));
+          handsP ||= (async () => {
+            const {FilesetResolver, GestureRecognizer} = self.Vision, fs = await FilesetResolver.forVisionTasks(d.base + "wasm");
+            [hands] = await make(GestureRecognizer, fs, delegate => ({baseOptions: {modelAssetPath: d.base + "gesture_recognizer.task", delegate},
+              runningMode: "VIDEO", numHands: 1}));
+          })().finally(() => { handsP = null; });
+          await handsP;
         }
         return {type: "hands-ready"};
       } catch (x) { return {type: "hands-error", message: String(x && x.message || x)}; }

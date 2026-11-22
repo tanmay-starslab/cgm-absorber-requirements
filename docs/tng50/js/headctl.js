@@ -211,8 +211,8 @@ function setHands(s, on) {
   on = !!on && !s.tilt; if (s.T.hands === on) return;
   s.T.hands = on; s.track = s.tilt ? "tilt" : on ? "both" : "head"; s.gov?.setBoth(on);
   const cb = s.opts?.querySelector('[data-c="hands"]'); if (cb && cb.checked !== on) cb.checked = on;
-  if (on && s.worker && !s.handsReady) { s.handsLoading = true; s.worker.postMessage({type: "hands", base: VENDOR}); }
-  if (!on) { s.handsLoading = false; s.hc.reset(); s.arb.reset(); if (s.ctrl === "hand") { s.ctrl = "head"; if (s.mode === "orbit" && s.base && s.ref) rebase(s); } s.hand = "none"; s.sign = null; pill(s); }
+  if (on && s.worker && !s.handsReady && !s.handsLoading) { s.handsLoading = true; s.worker.postMessage({type: "hands", base: VENDOR}); }
+  if (!on) { s.hc.reset(); s.arb.reset(); if (s.ctrl === "hand") { s.ctrl = "head"; if (s.mode === "orbit" && s.base && s.ref) rebase(s); } s.hand = "none"; s.sign = null; pill(s); }
 }
 
 /* step 2 of the capability check and the runtime governor: the tracker's ms per frame sets the rate; too slow on a touch
