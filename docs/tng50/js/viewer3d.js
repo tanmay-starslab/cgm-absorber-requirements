@@ -970,6 +970,7 @@ vec3 starAt(vec3 p, int l) {`)
   function half2(a, n) { const m = n >> 1, o = new Uint8Array(m * m * m); let j = 0;
     for (let z = 0; z < m; z++) for (let y = 0; y < m; y++) { const b = (2 * z * n + 2 * y) * n; for (let x = 0; x < m; x++) o[j++] = a[b + 2 * x]; }
     return o; }
+  const TEX_SLAB = 64;
   function makeTex(r) {
     if (r.kind === "stars" && r.data) {
       const d = r.data; let hasDust = false;
@@ -980,6 +981,32 @@ vec3 starAt(vec3 p, int l) {`)
     tex.format = r.kind === "stars" || r.kind === "vel" ? T.RGBAFormat : T.RedFormat; tex.type = T.UnsignedByteType; tex.minFilter = tex.magFilter = T.LinearFilter;
     tex.wrapS = tex.wrapT = tex.wrapR = T.ClampToEdgeWrapping; tex.unpackAlignment = 1; tex.generateMipmaps = false; tex.needsUpdate = true;
     return tex;
+  }
+  function uploadTex3D(tex, data, n, rgba) {
+    const gl = renderer.getContext?.(), c = rgba ? 4 : 1;
+    if (gl && renderer.properties && data && data.length === n * n * n * c && n >= TEX_SLAB) {
+      tex.image = {data: null, width: n, height: n, depth: n};
+      tex.source.dataReady = false;
+      renderer.initTexture?.(tex);
+      const wt = renderer.properties.get(tex)?.__webglTexture;
+      if (wt) {
+        renderer.state.bindTexture(gl.TEXTURE_3D, wt);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        const fmt = rgba ? gl.RGBA : gl.RED, sliceBytes = n * n * c;
+        for (let z0 = 0; z0 < n; z0 += TEX_SLAB) {
+          const z1 = Math.min(n, z0 + TEX_SLAB);
+          gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, z0, n, n, z1 - z0, fmt, gl.UNSIGNED_BYTE, data.subarray(z0 * sliceBytes, z1 * sliceBytes));
+        }
+        renderer.state.unbindTexture();
+        tex.source.dataReady = true;
+        if (ctxLost) tex.image.data = data;
+        return;
+      }
+      tex.image.data = data;
+      tex.source.dataReady = true;
+    }
+    renderer.initTexture?.(tex);
+    if (!ctxLost) tex.image.data = null;
   }
   function getTex(key, prio = 1) {
     if (TEX.has(key)) { TEX.get(key).used = performance.now(); return Promise.resolve(TEX.get(key)); }
@@ -995,12 +1022,11 @@ vec3 starAt(vec3 p, int l) {`)
           r.smoothed = np;
         } catch { r.data = q0; } }
       const tex = makeTex(r);
-      renderer.initTexture?.(tex);                           // upload now, then drop the byte array
+      uploadTex3D(tex, r.data, r.n, kind === "stars");       // upload in z-slabs, then drop the byte array
       const it = {tex, bytes: r.data.length, used: performance.now(), format: r.format, ms: r.ms, fetchMs: r.fetchMs, decodeMs: r.decodeMs, base: r.base};
       /* tf3d: the TF editor's histograms come from the loaded cube (its bytes are dropped next): code counts of every level,
          and a half-resolution copy of L0 / L1 for the value x gradient histogram of the 2D editor (2 MB each) */
       if (kind === "gas") { try { it.codes = histCodes(r.data, 3); if (L !== "L2") it.sub = half2(r.data, r.n); } catch { /* histogram only */ } }
-      if (!ctxLost) tex.image.data = null;                   // during a context loss keep it: three re-uploads it on restore
       TEX.set(key, it); stats.loads = (stats.loads || []).concat([{key, format: r.format, ms: Math.round(r.ms), decodeMs: Math.round(r.decodeMs || 0), webpError: r.webpError, smoothed: r.smoothed || 0}]);
       evict(); return it; })().finally(() => { if (PEND.get(key) === pend) PEND.delete(key); }); PEND.set(key, pend); }
     return PEND.get(key);
@@ -1017,9 +1043,8 @@ vec3 starAt(vec3 p, int l) {`)
        view still shown while another field loads keeps it (the user may come back) */
     if (!isVel(wanted) && !isVel(species)) throw Object.assign(new Error("velocity view left"), {cancelled: true});
     const r = {n: rs[0].n, kind: "vel", data: packVelocity(rs[0].data, rs[1].data, rs[2].data)};
-    const tex = makeTex(r); renderer.initTexture?.(tex);
+    const tex = makeTex(r); uploadTex3D(tex, r.data, r.n, true);
     const it = {tex, bytes: r.data.length, used: performance.now(), format: rs.map(x => x.format).join(","), ms: Math.max(...rs.map(x => x.ms))};
-    if (!ctxLost) tex.image.data = null;
     TEX.set(key, it); stats.loads = (stats.loads || []).concat([{key, format: it.format, ms: Math.round(it.ms), decodeMs: 0, smoothed: 0}]);
     evict(); return it;
   }
@@ -1545,6 +1570,7 @@ vec3 starAt(vec3 p, int l) {`)
     if (selId) select(selId, true); if (manifest && species) { bindAll(); clearTimeout(endT); endT = setTimeout(() => { if (manifest && species) { ensure().catch(() => {}); bindAll(); } }, 140); } } });
 
   /* moving-frame path (design §5.5): exact samples while moving if they reach 30 fps, else the hardware path */
+  let calPoll = 0;
   function timeFrames(n, exact, movingExact) {
     const gl = renderer.getContext(), px = new Uint8Array(4), ts = [], keep = useMovingExact; useMovingExact = movingExact;
     for (let i = 0; i < n; i++) { const off = camera.position.clone().sub(controls.target).applyAxisAngle(camera.up, 2 * Math.PI / Math.max(n, 12));
@@ -1552,21 +1578,72 @@ vec3 starAt(vec3 p, int l) {`)
       const t0 = performance.now(); draw(exact); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); ts.push(performance.now() - t0); }
     useMovingExact = keep; return ts;
   }
+  function applyCalibration(t, te, pr0, bufPx) {
+    if (bufPx > 1.3e6 && Number.isFinite(te)) {
+      if (te > EXACT_MS) exactPR = Math.max(Math.min(PR, 0.75), Math.min(PR, pr0 * Math.sqrt(EXACT_MS / te)));
+      accMax = te * (exactPR / pr0) ** 2 > 1.5 * EXACT_MS ? 3 : ACC_N;
+      Object.assign(stats.calibration = {moving_exact_ms: t, moving_path: t <= 1000 / 30 ? "exact" : "fast"}, {exact_ms: te, exact_pr: exactPR, refine_frames: accMax});
+    } else {
+      exactPR = PR; accMax = ACC_N; stats.calibration = {moving_exact_ms: t, moving_path: t <= 1000 / 30 ? "exact" : "fast"};
+    }
+    movGov.reset(pickMovingRung(t, {lowTier, fs: isFs()})); syncMovingRung();
+    Object.assign(stats.calibration, {moving_pr: movingPR, moving_spv: movingSpv, moving_rung: movGov.rung.name, governor: movGov.state()});
+  }
   function calibrate() {
     if (docked !== "full") return;     // Phase 3: calibrated on the full stage only (dock() calls it)
     const sig = JSON.stringify(levels()) + (isFs() ? "|fs" : ""); if (!species || sig === calibrated) return; calibrated = sig;
+    if (calPoll) { cancelAnimationFrame(calPoll); calPoll = 0; }
+    const gl = renderer.getContext?.(), tq = gl?.getExtension?.("EXT_disjoint_timer_query_webgl2");
+    const bufPx = (stage.clientWidth || 600) * (stage.clientHeight || 400) * PR * PR, pr0 = exactPR;
+    const p0 = camera.position.clone();
+    if (tq && gl.createQuery) {
+      benching = true; movingPR = PR * 0.5; movingSpv = 0.5; movingShade = 1;
+      const keep = useMovingExact; useMovingExact = true;
+      const mQueries = [], eQueries = [], mCpu = [], eCpu = [];
+      for (let i = 0; i < 5; i++) {
+        const off = camera.position.clone().sub(controls.target).applyAxisAngle(camera.up, 2 * Math.PI / 12);
+        camera.position.copy(controls.target).add(off); camera.lookAt(controls.target);
+        const qy = gl.createQuery(), t0 = performance.now();
+        gl.beginQuery(tq.TIME_ELAPSED_EXT, qy); draw(false); gl.endQuery(tq.TIME_ELAPSED_EXT);
+        mQueries.push(qy); mCpu.push(performance.now() - t0);
+      }
+      if (bufPx > 1.3e6) {
+        for (let i = 0; i < 2; i++) {
+          const off = camera.position.clone().sub(controls.target).applyAxisAngle(camera.up, 2 * Math.PI / 12);
+          camera.position.copy(controls.target).add(off); camera.lookAt(controls.target);
+          const qy = gl.createQuery(), t0 = performance.now();
+          gl.beginQuery(tq.TIME_ELAPSED_EXT, qy); draw(true); gl.endQuery(tq.TIME_ELAPSED_EXT);
+          eQueries.push(qy); eCpu.push(performance.now() - t0);
+        }
+      }
+      useMovingExact = keep; benching = false;
+      camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
+      applyCalibration(median(mCpu), bufPx > 1.3e6 ? median(eCpu) : NaN, pr0, bufPx);
+      draw(true);
+      const allQ = [...mQueries, ...eQueries], tStart = performance.now();
+      const poll = () => {
+        calPoll = 0; if (ctxLost || calibrated !== sig) { allQ.forEach(qy => gl.deleteQuery(qy)); return; }
+        const ready = allQ.every(qy => gl.getQueryParameter(qy, gl.QUERY_RESULT_AVAILABLE));
+        if (!ready && performance.now() - tStart < 500) { calPoll = requestAnimationFrame(poll); return; }
+        const dis = gl.getParameter(tq.GPU_DISJOINT_EXT);
+        if (ready && !dis) {
+          const tm = median(mQueries.map(qy => gl.getQueryParameter(qy, gl.QUERY_RESULT) / 1e6));
+          const te = eQueries.length ? median(eQueries.map(qy => gl.getQueryParameter(qy, gl.QUERY_RESULT) / 1e6)) : NaN;
+          if (tm > 0) { applyCalibration(tm, te, pr0, bufPx); if (!moving && !spinRaf) draw(true); }
+        }
+        allQ.forEach(qy => gl.deleteQuery(qy));
+      };
+      calPoll = requestAnimationFrame(poll);
+      return;
+    }
     benching = true; movingPR = PR * 0.5; movingSpv = 0.5; movingShade = 1;
-    const p0 = camera.position.clone(); const t = median(timeFrames(5, false, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
+    const t = median(timeFrames(5, false, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
     /* fix-ui FE-09: on drawing buffers larger than the benchmarked 1366×702 (fullscreen, high DPR) time two exact frames and
        scale the exact-frame pixel ratio so one costs about EXACT_MS; slow exact frames also get fewer refine frames */
-    const bufPx = (stage.clientWidth || 600) * (stage.clientHeight || 400) * PR * PR;
-    if (bufPx > 1.3e6) { const te = median(timeFrames(2, true, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
-      const pr0 = exactPR; if (te > EXACT_MS) exactPR = Math.max(Math.min(PR, 0.75), Math.min(PR, pr0 * Math.sqrt(EXACT_MS / te)));
-      accMax = te * (exactPR / pr0) ** 2 > 1.5 * EXACT_MS ? 3 : ACC_N; Object.assign(stats.calibration = {moving_exact_ms: t, moving_path: t <= 1000 / 30 ? "exact" : "fast"}, {exact_ms: te, exact_pr: exactPR, refine_frames: accMax}); }
-    else { exactPR = PR; accMax = ACC_N; stats.calibration = {moving_exact_ms: t, moving_path: t <= 1000 / 30 ? "exact" : "fast"}; }
+    let te = NaN;
+    if (bufPx > 1.3e6) { te = median(timeFrames(2, true, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update(); }
     benching = false;
-    movGov.reset(pickMovingRung(t, {lowTier, fs: isFs()})); syncMovingRung();
-    Object.assign(stats.calibration, {moving_pr: movingPR, moving_spv: movingSpv, moving_rung: movGov.rung.name, governor: movGov.state()});
+    applyCalibration(t, te, pr0, bufPx);
     draw(true);
   }
   async function bench(n = 60) {
@@ -1973,7 +2050,7 @@ vec3 starAt(vec3 p, int l) {`)
     setMode, setStars, setGuides, toggleFullscreen, levels, gpuBytes, texKeys: () => [...TEX.keys()], movingQuality: () => movGov.state(),
     dispose() { loadTok++; anim++; progMsg = null; ENGINE = null; io?.disconnect(); if (spinRaf) cancelAnimationFrame(spinRaf); spinRaf = 0;
       document.removeEventListener("pointerdown", onDocClickSave);
-      document.removeEventListener("visibilitychange", spinKick); if (thumbHost && thumbClick) thumbHost.removeEventListener("click", thumbClick); ctlBox.remove(); clearTimeout(quietT); clearTimeout(progT); clearTimeout(liveT); if (accT) cancelAnimationFrame(accT); accT = 0;
+      document.removeEventListener("visibilitychange", spinKick); if (thumbHost && thumbClick) thumbHost.removeEventListener("click", thumbClick); ctlBox.remove(); clearTimeout(quietT); clearTimeout(progT); clearTimeout(liveT); if (accT) cancelAnimationFrame(accT); accT = 0; if (calPoll) cancelAnimationFrame(calPoll); calPoll = 0;
       if (fallbackFs) toggleFullscreen(false); else if (fsEl() === el) document.exitFullscreen?.().catch(() => {});
       try { dprMq?.removeEventListener("change", onDpr); } catch { /* ignore */ }
       if (smoothW) { smoothW.terminate(); smoothW = null; for (const [, p] of smoothP) p[1](new Error("viewer disposed")); smoothP.clear(); }
