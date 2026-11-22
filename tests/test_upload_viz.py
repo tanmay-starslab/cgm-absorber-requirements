@@ -82,7 +82,7 @@ class FakeApi:
     ("README.md", True), ("manifest_v2.json", True), ("luts/luts.json", True), ("previews/face_on.png", True),
     ("gas/L0/nH.0123456789ab.p0.webp", True), ("gas/L2/CIII.0123456789ab.u8.gz", True),
     ("stars/S1/gri.0123456789ab.p3.webp", True), ("stars/S0/gri.0123456789ab.rgba.gz", True),
-    ("gas/L3/nH.0123456789ab.p0.webp", False), ("gas/L0/rho.0123456789ab.p0.webp", False),
+    ("gas/L3/nH.0123456789ab.p0.webp", True), ("gas/L5/nH.0123456789ab.p0.webp", False), ("gas/L0/rho.0123456789ab.p0.webp", False),
     ("gas/L0/nH.0123456789AB.p0.webp", False), ("gas/L0/nH.0123456789ab.p4.webp", False),
     ("gas/L0/nH.0123456789ab.rgba.gz", False), ("stars/S1/gri.0123456789ab.u8.gz", False),
     ("gas/manifest_gas.json", False), (".gitattributes", False), ("yt.toml", False), ("config.tri", False),
