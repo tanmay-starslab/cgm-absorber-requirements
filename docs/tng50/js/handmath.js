@@ -96,23 +96,25 @@ export function pickJob(T, k, {ctrl = "head", mode = "orbit", probe = 4} = {}) {
  *  | "orbit" | "next" | "prev", sign (the held label while state is "hold")}. A fist pauses everything; a pinch zooms; an open palm drags or swipes; holds fire actions. */
 export function handController(o = {}) {
   const lab = labelSmoother(o.label), pin = pinchGate(o.pinch), hold = holdGate(o.hold), sw = swipeDetector(o.swipe);
-  const fx = oneEuro({minCutoff: 1.5, beta: 0.5}), fy = oneEuro({minCutoff: 1.5, beta: 0.5});
+  const fx = oneEuro({minCutoff: 2.2, beta: 0.7}), fy = oneEuro({minCutoff: 2.2, beta: 0.7}), fs = oneEuro({minCutoff: 1.8, beta: 0.4});
   let prev = null;
   const out = (state, extra = {}) => ({state, yaw: 0, pitch: 0, zoom: 1, action: null, ...extra});
-  const reset = () => { lab.reset(); pin.reset(); hold.reset(); sw.reset(); fx.reset(); fy.reset(); prev = null; };
+  const reset = () => { lab.reset(); pin.reset(); hold.reset(); sw.reset(); fx.reset(); fy.reset(); fs.reset(); prev = null; };
   return {reset, update(frame, tMs) {
     if (!frame || !frame.lm) { reset(); return out("none"); }
-    const f = handFeatures(frame.lm), l = lab.update(LABELS[frame.g] || "none", frame.score ?? 1), t = tMs / 1000;
-    const x = fx.filter(f.cx, t), y = fy.filter(f.cy, t), p = prev; prev = {x, y, size: f.size, t};
-    if (l === "fist") { pin.reset(); sw.reset(); hold.update(l, tMs); return out("paused"); }
+    const f = handFeatures(frame.lm), rawL = (frame.score ?? 1) >= (o.label?.minScore ?? 0.5) ? LABELS[frame.g] || "none" : "none";
+    const l = lab.update(LABELS[frame.g] || "none", frame.score ?? 1), t = tMs / 1000;
+    const x = fx.filter(f.cx, t), y = fy.filter(f.cy, t), sz = fs.filter(f.size, t), p = prev; prev = {x, y, size: sz, t};
+    if (l === "fist" || rawL === "fist") { pin.reset(); sw.reset(); hold.update(l, tMs); return out("paused"); }
     const action = hold.update(l, tMs);
-    if (pin.update(f.pinch) && l !== "victory" && l !== "point") return out("zoom", {zoom: p ? pinchZoom(p.size, f.size, o.zoom) : 1, action});
+    if (pin.update(f.pinch) && l !== "victory" && l !== "point") return out("zoom", {zoom: p ? pinchZoom(p.size, sz, o.zoom) : 1, action});
     if (l !== "palm" && l !== "none") { sw.reset(); return out(HOLDS[l] ? "hold" : "rotate", {action, sign: l}); }   // holding a sign: the view stays
+    if (HOLDS[rawL]) { sw.reset(); return out("rotate", {action}); }
     const s = sw.update(f.cx, f.cy, tMs);   // raw positions: the filter would blunt the flick
     if (s) return out("rotate", {action: s === "right" ? "next" : "prev"});
-    if (!p || l !== "palm") return out("rotate", {action});
-    const dt = t - p.t, v = Math.hypot(x - p.x, y - p.y) / (dt || 1);
-    if (v > 0.6 * (o.swipe?.vMin ?? 1.2)) return out("rotate", {action});   // a fast flick is a swipe in the making, not a drag
+    if (!p || (l !== "palm" && l !== "none")) return out("rotate", {action});
+    const dt = t - p.t, vx = Math.abs(x - p.x) / (dt || 1), vy = Math.abs(y - p.y) / (dt || 1);
+    if (vx > 0.95 * (o.swipe?.vMin ?? 1.2) && vx > 1.5 * vy) return out("rotate", {action});   // a fast horizontal flick is a swipe in the making, not a drag
     return out("rotate", {...palmRotate(x - p.x, y - p.y, dt, o.rotate), action});
   }};
 }

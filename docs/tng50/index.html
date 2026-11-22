@@ -139,6 +139,7 @@ body:has(>#chat-open.fab:not([hidden])) #bar{padding-right:104px}
   <span class="sp"></span>
   <span id="pill" class="hide-m" data-state="offline" role="status" aria-live="polite">probing</span>
   <div class="cl hide-m" id="cl-act" role="group" aria-label="Find and ask">
+    <a class="pbtn hide-m" id="req-link" data-testid="req-link" href="../" data-req="" data-tip="S/N and resolving power needed to detect and resolve absorbers"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 13.5h12M2.5 13.5V2.5"/><path d="M3.5 11.5c2.2 0 2.8-6.5 4.5-6.5s1.8 4.2 3.2 4.2 1.8-5.2 3.3-5.2"/></svg><span class="lbl">Detect</span></a>
     <button class="pbtn hide-m" id="find-toggle" type="button" aria-haspopup="dialog" aria-controls="find-pop" aria-expanded="false" data-tip="Find sightlines by their fitted Voigt components"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h7M2 8h5M2 12h4"/><circle cx="11.5" cy="9.5" r="2.6"/><path d="m13.4 11.4 1.8 1.8"/></svg><span class="lbl">Find</span></button>
     <button class="pbtn primary" id="chat-open" type="button" aria-haspopup="dialog" data-tip="Ask in plain language; the chat drives the page's controls" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h11v7.5H8l-3.2 2.7v-2.7H2.5z"/></svg><span class="lbl">Ask</span></button>
   </div>
@@ -214,7 +215,8 @@ body:has(>#chat-open.fab:not([hidden])) #bar{padding-right:104px}
   <li>Fitted components: the fitted model in ink, each component in the line colour and a tick at its centre. A hollow tick marks a component on a bound, cut by the time cap, or unconstrained (log N error above 1 dex). An arrow marks a saturated component: its log N is only a lower limit, read as “log N &gt; 14.5 sat”. The readout gives the fitted values, their errors and flags.</li>
   <li>Drag or use the arrow keys to pan; ctrl or cmd with the wheel, or + and −, zoom; Home resets.</li>
   <li>3D: drag to orbit, scroll to zoom, click a sightline to open its spectra.</li></ul>
-  <p class="story-in">New to spectra? <a data-story="" href="learn/how-a-spectrum-is-made/">How an absorption spectrum is made</a> follows one sightline through this galaxy's gas and builds this plot, cell by cell.</p></div>
+  <p class="story-in">New to spectra? <a data-story="" href="learn/how-a-spectrum-is-made/">How an absorption spectrum is made</a> follows one sightline through this galaxy's gas and builds this plot, cell by cell.</p>
+  <p class="story-in">Designing an observation? <a data-req="" href="../">Detect &amp; Resolve</a> maps the resolving power R and S/N needed to detect one absorber or resolve two across all twelve transitions.</p></div>
 <div class="pop" id="pop-story" role="dialog" aria-labelledby="pop-story-h" data-testid="story-card" hidden><img class="ps-art" alt="" decoding="async" hidden>
   <div class="ps-b"><h3 id="pop-story-h">How an absorption spectrum is made</h3>
   <p>Follow a quasar's light along one sightline through the gas around this galaxy, and watch the spectrum on this page form, cell by cell.</p>

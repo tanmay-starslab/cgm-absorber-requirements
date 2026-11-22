@@ -1004,12 +1004,12 @@ const HOME = ["#grp-gal", "#grp-sight", "#grp-lines", "#grp-layout"].filter(s =>
 const tools = document.createElement("div"); tools.className = "grp"; tools.id = "grp-tools"; tools.innerHTML = '<span class="gl">Tools</span><div class="row"></div>';
 const ASK = (el => ({el, parent: el.parentNode, next: el.nextSibling}))($("#chat-open"));
 const INST = $("#side>section[aria-labelledby=h-inst]");
-const TOOL_HOME = ["#find-toggle"].map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
+const TOOL_HOME = ["#req-link", "#find-toggle"].filter(s => $(s)).map(s => { const el = $(s); return {el, parent: el.parentNode, next: el.nextSibling}; });
 function placeControls() {
   if (mqMobile.matches) { const slot = $("#mobslot"); for (const h of HOME) slot.appendChild(h.el); slot.appendChild(tools); for (const h of TOOL_HOME) { h.el.classList.remove("hide-m"); tools.lastChild.appendChild(h.el); }
     $("#dock").appendChild(ASK.el);       // Ask lives in the phone dock, so it never covers the spectra or the status bar
     $("#side").insertBefore(INST, $("#mobslot")); $("#side").setAttribute("role", "dialog"); $("#side").setAttribute("aria-modal", "false"); autoSheet(); }   // Instrument first: R and S/N in the peek sheet
-  else { for (const h of HOME) h.parent.insertBefore(h.el, h.next); for (const h of TOOL_HOME) h.parent.insertBefore(h.el, h.next); TOOL_HOME[0].el.classList.add("hide-m"); tools.remove(); toggleDrawer(false);
+  else { for (const h of HOME) h.parent.insertBefore(h.el, h.next); for (const h of TOOL_HOME) { h.parent.insertBefore(h.el, h.next); h.el.classList.add("hide-m"); } tools.remove(); toggleDrawer(false);
     ASK.parent.insertBefore(ASK.el, ASK.next); $("#side").insertBefore(INST, $("#v3d-mini").nextSibling); $("#side").removeAttribute("role"); $("#side").removeAttribute("aria-modal");
     const c = $("#v3-ctl"); if (c) { c.setAttribute("role", "group"); c.removeAttribute("aria-modal"); } }
   draw(); }
@@ -1040,8 +1040,19 @@ const storyEntry = (() => {
     p.push("from=explorer"); return p.join("&");
   }
   const href = () => BASE + "#" + hash();
-  function links() { window.__storyEntry = true; const h = href(); for (const a of $$("a[data-story]")) if (a.getAttribute("href") !== h) a.setAttribute("href", h); }
-  for (const t of ["pointerdown", "focusin", "mouseover"]) document.addEventListener(t, ev => { if (ev.target.closest && ev.target.closest("a[data-story]")) links(); }, true);
+  const reqBase = ($("#req-link")?.getAttribute("href") || "../").split("#")[0];
+  function reqHref() {
+    const ion = S.ions[0] || "OVI", band = ion && ION[ion] ? ION[ion].band : "uv";
+    const R = (S.R[band] || S.R.uv || [])[0], sn = S.sn[0], p = [];
+    if (ion) p.push(`ion=${ion}`);
+    if (Number.isFinite(R)) p.push(`R=${Math.round(R)}`);
+    if (Number.isFinite(sn)) p.push(`sn=${Math.round(sn)}`);
+    return reqBase + (p.length ? "#" + p.join("&") : "");
+  }
+  function links() { window.__storyEntry = true; const h = href(), rh = reqHref();
+    for (const a of $$("a[data-story]")) if (a.getAttribute("href") !== h) a.setAttribute("href", h);
+    for (const a of $$("a[data-req]")) if (a.getAttribute("href") !== rh) a.setAttribute("href", rh); }
+  for (const t of ["pointerdown", "focusin", "mouseover"]) document.addEventListener(t, ev => { if (ev.target.closest && ev.target.closest("a[data-story],a[data-req]")) links(); }, true);
   addEventListener("hashchange", links); addEventListener("tng:instrument", links);
   const hint = $("#story-hint"), hintX = $("#story-row .sh-x"), card = $("#pop-story"), cta = $("#story-cta");
   if (hint && hintX && !fromStory && store.get(HINT) !== "0") hint.hidden = hintX.hidden = false;

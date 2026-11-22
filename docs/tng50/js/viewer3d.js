@@ -593,7 +593,7 @@ async function create(app, opts = {}) {
      stays sharp; the per-device cap (1.0 phones, 1.5 desktop) still bounds the cost */
   const cssZoom = () => parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
   const calcPR = () => Math.min(devicePixelRatio || 1, lowTier ? 0.75 : mobile ? 1.0 : 1.5) * cssZoom();
-  let PR = calcPR(), exactPR = PR, accMax = 8;
+  let PR = calcPR(), exactPR = PR, movingPR = Math.min(PR * (lowTier ? 0.55 : 0.85), exactPR), movingSpv = lowTier ? 0.6 : 1.0, accMax = 8;
   const EXACT_MS = 100;
   renderer.setPixelRatio(PR);
   const scene = new T.Scene(), volScene = new T.Scene(), camera = new T.PerspectiveCamera(FOV, 1, 0.5, 20000);
@@ -1263,11 +1263,12 @@ async function create(app, opts = {}) {
   function motion() { moving = true; clearTimeout(quietT); quietT = setTimeout(() => { moving = false; render(); }, 150); render(); }
   const accSize = new T.Vector2();
   function draw(exact = true, acc = false) {
-    const th = docked === "thumb"; setPR(th ? PR : exact ? exactPR : Math.min(PR * 0.5, exactPR));
+    const th = docked === "thumb"; setPR(th ? PR : exact ? exactPR : Math.min(movingPR, exactPR));
     if (!acc) accK = 0;
-    /* tune3: half-voxel steps for exact frames in close views (L2), so the finest grid shows no step banding */
-    U.uSpv.value = th ? THUMB.spv : exact ? (hVis() < 30 ? 2.0 : 1.0) : 0.5; U.uStarFloor.value = STAR_COMP.floor; U.uCompMode.value = STAR_COMP.mode; U.uOccRange.value.set(...[0, 1].map(i => STAR_CLOSE.occ[i] + (STAR_ZOOM.occWide[i] - STAR_CLOSE.occ[i]) * zoomW())); U.uGasW.value = STAR_CLOSE.gasW + (1 - STAR_CLOSE.gasW) * zoomW(); U.uExact.value = exact || useMovingExact ? 1 : 0;
-    const c = camera.position; U.uCamDisk.value.set(c.dot(Xv), c.dot(Yv), c.dot(Lv)); U.uFrame.value = (++frameNo) % 1024;
+    /* tune3: half-voxel steps for exact frames in close views (L2), so the finest grid shows no step banding; moving frames
+       scale resolution and ray steps adaptively with calibrated GPU speed and freeze uFrame so dither noise never boils */
+    U.uSpv.value = th ? THUMB.spv : exact ? (hVis() < 30 ? 2.0 : 1.0) : movingSpv; U.uStarFloor.value = STAR_COMP.floor; U.uCompMode.value = STAR_COMP.mode; U.uOccRange.value.set(...[0, 1].map(i => STAR_CLOSE.occ[i] + (STAR_ZOOM.occWide[i] - STAR_CLOSE.occ[i]) * zoomW())); U.uGasW.value = STAR_CLOSE.gasW + (1 - STAR_CLOSE.gasW) * zoomW(); U.uExact.value = exact || useMovingExact ? 1 : 0;
+    const c = camera.position; U.uCamDisk.value.set(c.dot(Xv), c.dot(Yv), c.dot(Lv)); if (exact) U.uFrame.value = (++frameNo) % 1024;
     U.uGasMix.value = species ? layer.gasMix : 0; U.uStarMix.value = layer.stars ? layer.starMix : 0;
     U.uStarQ.value = layer.Q; U.uStarSat.value = layer.sat; U.uStarS0.value = 10 ** (0.4 * (MU_ZERO - mu0Eff())); U.uStarBal.value.set(...layer.balance);
     if (guides.visible) guideFit();
@@ -1304,7 +1305,7 @@ async function create(app, opts = {}) {
     const sc = q(".v3d-scale"), d = camera.position.distanceTo(controls.target), pxPerKpc = stage.clientHeight / (2 * d * Math.tan(camera.fov * Math.PI / 360));
     let L = [1, 2, 5, 10, 20, 50, 100, 200, 500].find(v => v * pxPerKpc >= 60) || 500;
     starLegend(); sc.hidden = !scaleOn; sc.querySelector("i").style.width = (L * pxPerKpc).toFixed(1) + "px"; sc.querySelector("span").textContent = `${L} kpc`; }
-  function resize() { const p = calcPR(); if (Math.abs(p - PR) > 1e-6) { PR = exactPR = p; calibrated = ""; }
+  function resize() { const p = calcPR(); if (Math.abs(p - PR) > 1e-6) { PR = exactPR = p; movingPR = Math.min(PR * (lowTier ? 0.55 : 0.85), exactPR); calibrated = ""; }
     const w = stage.clientWidth || 600, h = stage.clientHeight || 400; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); render(); }
   let dprMq = null; const onDpr = () => { watchDpr(); resize(); };
   function watchDpr() { try { dprMq?.removeEventListener("change", onDpr); dprMq = matchMedia(`(resolution: ${devicePixelRatio || 1}dppx)`); dprMq.addEventListener("change", onDpr); } catch { dprMq = null; } }
@@ -1326,21 +1327,28 @@ async function create(app, opts = {}) {
   function calibrate() {
     if (docked !== "full") return;     // Phase 3: calibrated on the full stage only (dock() calls it)
     const sig = JSON.stringify(levels()); if (!species || sig === calibrated) return; calibrated = sig;
+    movingPR = PR * 0.5; movingSpv = 0.5;
     const p0 = camera.position.clone(); const t = median(timeFrames(5, false, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
-    useMovingExact = t <= 1000 / 30; stats.calibration = {moving_exact_ms: t, moving_path: useMovingExact ? "exact" : "fast"};
+    useMovingExact = t <= 1000 / 30;
+    /* scale moving-frame resolution and ray step density to the device's measured GPU speed so fast devices stay crisp while rotating */
+    const mScale = lowTier ? 0.55 : t <= 12 ? 1.0 : t <= 22 ? 0.85 : t <= 33 ? 0.75 : 0.5;
+    movingSpv = lowTier ? 0.6 : t <= 22 ? 1.0 : t <= 33 ? 0.8 : 0.5;
     /* fix-ui FE-09: on drawing buffers larger than the benchmarked 1366×702 (fullscreen, high DPR) time two exact frames and
        scale the exact-frame pixel ratio so one costs about EXACT_MS; slow exact frames also get fewer refine frames */
     const bufPx = stage.clientWidth * stage.clientHeight * PR * PR;
     if (bufPx > 1.3e6) { const te = median(timeFrames(2, true, true)); camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
       const pr0 = exactPR; if (te > EXACT_MS) exactPR = Math.max(Math.min(PR, 0.75), Math.min(PR, pr0 * Math.sqrt(EXACT_MS / te)));
-      accMax = te * (exactPR / pr0) ** 2 > 1.5 * EXACT_MS ? 3 : ACC_N; Object.assign(stats.calibration, {exact_ms: te, exact_pr: exactPR, refine_frames: accMax}); }
-    else { exactPR = PR; accMax = ACC_N; }
+      accMax = te * (exactPR / pr0) ** 2 > 1.5 * EXACT_MS ? 3 : ACC_N; Object.assign(stats.calibration = {moving_exact_ms: t, moving_path: useMovingExact ? "exact" : "fast"}, {exact_ms: te, exact_pr: exactPR, refine_frames: accMax}); }
+    else { exactPR = PR; accMax = ACC_N; stats.calibration = {moving_exact_ms: t, moving_path: useMovingExact ? "exact" : "fast"}; }
+    movingPR = Math.min(PR * mScale, exactPR); Object.assign(stats.calibration, {moving_pr: movingPR, moving_spv: movingSpv});
     draw(true);
   }
   async function bench(n = 60) {
     const p0 = camera.position.clone(), r = {size: [canvas.width, canvas.height], pixelRatio: PR};
+    const keepPR = movingPR, keepSpv = movingSpv; movingPR = Math.min(PR * 0.5, exactPR); movingSpv = 0.5;
     const ex = timeFrames(Math.max(5, Math.round(n / 4)), true, true);
     const mvE = timeFrames(n, false, true), mvF = timeFrames(n, false, false);
+    movingPR = keepPR; movingSpv = keepSpv;
     camera.position.copy(p0); camera.lookAt(controls.target); controls.update();
     Object.assign(r, {exact_ms_median: median(ex), moving_exact_ms_median: median(mvE), moving_fast_ms_median: median(mvF),
       moving_px: [Math.round(canvas.width * 0.5), Math.round(canvas.height * 0.5)], levels: levels(), gpu_bytes: gpuBytes()});

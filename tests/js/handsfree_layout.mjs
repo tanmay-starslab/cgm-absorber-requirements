@@ -84,6 +84,10 @@ try {
     await shot("2-running");
     await clickSel("#v3d-stage .v3d-hc .hc-o"); await sleep(400);
     const m3 = await step("options open"); check(!!m3.ov.options && !m3.ov.guide, `${key}: options open in the panel slot`);
+    const sensPc = await P.eval(`(() => { const s = document.querySelector("#hc-sens"); if (!s) return null; const p0 = s.style.getPropertyValue("--pc");
+      s.value = "2.45"; s.dispatchEvent(new Event("input", {bubbles: true})); const p1 = s.style.getPropertyValue("--pc");
+      s.value = "1"; s.dispatchEvent(new Event("input", {bubbles: true})); return {p0, p1}; })()`);
+    check(sensPc && sensPc.p0 === "27.27%" && sensPc.p1 === "80.00%", `${key}: sensitivity slider updates --pc fill (${JSON.stringify(sensPc)})`);
     await shot("3-options");
     await clickSel("#v3d-stage .v3d-hc .hc-q"); await sleep(400);
     const m4 = await step("guide from ?"); check(!!m4.ov.guide && !m4.ov.options, `${key}: "?" swaps the options for the guide`);

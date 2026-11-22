@@ -273,21 +273,35 @@ function onHand(s, hand, tMs) {
   if (ctrl !== s.ctrl) { s.ctrl = ctrl; if (s.mode === "orbit" && s.base && s.ref) rebase(s); }   // take over (and hand back) where the view is: no jump
   s.hand = o.state; s.sign = o.sign; pill(s);
   if (o.action) act(s, o.action);
-  if (o.state !== "paused" && (o.yaw || o.pitch || o.zoom !== 1)) handMove(s, o);
+  if (o.state === "paused" || o.state === "hold") s.handRem = null;
+  else if (o.yaw || o.pitch || o.zoom !== 1) handMove(s, o);
 }
 /* turn the base view about the orbit centre like a drag (right: the scene follows the hand right; up: it tips up) and
-   scale its distance; the head's window perspective, when on, is applied on top */
+   scale its distance across 60 fps interpolation frames; the head's window perspective, when on, is applied on top */
 function handMove(s, o) {
-  const V = s.viewer, c = V.camera, T = V.THREE, controls = V.controls;
+  const V = s.viewer, c = V.camera;
   if (!c.parent && !V.canvas.isConnected) { stop(); return; }
   if (!s.base || (s.set && camState(c).some((v, i) => Math.abs(v - s.set[i]) > 1e-6))) rebase(s);
-  const B = s.base, k = s.sens * (reduced() ? 0.5 : 1), off = B.pos.clone().sub(B.target);
-  off.applyAxisAngle(B.up, -o.yaw * k * D2R);
-  const tip = off.clone().applyAxisAngle(new T.Vector3().crossVectors(off.clone().negate(), B.up).normalize(), o.pitch * k * D2R), a = tip.angleTo(B.up);
-  if (a > 0.08 && a < Math.PI - 0.08) off.copy(tip);   // never over the pole
-  off.setLength(Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * o.zoom)));
+  const k = s.sens * (reduced() ? 0.5 : 1), R = s.handRem ||= {yaw: 0, pitch: 0, logZ: 0};
+  R.yaw += o.yaw * k; R.pitch += o.pitch * k; R.logZ += Math.log(o.zoom || 1);
+  apply(s);
+}
+function stepHandBase(s, dt) {
+  const R = s.handRem; if (!R) return false;
+  const st = stepToward({yaw: 0, pitch: 0, logZ: 0}, R, dt > 0 ? dt : 1 / 60, {tau: reduced() ? 0.015 : 0.036, snap: 0.008});
+  const dy = R.yaw - st.val.yaw, dp = R.pitch - st.val.pitch, dz = R.logZ - st.val.logZ;
+  R.yaw = st.val.yaw; R.pitch = st.val.pitch; R.logZ = st.val.logZ;
+  if (!st.moved) s.handRem = null;
+  if (!dy && !dp && !dz) return false;
+  const V = s.viewer, T = V.THREE, controls = V.controls, B = s.base, off = B.pos.clone().sub(B.target);
+  if (dy) off.applyAxisAngle(B.up, -dy * D2R);
+  if (dp) {
+    const tip = off.clone().applyAxisAngle(new T.Vector3().crossVectors(off.clone().negate(), B.up).normalize(), dp * D2R), a = tip.angleTo(B.up);
+    if (a > 0.08 && a < Math.PI - 0.08) off.copy(tip);   // never over the pole
+  }
+  if (dz) off.setLength(Math.min(controls.maxDistance, Math.max(controls.minDistance, off.length() * Math.exp(dz))));
   B.pos.copy(B.target).add(off); B.q.setFromRotationMatrix(new T.Matrix4().lookAt(B.pos, B.target, B.up));
-  s.last = null; apply(s);
+  s.last = null; return st.moved;
 }
 function act(s, a) {
   const V = s.viewer, orb = V.el.querySelector("#v3-orbit");
@@ -296,7 +310,7 @@ function act(s, a) {
   else if (a === "orbit") { orb?.click(); toast(s, `☝️ Orbit ${orb?.getAttribute("aria-pressed") === "true" ? "on" : "off"}`); }
   else { document.getElementById(a)?.click(); toast(s, a === "next" ? "👋 Next sightline" : "👋 Previous sightline"); }
 }
-function recentre(s) { restoreProj(s); s.ref = null; s.cal = []; s.calT = 0; s.base = null; s.set = null; s.pose = null; s.smooth = null; }
+function recentre(s) { restoreProj(s); s.ref = null; s.cal = []; s.calT = 0; s.base = null; s.set = null; s.pose = null; s.smooth = null; s.handRem = null; }
 const pillText = s => (s.tilt ? "Tilt" : s.ctrl !== "hand" ? "Head" : s.hand === "hold" && HOLD[s.sign] ? `${HOLD[s.sign]} hold…` : PILL[s.hand] || "Hand");
 function pill(s) { const t = s.pillT; if (t && t.textContent !== pillText(s)) t.textContent = pillText(s); }
 function toast(s, text) {   // an action's confirmation in the pill's status line for 1.6 s, then the status comes back
@@ -311,7 +325,7 @@ function rebase(s) {
   const {camera: c, controls} = s.viewer;
   restoreProj(s, !s.set);
   s.base = {pos: c.position.clone(), up: c.up.clone(), q: c.quaternion.clone(), target: controls.target.clone()};
-  s.set = null; s.last = null; s.smooth = null; if (s.pose) s.ref = {...s.ref, ...pick(s.pose)};
+  s.set = null; s.last = null; s.smooth = null; s.handRem = null; if (s.pose) s.ref = {...s.ref, ...pick(s.pose)};
 }
 const pick = p => ({yaw: p.yaw, pitch: p.pitch, x: p.x, y: p.y, z: p.z});
 function drawPose(s, v) {
@@ -340,14 +354,15 @@ function apply(s) {
   if (!c.parent && !V.canvas.isConnected) { stop(); return; }
   if (s.set && camState(c).some((v, i) => Math.abs(v - s.set[i]) > 1e-6)) { rebase(s); return; }   // something else moved the camera
   if (!s.base) rebase(s);
+  const now = performance.now(), dt = s.smoothT ? (now - s.smoothT) / 1000 : 0; s.smoothT = now;
+  const hMoved = stepHandBase(s, dt);
   const k = reduced() ? 0.5 : 1, opts = {sens: s.sens * k, invert: s.invert}, head = !!(s.pose && s.ref);
   const goal = s.mode === "orbit" ? (head && s.ctrl !== "hand" ? orbitMap(s.pose, s.ref, opts) : {yaw: 0, pitch: 0, zoom: 1})
     : (head ? windowMap(s.pose, s.ref, opts) : {ex: 0, ey: 0, ez: 1});
-  const now = performance.now(), dt = s.smoothT ? (now - s.smoothT) / 1000 : 0; s.smoothT = now;
   const st = stepToward(s.smooth, goal, dt, {tau: reduced() ? 0.02 : 0.045, snap: s.mode === "orbit" ? 0.04 : 0.0015});
   s.smooth = st.val; drawPose(s, st.val);
-  if (st.moved && !s.raf && typeof requestAnimationFrame === "function") {
-    const tick = () => { s.raf = 0; if (S === s && !s.starting && (s.ctrl !== "hand" || s.mode === "window")) apply(s); };
+  if ((st.moved || hMoved) && !s.raf && typeof requestAnimationFrame === "function") {
+    const tick = () => { s.raf = 0; if (S === s && !s.starting && (s.ctrl !== "hand" || s.mode === "window" || s.handRem)) apply(s); };
     s.raf = requestAnimationFrame(tick);
   }
 }
@@ -374,7 +389,9 @@ function ui(s) {
     <div class="hc-checks"><label><input type="checkbox" data-c="window" data-tip="The screen becomes a window onto the galaxy">window</label><label><input type="checkbox" data-c="invert" data-tip="Reverse the direction">invert</label>${tilt ? "" : `<label><input type="checkbox" data-c="hands"${s.T.hands ? " checked" : ""} data-tip="Track hand gestures too; uncheck for head only">hands</label><label><input type="checkbox" data-c="preview" checked data-tip="Show the small camera preview">preview</label>`}</div></div>`);
   o.querySelector('[data-c="window"]').addEventListener("change", ev => { const m = ev.target.checked ? "window" : "orbit"; if (s.mode === m) return;
     restoreProj(s); s.mode = m; s.base = null; s.set = null; s.last = null; s.smooth = null; if (s.pose) s.ref = {...s.ref, ...pick(s.pose)}; });
-  const sens = o.querySelector("#hc-sens"); sens.addEventListener("input", () => { s.sens = +sens.value; sens.nextElementSibling.textContent = s.sens.toFixed(1); s.last = null; });
+  const sens = o.querySelector("#hc-sens"), syncSens = () => { s.sens = +sens.value; sens.nextElementSibling.textContent = s.sens.toFixed(1);
+    const a = +sens.min || 0, b = +sens.max || 100; sens.style.setProperty("--pc", (b > a ? Math.min(100, Math.max(0, (s.sens - a) / (b - a) * 100)) : 0).toFixed(2) + "%"); };
+  syncSens(); sens.addEventListener("input", () => { syncSens(); s.last = null; });
   o.querySelector('[data-c="invert"]').addEventListener("change", ev => { s.invert = ev.target.checked; s.last = null; });
   o.querySelector('[data-c="hands"]')?.addEventListener("change", ev => setHands(s, ev.target.checked));
   o.querySelector('[data-c="preview"]')?.addEventListener("change", ev => { s.preview = ev.target.checked; if (s.video) s.video.hidden = !s.preview; });
