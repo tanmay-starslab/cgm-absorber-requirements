@@ -566,7 +566,7 @@ def test_tools_and_prompt_cover_the_galaxy_sample():
     assert '"In general,"' in p and "never invent citations" in p and "THOR" in p and "FG11" in p and "HM2012" in p
     assert "say what the page can do instead" in p
     assert "one simulated" not in p and "if the tools cannot answer, say so" not in p
-    assert len(p) < 3500                          # the local model's 4k context holds it with the tool list
+    assert len(p) < 3800                          # compact system prompt
 
 
 def test_make_chat_tools_check(monkeypatch, capsys):

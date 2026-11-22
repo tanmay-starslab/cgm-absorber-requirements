@@ -184,7 +184,7 @@ def build_prompt(ions=None) -> str:
         f"spectra of {len(rows)} ions ({labels}) through the circumgalactic medium of {N_GALAXIES} simulated "
         "Milky Way and M31 analogues from TNG50-1 at z = 0 plus FIRE-2 zoom-in galaxies (Latte MW hosts m12b to m12z, Elvis pairs Romeo, Juliet, Romulus, Remus, Thelma, Louise, and Core dwarfs m11b to m09). "
         "Each user message starts with a [page ...] snapshot of the screen, which you can rely on: g is the open "
-        "galaxy (subhalo or halo id, simulation, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, "
+        "galaxy (subhalo or halo id, log M*, log M200c, R200c in kpc, SFR, central or satellite, gas-poor, spectra source, "
         "number of sightlines), s the shown sightline (id, orientation, impact parameter b in kpc, azimuth), tab, "
         "the 3D view and the instrument. "
         f"Tool arguments name the ions by key: {', '.join(ions.KEYS)}. "
@@ -205,14 +205,14 @@ def build_prompt(ions=None) -> str:
         "and S/N, HST/COS, TNG50, FIRE-2 and how these mock spectra were made. Mark such answers plainly, starting with "
         "\"In general,\", and never invent citations. The mock spectra: for the "
         f"{N_SBI} THOR galaxies, THOR traces rays through the TNG50 Voronoi mesh with CLOUDY ion fractions "
-        f"under the FG11 UV background; for subhalo {DEFAULT_GALAXY} and FIRE-2 galaxies, Trident with the HM2012 background. "
-        "The 3D tab raymarches nested 256^3 cubes from +-400 kpc (L0) to +-25 kpc (L2), and on FIRE-2 down to +-6.25 kpc (L3) and +-1.5 kpc (L4, 12 pc voxels) with 3D dust lanes on starlight, a log shell width slider (0.01 to 2 dex), one-click Hands-free webcam head and hand control (camera video stays on device), and a Save button for PNG export and ?cam= deep links. "
+        f"under the FG11 UV background; for subhalo {DEFAULT_GALAXY} and FIRE-2, Trident with the HM2012 background. "
+        "The 3D tab raymarches nested 256^3 cubes from +-400 kpc (L0) to +-25 kpc (L2), and on FIRE-2 to +-6.25 kpc (L3) and +-1.5 kpc (L4, 12 pc voxels) with 3D dust lanes, a log shell width slider, Hands-free webcam control (video stays on device), and Save for PNG export and ?cam= links. "
         "The show_3d velocity views are mass-weighted gas velocities in the "
         "galaxy rest frame without Hubble flow: vlos is positive moving away from the camera (redshifted), vr "
         "positive for outflow, vphi positive for co-rotation with the disk. Velocities are km/s relative to the "
         "galaxy's systemic velocity; column densities are log10 cm^-2; distances are kpc. A fitted component "
         "given as logN_lower (saturated, or degenerate with no errors) is a lower limit: say log N > that value, "
-        "never quote it as a measured column. Companion pages cover How a Spectrum Is Made (3D sightline story) and Detect and Resolve Requirements (3-sigma detection and two-component separation across R and S/N). Keep answers short and friendly, and when useful suggest one "
+        "never quote it as a measured column. Companion pages cover How a Spectrum Is Made and Detect and Resolve Requirements. Keep answers short and friendly, and when useful suggest one "
         "concrete next step on the page.")
     bad = [c for c in FORBIDDEN if c in text]
     if bad:
