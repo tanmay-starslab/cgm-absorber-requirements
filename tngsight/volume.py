@@ -48,6 +48,7 @@ CM_PER_KPC = GALAXY["CM_PER_KPC"]
 TNG_H = GALAXY["TNG_H"]
 N = 256
 GAS_LEVELS = {"L0": 400.0, "L1": 100.0, "L2": 25.0}
+ALL_GAS_LEVELS = {"L0": 400.0, "L1": 100.0, "L2": 25.0, "L3": 6.25, "L4": 1.5}
 R_MASK_KPC = {"L0": 400.0}                       # gas part of design §2.7 R_MASK_KPC
 ION_KEYS = tuple(_ions.KEYS)
 VOL_KEYS = ("nH", "T", "Z") + ION_KEYS
@@ -335,14 +336,22 @@ def _atomic(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+def _half_kpc(level) -> float:
+    return float(GAS_LEVELS.get(level, ALL_GAS_LEVELS.get(level)))
+
+
+def _ordered_gas_levels() -> list:
+    return list(dict.fromkeys(list(GAS_LEVELS) + list(ALL_GAS_LEVELS)))
+
+
 def grid(level, n=N) -> D.Grid:
-    return D.Grid(GAS_LEVELS[level], int(n))
+    return D.Grid(_half_kpc(level), int(n))
 
 
 def level_mask(level, n=N):
     """bool (n,n,n): True where the voxel may hold data (L0: centre r ≤ 400 kpc); None when unmasked."""
     r = R_MASK_KPC.get(level)
-    return None if r is None else VP.radial_mask(int(n), GAS_LEVELS[level], r)
+    return None if r is None else VP.radial_mask(int(n), _half_kpc(level), r)
 
 
 # ============================================================================== per-cell arrays
@@ -409,8 +418,33 @@ def save_cells(cells: dict, cache, names=CELL_NAMES) -> None:
 
 
 def load_cells(cache, names=CELL_NAMES):
-    """Cached per-cell arrays, or None when any is missing."""
+    """Cached per-cell arrays from a cache directory (or directly from a cutout HDF5 file path), or None when missing."""
     cache = Path(cache)
+    if cache.is_file() and cache.suffix in (".hdf5", ".h5"):
+        import json
+        import tempfile
+        from . import config
+        from .generate import Generator
+        for rname in ("galaxy.json", "record.json"):
+            rp = cache.parent / rname
+            if rp.is_file():
+                rec = json.loads(rp.read_text())
+                if rec.get("subhalo_id") != GALAXY.get("subhalo_id"):
+                    GALAXY.clear()
+                    GALAXY.update(rec)
+                break
+        ion_dir = config.ion_table_dir()
+        if not ion_dir.is_dir():
+            alt_ion = Path(__file__).resolve().parents[3] / "data" / "trident"
+            if alt_ion.is_dir():
+                ion_dir = alt_ion
+        with tempfile.TemporaryDirectory(prefix="tngsight_cells_") as td:
+            idx = cache.parent / "cutout.ewah"
+            if not idx.is_file():
+                idx = Path(td) / "cutout.ewah"
+            g = Generator(cutout=cache, index_filename=idx, ion_table_dir=ion_dir, workdir=Path(td) / "work", fit_components=False)
+            g.load()
+            return cell_arrays(g.ds)
     paths = {k: cache / f"cells_{k}.npy" for k in names}
     if not all(p.is_file() for p in paths.values()):
         return None
@@ -456,7 +490,7 @@ def level_cubes(dep, level) -> dict:
     mass "m" [Msun] (0 where masked) is returned too (the mass weight of `vel_range`)."""
     g = dep.grids
     n = g["m"].shape[0]
-    dx = 2.0 * GAS_LEVELS[level] / n
+    dx = 2.0 * _half_kpc(level) / n
     vvox = (dx * CM_PER_KPC) ** 3
     out = {}
     for k in DENSITY_KEYS:
@@ -562,7 +596,7 @@ def smoothed_columns(pos, h, qs: dict, p0, p1, dx, h_min_vox=GAS_H_MIN_VOX, offs
 # ============================================================================== ranges and windows (§2.3, §3.5)
 def field_range(cubes_by_level: dict, key) -> tuple:
     """Shared (vmin, vmax) of `key` over the given levels (§2.3 gas rule; L0 masked)."""
-    levels = [L for L in GAS_LEVELS if L in cubes_by_level]
+    levels = [L for L in _ordered_gas_levels() if L in cubes_by_level]
     vals = [cubes_by_level[L][key] for L in levels]
     masks = [level_mask(L, vals[i].shape[0]) for i, L in enumerate(levels)]
     return tuple(float(x) for x in VP.gas_range(vals, masks))
@@ -571,7 +605,7 @@ def field_range(cubes_by_level: dict, key) -> tuple:
 def column_maps(density, level) -> dict:
     """log10 column maps [cm⁻²] of a density cube: face-on (sum over k) and edge-on (sum over i); NaN where 0."""
     n = density.shape[0]
-    dcm = 2.0 * GAS_LEVELS[level] / n * CM_PER_KPC
+    dcm = 2.0 * _half_kpc(level) / n * CM_PER_KPC
     out = {}
     for name, ax in (("face", 2), ("edge", 0)):
         s = np.asarray(density, dtype=np.float64).sum(axis=ax) * dcm
@@ -602,7 +636,7 @@ def proj_window(cubes_by_level: dict, key, r200=None) -> dict:
     """`proj` block of field `key` (§3.5). Column fields need L0 (vmin) and any levels (vmax); T/Z use the
     union of the L0 and L1 maps (whichever are given)."""
     r200 = float(GALAXY["R200c_kpc"] if r200 is None else r200)
-    levels = [L for L in GAS_LEVELS if L in cubes_by_level]
+    levels = [L for L in _ordered_gas_levels() if L in cubes_by_level]
     if FIELDS[key]["kind"] == "density":
         maps = {L: column_maps(cubes_by_level[L][key], L) for L in levels}
         p999 = [float(np.percentile(_finite(mp[v]), 99.9)) for mp in maps.values() for v in ("face", "edge")
@@ -610,7 +644,7 @@ def proj_window(cubes_by_level: dict, key, r200=None) -> dict:
         base = "L0" if "L0" in maps else levels[0]
         face = maps[base]["face"]
         n = face.shape[0]
-        c = VP.voxel_centers(n, GAS_LEVELS[base])
+        c = VP.voxel_centers(n, _half_kpc(base))
         rr = np.hypot(c[:, None], c[None, :])
         sel = _finite(face[rr < r200])
         p2, p50 = float(np.percentile(sel, 2)), float(np.percentile(sel, 50))
@@ -630,7 +664,7 @@ def vol_window(cubes_by_level: dict, key, vmax) -> list:
     # L1 first, then the other built levels finest-first: a gas-poor halo can have no positive voxel of an ion in
     # the whole L1 box (613192, run3) while another level has some; with none anywhere the narrow window is used
     order = (["L1"] if "L1" in cubes_by_level else []) + \
-        [x for x in reversed(list(GAS_LEVELS)) if x in cubes_by_level and x != "L1"]
+        [x for x in reversed(_ordered_gas_levels()) if x in cubes_by_level and x != "L1"]
     lo = None
     for L in order:
         v = np.asarray(cubes_by_level[L][key], dtype=np.float64)
@@ -662,7 +696,7 @@ def vel_V(cubes_by_level: dict) -> float:
     """Shared V [km/s] of vx, vy, vz (vel3d contract): mass-weighted 99.9th percentile of |v_i| over the non-empty
     L0 voxels (pooled over the three components), rounded up to a multiple of 50 km/s. Falls back to the coarsest
     level given when L0 is not built."""
-    L = "L0" if "L0" in cubes_by_level else [x for x in GAS_LEVELS if x in cubes_by_level][0]
+    L = "L0" if "L0" in cubes_by_level else [x for x in _ordered_gas_levels() if x in cubes_by_level][0]
     c = cubes_by_level[L]
     return float(VP.vel_range([c[k] for k in VEL_KEYS], c["m"]))
 
@@ -744,7 +778,7 @@ def cube_files_ok(out_root, cube) -> bool:
 
 
 def levels_block(levels=tuple(GAS_LEVELS), n=N) -> dict:
-    return {L: {"half_kpc": GAS_LEVELS[L], "n": int(n), "voxel_kpc": 2.0 * GAS_LEVELS[L] / n,
+    return {L: {"half_kpc": _half_kpc(L), "n": int(n), "voxel_kpc": 2.0 * _half_kpc(L) / n,
                 "r_mask_kpc": R_MASK_KPC.get(L)} for L in levels}
 
 
@@ -785,10 +819,10 @@ def validate_gas_fragment(frag, base_dir=None) -> None:
     for k in ("generator", "levels", "gas"):
         need(k in frag, f"missing {k!r}")
     gas = frag["gas"]
-    need(set(gas["levels"]) <= set(GAS_LEVELS) and gas["levels"], "gas.levels")
+    need(set(gas["levels"]) <= set(_ordered_gas_levels()) and gas["levels"], "gas.levels")
     for L in gas["levels"]:
         lv = frag["levels"].get(L)
-        need(isinstance(lv, dict) and lv.get("half_kpc") == GAS_LEVELS[L], f"levels.{L}")
+        need(isinstance(lv, dict) and lv.get("half_kpc") == _half_kpc(L), f"levels.{L}")
         need(abs(lv["voxel_kpc"] - 2 * lv["half_kpc"] / lv["n"]) < 1e-12, f"levels.{L}.voxel_kpc")
         need(lv["r_mask_kpc"] == R_MASK_KPC.get(L), f"levels.{L}.r_mask_kpc")
     need(isinstance(gas["fields"], dict) and gas["fields"], "gas.fields empty")

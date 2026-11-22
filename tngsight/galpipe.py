@@ -131,10 +131,12 @@ class Galaxy:
 
     def __init__(self, gid, root=None):
         from . import config
-        self.id = int(gid)
+        self.id = int(gid) if str(gid).isdigit() else str(gid)
         self.root = Path(root) if root else config.gal_root()
         self.dir = self.root / str(self.id)
         self.record = self.dir / "galaxy.json"
+        if not self.record.is_file() and (self.dir / "record.json").is_file():
+            self.record = self.dir / "record.json"
         self.slim = self.dir / SLIM_NAME
         self.lib = self.dir / "library"
         self.index = self.lib / "cutout.ewah"
@@ -196,8 +198,16 @@ def sbi_rays_path(g: "Galaxy") -> Path:
 
 
 def is_sbi(g: "Galaxy") -> bool:
-    """True when the galaxy's spectra come from the SBI_CGM import (its rays.json exists)."""
-    return sbi_rays_path(g).is_file()
+    """True when the galaxy's spectra come from the SBI_CGM import (its rays.json exists and is not trident)."""
+    p = sbi_rays_path(g)
+    if not p.is_file():
+        return False
+    if (g.dir / "SPECTRA").is_file() and (g.dir / "SPECTRA").read_text().strip() == "trident":
+        return False
+    try:
+        return json.loads(p.read_text()).get("source", "sbi_cgm") != "trident"
+    except ValueError:
+        return True
 
 
 def done_info(g: "Galaxy", stage) -> dict:
@@ -1936,7 +1946,7 @@ def status(g: Galaxy) -> dict:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m tngsight.galpipe", description=__doc__.split("\n\n")[0])
     ap.add_argument("stage", choices=STAGES + ("all", "status", "regress"))
-    ap.add_argument("--galaxy", type=int, required=True)
+    ap.add_argument("--galaxy", type=lambda s: int(s) if str(s).isdigit() else s, required=True)
     ap.add_argument("--root", type=Path, default=None)
     ap.add_argument("--shard", default=None, help="i/n (rays, fits): every n-th ray from i")
     ap.add_argument("--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK") or 1))
