@@ -152,7 +152,7 @@ export function validateManifestV2(m) {
   if (m.schema !== SCHEMA) bad("schema", `expected "${SCHEMA}", got ${JSON.stringify(m.schema)}`);
   need(m, "root", [["created", isStr], ["generator", isObj], ["galaxy", isObj], ["frame", isObj], ["order", isStr], ["kernel", isObj],
     ["encoding", isObj], ["formats", isObj], ["levels", isObj], ["gas", isObj], ["stars", isObj]]);
-  need(m.galaxy, "galaxy", [["subhalo_id", isInt], ["TNG_H", isNum], ["R200c_kpc", isNum], ["center_kpc", x => isVec(x, 3)],
+  need(m.galaxy, "galaxy", [["subhalo_id", x => isInt(x) || (isStr(x) && x.length > 0)], ["TNG_H", isNum], ["R200c_kpc", isNum], ["center_kpc", x => isVec(x, 3)],
     ["Lhat", x => isVec(x, 3)], ["xhat", x => isVec(x, 3)], ["yhat", x => isVec(x, 3)]]);
   need(m.frame, "frame", [["name", isStr], ["rows", x => Array.isArray(x) && x.length === 3 && x.every(r => isVec(r, 3))]]);
   need(m.encoding, "encoding", [["type", x => x === "log10-u8"], ["empty", x => x === 0], ["q_min", x => x === 1], ["q_max", x => x === 255]]);
