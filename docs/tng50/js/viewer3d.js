@@ -716,21 +716,25 @@ async function create(app, opts = {}) {
   RM.uniforms.uDustScat = {value: DUST_LAWS.skirt.scat};
   RM.material.fragmentShader = RM.material.fragmentShader
     .replace("in vec3 vPos;", "uniform float uDust, uDustScat; uniform vec3 uDustVec; in vec3 vPos;")
-    .replace("vec3 starAt(vec3 p, int l) {", `float starDustAt(vec3 p, int l) {
+    .replace("vec3 starAt(vec3 p, int l) {", `float decDust(float q) { return q < 0.5 || q >= 254.5 ? 0.0 : exp2(LOG2_10 * (-4.5 + (q - 1.0) * 6.0 / 253.0)); }
+float exactDust(sampler3D s, vec3 p, float h) {
+  vec3 g = (p / (2.0 * h) + 0.5) * uN - 0.5, i0 = floor(g), f = g - i0; ivec3 b = ivec3(i0), hi = ivec3(int(uN) - 1); float v = 0.0;
+  for (int c = 0; c < 8; c++) { ivec3 o = ivec3(c & 1, (c >> 1) & 1, (c >> 2) & 1); vec3 w = mix(1.0 - f, f, vec3(o));
+    v += w.x * w.y * w.z * decDust(floor(texelFetch(s, clamp(b + o, ivec3(0), hi), 0).a * 255.0 + 0.5)); }
+  return v; }
+float starDustAt(vec3 p, int l) {
   if (l == 0 && length(p) > uMask0) return 0.0;
   float h = hl(l);
   vec3 u = p / (2.0 * h) + 0.5;
   float d = 0.5 / uN;
   if (any(lessThan(u, vec3(d))) || any(greaterThan(u, vec3(1.0 - d)))) return 0.0;
   float sa = (l == 0 ? texture(uStar0, u).a : l == 1 ? texture(uStar1, u).a : texture(uStar2, u).a);
-  float a = sa * 255.0;
-  if (a >= 254.5) return -1.0;
-  return a > 0.5 ? exp2(LOG2_10 * (-4.5 + sa * 6.0)) : 0.0; }
+  if (sa * 255.0 >= 254.5) return -1.0;
+  if (uExact == 1) return l == 0 ? exactDust(uStar0, p, h) : l == 1 ? exactDust(uStar1, p, h) : exactDust(uStar2, p, h);
+  return decDust(sa * 255.0); }
 float dustDiskKv(vec3 p, vec3 sv, float gv, float kvRaw) {
+  if (kvRaw >= 0.0) return kvRaw;
   float rDisk = length(p.xy);
-  float hz = 0.16 + 0.010 * clamp(rDisk, 0.0, 20.0);
-  float zEnv = exp(-0.5 * (p.z / hz) * (p.z / hz));
-  if (kvRaw >= 0.0) return kvRaw * zEnv;
   if (rDisk > 22.0 || abs(p.z) > 0.6) return 0.0;
   float mid = exp(-0.5 * (p.z / 0.12) * (p.z / 0.12));
   float gasKv = gv > 0.08 ? clamp(1.8 * pow(gv - 0.08, 0.75), 0.0, 4.0) : 0.0;
