@@ -200,13 +200,19 @@ def inject_into_index_html(index_html: Path, new_entries: list[dict]) -> dict[st
         raise ValueError(f"{index_html}: DATA.galaxies.list is missing or not a list")
 
     new_ids = {str(e["id"]) for e in new_entries}
+    # Only strip existing entries for a simulation prefix if new_entries actually includes that prefix category;
+    # that way running inject_multisim_galaxies.py when a source directory is absent or empty preserves existing entries!
+    active_prefixes = tuple(
+        pfx for pfx in (
+            "simba25_", "simba100_", "agora_", "camels_",
+            "Au", "auriga_", "tng100_", "tng300_", "illustris1_",
+        )
+        if any(nid.startswith(pfx) for nid in new_ids)
+    )
     kept = [
         e for e in galaxies_cfg["list"]
         if str(e.get("id")) not in new_ids
-        and not str(e.get("id", "")).startswith((
-            "simba25_", "simba100_", "agora_", "camels_",
-            "Au", "auriga_", "tng100_", "tng300_", "illustris1_",
-        ))
+        and not (active_prefixes and str(e.get("id", "")).startswith(active_prefixes))
     ]
 
     merged = kept + list(new_entries)

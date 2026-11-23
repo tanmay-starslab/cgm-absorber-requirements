@@ -43,7 +43,7 @@ let cubeCache = new WeakMap();
 let cubeSetCache = new WeakMap();
 let cubeCacheBytes = 0;
 let scratchBasePtr = 0;
-const MAX_CUBE_CACHE_BYTES = 768 * 1024 * 1024; // up to 768 MB of cached 3D cubes in WASM linear memory
+const MAX_CUBE_CACHE_BYTES = 1536 * 1024 * 1024; // up to 1.5 GiB of cached 3D cubes in WASM linear memory
 
 export function wasmReady() {
   return !!wasmExports;
@@ -113,15 +113,17 @@ export function resetWasmCubeCache() {
   }
 }
 
-// Pre-stage a loaded u8 cube into WASM linear memory during network fetch so ray-marching is zero-copy
-export function stageCubeInWasm(u8) {
+// Pre-stage a loaded u8 cube into WASM linear memory during network fetch so ray-marching is zero-copy.
+// If allowReset is false (when building an atomic multi-cube pointer table), never reset the arena mid-table;
+// return 0 on budget overflow so the caller can reset once and rebuild the entire table atomically.
+export function stageCubeInWasm(u8, {allowReset = true} = {}) {
   if (!wasmExports || !(u8 instanceof Uint8Array) || u8.length === 0) return 0;
   const hit = cubeCache.get(u8);
   if (hit) return hit;
   if (cubeCacheBytes + u8.length > MAX_CUBE_CACHE_BYTES) {
+    if (!allowReset || u8.length > MAX_CUBE_CACHE_BYTES) return 0;
     resetWasmCubeCache();
   }
-  // If scratch buffers were allocated after the last persistent cube, rewind to scratchBasePtr before allocating cube
   const ptr = wasmExports.wasm_alloc(u8.length);
   if (!ptr) return 0;
   new Uint8Array(wasmExports.memory.buffer, ptr, u8.length).set(u8);
@@ -250,7 +252,10 @@ export function wasm_cast_cube_ray(...args) {
 
     let ptrTable = null;
     if (wasmExports) {
-      ptrTable = new Uint32Array(numLevels * numFields);
+      // Preflight total bytes required for this cube set before staging so we never reset the arena mid-set
+      let totalSetBytes = 0;
+      let uncachedSetBytes = 0;
+      const toStage = [];
       for (let l = 0; l < numLevels; l++) {
         const L = WASM_LEVEL_KEYS[l];
         const cLvl = cubes[L];
@@ -260,12 +265,22 @@ export function wasm_cast_cube_ray(...args) {
           const c = cLvl[fKey];
           const u8 = c?.data instanceof Uint8Array ? c.data : (c instanceof Uint8Array ? c : null);
           if (u8 && u8.length > 0) {
-            const ptr = stageCubeInWasm(u8);
-            if (!ptr) { ptrTable = null; break; }
-            ptrTable[l * numFields + f] = ptr;
+            totalSetBytes += u8.length;
+            if (!cubeCache.has(u8)) uncachedSetBytes += u8.length;
+            toStage.push({slot: l * numFields + f, u8});
           }
         }
-        if (!ptrTable) break;
+      }
+      if (totalSetBytes <= MAX_CUBE_CACHE_BYTES) {
+        if (cubeCacheBytes + uncachedSetBytes > MAX_CUBE_CACHE_BYTES) {
+          resetWasmCubeCache();
+        }
+        ptrTable = new Uint32Array(numLevels * numFields);
+        for (const item of toStage) {
+          const ptr = stageCubeInWasm(item.u8, {allowReset: false});
+          if (!ptr) { ptrTable = null; break; }
+          ptrTable[item.slot] = ptr;
+        }
       }
     }
     meta = {levelN, levelHalf, vminArr, vmaxArr, ptrTable};

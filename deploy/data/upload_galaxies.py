@@ -451,6 +451,16 @@ The code that builds these files is MIT-licensed: https://github.com/tanmay-star
 """
 
 
+SIMBA_META = ("---\nlicense: other\nlicense_name: simba-data-terms\n"
+              "license_link: http://simba.roe.ac.uk/\n")
+
+PUBLIC_SIMS_META = ("---\nlicense: other\nlicense_name: agora-and-camels-data-terms\n"
+                    "license_link: https://www.camel-simulations.org/\n")
+
+AURIGA_META = ("---\nlicense: other\nlicense_name: auriga-data-terms\n"
+               "license_link: https://wwwmpa.mpa-garching.mpg.de/auriga/data.html\n")
+
+
 def dataset_card(repo: str, gids: list[int | str], kind: str, total: int) -> bytes:
     """The HF dataset card. TNG-derived data carry the IllustrisTNG citation request, never an open-data licence
     (the TNG data are not ours to relicense). FIRE-2 derived data carry CC BY 4.0 attribution."""
@@ -465,7 +475,7 @@ def dataset_card(repo: str, gids: list[int | str], kind: str, total: int) -> byt
                 f"Galaxies here: {len(gids)} halos ({glist}; {total / 1e9:.2f} GB). One "
                 "folder per halo id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
                 "viz/manifest_v2.json and the cubes it lists.\n" + PACK_TERMS)
-        meta = TNG_META + "pretty_name: Auriga z=0 CGM explorer web pack\n---\n"
+        meta = AURIGA_META + "pretty_name: Auriga z=0 CGM explorer web pack\n---\n"
         return (meta + "\n" + body).encode("utf-8")
     if "tng-illustris" in repo.lower():
         glist = ", ".join(str(g) for g in gids)
@@ -489,7 +499,7 @@ def dataset_card(repo: str, gids: list[int | str], kind: str, total: int) -> byt
                 f"Galaxies here: {len(gids)} galaxies ({glist}; {total / 1e9:.2f} GB). One "
                 "folder per galaxy id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
                 "viz/manifest_v2.json and the cubes it lists.\n" + SIMBA_TERMS)
-        meta = FIRE2_META + f"pretty_name: SIMBA z=0 CGM explorer web pack\n---\n"
+        meta = SIMBA_META + f"pretty_name: SIMBA z=0 CGM explorer web pack\n---\n"
         return (meta + "\n" + body).encode("utf-8")
     if "public-sims" in repo.lower():
         glist = ", ".join(str(g) for g in gids)
@@ -501,7 +511,7 @@ def dataset_card(repo: str, gids: list[int | str], kind: str, total: int) -> byt
                 f"Galaxies here: {len(gids)} galaxies ({glist}; {total / 1e9:.2f} GB). One "
                 "folder per galaxy id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
                 "viz/manifest_v2.json and the cubes it lists.\n" + PUBLIC_SIMS_TERMS)
-        meta = FIRE2_META + f"pretty_name: AGORA and CAMELS CGM explorer web pack\n---\n"
+        meta = PUBLIC_SIMS_META + f"pretty_name: AGORA and CAMELS CGM explorer web pack\n---\n"
         return (meta + "\n" + body).encode("utf-8")
     if "fire2" in repo.lower():
         glist = ", ".join(str(g) for g in gids)
