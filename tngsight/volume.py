@@ -599,7 +599,10 @@ def field_range(cubes_by_level: dict, key) -> tuple:
     levels = [L for L in _ordered_gas_levels() if L in cubes_by_level]
     vals = [cubes_by_level[L][key] for L in levels]
     masks = [level_mask(L, vals[i].shape[0]) for i, L in enumerate(levels)]
-    return tuple(float(x) for x in VP.gas_range(vals, masks))
+    try:
+        return tuple(float(x) for x in VP.gas_range(vals, masks))
+    except ValueError:
+        return (-30.0, -20.0)
 
 
 def column_maps(density, level) -> dict:
@@ -647,9 +650,16 @@ def proj_window(cubes_by_level: dict, key, r200=None) -> dict:
         c = VP.voxel_centers(n, _half_kpc(base))
         rr = np.hypot(c[:, None], c[None, :])
         sel = _finite(face[rr < r200])
+        if not sel.size:
+            sel = _finite(face)
+        if not sel.size or not p999:
+            return {"kind": "column", "units": "cm^-2", "vmin": 0.0, "vmax": 10.0}
         p2, p50 = float(np.percentile(sel, 2)), float(np.percentile(sel, 50))
-        return {"kind": "column", "units": "cm^-2", "vmin": VP.snap_down(max(p2, p50 - 3.0)),
-                "vmax": VP.snap_up(max(p999))}
+        vmin = VP.snap_down(max(p2, p50 - 3.0))
+        vmax = VP.snap_up(max(p999))
+        if vmax <= vmin:
+            vmax = round(vmin + 0.1, 1)
+        return {"kind": "column", "units": "cm^-2", "vmin": vmin, "vmax": vmax}
     pool = []
     for L in [L for L in ("L0", "L1") if L in cubes_by_level] or levels[:1]:
         mp = weighted_maps(cubes_by_level[L][key], cubes_by_level[L]["nH"])

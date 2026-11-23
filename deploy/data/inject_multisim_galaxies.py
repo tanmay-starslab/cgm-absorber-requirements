@@ -21,6 +21,10 @@ if str(ROOT) not in sys.path:
 
 DEFAULT_SIMBA_ROOT = Path("/scratch/tsingh65/cgm_work/data/simba_gal")
 DEFAULT_PUBLIC_ROOT = Path("/scratch/tsingh65/cgm_work/data/public_sims/cutouts")
+DEFAULT_AURIGA_ROOT = Path("/scratch/tsingh65/cgm_work/data/auriga/gal")
+DEFAULT_TNG100_ROOT = Path("/scratch/tsingh65/cgm_work/data/tng100_z0")
+DEFAULT_TNG300_ROOT = Path("/scratch/tsingh65/cgm_work/data/tng300_z0")
+DEFAULT_ILLUSTRIS_ROOT = Path("/scratch/tsingh65/cgm_work/data/illustris1_z0")
 DEFAULT_INDEX_HTML = ROOT / "docs" / "tng50" / "index.html"
 
 PUBLIC_GIDS: tuple[str, ...] = (
@@ -115,6 +119,73 @@ def collect_public_entries(public_root: Path, repo: str = "tanmay-starslab/publi
     return out
 
 
+def _auriga_sort_key(gid: str) -> tuple[int, int, str]:
+    m_l4 = re.match(r"^Au(\d+)$", gid)
+    if m_l4:
+        return (0, int(m_l4.group(1)), gid)
+    m_l3 = re.match(r"^Au(\d+)_L3$", gid)
+    if m_l3:
+        return (1, int(m_l3.group(1)), gid)
+    m_low = re.match(r"^AuL(\d+)$", gid)
+    if m_low:
+        return (2, int(m_low.group(1)), gid)
+    m_dw = re.match(r"^AuD(\d+)$", gid)
+    if m_dw:
+        return (3, int(m_dw.group(1)), gid)
+    return (9, 999999, gid)
+
+
+def collect_auriga_entries(auriga_root: Path, repo: str = "tanmay-starslab/auriga-z0-web-0") -> list[dict]:
+    if not auriga_root.is_dir():
+        return []
+    gids = sorted(
+        [
+            p.name
+            for p in auriga_root.iterdir()
+            if p.is_dir() and not p.is_symlink() and re.match(r"^Au[A-Za-z0-9_]+$", p.name)
+        ],
+        key=_auriga_sort_key,
+    )
+    out = []
+    for gid in gids:
+        e = build_entry(auriga_root, gid, repo, "Auriga")
+        if e is not None:
+            e["sim"] = "Auriga"
+            out.append(e)
+    return out
+
+
+def _sub_sort_key(gid: str) -> tuple[int, str]:
+    m = re.search(r"_sub(\d+)$", gid)
+    return (int(m.group(1)), gid) if m else (999999999, gid)
+
+
+def collect_tng_illustris_entries(
+    tng100_root: Path = DEFAULT_TNG100_ROOT,
+    tng300_root: Path = DEFAULT_TNG300_ROOT,
+    illustris_root: Path = DEFAULT_ILLUSTRIS_ROOT,
+    repo: str = "tanmay-starslab/tng-illustris-z0-web-0",
+) -> list[dict]:
+    out = []
+    for root, prefix, sim_name in (
+        (tng100_root, "tng100_sub", "TNG100-1"),
+        (tng300_root, "tng300_sub", "TNG300-1"),
+        (illustris_root, "illustris1_sub", "Illustris-1"),
+    ):
+        if not root.is_dir():
+            continue
+        gids = sorted(
+            [p.name for p in root.iterdir() if p.is_dir() and p.name.startswith(prefix) and (p / "DONE.web").is_file()],
+            key=_sub_sort_key,
+        )
+        for gid in gids:
+            e = build_entry(root, gid, repo, sim_name)
+            if e is not None:
+                e["sim"] = sim_name
+                out.append(e)
+    return out
+
+
 def inject_into_index_html(index_html: Path, new_entries: list[dict]) -> dict[str, int]:
     html = index_html.read_text(encoding="utf-8")
     marker = "const DATA = "
@@ -132,7 +203,10 @@ def inject_into_index_html(index_html: Path, new_entries: list[dict]) -> dict[st
     kept = [
         e for e in galaxies_cfg["list"]
         if str(e.get("id")) not in new_ids
-        and not str(e.get("id", "")).startswith(("simba25_", "simba100_", "agora_", "camels_"))
+        and not str(e.get("id", "")).startswith((
+            "simba25_", "simba100_", "agora_", "camels_",
+            "Au", "auriga_", "tng100_", "tng300_", "illustris1_",
+        ))
     ]
 
     merged = kept + list(new_entries)
@@ -157,14 +231,24 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--simba-root", type=Path, default=DEFAULT_SIMBA_ROOT)
     ap.add_argument("--public-root", type=Path, default=DEFAULT_PUBLIC_ROOT)
+    ap.add_argument("--auriga-root", type=Path, default=DEFAULT_AURIGA_ROOT)
+    ap.add_argument("--tng100-root", type=Path, default=DEFAULT_TNG100_ROOT)
+    ap.add_argument("--tng300-root", type=Path, default=DEFAULT_TNG300_ROOT)
+    ap.add_argument("--illustris-root", type=Path, default=DEFAULT_ILLUSTRIS_ROOT)
     ap.add_argument("--index-html", type=Path, default=DEFAULT_INDEX_HTML)
     ap.add_argument("--no-inject", action="store_true")
     args = ap.parse_args(argv)
 
     simba_entries = collect_simba_entries(args.simba_root)
     public_entries = collect_public_entries(args.public_root)
-    all_new = simba_entries + public_entries
-    print(f"Collected {len(simba_entries)} SIMBA entries and {len(public_entries)} AGORA/CAMELS entries ({len(all_new)} new total)")
+    auriga_entries = collect_auriga_entries(args.auriga_root)
+    tng_ill_entries = collect_tng_illustris_entries(args.tng100_root, args.tng300_root, args.illustris_root)
+    all_new = simba_entries + public_entries + auriga_entries + tng_ill_entries
+    print(
+        f"Collected {len(simba_entries)} SIMBA, {len(public_entries)} AGORA/CAMELS, "
+        f"{len(auriga_entries)} Auriga, and {len(tng_ill_entries)} TNG100/TNG300/Illustris-1 entries "
+        f"({len(all_new)} new total)"
+    )
 
     if not args.no_inject:
         counts = inject_into_index_html(args.index_html, all_new)
