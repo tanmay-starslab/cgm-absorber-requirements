@@ -719,6 +719,22 @@ async function create(app, opts = {}) {
   RM.uniforms.uDustScat = {value: DUST_LAWS.skirt.scat};
   RM.material.fragmentShader = RM.material.fragmentShader
     .replace("in vec3 vPos;", "uniform float uDust, uDustScat; uniform vec3 uDustVec; in vec3 vPos;")
+    .replace(`vec3 gradAt(vec3 p, int l) {
+  vec3 t = p / (2.0 * hl(l)) + 0.5; float e = 1.0 / uN, s = 0.5 * (uGasRange.y - uGasRange.x) / 254.0;
+  s *= hl(1) / hl(l);
+  return s * vec3(qAt(t + vec3(e, 0.0, 0.0), l) - qAt(t - vec3(e, 0.0, 0.0), l), qAt(t + vec3(0.0, e, 0.0), l) - qAt(t - vec3(0.0, e, 0.0), l),
+                  qAt(t + vec3(0.0, 0.0, e), l) - qAt(t - vec3(0.0, 0.0, e), l)); }`,
+      `vec3 gradAt(vec3 p, int l) {
+  if (l == 0 && length(p) + 2.5 * hl(0) / uN > uMask0) return vec3(0.0);
+  vec3 t = p / (2.0 * hl(l)) + 0.5; float e = 1.0 / uN, s = 0.5 * (uGasRange.y - uGasRange.x) / 254.0;
+  s *= 100.0 / hl(l);
+  float qxp = qAt(t + vec3(e, 0.0, 0.0), l), qxm = qAt(t - vec3(e, 0.0, 0.0), l);
+  float qyp = qAt(t + vec3(0.0, e, 0.0), l), qym = qAt(t - vec3(0.0, e, 0.0), l);
+  float qzp = qAt(t + vec3(0.0, 0.0, e), l), qzm = qAt(t - vec3(0.0, 0.0, e), l);
+  if (min(min(min(qxp, qxm), min(qyp, qym)), min(qzp, qzm)) < 1.0) return vec3(0.0);
+  return s * vec3(qxp - qxm, qyp - qym, qzp - qzm); }`)
+    .replace("float fp = uPxAng * max(length(pm - o), 1.0), mg = 1.0, mw = 1.0, ms = 1.0;",
+      "float fp = uPxAng * max(length(o), 1.0), mg = 1.0, mw = 1.0, ms = 1.0;")
     .replace("vec3 starAt(vec3 p, int l) {", `float decDust(float q) { return q < 0.5 || q >= 254.5 ? 0.0 : exp2(LOG2_10 * (-4.5 + (q - 1.0) * 6.0 / 253.0)); }
 float exactDust(sampler3D s, vec3 p, float h) {
   vec3 g = (p / (2.0 * h) + 0.5) * uN - 0.5, i0 = floor(g), f = g - i0; ivec3 b = ivec3(i0), hi = ivec3(int(uN) - 1); float v = 0.0; bool hasSentinel = false;
@@ -763,20 +779,14 @@ vec3 starAt(vec3 p, int l) {`)
             vec3 att = exp(-tau);
             float cosTh = dot(normalize(p + vec3(0.0, 0.0, 1e-4)), d);
             float hg = uDustScat * 0.22 * (1.0 - 0.30) / pow(max(1.0 + 0.30 - 1.10 * cosTh, 0.15), 1.5);
-            vec3 src = sv * exp(-0.75 * tau) * (1.0 + min(hg, 0.35) * exp(-1.2 * tau) * vec3(0.75, 0.92, 1.18));
+            vec3 src = sv * (1.0 + min(hg, 0.35) * exp(-0.8 * tau) * vec3(0.75, 0.92, 1.18));
             sumS += transS * src * hw * (1.0 - att) / max(tau, vec3(1e-5));
             transS *= att;
           } else { sumS += transS * sv * hw; }
         } else { sumS += sv * hw; } }`)
     .replace("vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);",
       `vec3 star0 = starOn ? uStarMix * lupton(sumS0) : vec3(0.0);
-  vec3 starPre = starOn ? uStarMix * lupton(sumS) : vec3(0.0);
-  vec3 tBand = clamp(sumS / max(sumS0, vec3(1e-5)), 0.0, 1.0);
-  float tBol = clamp(dot(sumS, vec3(0.30, 0.45, 0.25)) / max(dot(sumS0, vec3(0.30, 0.45, 0.25)), 1e-5), 0.0, 1.0);
-  vec3 redd = clamp(tBand / max(tBol, 1e-4), 0.35, 1.35);
-  float coreGrey = clamp(tBol / 0.35, 0.0, 1.0);
-  vec3 reddEff = 1.0 + (redd - 1.0) * (0.30 + 0.70 * coreGrey);
-  vec3 star = (starOn && uDust > 0.0 && sumS0 != vec3(0.0)) ? clamp(0.35 * starPre + 0.65 * (star0 * (0.10 + 0.90 * pow(tBol, 0.62)) * reddEff), 0.0, 1.0) : starPre;`)
+  vec3 star = starOn ? uStarMix * lupton(sumS) : vec3(0.0);`)
     .replace("float sm = max(star.r, max(star.g, star.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, sm);",
       "float sm = max(star.r, max(star.g, star.b)), sm0 = max(star0.r, max(star0.g, star0.b)), occ = uStarOcc * smoothstep(uOccRange.x, uOccRange.y, max(sm, sm0)), dustT = (starOn && uDust > 0.0 && sumS0 != vec3(0.0)) ? clamp((sumS.r + sumS.g + sumS.b) / max(sumS0.r + sumS0.g + sumS0.b, 1e-5), 0.0, 1.0) : 1.0;")
     .replace("vec3 g = mix(uBg, gas, gm * (starOn ? uGasW : 1.0) * (1.0 - occ));",
@@ -1529,7 +1539,8 @@ vec3 starAt(vec3 p, int l) {`)
     selUniforms();
     renderer.getDrawingBufferSize(accSize); U.uPxAng.value = 2 * Math.tan(camera.fov * Math.PI / 360) / Math.max(accSize.y, 1);
     U.uLodC.value.set(species ? lodField(species) : LOD_C.gas, LOD_C.stars);
-    const dT = camera.position.distanceTo(controls.target); U.uNear.value.set(NEAR[0] * dT, NEAR[1] * dT);
+    const dT = camera.position.distanceTo(controls.target), nearD = U.uMode.value === 0 ? 0 : Math.min(dT * 0.12, 12.0);
+    U.uNear.value.set(0.35 * nearD, nearD);
     if (exact) {
       if (accRT.width !== accSize.x || accRT.height !== accSize.y) { accRT.setSize(accSize.x, accSize.y); accK = 0; }
       const k = accK, [sx, sy] = SUB[k % ACC_N]; U.uSub.value.set(2 * sx / accSize.x, 2 * sy / accSize.y); U.uAccW.value = 1 / (k + 1);

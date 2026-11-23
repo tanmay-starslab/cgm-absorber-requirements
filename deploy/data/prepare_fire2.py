@@ -244,8 +244,8 @@ def compute_stellar_photometrics(mass_msun: np.ndarray, sft_a: np.ndarray, z_mas
     return phot
 
 
-def compute_stellar_hsml_ckpch(coords_ckpch: np.ndarray, k_nn: int = 32) -> np.ndarray:
-    """Compute StellarHsml [ckpc/h] as the distance to the 32nd nearest star neighbor via cKDTree."""
+def compute_stellar_hsml_ckpch(coords_ckpch: np.ndarray, k_nn: int = 16) -> np.ndarray:
+    """Compute compact StellarHsml [ckpc/h] as 0.5x the 16th nearest star neighbor via cKDTree (capped at 10 ckpc/h)."""
     n = coords_ckpch.shape[0]
     if n == 0:
         return np.zeros(0, dtype=np.float32)
@@ -254,8 +254,8 @@ def compute_stellar_hsml_ckpch(coords_ckpch: np.ndarray, k_nn: int = 32) -> np.n
         return np.ones(n, dtype=np.float32)
     tree = cKDTree(coords_ckpch)
     dists, _ = tree.query(coords_ckpch, k=k, workers=-1)
-    d32 = dists[:, -1] if dists.ndim == 2 else dists
-    return np.clip(d32, 1e-3, 100.0).astype(np.float32)
+    d_nn = (dists[:, -1] if dists.ndim == 2 else dists) * 0.5
+    return np.clip(d_nn, 1e-3, 10.0).astype(np.float32)
 
 
 def refine_center_and_velocity(pt4_x_kpc: np.ndarray, pt4_m_msun: np.ndarray, pt4_v_kms: np.ndarray,
