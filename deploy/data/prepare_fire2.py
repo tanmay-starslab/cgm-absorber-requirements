@@ -401,7 +401,7 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
     p0_chunks: dict[str, list[np.ndarray]] = {
         k: [] for k in ("Coordinates", "Masses", "Density", "Velocities", "InternalEnergy",
                         "ElectronAbundance", "NeutralHydrogenAbundance", "Metallicity",
-                        "StarFormationRate", "Potential")
+                        "StarFormationRate", "Potential", "SmoothingLength")
     }
     p4_chunks: dict[str, list[np.ndarray]] = {
         k: [] for k in ("Coordinates", "Masses", "Velocities", "Metallicity",
@@ -427,6 +427,8 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
                         p0_chunks[k].append(g0[k][:][idx0])
                     if "Potential" in g0:
                         p0_chunks["Potential"].append(g0["Potential"][:][idx0])
+                    if "SmoothingLength" in g0:
+                        p0_chunks["SmoothingLength"].append(g0["SmoothingLength"][:][idx0])
             if "PartType4" in f:
                 g4 = f["PartType4"]
                 x4_ckpch = g4["Coordinates"][:].astype(np.float64)
@@ -469,7 +471,10 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
     r0_kpc = np.linalg.norm(rel0_kpc, axis=1)
     m0_code = p0["Masses"].astype(np.float64)
     rho0_code = p0["Density"].astype(np.float64)
-    hsml0_kpc = 2.0 * (3.0 / (4.0 * math.pi) * m0_code / rho0_code) ** (1.0 / 3.0) / h
+    hsml0_sphere_kpc = 2.0 * (3.0 / (4.0 * math.pi) * m0_code / rho0_code) ** (1.0 / 3.0) / h
+    hsml0_kpc = (np.maximum(p0["SmoothingLength"].astype(np.float64) / h, hsml0_sphere_kpc)
+                 if "SmoothingLength" in p0 and len(p0["SmoothingLength"]) == len(m0_code)
+                 else hsml0_sphere_kpc)
     keep0 = (r0_kpc - hsml0_kpc) < R_EXTRACT_KPC
     for k in list(p0.keys()):
         p0[k] = p0[k][keep0]
