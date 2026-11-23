@@ -3,7 +3,7 @@
 // sort with missing values last, search terms and cuts, and the number formats. Usage: node tests/js/galaxies_unit.mjs
 import assert from "node:assert/strict";
 import {galaxyIndex, parseGalaxy, resolveGalaxy, galaxyHashPart, packFor, sortGalaxies, matchGalaxy, filterGalaxies, lg, fmtSfr, galaxyTip, galaxyAria, galaxyCard,
-  unlistedGalaxy, nearestSightline, defaultSightline, srcOf, packBase, normId, isFire, isSimba, isAgora, isCamels, isAuriga, isTng100, isTng300, isIllustris, inferSim, inferSimKey, galNoun} from "../../docs/tng50/js/galaxies.js";
+  unlistedGalaxy, nearestSightline, defaultSightline, srcOf, packBase, normId, isFire, isSimba, isAgora, isCamels, isAuriga, isTng100, isTng300, isIllustris, inferSim, inferSimKey, galNoun, shortGalaxyId} from "../../docs/tng50/js/galaxies.js";
 
 let n = 0;
 const ok = (name, f) => { f(); n++; console.log("ok " + name); };
@@ -175,5 +175,28 @@ ok("Multi-sim (SIMBA, AGORA, CAMELS/EAGLE): sim/simKey inference, URL hash, filt
   assert.ok(isTng100(t100) && inferSimKey(t100) === "tng100" && galNoun(t100) === "Subhalo");
   assert.ok(isTng300(t300) && inferSimKey(t300) === "tng300" && galNoun(t300) === "Subhalo");
   assert.ok(isIllustris(ill) && inferSimKey(ill) === "illustris" && galNoun(ill) === "Subhalo");
+  // shortGalaxyId concise formatting across all 9 simulation families
+  assert.equal(shortGalaxyId({id: 488530}), "488530");
+  assert.equal(shortGalaxyId({id: "m12i"}), "m12i");
+  assert.equal(shortGalaxyId({id: "Romeo"}), "Romeo");
+  assert.equal(shortGalaxyId(t100), "363736");
+  assert.equal(shortGalaxyId(t300), "1338052");
+  assert.equal(shortGalaxyId(ill), "330938");
+  assert.equal(shortGalaxyId({id: "simba25_g40"}), "m25 #40");
+  assert.equal(shortGalaxyId(s100), "m100 #723");
+  assert.equal(shortGalaxyId(ag), "CosmoRun MW");
+  assert.equal(shortGalaxyId({id: "camels_tng_mw25"}), "TNG #25");
+  assert.equal(shortGalaxyId({id: "camels_simba_mw30"}), "SIMBA #30");
+  assert.equal(shortGalaxyId({id: "camels_astrid_mw26"}), "Astrid #26");
+  assert.equal(shortGalaxyId(ce), "EAGLE #27");
+  assert.equal(shortGalaxyId({id: "camels_crocodile_mw29"}), "CROCODILE #29");
+  assert.equal(shortGalaxyId({id: "camels_gz28_14"}), "GZ28 #14");
+  assert.equal(shortGalaxyId({id: "Au6_L3"}), "Au6 (L3)");
+  assert.equal(shortGalaxyId(au), "Au6");
+  // matchGalaxy searches both full ID and short ID
+  assert.ok(matchGalaxy(t100, "363736") && matchGalaxy(t100, "tng100_sub363736"));
+  assert.ok(matchGalaxy(t300, "1338052") && matchGalaxy(ill, "330938"));
+  assert.ok(matchGalaxy(s100, "723") && matchGalaxy(s100, "m100"));
+  assert.ok(matchGalaxy(ag, "cosmorun") && matchGalaxy(ce, "#27"));
 });
 console.log(`${n} galaxies_unit checks passed`);
