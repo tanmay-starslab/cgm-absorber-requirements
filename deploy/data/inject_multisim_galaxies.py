@@ -29,10 +29,32 @@ DEFAULT_INDEX_HTML = ROOT / "docs" / "tng50" / "index.html"
 
 PUBLIC_GIDS: tuple[str, ...] = (
     "agora_arepo_mw",
+    # Quintet 1: Matched CAMELS CV_0 MW @ [4280, 29820, 22360] kpc
     "camels_tng_mw25",
     "camels_simba_mw30",
     "camels_astrid_mw26",
     "camels_eagle_mw27",
+    "camels_crocodile_mw29",
+    # Quintet 2: Matched CAMELS CV_0 MW @ [23167, 18895, 17007] kpc
+    "camels_tng_mw95",
+    "camels_simba_mw75",
+    "camels_astrid_mw63",
+    "camels_eagle_mw67",
+    "camels_crocodile_mw60",
+    # Quintet 3: Matched CAMELS CV_0 MW @ [14066, 11629, 6908] kpc
+    "camels_tng_mw53",
+    "camels_simba_mw63",
+    "camels_astrid_mw46",
+    "camels_eagle_mw56",
+    "camels_crocodile_mw46",
+    # Quintet 4: Matched CAMELS CV_0 MW @ [14494, 24861, 32956] kpc
+    "camels_tng_mw41",
+    "camels_simba_mw39",
+    "camels_astrid_mw35",
+    "camels_eagle_mw35",
+    "camels_crocodile_mw36",
+    # 28 CAMELS-GZ28 zoom-in halos (GZ28_0..GZ28_27)
+    *[f"camels_gz28_{i}" for i in range(28)],
 )
 
 
@@ -71,6 +93,11 @@ def build_entry(root: Path, gid: str, repo: str, default_sim: str) -> dict | Non
     n_entries = len(cat.get("entries") or [])
     n_rays = n_entries if n_entries > 0 else 120
 
+    spec_path = gdir / "SPECTRA"
+    spec_txt = spec_path.read_text(encoding="utf-8").strip().lower() if spec_path.is_file() else ""
+    cat_src = str((cat.get("spectra_source") or {}).get("source") or "").strip().lower()
+    src = "sbi" if ((gdir / "DONE.thor_web").is_file() or spec_txt == "sbi" or cat_src == "sbi_cgm") else "trident"
+
     return {
         "id": gid,
         "sim": sim,
@@ -84,7 +111,7 @@ def build_entry(root: Path, gid: str, repo: str, default_sim: str) -> dict | Non
         "m31": is_m31,
         "n": int(n_rays),
         "viz": True,
-        "src": "trident",
+        "src": src,
         "gas_poor": gas_poor,
         "base": f"https://huggingface.co/datasets/{repo}/resolve/main/{gid}/",
     }
@@ -108,11 +135,27 @@ def collect_simba_entries(simba_root: Path, repo: str = "tanmay-starslab/simba-z
     return out
 
 
+def _public_sort_key(gid: str) -> tuple[int, int, str]:
+    if gid in PUBLIC_GIDS:
+        return (0, PUBLIC_GIDS.index(gid), gid)
+    m_gz = re.match(r"^camels_gz28_(\d+)$", gid)
+    if m_gz:
+        return (1, int(m_gz.group(1)), gid)
+    return (2, 999999, gid)
+
+
 def collect_public_entries(public_root: Path, repo: str = "tanmay-starslab/public-sims-web-0") -> list[dict]:
     if not public_root.is_dir():
         return []
+    known = list(PUBLIC_GIDS)
+    discovered = [
+        p.name
+        for p in public_root.iterdir()
+        if p.is_dir() and not p.is_symlink() and p.name.startswith(("agora_", "camels_")) and p.name not in known
+    ]
+    gids = sorted(known + discovered, key=_public_sort_key)
     out = []
-    for gid in PUBLIC_GIDS:
+    for gid in gids:
         e = build_entry(public_root, gid, repo, "CAMELS")
         if e is not None:
             out.append(e)

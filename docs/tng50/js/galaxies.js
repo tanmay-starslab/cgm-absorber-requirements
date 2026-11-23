@@ -30,6 +30,8 @@ export function inferSim(e) {
   if (/^camels_eagle/i.test(id)) return "CAMELS-Swift-EAGLE";
   if (/^camels_astrid/i.test(id)) return "CAMELS-Astrid";
   if (/^camels_simba/i.test(id)) return "CAMELS-SIMBA";
+  if (/^camels_crocodile/i.test(id)) return "CAMELS-CROCODILE";
+  if (/^camels_gz28/i.test(id)) return "CAMELS-GZ28";
   if (/^camels_/i.test(id)) return "CAMELS-IllustrisTNG";
   if (/^(?:Au(?:\d+|L\d+|D\d+)(?:_L\d+)?|auriga_)/i.test(id)) return "Auriga";
   if (/^tng100_/i.test(id)) return "TNG100-1";
