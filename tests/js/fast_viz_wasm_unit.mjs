@@ -7,7 +7,7 @@ import {
   initFastVizWasm, wasmReady, getWasmExports,
   WASM_LEVEL_KEYS, WASM_LEVEL_HALF_DEFAULT, WASM_ION_KEYS, WASM_FIELD_KEYS,
   wasm_cast_cube_ray, wasm_synthesize_voigt_12ions, wasm_decode_lut_volume, wasm_pack_velocity,
-  voigtHumlicekJs, stageCubeInWasm, resetWasmCubeCache
+  voigtHumlicekJs, stageCubeInWasm, resetWasmCubeCache, getMaxCubeCacheBytes, createStreamingRaySampler
 } from "../../docs/tng50/js/fast_viz_wasm.js";
 import {decodeU8, decodeLinear, packVelocity} from "../../docs/tng50/js/vizdata.js";
 
@@ -211,6 +211,29 @@ check(
   check(
     WASM_ION_KEYS.every(k => Number.isFinite(voigtRes.logNMap[k]) && voigtRes.logNMap[k] > 11.0 && Array.isArray(voigtRes.compRows[k])),
     `wasm_synthesize_voigt_12ions produces valid logN and Voigt seed components for all 12 ions (HI logN=${voigtRes.logNMap.HI})`
+  );
+
+  // ---- 4. Device-aware WASM cache cap & zero-duplication streaming ray sampler parity ----
+  const maxCache = getMaxCubeCacheBytes();
+  check(maxCache >= 32 * 1024 * 1024 && maxCache <= 96 * 1024 * 1024,
+    `getMaxCubeCacheBytes() enforces device-safe WASM cache cap (${(maxCache / (1024 * 1024)).toFixed(0)} MiB <= 96 MiB)`);
+  const sampler = createStreamingRaySampler({manifest, p0d, p1d, nSteps: 512, trilinear: true});
+  for (let l = WASM_LEVEL_KEYS.length - 1; l >= 0; l--) {
+    const L = WASM_LEVEL_KEYS[l];
+    for (let f = 0; f < WASM_FIELD_KEYS.length; f++) {
+      const k = WASM_FIELD_KEYS[f];
+      const c = cubes[L][k];
+      sampler.ingestCube(L, k, c.data, c);
+    }
+  }
+  const streamRes = sampler.finish();
+  let maxSampleDiff = 0;
+  for (let i = 0; i < rayRes.samples.length; i++) {
+    maxSampleDiff = Math.max(maxSampleDiff, Math.abs(rayRes.samples[i] - streamRes.samples[i]));
+  }
+  check(
+    streamRes.streamed && maxSampleDiff < 2e-4,
+    `createStreamingRaySampler matches wasm_cast_cube_ray across all 512x18 samples (max|diff| = ${maxSampleDiff.toExponential(2)})`
   );
 }
 
