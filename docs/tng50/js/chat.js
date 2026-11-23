@@ -397,8 +397,8 @@ export function createToolExecutor(app, opts = {}) {
       const lg = x => (Number.isFinite(+x) && +x > 0 ? Math.log10(+x) : NaN);
       const inR = (x, lo, hi) => (lo === undefined || x >= lo) && (hi === undefined || x <= hi);
       const want = a.spectra === "THOR" ? "sbi" : a.spectra === "Trident" ? "trident" : null;
-      const wantSim = a.sim === "FIRE-2" ? "fire2" : a.sim === "TNG50" ? "tng50" : null;
-      const simKeyOf = e => e.simKey || (/^fire/i.test(String(e.sim || "")) || /^m\d|^Romeo|^Juliet|^Romulus|^Remus|^Thelma|^Louise/i.test(String(e.id ?? "")) ? "fire2" : "tng50");
+      const wantSim = a.sim === "FIRE-2" ? "fire2" : a.sim === "TNG50" ? "tng50" : a.sim === "SIMBA" ? "simba" : a.sim === "AGORA" ? "agora" : a.sim === "CAMELS" ? "camels" : null;
+      const simKeyOf = e => e.simKey || (/^camels/i.test(String(e.sim || e.id || "")) ? "camels" : /^agora/i.test(String(e.sim || e.id || "")) ? "agora" : /^simba/i.test(String(e.sim || e.id || "")) ? "simba" : /^fire/i.test(String(e.sim || "")) || /^m\d|^Romeo|^Juliet|^Romulus|^Remus|^Thelma|^Louise/i.test(String(e.id ?? "")) ? "fire2" : "tng50");
       const L = all.filter(e => (!wantSim || simKeyOf(e) === wantSim)
         && (a.central === undefined || e.central === a.central) && (a.gas_poor === undefined || !!e.gas_poor === a.gas_poor)
         && (!want || srcOf(e) === want) && inR(lg(e.Mstar), a.logMstar_min, a.logMstar_max) && inR(lg(e.M200c), a.logM200c_min, a.logM200c_max)

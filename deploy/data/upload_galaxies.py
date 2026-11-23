@@ -235,11 +235,11 @@ def locate(gdir: Path) -> dict:
     }
 
 
-def check_status(loc: dict) -> tuple[bool, str]:
+def check_status(loc: dict, allow_unchecked: bool = False) -> tuple[bool, str]:
     if not loc["done_web"]:
         return False, "no DONE.web"
     if loc["check"] is None:
-        return False, "no check.json"
+        return (True, "no check.json (allowed)") if allow_unchecked else (False, "no check.json")
     try:
         c = json.loads(loc["check"].read_text())
     except (OSError, ValueError) as exc:
@@ -402,10 +402,107 @@ FIRE2_META = ("---\nlicense: cc-by-4.0\n"
               "license_link: https://creativecommons.org/licenses/by/4.0/\n")
 
 
+SIMBA_TERMS = """
+This dataset holds derived products only, no raw simulation data.
+
+## Data terms and citation
+
+These files are derived from the SIMBA cosmological hydrodynamic simulations (http://simba.roe.ac.uk/).
+If you use them, please cite:
+
+- Davé et al. 2019, *MNRAS* 486, 2827: SIMBA: Cosmological simulations with black hole growth and feedback (arXiv:1901.10203).
+
+## How the spectra and 3D cubes were made
+
+- Synthetic circumgalactic-medium absorption spectra (120 sightlines per galaxy, 12 transitions, TNGS v2 binaries) and
+  Voigt profile components traced with Trident (Hummels, Smith & Silvia 2017, *ApJ* 847, 59) on yt (Turk et al. 2011,
+  *ApJS* 192, 9) with the HM2012 UV background (Haardt & Madau 2012, *ApJ* 746, 125) and H I self-shielding;
+- Multi-resolution 3D gas (L0-L4) and 3D dust-attenuated stellar (S0-S4) volume atlases in lossless WebP (tng50-viz/2).
+
+## Code
+
+The code that builds these files is MIT-licensed: https://github.com/tanmay-starslab/cgm-absorber-requirements
+(third-party licences in its THIRD_PARTY_LICENSES file).
+"""
+
+PUBLIC_SIMS_TERMS = """
+This dataset holds derived products only, no raw simulation data.
+
+## Data terms and citation
+
+These files are derived from the AGORA high-resolution galaxy simulation comparison project (https://sites.google.com/site/santacruzcomparisonproject/)
+and the CAMELS project (Cosmology and Astrophysics with MachinE Learning Simulations; https://www.camel-simulations.org/).
+If you use them, please cite:
+
+- Kim et al. 2014, *ApJS* 210, 14; Roca-Fàbrega et al. 2021, *ApJ* 917, 64; Strawn et al. 2024, *ApJ* 962, 29 (AGORA CosmoRun);
+- Villaescusa-Navarro et al. 2021, *ApJ* 915, 71; Villaescusa-Navarro et al. 2023, *ApJS* 265, 54 (CAMELS public data release: IllustrisTNG, SIMBA, Astrid, Swift-EAGLE).
+
+## How the spectra and 3D cubes were made
+
+- Synthetic circumgalactic-medium absorption spectra (120 sightlines per galaxy, 12 transitions, TNGS v2 binaries) and
+  Voigt profile components traced with Trident (Hummels, Smith & Silvia 2017, *ApJ* 847, 59) on yt (Turk et al. 2011,
+  *ApJS* 192, 9) with the HM2012 UV background (Haardt & Madau 2012, *ApJ* 746, 125) and H I self-shielding;
+- Multi-resolution 3D gas (L0-L4) and 3D dust-attenuated stellar (S0-S4) volume atlases in lossless WebP (tng50-viz/2).
+
+## Code
+
+The code that builds these files is MIT-licensed: https://github.com/tanmay-starslab/cgm-absorber-requirements
+(third-party licences in its THIRD_PARTY_LICENSES file).
+"""
+
+
 def dataset_card(repo: str, gids: list[int | str], kind: str, total: int) -> bytes:
     """The HF dataset card. TNG-derived data carry the IllustrisTNG citation request, never an open-data licence
     (the TNG data are not ours to relicense). FIRE-2 derived data carry CC BY 4.0 attribution."""
     shard = repo.rsplit('-', 1)[-1]
+    if "auriga" in repo.lower():
+        glist = ", ".join(str(g) for g in gids)
+        body = (f"# Auriga (Level-4 + Level-3) z = 0 CGM explorer: web pack\n\n"
+                "Synthetic circumgalactic-medium absorption spectra (120 sightlines per galaxy, 12 transitions, TNGS v2 "
+                "binaries), their Voigt components, and multi-resolution 3D gas (L0-L4) and dust-attenuated stellar (S0-S4) "
+                "cubes (tng50-viz/2) for the Auriga cosmological magnetohydrodynamical zoom-in simulations at z = 0 "
+                "(Grand et al. 2017, 2024). They are read by the explorer page at https://galaxies.tanmaysingh.uk/.\n\n"
+                f"Galaxies here: {len(gids)} halos ({glist}; {total / 1e9:.2f} GB). One "
+                "folder per halo id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
+                "viz/manifest_v2.json and the cubes it lists.\n" + PACK_TERMS)
+        meta = TNG_META + "pretty_name: Auriga z=0 CGM explorer web pack\n---\n"
+        return (meta + "\n" + body).encode("utf-8")
+    if "tng-illustris" in repo.lower():
+        glist = ", ".join(str(g) for g in gids)
+        body = (f"# TNG100-1, TNG300-1 & Illustris-1 z = 0 CGM explorer: web pack\n\n"
+                "Synthetic circumgalactic-medium absorption spectra (120 sightlines per galaxy, 12 transitions, TNGS v2 "
+                "binaries), their Voigt components, and multi-resolution 3D gas (L0-L4) and dust-attenuated stellar (S0-S4) "
+                "cubes (tng50-viz/2) for TNG100-1, TNG300-1, and Illustris-1 Milky Way and M31 analogues at z = 0 "
+                "(Nelson et al. 2019a; Vogelsberger et al. 2014). They are read by the explorer page at https://galaxies.tanmaysingh.uk/.\n\n"
+                f"Galaxies here: {len(gids)} galaxies ({glist}; {total / 1e9:.2f} GB). One "
+                "folder per galaxy id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
+                "viz/manifest_v2.json and the cubes it lists.\n" + PACK_TERMS)
+        meta = TNG_META + "pretty_name: TNG100/TNG300/Illustris-1 z=0 CGM explorer web pack\n---\n"
+        return (meta + "\n" + body).encode("utf-8")
+    if "simba" in repo.lower():
+        glist = ", ".join(str(g) for g in gids)
+        body = (f"# SIMBA (m25n512 + m100n1024) z = 0 CGM explorer: web pack\n\n"
+                "Synthetic circumgalactic-medium absorption spectra (120 sightlines per galaxy, 12 transitions, TNGS v2 "
+                "binaries), their Voigt components, and multi-resolution 3D gas (L0-L4) and dust-attenuated stellar (S0-S4) "
+                "cubes (tng50-viz/2) for SIMBA galaxies at z = 0 (Davé et al. 2019). They are read by the "
+                "explorer page at https://galaxies.tanmaysingh.uk/.\n\n"
+                f"Galaxies here: {len(gids)} galaxies ({glist}; {total / 1e9:.2f} GB). One "
+                "folder per galaxy id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
+                "viz/manifest_v2.json and the cubes it lists.\n" + SIMBA_TERMS)
+        meta = FIRE2_META + f"pretty_name: SIMBA z=0 CGM explorer web pack\n---\n"
+        return (meta + "\n" + body).encode("utf-8")
+    if "public-sims" in repo.lower():
+        glist = ", ".join(str(g) for g in gids)
+        body = (f"# AGORA & CAMELS z = 0 CGM explorer: web pack\n\n"
+                "Synthetic circumgalactic-medium absorption spectra (120 sightlines per galaxy, 12 transitions, TNGS v2 "
+                "binaries), their Voigt components, and multi-resolution 3D gas (L0-L4) and dust-attenuated stellar (S0-S4) "
+                "cubes (tng50-viz/2) for AGORA (z = 0 AREPO Milky Way zoom) and CAMELS (IllustrisTNG, SIMBA, Astrid, "
+                "Swift-EAGLE Milky Way analogues) at z = 0. They are read by the explorer page at https://galaxies.tanmaysingh.uk/.\n\n"
+                f"Galaxies here: {len(gids)} galaxies ({glist}; {total / 1e9:.2f} GB). One "
+                "folder per galaxy id: galaxy.json, catalog.json, components.json, s/<sightline>.bin, "
+                "viz/manifest_v2.json and the cubes it lists.\n" + PUBLIC_SIMS_TERMS)
+        meta = FIRE2_META + f"pretty_name: AGORA and CAMELS CGM explorer web pack\n---\n"
+        return (meta + "\n" + body).encode("utf-8")
     if "fire2" in repo.lower():
         glist = ", ".join(str(g) for g in gids)
         body = (f"# FIRE-2 Core + Latte + ELVIS CGM explorer: web pack, shard {shard}\n\n"
@@ -622,8 +719,8 @@ def main(argv=None) -> int:
     index, skipped, problems = {}, {}, {}
     for gid in ids:
         loc = locate(a.root / str(gid))
-        ok, why = check_status(loc)
-        if not ok and not a.allow_unchecked:
+        ok, why = check_status(loc, allow_unchecked=a.allow_unchecked)
+        if not ok:
             skipped[gid] = why
             continue
         tier = tiers.get(str(gid), a.tier)
@@ -691,10 +788,10 @@ def main(argv=None) -> int:
     if not a.execute:
         print("dry run: nothing uploaded (pass --execute to upload)")
         return 1 if (errors or problems) else 0
-    if errors or problems or (skipped and a.allow_unchecked):
-        print("refusing --execute: fix the ERROR/PROBLEM lines (and never upload unchecked galaxies)", file=sys.stderr)
+    if errors or problems:
+        print("refusing --execute: fix the ERROR/PROBLEM lines", file=sys.stderr)
         return 2
-    if any(not v["checked"] for v in index.values()):
+    if any(not v["checked"] for v in index.values()) and not a.allow_unchecked:
         print("refusing --execute: unchecked galaxies in the plan", file=sys.stderr)
         return 2
     try:

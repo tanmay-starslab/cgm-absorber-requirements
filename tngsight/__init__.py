@@ -4,4 +4,8 @@ Submodules: config, geometry, degrade, library, scoring, style, figure, generate
 vpfit (clean-room Voigt fitter), components (component catalogue), search (component query engine).
 Heavy deps (astropy, scipy, matplotlib, yt, trident) load only when their submodule is imported.
 """
+import numpy as _np
+if not hasattr(_np, "trapz") and hasattr(_np, "trapezoid"):
+    _np.trapz = _np.trapezoid
+
 __version__ = "0.1.0"

@@ -1,0 +1,15 @@
+[package]
+name = "fast_viz_wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Zero-dependency WebAssembly SIMD128 kernel for 3D multi-level ray-marching, 12-ion Voigt profile synthesis, and LUT volume dequantization"
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

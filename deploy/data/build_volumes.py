@@ -575,7 +575,8 @@ def main(argv=None):
     ap.add_argument("--levels", default=",".join(V.GAS_LEVELS))
     ap.add_argument("--fields", default=",".join(V.VOL_KEYS))
     ap.add_argument("--workers", type=int, default=4, help="WebP/gzip encoder processes")
-    ap.add_argument("--deposit-workers", type=int, default=1, help="scatter processes per level")
+    ap.add_argument("--deposit-workers", type=int, default=int(os.environ.get("TNG_DEPOSIT_WORKERS") or 8),
+                    help="OpenMP threads / scatter workers per level")
     ap.add_argument("--lock", type=_opt_path, default=DEFAULT_LOCK, help="heavy-I/O fcntl lock file for stage 1 "
                     "(default $TNG_HEAVY_LOCK; '' = no lock)")
     ap.add_argument("--force", action="store_true", help="re-read cells, re-deposit and re-encode everything")

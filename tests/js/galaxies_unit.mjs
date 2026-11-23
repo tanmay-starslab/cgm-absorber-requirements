@@ -3,7 +3,7 @@
 // sort with missing values last, search terms and cuts, and the number formats. Usage: node tests/js/galaxies_unit.mjs
 import assert from "node:assert/strict";
 import {galaxyIndex, parseGalaxy, resolveGalaxy, galaxyHashPart, packFor, sortGalaxies, matchGalaxy, filterGalaxies, lg, fmtSfr, galaxyTip, galaxyAria, galaxyCard,
-  unlistedGalaxy, nearestSightline, defaultSightline, srcOf, packBase, normId, isFire} from "../../docs/tng50/js/galaxies.js";
+  unlistedGalaxy, nearestSightline, defaultSightline, srcOf, packBase, normId, isFire, isSimba, isAgora, isCamels, isAuriga, isTng100, isTng300, isIllustris, inferSim, inferSimKey, galNoun} from "../../docs/tng50/js/galaxies.js";
 
 let n = 0;
 const ok = (name, f) => { f(); n++; console.log("ok " + name); };
@@ -140,5 +140,40 @@ ok("FIRE-2 multi-sim: string IDs, sim/simKey, filterGalaxies, parseGalaxy sim=fi
   assert.match(card, /Halo m12i/); assert.match(card, /FIRE-2/); assert.ok(!/[·•]/.test(card));
   assert.match(tngCard, /Subhalo 488530/);
   assert.match(galaxyTip(m12i), /Halo m12i/); assert.ok(galaxyTip(m12i).split(/\s+/).length <= 12);
+});
+ok("Multi-sim (SIMBA, AGORA, CAMELS/EAGLE): sim/simKey inference, URL hash, filtering, cards and nouns", () => {
+  const MLIST = [
+    ...LIST,
+    {id: "m12i", sim: "FIRE-2", label: "Halo m12i", Mstar: 5.5e10, SFR: 1.8, M200c: 1.1e12, R200c: 210, central: true, mw: true, n: 120, viz: true},
+    {id: "simba25_g0", sim: "SIMBA", label: "SIMBA-25 simba25_g0", Mstar: 3.2e12, SFR: 45.6, M200c: 1.0e14, R200c: 984, central: true, m31: true, n: 120, viz: true},
+    {id: "simba100_g723", label: "SIMBA-100 simba100_g723", Mstar: 8.1e10, SFR: 2.1, M200c: 1.5e12, R200c: 240, central: true, mw: true, n: 120, viz: true},
+    {id: "agora_arepo_mw", sim: "AGORA-AREPO", label: "AGORA CosmoRun AREPO-T MW", Mstar: 9.5e10, SFR: 1.1, M200c: 1.35e12, R200c: 227, central: true, mw: true, n: 120, viz: true},
+    {id: "camels_tng_mw25", sim: "CAMELS-IllustrisTNG", label: "CAMELS-IllustrisTNG CV_0 MW", Mstar: 3.0e10, SFR: 0.46, M200c: 2.18e12, R200c: 275, central: true, mw: true, n: 120, viz: true},
+    {id: "camels_eagle_mw27", sim: "CAMELS-Swift-EAGLE", label: "CAMELS-Swift-EAGLE CV_0 MW", Mstar: 3.04e10, SFR: 0.0, M200c: 1.88e12, R200c: 262, central: true, mw: true, n: 120, viz: true, gas_poor: true}
+  ];
+  const I = galaxyIndex({galaxies: {default: 488530, base: "data/gal", viz_base: null, list: MLIST}});
+  const s25 = I.byId.get("simba25_g0"), s100 = I.byId.get("simba100_g723"), ag = I.byId.get("agora_arepo_mw"), ce = I.byId.get("camels_eagle_mw27");
+  assert.equal(s25.simKey, "simba"); assert.equal(s100.simKey, "simba"); assert.ok(isSimba(s25) && isSimba(s100));
+  assert.equal(ag.simKey, "agora"); assert.ok(isAgora(ag));
+  assert.equal(ce.simKey, "camels"); assert.ok(isCamels(ce));
+  assert.equal(galNoun(s25), "Galaxy"); assert.equal(galNoun(ag), "Halo"); assert.equal(galNoun(ce), "Halo");
+  assert.equal(parseGalaxy("#sim=simba", "", I), "simba25_g0");
+  assert.equal(parseGalaxy("#sim=agora", "", I), "agora_arepo_mw");
+  assert.equal(parseGalaxy("#sim=camels", "", I), "camels_tng_mw25");
+  assert.equal(parseGalaxy("#sim=eagle", "", I), "camels_tng_mw25");
+  assert.equal(galaxyHashPart(I, "simba25_g0"), "sim=simba&g=simba25_g0&");
+  assert.equal(galaxyHashPart(I, "agora_arepo_mw"), "sim=agora&g=agora_arepo_mw&");
+  assert.equal(galaxyHashPart(I, "camels_eagle_mw27"), "sim=camels&g=camels_eagle_mw27&");
+  assert.deepEqual(filterGalaxies(I.list, "", "all", "simba").map(e => e.id), ["simba25_g0", "simba100_g723"]);
+  assert.deepEqual(filterGalaxies(I.list, "sim:agora").map(e => e.id), ["agora_arepo_mw"]);
+  assert.deepEqual(filterGalaxies(I.list, "eagle").map(e => e.id), ["camels_eagle_mw27"]);
+  assert.match(galaxyCard(s25), /Galaxy simba25_g0/); assert.match(galaxyCard(s25), /SIMBA/);
+  assert.match(galaxyCard(ag), /Halo agora_arepo_mw/); assert.match(galaxyCard(ag), /AGORA/);
+  assert.match(galaxyCard(ce), /Halo camels_eagle_mw27/); assert.match(galaxyCard(ce), /EAGLE/);
+  const au = {id: "Au6", sim: "Auriga", label: "Auriga Au6"}, t100 = {id: "tng100_sub363736"}, t300 = {id: "tng300_sub1338052"}, ill = {id: "illustris1_sub330938"};
+  assert.ok(isAuriga(au) && inferSimKey(au) === "auriga" && galNoun(au) === "Halo");
+  assert.ok(isTng100(t100) && inferSimKey(t100) === "tng100" && galNoun(t100) === "Subhalo");
+  assert.ok(isTng300(t300) && inferSimKey(t300) === "tng300" && galNoun(t300) === "Subhalo");
+  assert.ok(isIllustris(ill) && inferSimKey(ill) === "illustris" && galNoun(ill) === "Subhalo");
 });
 console.log(`${n} galaxies_unit checks passed`);

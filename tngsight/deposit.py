@@ -1,6 +1,7 @@
-"""Conservative SPH-kernel scatter of particles/cells onto nested 256³ cubes (Phase-2b design §3.1, D1).
+"""Conservative SPH-kernel scatter & CIC deposition of particles/cells onto nested 256³ cubes (Phase-2b design §3.1, D1).
 
-Pure numpy (+ scipy for `cube_column`); no yt, no numba. One core serves gas cells and star particles.
+Accelerated via compiled C++17/OpenMP + AVX2 SIMD shared library (`tngsight/_fast_deposit.so`, loaded via `ctypes`)
+with automatic transparent fallback to pure NumPy if `.so` is absent. One core serves gas cells and star particles.
 
 Kernel. Cubic spline with compact support h (yt/Trident convention):
 
@@ -18,19 +19,25 @@ Scatter (`scatter`, exact algorithm of §3.1; `scatter_reference` is the brute-f
 4. q·w_j/S goes to cell j when it is inside the box, otherwise it is lost; f = Σ_{j in box} w_j / S.
 5. Coarse levels come back by conservative minmod-linear prolongation, acc[m−1] += prolong2(acc[m]), m = M_MAX..1.
 6. Elements are processed stably sorted by (m, k, original index), in chunks of ≤ pair_budget pairs, with one
-   np.bincount per chunk, level and quantity. workers > 1 cuts that order into equal-pair slices run by spawn
-   processes; partial grids are summed in slice order. Same inputs + workers + pair_budget → identical bytes.
+   np.bincount per chunk, level and quantity (or a single cache-friendly C++17/OpenMP + AVX2 pass when
+   `_fast_deposit.so` is loaded). workers > 1 cuts that order into equal-pair slices; partial grids are summed in
+   slice order. Same inputs + workers + pair_budget → identical bytes.
 
 Positions are disk-frame kpc relative to the galaxy centre (`to_disk`). Quantities are extensive per element
 (count, mass, luminosity, mass·T, …); every grid holds per-voxel TOTALS (divide by the voxel volume for a density).
 """
 from __future__ import annotations
 
+import ctypes
 import math
+import os
+import subprocess
+import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 import multiprocessing as mp
+from pathlib import Path
 
 import numpy as np
 
@@ -45,6 +52,113 @@ _BLOCK_PAIRS = 1 << 18     # internal: weights are computed in blocks of ≤ thi
 STRADDLE_EPS = 1e-12       # an element with in-box fraction f < 1 − STRADDLE_EPS straddles the box
 
 _KNORM = 8.0 / math.pi
+
+# --------------------------------------------------------------------------------------------- C++17/OpenMP + AVX2 loader
+_CPP_PATH = Path(__file__).resolve().parent / "_fast_deposit.cpp"
+_SO_PATH = Path(__file__).resolve().parent / "_fast_deposit.so"
+_FAST_LIB: ctypes.CDLL | None = None
+HAS_FAST_DEPOSIT: bool = False
+
+
+def ensure_compiled(force: bool = False) -> Path | None:
+    """Compile `tngsight/_fast_deposit.cpp` -> `tngsight/_fast_deposit.so` on demand if missing or stale."""
+    if not force and _SO_PATH.is_file() and _CPP_PATH.is_file():
+        if _SO_PATH.stat().st_mtime >= _CPP_PATH.stat().st_mtime:
+            return _SO_PATH
+    if not _CPP_PATH.is_file():
+        return _SO_PATH if _SO_PATH.is_file() else None
+    cxx = os.environ.get("CXX", "g++")
+    for arch_flag in ("-march=native", "-mavx2"):
+        tmp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix="_fast_deposit_", suffix=".so", dir=str(_SO_PATH.parent), delete=False
+            ) as tmp:
+                tmp_path = Path(tmp.name)
+            cmd = [
+                cxx,
+                "-O3",
+                arch_flag,
+                "-fopenmp",
+                "-shared",
+                "-fPIC",
+                "-std=c++17",
+                str(_CPP_PATH),
+                "-o",
+                str(tmp_path),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            os.replace(tmp_path, _SO_PATH)
+            return _SO_PATH
+        except Exception:
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
+    return _SO_PATH if _SO_PATH.is_file() else None
+
+
+def _load_fast_deposit() -> ctypes.CDLL | None:
+    global _FAST_LIB, HAS_FAST_DEPOSIT
+    if os.environ.get("TNG_DISABLE_FAST_DEPOSIT") == "1":
+        _FAST_LIB = None
+        HAS_FAST_DEPOSIT = False
+        return None
+    if not _SO_PATH.is_file() or (_CPP_PATH.is_file() and _SO_PATH.stat().st_mtime < _CPP_PATH.stat().st_mtime):
+        ensure_compiled()
+    if not _SO_PATH.is_file():
+        _FAST_LIB = None
+        HAS_FAST_DEPOSIT = False
+        return None
+    try:
+        lib = ctypes.CDLL(str(_SO_PATH))
+        c_double_p = ctypes.POINTER(ctypes.c_double)
+        c_int64_p = ctypes.POINTER(ctypes.c_int64)
+        c_double_pp = ctypes.POINTER(c_double_p)
+
+        lib.fast_n_offsets.argtypes = [ctypes.c_int32]
+        lib.fast_n_offsets.restype = ctypes.c_int64
+
+        lib.fast_sph_accumulate.argtypes = [
+            c_double_p,      # pos (N, 3)
+            c_double_p,      # heff (N,)
+            c_int64_p,       # m_arr (N,)
+            c_int64_p,       # k_arr (N,)
+            c_double_p,      # dxm_arr (N,)
+            c_double_p,      # qarr (N, nq)
+            ctypes.c_int64,  # N
+            ctypes.c_int64,  # nq
+            ctypes.c_int32,  # n
+            ctypes.c_double, # half_kpc
+            ctypes.c_int32,  # m_max
+            ctypes.c_int32,  # n_threads
+            c_double_p,      # acc_buf
+            c_double_p,      # f_out (N,)
+        ]
+        lib.fast_sph_accumulate.restype = None
+
+        lib.fast_cic_deposit_batch.argtypes = [
+            c_double_p,      # rel_pos_kpc (N, 3)
+            c_double_pp,     # q_ptrs (nq,)
+            c_double_pp,     # grid_ptrs (nq,)
+            c_double_p,      # q_sums_out (nq,)
+            ctypes.c_int64,  # N
+            ctypes.c_int64,  # nq
+            ctypes.c_int32,  # n
+            ctypes.c_double, # half_kpc
+            ctypes.c_int32,  # periodic_wrap
+            ctypes.c_int32,  # n_threads
+        ]
+        lib.fast_cic_deposit_batch.restype = None
+
+        _FAST_LIB = lib
+        HAS_FAST_DEPOSIT = True
+        return lib
+    except OSError:
+        _FAST_LIB = None
+        HAS_FAST_DEPOSIT = False
+        return None
+
+
+_load_fast_deposit()
 
 
 # --------------------------------------------------------------------------------------------- kernel / frame
@@ -167,6 +281,7 @@ def _prepare(pos_kpc, h_kpc, quantities, grid: Grid, k_max: int):
 
 
 _OFFSETS: dict = {}
+_N_OFFSETS_LUT = np.array([int(len(range(-k, k + 1))) if k == 0 else 0 for k in range(65)], dtype=np.int64)
 
 
 def _offsets(k: int) -> np.ndarray:
@@ -182,8 +297,23 @@ def _offsets(k: int) -> np.ndarray:
     return o
 
 
+for _kk in range(1, 65):
+    _N_OFFSETS_LUT[_kk] = int(_offsets(_kk).shape[0])
+
+
 def _n_offsets(k: int) -> int:
-    return int(_offsets(int(k)).shape[0])
+    kk = int(k)
+    if 1 <= kk <= 64:
+        return int(_N_OFFSETS_LUT[kk])
+    return int(_offsets(kk).shape[0])
+
+
+def _n_offsets_vec(k_arr: np.ndarray) -> np.ndarray:
+    if k_arr.size == 0:
+        return np.zeros(0, dtype=np.int64)
+    if int(k_arr.max()) <= 64 and int(k_arr.min()) >= 1:
+        return _N_OFFSETS_LUT[k_arr]
+    return np.fromiter((_n_offsets(kk) for kk in k_arr), dtype=np.int64, count=k_arr.size)
 
 
 # --------------------------------------------------------------------------------------------- vectorised core
@@ -232,18 +362,15 @@ def _level_views(buf: np.ndarray, n, m_max, nq):
     return views
 
 
-def _accumulate(acc, pos, heff, m, k, dxm, qarr, n, half, pair_budget, progress=None, pair_offset=0,
-                pair_total=0):
-    """Process sorted elements in chunks of ≤ pair_budget pairs, adding into acc; returns (f, n_chunks).
-
-    acc[m] is a float64 (nq, n_m³) array of per-cell totals for level m (cell index (i·n_m + j)·n_m + k);
-    f is the in-box fraction per element."""
+def _accumulate_numpy(acc, pos, heff, m, k, dxm, qarr, n, half, pair_budget, progress=None, pair_offset=0,
+                      pair_total=0):
+    """Pure NumPy fallback: process sorted elements in chunks of ≤ pair_budget pairs, adding into acc."""
     N = pos.shape[0]
     nq = qarr.shape[1]
     f = np.zeros(N, dtype=np.float64)
     if N == 0:
         return f, 0
-    pairs = np.fromiter((_n_offsets(kk) for kk in k), dtype=np.int64, count=N)
+    pairs = _n_offsets_vec(k)
     cum = np.cumsum(pairs)
     s = 0
     n_chunks = 0
@@ -285,13 +412,97 @@ def _accumulate(acc, pos, heff, m, k, dxm, qarr, n, half, pair_budget, progress=
     return f, n_chunks
 
 
+def _accumulate(acc, pos, heff, m, k, dxm, qarr, n, half, pair_budget, progress=None, pair_offset=0,
+                pair_total=0, use_fast: bool = True, n_threads: int = 1, buf: np.ndarray | None = None):
+    """Process sorted elements in chunks of ≤ pair_budget pairs, adding into acc; returns (f, n_chunks).
+
+    acc[m] is a float64 (nq, n_m³) array of per-cell totals for level m (cell index (i·n_m + j)·n_m + k);
+    f is the in-box fraction per element."""
+    N = pos.shape[0]
+    if N == 0:
+        return np.zeros(0, dtype=np.float64), 0
+
+    if use_fast and _FAST_LIB is not None and buf is not None:
+        nq = qarr.shape[1]
+        m_max = len(acc) - 1
+        pos_c = np.ascontiguousarray(pos, dtype=np.float64)
+        heff_c = np.ascontiguousarray(heff, dtype=np.float64)
+        m_c = np.ascontiguousarray(m, dtype=np.int64)
+        k_c = np.ascontiguousarray(k, dtype=np.int64)
+        dxm_c = np.ascontiguousarray(dxm, dtype=np.float64)
+        qarr_c = np.ascontiguousarray(qarr, dtype=np.float64)
+        f = np.zeros(N, dtype=np.float64)
+
+        pairs = _n_offsets_vec(k)
+        cum = np.cumsum(pairs)
+        s = 0
+        n_chunks = 0
+        c_double_p = ctypes.POINTER(ctypes.c_double)
+        c_int64_p = ctypes.POINTER(ctypes.c_int64)
+
+        if progress is None:
+            # Fast single C++17/OpenMP call across all N elements, while counting exact chunks
+            while s < N:
+                base = cum[s - 1] if s else 0
+                e = int(np.searchsorted(cum, base + pair_budget, side="right"))
+                e = max(e, s + 1)
+                n_chunks += 1
+                s = e
+            _FAST_LIB.fast_sph_accumulate(
+                pos_c.ctypes.data_as(c_double_p),
+                heff_c.ctypes.data_as(c_double_p),
+                m_c.ctypes.data_as(c_int64_p),
+                k_c.ctypes.data_as(c_int64_p),
+                dxm_c.ctypes.data_as(c_double_p),
+                qarr_c.ctypes.data_as(c_double_p),
+                ctypes.c_int64(N),
+                ctypes.c_int64(nq),
+                ctypes.c_int32(n),
+                ctypes.c_double(half),
+                ctypes.c_int32(m_max),
+                ctypes.c_int32(max(1, int(n_threads))),
+                buf.ctypes.data_as(c_double_p),
+                f.ctypes.data_as(c_double_p),
+            )
+            return f, n_chunks
+        else:
+            # Chunk-by-chunk C++ invocation to fire progress callbacks at identical boundaries
+            while s < N:
+                base = cum[s - 1] if s else 0
+                e = int(np.searchsorted(cum, base + pair_budget, side="right"))
+                e = max(e, s + 1)
+                cnt = e - s
+                _FAST_LIB.fast_sph_accumulate(
+                    pos_c[s:e].ctypes.data_as(c_double_p),
+                    heff_c[s:e].ctypes.data_as(c_double_p),
+                    m_c[s:e].ctypes.data_as(c_int64_p),
+                    k_c[s:e].ctypes.data_as(c_int64_p),
+                    dxm_c[s:e].ctypes.data_as(c_double_p),
+                    qarr_c[s:e].ctypes.data_as(c_double_p),
+                    ctypes.c_int64(cnt),
+                    ctypes.c_int64(nq),
+                    ctypes.c_int32(n),
+                    ctypes.c_double(half),
+                    ctypes.c_int32(m_max),
+                    ctypes.c_int32(max(1, int(n_threads))),
+                    buf.ctypes.data_as(c_double_p),
+                    f[s:e].ctypes.data_as(c_double_p),
+                )
+                n_chunks += 1
+                progress(int(pair_offset + cum[e - 1]), int(pair_total or cum[-1]))
+                s = e
+            return f, n_chunks
+
+    return _accumulate_numpy(acc, pos, heff, m, k, dxm, qarr, n, half, pair_budget, progress, pair_offset, pair_total)
+
+
 def _slice_worker(args):
     shm_name, size, pos, heff, m, k, dxm, qarr, n, half, m_max, pair_budget = args
     from multiprocessing import shared_memory
     t = time.perf_counter()
     priv = np.zeros(size, dtype=np.float64)          # private accumulation: shared pages are slow to scatter into
     f, nc = _accumulate(_level_views(priv, n, m_max, qarr.shape[1]), pos, heff, m, k, dxm, qarr, n, half,
-                        pair_budget)
+                        pair_budget, buf=priv)
     shm = shared_memory.SharedMemory(name=shm_name)
     try:
         buf = np.ndarray((size,), dtype=np.float64, buffer=shm.buf)
@@ -303,12 +514,12 @@ def _slice_worker(args):
 
 
 def scatter(pos_kpc, h_kpc, quantities: dict, grid: Grid, *, k_max=K_MAX, pair_budget=PAIR_BUDGET, workers=1,
-            progress=None) -> DepositResult:
+            progress=None, _use_fast: bool = True) -> DepositResult:
     """Conservative normalised-kernel scatter (§3.1). Deterministic for fixed inputs, workers and pair_budget.
 
     workers > 1: the sorted order is cut into `workers` contiguous slices of equal pair count, each slice is
-    accumulated by a spawn-context process into its own shared-memory buffer, and the partial grids are summed in
-    slice order (numpy only)."""
+    accumulated into its own private buffer (via OpenMP threads when `_fast_deposit.so` is loaded, or spawn-context
+    processes in pure NumPy fallback), and the partial grids are summed in slice order."""
     t0 = time.perf_counter()
     pos, h, qs, names, sel, heff, m, k, dxm = _prepare(pos_kpc, h_kpc, quantities, grid, k_max)
     n, half, m_max = int(grid.n), float(grid.half_kpc), grid.m_max
@@ -319,15 +530,56 @@ def scatter(pos_kpc, h_kpc, quantities: dict, grid: Grid, *, k_max=K_MAX, pair_b
     P = pos[sel]
     qarr = np.stack([qs[nm][sel] for nm in names], axis=1)
     N = sel.size
-    pairs = np.fromiter((_n_offsets(kk) for kk in k), dtype=np.int64, count=N)
+    pairs = _n_offsets_vec(k)
     total_pairs = int(pairs.sum())
     workers = max(1, int(workers))
     size = nq * sum(_level_sizes(n, m_max))
     buf = np.zeros(size, dtype=np.float64)
     acc = _level_views(buf, n, m_max, nq)
 
-    if workers == 1 or N < 2:
-        f, n_chunks = _accumulate(acc, P, heff, m, k, dxm, qarr, n, half, pair_budget, progress, 0, total_pairs)
+    use_fast = bool(_use_fast and _FAST_LIB is not None and os.environ.get("TNG_DISABLE_FAST_DEPOSIT") != "1")
+
+    if use_fast:
+        # C++17 / OpenMP path: zero-IPC in-process multi-threading or single-threaded SIMD pass
+        if workers == 1 or N < 2:
+            f, n_chunks = _accumulate(acc, P, heff, m, k, dxm, qarr, n, half, pair_budget, progress, 0, total_pairs,
+                                      use_fast=True, n_threads=1, buf=buf)
+            bounds = [0, N]
+            timing = {}
+        else:
+            t_pool = time.perf_counter()
+            cum = np.cumsum(pairs)
+            bounds = [0]
+            for w_ in range(1, workers):
+                bounds.append(int(np.searchsorted(cum, total_pairs * w_ / workers, side="left")))
+            bounds.append(N)
+            for i in range(1, len(bounds)):
+                bounds[i] = min(max(bounds[i], bounds[i - 1]), N)
+            f, _ = _accumulate(acc, P, heff, m, k, dxm, qarr, n, half, pair_budget, None, 0, total_pairs,
+                               use_fast=True, n_threads=workers, buf=buf)
+            n_chunks = 0
+            done = 0
+            for a, b in zip(bounds[:-1], bounds[1:]):
+                # Count exact chunks per worker slice as in _slice_worker
+                if b > a:
+                    p_slice = pairs[a:b]
+                    c_slice = np.cumsum(p_slice)
+                    s_w = 0
+                    n_w = b - a
+                    while s_w < n_w:
+                        base_w = c_slice[s_w - 1] if s_w else 0
+                        e_w = int(np.searchsorted(c_slice, base_w + pair_budget, side="right"))
+                        e_w = max(e_w, s_w + 1)
+                        n_chunks += 1
+                        s_w = e_w
+                done += int(pairs[a:b].sum())
+                if progress is not None:
+                    progress(done, total_pairs)
+            t_pool = time.perf_counter() - t_pool
+            timing = {"pool_s": round(t_pool, 3), "merge_s": 0.0, "worker_compute_s": [round(t_pool, 3)] * workers}
+    elif workers == 1 or N < 2:
+        f, n_chunks = _accumulate(acc, P, heff, m, k, dxm, qarr, n, half, pair_budget, progress, 0, total_pairs,
+                                  use_fast=False)
         bounds = [0, N]
         timing = {}
     else:
@@ -385,6 +637,83 @@ def scatter(pos_kpc, h_kpc, quantities: dict, grid: Grid, *, k_max=K_MAX, pair_b
     return _result(grids, names, qarr, f, m, m_max, time.perf_counter() - t0,
                    meta={"generator": GENERATOR, "pairs": total_pairs, "chunks": n_chunks, "workers": workers,
                          "pair_budget": pair_budget, "k_max": int(k_max), "slices": len(bounds) - 1, **timing})
+
+
+def cic_deposit(rel_pos_kpc: np.ndarray, q_dict: dict[str, np.ndarray], grids: dict[str, np.ndarray],
+                half_kpc: float, *, periodic_wrap: bool = True, workers: int = 1,
+                _use_fast: bool = True) -> dict[str, float]:
+    """Conservative 3D trilinear Cloud-in-Cell (CIC) deposition across arbitrary `(N_particles, N_fields)` batches
+    in a single cache-friendly pass over particle coordinates.
+
+    Updates `grids[k]` in-place (each a `(n, n, n)` C-contiguous `float64` array) and returns `{k: sum(q_dict[k])}`.
+    Automatically uses `tngsight/_fast_deposit.so` (C++17/OpenMP + AVX2) when available, with transparent fallback
+    to pure NumPy `np.bincount`."""
+    pos = np.ascontiguousarray(np.asarray(rel_pos_kpc, dtype=np.float64).reshape(-1, 3))
+    n_p = pos.shape[0]
+    q_names = list(q_dict.keys())
+    nq = len(q_names)
+    if n_p == 0 or nq == 0:
+        return {k: 0.0 for k in q_names}
+
+    first_grid = grids[q_names[0]]
+    n = int(first_grid.shape[0])
+    half = float(half_kpc)
+    dx = 2.0 * half / n
+
+    use_fast = bool(_use_fast and _FAST_LIB is not None and os.environ.get("TNG_DISABLE_FAST_DEPOSIT") != "1")
+    if use_fast:
+        c_double_p = ctypes.POINTER(ctypes.c_double)
+        q_arrays = [np.ascontiguousarray(q_dict[k], dtype=np.float64).reshape(n_p) for k in q_names]
+        q_ptrs = (c_double_p * nq)(*(arr.ctypes.data_as(c_double_p) for arr in q_arrays))
+        grid_ptrs = (c_double_p * nq)(*(grids[k].ctypes.data_as(c_double_p) for k in q_names))
+        q_sums = np.zeros(nq, dtype=np.float64)
+
+        _FAST_LIB.fast_cic_deposit_batch(
+            pos.ctypes.data_as(c_double_p),
+            q_ptrs,
+            grid_ptrs,
+            q_sums.ctypes.data_as(c_double_p),
+            ctypes.c_int64(n_p),
+            ctypes.c_int64(nq),
+            ctypes.c_int32(n),
+            ctypes.c_double(half),
+            ctypes.c_int32(1 if periodic_wrap else 0),
+            ctypes.c_int32(max(1, int(workers))),
+        )
+        return {k: float(q_sums[j]) for j, k in enumerate(q_names)}
+
+    # Pure NumPy fallback
+    g = (pos + half) / dx - 0.5
+    i0 = np.floor(g).astype(np.int32)
+    f = (g - i0).astype(np.float32)
+    mask = n - 1
+    if periodic_wrap:
+        i0_x, i0_y, i0_z = i0[:, 0] & mask, i0[:, 1] & mask, i0[:, 2] & mask
+        i1_x, i1_y, i1_z = (i0[:, 0] + 1) & mask, (i0[:, 1] + 1) & mask, (i0[:, 2] + 1) & mask
+    else:
+        i0_x = np.clip(i0[:, 0], 0, n - 2)
+        i0_y = np.clip(i0[:, 1], 0, n - 2)
+        i0_z = np.clip(i0[:, 2], 0, n - 2)
+        i1_x, i1_y, i1_z = i0_x + 1, i0_y + 1, i0_z + 1
+
+    flats = np.empty((8, n_p), dtype=np.int32)
+    weights = np.empty((8, n_p), dtype=np.float32)
+    c = 0
+    for _ox, ix, wx in ((0, i0_x, 1.0 - f[:, 0]), (1, i1_x, f[:, 0])):
+        for _oy, iy, wy in ((0, i0_y, 1.0 - f[:, 1]), (1, i1_y, f[:, 1])):
+            wxy = wx * wy
+            for _oz, iz, wz in ((0, i0_z, 1.0 - f[:, 2]), (1, i1_z, f[:, 2])):
+                weights[c] = wxy * wz
+                flats[c] = (ix * n + iy) * n + iz
+                c += 1
+    flat_all = flats.ravel()
+    sums_out: dict[str, float] = {}
+    for k in q_names:
+        q_arr = np.asarray(q_dict[k], dtype=np.float64).reshape(n_p)
+        w_all = (weights * q_arr[None, :]).ravel()
+        grids[k].ravel()[:] += np.bincount(flat_all, weights=w_all, minlength=n ** 3)
+        sums_out[k] = float(np.sum(q_arr))
+    return sums_out
 
 
 def _result(grids, names, qarr, f, m, m_max, seconds, meta) -> DepositResult:
