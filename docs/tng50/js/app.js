@@ -16,7 +16,7 @@ import {initLiquidTabs, initLiquidSeg, initLiquidButtons} from "./liquidtabs.js"
 import {initLiquidBg} from "./liquidbg.js";   /* liquid metal shader background (3D tab; Spectra only with SPECTRA_BG) */
 import {uiSound, sfx} from "./uisound.js";   /* optional UI sound effects (off by default; top-bar switch #sfx) */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
-  nearestSightline, defaultSightline, srcOf, galaxySummary, normId, isFire, isSimba, isAgora, isCamels, isAuriga, isTng100, isTng300, isIllustris, inferSim, inferSimKey, galNoun, SIM_META, SIM_ORDER} from "./galaxies.js";
+  nearestSightline, defaultSightline, srcOf, galaxySummary, normId, isFire, isSimba, isAgora, isCamels, isAuriga, isTng100, isTng300, isIllustris, inferSim, inferSimKey, galNoun, shortGalaxyId, SIM_META, SIM_ORDER} from "./galaxies.js";
 import {tier, tierReady} from "./tier.js";   /* perf R5: device tier (html[data-tier]) and its one-off WebGL probe */
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
@@ -1033,7 +1033,7 @@ function poster3d() {
   const root = $("#v3d-root"); $("#v3d-wait").hidden = true; if (root.querySelector(".v3d-poster")) return;
   root.innerHTML = `<div class="v3d-poster" data-testid="v3d-poster"><img src="img/og/explorer.jpg" alt="A TNG50 galaxy's gas in purple and orange, crossed by a quasar sightline" width="1200" height="630" decoding="async">
     <p class="msg">This device looks slow for the live 3D view, so it shows a still.</p><button type="button" class="pbtn" data-testid="v3d-anyway">Render 3D anyway</button></div>`;
-  root.querySelector("button").addEventListener("click", () => { FORCE3D = true; root.replaceChildren(); $("#v3d-wait").hidden = false; open3d().catch(() => {}); });
+  root.querySelector("button").addEventListener("click", () => { FORCE3D = true; root.replaceChildren(); $("#v3d-wait").hidden = false; open3d().then(autoSheet, () => {}); });
 }
 function open3d() {
   if (V3P) return V3P;
@@ -1097,7 +1097,7 @@ if (GIX && new Set(GIX.list.map(e => e.simKey)).size > 1 && $("#grp-gal") && !$(
     tng300: "AREPO 302 Mpc box, z = 0",
     illustris: "AREPO original Illustris-1",
     agora: "AREPO CosmoRun Milky Way",
-    camels: "TNG, SIMBA, Astrid & EAGLE"
+    camels: "5-suite quintets & GZ28"
   };
   topSimEl = document.createElement("button");
   topSimEl.type = "button";
@@ -1108,7 +1108,7 @@ if (GIX && new Set(GIX.list.map(e => e.simKey)).size > 1 && $("#grp-gal") && !$(
   topSimEl.setAttribute("aria-expanded", "false");
   topSimEl.setAttribute("aria-label", "Simulation");
   topSimEl.dataset.tip = "Switch simulation suite";
-  topSimEl.innerHTML = `<span class="sdot" aria-hidden="true"></span><span class="slab">TNG50</span><small class="scnt">${simCounts.tng50 || ""}</small><svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>`;
+  topSimEl.innerHTML = `<span class="slab">TNG50</span><small class="scnt">${simCounts.tng50 || ""}</small><svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>`;
   const grpGal = $("#grp-gal"), gxyOpen = $("#gxy-open");
   if (gxyOpen) grpGal.insertBefore(topSimEl, gxyOpen); else grpGal.prepend(topSimEl);
 
@@ -1121,7 +1121,7 @@ if (GIX && new Set(GIX.list.map(e => e.simKey)).size > 1 && $("#grp-gal") && !$(
   simPopEl.innerHTML = `<div class="sim-hd"><span>Simulation suite</span><b>${GIX.list.length} galaxies</b></div><div class="sim-grid" role="listbox" aria-label="Simulations">${presentSims.map(sk => {
     const m = SIM_META[sk] || {label: sk.toUpperCase(), topTip: `Switch to ${sk} galaxies`};
     const sub = SIM_SUB[sk] || "Cosmological simulation";
-    return `<button type="button" class="sim-opt" role="option" data-sim="${sk}" data-tip="${esc(m.topTip)}" aria-selected="false"><span class="so-top"><span class="sdot" aria-hidden="true"></span><span class="so-name">${esc(m.label)}</span><b class="so-cnt">${simCounts[sk]}</b></span><span class="so-sub">${esc(sub)}</span></button>`;
+    return `<button type="button" class="sim-opt" role="option" data-sim="${sk}" data-tip="${esc(m.topTip)}" aria-selected="false"><span class="so-top"><span class="so-name">${esc(m.label)}</span><b class="so-cnt">${simCounts[sk]}</b></span><span class="so-sub">${esc(sub)}</span></button>`;
   }).join("")}</div>`;
   document.body.appendChild(simPopEl);
 
@@ -1165,9 +1165,9 @@ function galaxyUI() {
     }
   }
   const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
-  const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");
-  lab.textContent = String(GAL); lab.dataset.id = String(GAL);
-  const head = sk === "tng50" ? `Subhalo ${GAL}` : `${meta.label} ${activeNoun()} ${GAL}`;
+  const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab"), sid = shortGalaxyId(e || {id: GAL});
+  lab.textContent = sid; lab.dataset.id = String(GAL);
+  const head = sk === "tng50" ? `Subhalo ${GAL}` : `${meta.label} ${activeNoun()} ${sid}`;
   b.dataset.tip = `${head}, ${e && e.n ? e.n + " sightlines" : "this galaxy"}; click to pick another`;
   b.setAttribute("aria-label", `Galaxy: ${head}. Pick another galaxy`);
   document.body.dataset.galaxy = String(GAL);
@@ -1196,8 +1196,8 @@ function methodsText(sbi) {
   if (!("tau" in MEL)) { const n = ag.nextElementSibling; MEL.tau = n && !n.id && /Trident/.test(n.textContent) ? n : null;
     MEL.ions = $("#methods-ions"); MEL.atomic = $("#methods-atomic");
     MEL.lic = $("#lic-spectra"); MEL.lic2 = MEL.lic && MEL.lic.nextElementSibling;
-    MEL.simTng = $("#lic-sim-tng"); MEL.simFire = $("#lic-sim-fire");
-    MEL.simSimba = $("#lic-sim-simba"); MEL.simAgora = $("#lic-sim-agora"); MEL.simCamels = $("#lic-sim-camels");
+    MEL.simTng = $("#lic-sim-tng"); MEL.simIllustris = $("#lic-sim-illustris"); MEL.simFire = $("#lic-sim-fire");
+    MEL.simSimba = $("#lic-sim-simba"); MEL.simAuriga = $("#lic-sim-auriga"); MEL.simAgora = $("#lic-sim-agora"); MEL.simCamels = $("#lic-sim-camels");
     const pv = document.createElement("p"); pv.id = "methods-source"; pv.hidden = true; ag.after(pv); MEL.src = pv; }
   const sk = activeSimKey();
   const SBI_TXT = {
@@ -1207,15 +1207,15 @@ function methodsText(sbi) {
   const SIM_IONS = {
     fire2: "H I: FIRE-2 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked FIRE-2 element abundances.",
     simba: "H I: SIMBA neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked SIMBA element abundances.",
-    auriga: "H I: Auriga AREPO neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked element abundances.",
+    auriga: "H I: Auriga AREPO MHD neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked element abundances.",
     tng100: "H I: TNG100-1 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
     tng300: "H I: TNG300-1 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
     illustris: "H I: Illustris-1 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
-    agora: "H I: AGORA AREPO neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
-    camels: "H I: simulation neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table across CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE)."
+    agora: "H I: AGORA CosmoRun AREPO neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
+    camels: "H I: simulation neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table across CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE, CROCODILE, GZ28)."
   };
   /* Data and credits: simulation and spectra paragraphs are shown; the ones that apply to this galaxy lead with "This galaxy" */
-  for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi], [MEL.simTng, sk === "tng50"], [MEL.simFire, sk === "fire2"], [MEL.simSimba, sk === "simba"], [MEL.simAgora, sk === "agora"], [MEL.simCamels, sk === "camels"]]) {
+  for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi], [MEL.simTng, sk === "tng50" || sk === "tng100" || sk === "tng300"], [MEL.simIllustris, sk === "illustris"], [MEL.simFire, sk === "fire2"], [MEL.simSimba, sk === "simba"], [MEL.simAuriga, sk === "auriga"], [MEL.simAgora, sk === "agora"], [MEL.simCamels, sk === "camels"]]) {
     if (!el) continue; let t = el.querySelector(".cur-l");
     if (on && !t) { t = document.createElement("strong"); t.className = "cur-l"; t.textContent = "This galaxy: "; el.prepend(t); } else if (!on && t) t.remove();
   }

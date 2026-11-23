@@ -56,14 +56,28 @@ export const SIM_META = {
   tng50:  {label: "TNG50",  title: "TNG50 sightlines",  groupTitle: "TNG50-1 Milky Way and M31 analogues", msg: "TNG50-1 z = 0 Milky Way and M31 analogues", tip: "Show only TNG50-1 galaxies", topTip: "Switch to IllustrisTNG TNG50-1 galaxies", tag: "TNG50", tagTip: "IllustrisTNG TNG50-1 cosmological simulation", credit: "Simulation: IllustrisTNG TNG50-1 (TNG Collaboration)"},
   fire2:  {label: "FIRE-2", title: "FIRE-2 sightlines", groupTitle: "FIRE-2 zoom-in halos", msg: "FIRE-2 z = 0 zoom-in halos", tip: "Show only FIRE-2 zoom-in halos", topTip: "Switch to FIRE-2 zoom-in halos", tag: "FIRE-2", tagTip: "FIRE-2 cosmological zoom-in simulation", credit: "Simulation: FIRE-2 (FIRE Collaboration)"},
   simba:  {label: "SIMBA",  title: "SIMBA sightlines",  groupTitle: "SIMBA-25 and SIMBA-100 galaxies", msg: "SIMBA-25 and SIMBA-100 z = 0 galaxies", tip: "Show only SIMBA-25 and SIMBA-100 galaxies", topTip: "Switch to SIMBA-25 and SIMBA-100 galaxies", tag: "SIMBA", tagTip: "SIMBA cosmological hydrodynamic simulation (m25n512 and m100n1024)", credit: "Simulation: SIMBA m25n512 & m100n1024 (SIMBA Collaboration)"},
-  auriga: {label: "Auriga", title: "Auriga sightlines", groupTitle: "Auriga zoom-in halos", msg: "Auriga Level-3 and Level-4 z = 0 zoom-in halos", tip: "Show only Auriga zoom-in halos", topTip: "Switch to Auriga zoom-in halos", tag: "Auriga", tagTip: "Auriga cosmological magnetohydrodynamic zoom-in simulation", credit: "Simulation: Auriga (Auriga Collaboration)"},
+  auriga: {label: "Auriga", title: "Auriga sightlines", groupTitle: "Auriga Level-4 and Level-3 MHD zoom-in halos", msg: "Auriga Level-4 and Level-3 z = 0 MHD zoom-in halos", tip: "Show only Auriga zoom-in halos", topTip: "Switch to Auriga zoom-in halos", tag: "Auriga", tagTip: "Auriga cosmological magnetohydrodynamic zoom-in simulation", credit: "Simulation: Auriga Level-4 & Level-3 (Auriga Collaboration)"},
   tng100: {label: "TNG100", title: "TNG100 sightlines", groupTitle: "TNG100-1 galaxies", msg: "TNG100-1 z = 0 Milky Way and L* galaxies", tip: "Show only TNG100-1 galaxies", topTip: "Switch to IllustrisTNG TNG100-1 galaxies", tag: "TNG100", tagTip: "IllustrisTNG TNG100-1 cosmological simulation", credit: "Simulation: IllustrisTNG TNG100-1 (TNG Collaboration)"},
   tng300: {label: "TNG300", title: "TNG300 sightlines", groupTitle: "TNG300-1 galaxies", msg: "TNG300-1 z = 0 massive and group galaxies", tip: "Show only TNG300-1 galaxies", topTip: "Switch to IllustrisTNG TNG300-1 galaxies", tag: "TNG300", tagTip: "IllustrisTNG TNG300-1 cosmological simulation", credit: "Simulation: IllustrisTNG TNG300-1 (TNG Collaboration)"},
   illustris: {label: "Illustris", title: "Illustris sightlines", groupTitle: "Illustris-1 galaxies", msg: "Illustris-1 z = 0 Milky Way and L* galaxies", tip: "Show only Illustris-1 galaxies", topTip: "Switch to Illustris-1 galaxies", tag: "Illustris", tagTip: "Original Illustris-1 cosmological simulation", credit: "Simulation: Illustris-1 (Illustris Collaboration)"},
   agora:  {label: "AGORA",  title: "AGORA sightlines",  groupTitle: "AGORA CosmoRun zoom-in halo", msg: "AGORA z = 0 AREPO Milky Way zoom-in halo", tip: "Show only AGORA CosmoRun zoom-in halos", topTip: "Switch to AGORA CosmoRun zoom-in halo", tag: "AGORA", tagTip: "AGORA CosmoRun AREPO Milky Way zoom-in simulation", credit: "Simulation: AGORA CosmoRun AREPO (AGORA Collaboration)"},
-  camels: {label: "CAMELS", title: "CAMELS sightlines", groupTitle: "CAMELS and Swift-EAGLE Milky Way halos", msg: "CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE) z = 0 halos", tip: "Show only CAMELS and Swift-EAGLE galaxies", topTip: "Switch to CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE) halos", tag: "CAMELS", tagTip: "CAMELS project (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE)", credit: "Simulation: CAMELS & Swift-EAGLE (CAMELS Collaboration)"}
+  camels: {label: "CAMELS", title: "CAMELS sightlines", groupTitle: "CAMELS 5-suite quintets and GZ28 Milky Way halos", msg: "CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE, CROCODILE, GZ28) z = 0 halos", tip: "Show only CAMELS galaxies", topTip: "Switch to CAMELS (TNG, SIMBA, Astrid, EAGLE, CROCODILE, GZ28) halos", tag: "CAMELS", tagTip: "CAMELS project (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE, CROCODILE, GZ28)", credit: "Simulation: CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE, CROCODILE & GZ28)"}
 };
 export const SIM_ORDER = ["tng50", "fire2", "simba", "auriga", "tng100", "tng300", "illustris", "agora", "camels"];
+export function shortGalaxyId(e) {
+  const id = String(e && typeof e === "object" ? e.id ?? "" : e ?? "");
+  let m;
+  if ((m = id.match(/^(?:tng100|tng300|illustris1?)_sub(\d+)$/i))) return m[1];
+  if ((m = id.match(/^simba(\d+)_g(\d+)$/i))) return `m${m[1]} #${m[2]}`;
+  if (/^agora_arepo_mw$/i.test(id)) return "CosmoRun MW";
+  if ((m = id.match(/^camels_(tng|simba|astrid|eagle|crocodile)_mw(\d+)$/i))) {
+    const suite = {tng: "TNG", simba: "SIMBA", astrid: "Astrid", eagle: "EAGLE", crocodile: "CROCODILE"}[m[1].toLowerCase()];
+    return `${suite} #${m[2]}`;
+  }
+  if ((m = id.match(/^camels_gz28_(\d+)$/i))) return `GZ28 #${m[1]}`;
+  if ((m = id.match(/^(Au(?:\d+|L\d+|D\d+))_L(\d+)$/i))) return `${m[1]} (L${m[2]})`;
+  return id;
+}
 export const galNoun = e => {
   const sk = inferSimKey(e);
   return sk === "fire2" || sk === "auriga" || sk === "agora" || sk === "camels" ? "Halo" : sk === "simba" ? "Galaxy" : "Subhalo";
@@ -219,9 +233,10 @@ export function sortGalaxies(list, key = "Mstar", dir = -1) {
 const CMP = /^(m\*|mstar|ms|sfr|m200c?|mh)(<=|>=|<|>|=)(-?\d+(?:\.\d+)?)$/;
 export function matchGalaxy(e, q) {
   const terms = String(q || "").toLowerCase().replace(/\s*(<=|>=|<|>|=)\s*/g, "$1").split(/\s+/).filter(Boolean);
-  const sk = inferSimKey(e);
+  const sk = inferSimKey(e), sid = shortGalaxyId(e);
+  const numToks = [String(e.id), ...sid.split(/[^0-9]+/).filter(Boolean)];
   return terms.every(t => {
-    if (/^\d+$/.test(t)) return String(e.id).startsWith(t);
+    if (/^\d+$/.test(t)) return numToks.some(n => n.startsWith(t));
     const m = t.match(CMP);
     if (m) {
       const k = m[1].startsWith("sfr") ? "SFR" : m[1].startsWith("m2") || m[1] === "mh" ? "M200c" : "Mstar";
@@ -242,7 +257,7 @@ export function matchGalaxy(e, q) {
     if (t === "tng300" || t === "tng300-1") return sk === "tng300";
     if (t === "illustris" || t === "illustris1" || t === "illustris-1") return sk === "illustris";
     if (t === "agora") return sk === "agora";
-    if (t === "camels" || t === "eagle" || t === "astrid" || t === "swift-eagle") return sk === "camels" && (t === "camels" || `${e.id || ""} ${e.sim || ""} ${e.label || ""}`.toLowerCase().includes(t));
+    if (t === "camels" || t === "eagle" || t === "astrid" || t === "swift-eagle" || t === "crocodile" || t === "gz28") return sk === "camels" && (t === "camels" || `${e.id || ""} ${e.sim || ""} ${e.label || ""} ${sid}`.toLowerCase().includes(t));
     if (t === "central" || t === "cen" || t === "centrals") return e.central === true;
     if (t === "satellite" || t === "sat" || t === "satellites") return e.central === false;
     if (t === "mw") return e.mw === true;
@@ -250,7 +265,7 @@ export function matchGalaxy(e, q) {
     if (t === "3d") return !!e.viz;
     if (t === "gas-poor" || t === "poor") return e.gas_poor === true;
     if (t === "sbi" || t === "trident") return srcOf(e) === t;
-    const hay = `${e.id || ""} ${e.label || ""} ${e.sim || ""}`.toLowerCase();
+    const hay = `${e.id || ""} ${sid} ${e.label || ""} ${e.sim || ""}`.toLowerCase();
     return hay.includes(t);
   });
 }
@@ -368,11 +383,11 @@ export function createGalaxyPicker(els, opts) {
     }
     msgEl.textContent = simFilter !== "all" && SIM_META[simFilter]
       ? SIM_META[simFilter].msg
-      : "TNG50, FIRE-2, SIMBA, AGORA and CAMELS z = 0 galaxies grouped by simulation";
+      : "TNG50, TNG100, TNG300, Illustris, FIRE-2, SIMBA, Auriga, AGORA and CAMELS z = 0 galaxies";
   }
   els.head.innerHTML = COLS.map(([k, lab, tip]) => `<button type="button" class="gxs" data-sort="${k}" data-tip="${esc(tip)}" aria-sort="none">${lab}<b aria-hidden="true"></b></button>`).join("") + "<span></span>";
   function row(e, i, cur) {
-    const idHtml = multiSim ? `<i class="gxn">${esc(galNoun(e))} </i>${esc(e.id)}` : esc(e.id);
+    const idHtml = esc(shortGalaxyId(e));
     return `<li role="option" id="gxy-opt-${i}" data-id="${esc(e.id)}" aria-selected="${e.id === cur}" aria-label="${esc(galaxyAria(e))}" data-tip="${esc(galaxyTip(e))}"${i === hl ? ' class="hl"' : ""}>` +
       `<span class="gxid">${idHtml}</span><span class="num">${lg(e.Mstar)}</span><span class="num">${fmtSfr(e.SFR)}</span><span class="num">${lg(e.M200c)}</span><span class="gxt">${tags(e)}</span></li>`;
   }
