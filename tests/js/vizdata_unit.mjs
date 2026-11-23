@@ -82,7 +82,7 @@ const M = JSON.parse(readFileSync(join(ROOT, "docs/tng50/data/viz/manifest_v2.js
   check(vsrc.includes('id="v3-dust-law"') && vsrc.includes("DUST_LAWS") && vsrc.includes("RM.uniforms.uDust = {value: 1.0}") &&
         vsrc.includes("uDustVec") && vsrc.includes("uDustScat") && vsrc.includes("dustDiskKv") &&
         vsrc.includes("[0.58, 0.78, 1.15]") && vsrc.includes("[0.68, 0.89, 1.17]") && vsrc.includes("[0.65, 0.84, 1.19]") &&
-        vsrc.includes("(-4.5 + sa * 6.0)") && vsrc.includes("texture(uStar0, u).a") &&
+        vsrc.includes("(-4.5 + (q - 1.0) * 6.0 / 253.0)") && vsrc.includes("exactDust") && vsrc.includes("texture(uStar0, u).a") &&
         !vsrc.includes("cos(2.0 * phi") && !vsrc.includes("sin(p.x * 6.2") && !vsrc.includes("pow(tEff,"),
     "viewer3d.js patches RM.material.fragmentShader with trilinear starDustAt, pure simulation-driven dustDiskKv (no procedural trig or post-asinh tEff hack), and filmic lupton shoulder");
   check(JSON.stringify(SMOOTH.stars) === "[0,0,0,0,0]" && STAR_COMP.core === 0.92 && STAR_COMP.halo === 0.12 &&
