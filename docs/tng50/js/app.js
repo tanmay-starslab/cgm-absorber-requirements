@@ -1135,6 +1135,7 @@ if (GIX && new Set(GIX.list.map(e => e.simKey)).size > 1 && $("#grp-gal") && !$(
     if (!b) return;
     const sk = b.dataset.sim;
     closePops();
+    topSimEl?.focus({preventScroll: true});
     if (!sk || sk === activeSimKey()) return;
     sfx("select");
     if (GPICK) GPICK.setSim(sk);
@@ -1269,7 +1270,9 @@ async function switchGalaxy(id, {want = null, source = "picker"} = {}) {
   if (first) await select(first, true, "galaxy"); else { status(); draw(); }
   writeHash(); emit("tng:galaxy", {id, source, n: CAT.size});
   note(`${activeNoun()} ${id}: ${CAT.size} sightlines`); bcatFor = null;
-  if (source === "picker" && document.activeElement === document.body) $("#gxy-open")?.focus({preventScroll: true});   /* S4: keep keyboard focus */
+  if ((source === "picker" || source === "sim-switch") && document.activeElement === document.body) {
+    (source === "sim-switch" ? topSimEl : $("#gxy-open"))?.focus({preventScroll: true});   /* S4: keep keyboard focus */
+  }
   return true;
 }
 
