@@ -362,8 +362,22 @@ def cell_arrays(ds) -> dict:
     m_g = ad["PartType0", "Masses"].to("g").d.astype(np.float64)
     rho = ad["PartType0", "Density"].to("g/cm**3").d.astype(np.float64)
     V_cm3 = m_g / rho
+    h_sphere = 2.0 * (3.0 * V_cm3 / (4.0 * math.pi)) ** (1.0 / 3.0) / CM_PER_KPC
+    h_kpc = h_sphere
+    flist = getattr(ds, "field_list", ())
+    for h_field in (("PartType0", "SmoothingLength"), ("PartType0", "SmoothingLengths")):
+        if h_field in flist:
+            try:
+                h_nat = ad[h_field].to("code_length").d.astype(np.float64) / TNG_H
+                # GIZMO-MFM and SPH smoothing lengths have median ratio ~ 1.9 - 2.5x h_sphere (Arepo tree search radius is ~ 5.0x)
+                ratio = float(np.nanmedian(h_nat / np.maximum(h_sphere, 1e-12)))
+                if 1.1 <= ratio <= 3.5:
+                    h_kpc = np.maximum(h_nat, h_sphere)
+                break
+            except Exception:
+                pass
     out = {"pos_disk": D.to_disk(x_kpc),
-           "h": 2.0 * (3.0 * V_cm3 / (4.0 * math.pi)) ** (1.0 / 3.0) / CM_PER_KPC,
+           "h": h_kpc,
            "V_cm3": V_cm3,
            "m": ad["PartType0", "Masses"].to("Msun").d.astype(np.float64)}
     for k in DENSITY_KEYS + ("T", "Z"):

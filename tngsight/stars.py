@@ -307,9 +307,10 @@ def read_pt4(cutout, cache, lock=None, log=print) -> dict:
                 elif f == "StellarHsml":
                     from scipy.spatial import cKDTree
                     coords = np.asarray(out["Coordinates"], dtype=np.float64)
-                    k_nn = min(32, max(1, len(coords)))
+                    k_nn = min(16, max(1, len(coords)))
                     d_nn, _ = cKDTree(coords).query(coords, k=k_nn)
-                    out[f] = np.asarray(d_nn[:, -1] if d_nn.ndim > 1 else d_nn, dtype=np.float32)
+                    d_raw = (d_nn[:, -1] if d_nn.ndim > 1 else d_nn) * 0.5
+                    out[f] = np.clip(d_raw, 1e-3, 10.0).astype(np.float32)
                 else:
                     raise KeyError(f)
                 if log:
@@ -454,16 +455,6 @@ def build_dust_level(level, *, gas_cache=None, cutout=None, workers=1, n=None, l
     mask = level_mask(level, n)
     if gas_cache is not None:
         gc = Path(gas_cache)
-        p_nh, p_t, p_z = gc / f"{glevel}_nH.npy", gc / f"{glevel}_T.npy", gc / f"{glevel}_Z.npy"
-        if p_nh.is_file() and p_t.is_file() and p_z.is_file():
-            nH = np.load(p_nh).astype(np.float64)
-            T = np.load(p_t).astype(np.float64)
-            Z = np.load(p_z).astype(np.float64) * getattr(VP, "Z_SUN", 0.0127)
-            if nH.shape == (n, n, n):
-                kv = kappa_v_from_gas(nH, T, Z, mode=mode)
-                if mask is not None:
-                    kv = np.where(mask, 0.0, kv)
-                return kv
         c_paths = {k: gc / f"cells_{k}.npy" for k in ("pos_disk", "h", "V_cm3", "nH", "T", "Z")}
         if all(p.is_file() for p in c_paths.values()):
             pos_disk = np.load(c_paths["pos_disk"])
@@ -482,6 +473,16 @@ def build_dust_level(level, *, gas_cache=None, cutout=None, workers=1, n=None, l
             if mask is not None:
                 kv = np.where(mask, 0.0, kv)
             return kv
+        p_nh, p_t, p_z = gc / f"{glevel}_nH.npy", gc / f"{glevel}_T.npy", gc / f"{glevel}_Z.npy"
+        if p_nh.is_file() and p_t.is_file() and p_z.is_file():
+            nH = np.load(p_nh).astype(np.float64)
+            T = np.load(p_t).astype(np.float64)
+            Z = np.load(p_z).astype(np.float64) * getattr(VP, "Z_SUN", 0.0127)
+            if nH.shape == (n, n, n):
+                kv = kappa_v_from_gas(nH, T, Z, mode=mode)
+                if mask is not None:
+                    kv = np.where(mask, 0.0, kv)
+                return kv
     if cutout is not None and Path(cutout).is_file():
         ckey = (str(Path(cutout).resolve()), mode)
         if ckey not in _DUST_CELL_CACHE:
