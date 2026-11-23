@@ -1083,21 +1083,59 @@ const activeIsTng100 = () => activeSimKey() === "tng100" || isTng100((GIX && GIX
 const activeIsTng300 = () => activeSimKey() === "tng300" || isTng300((GIX && GIX.byId.get(GAL)) || {id: GAL, sim: CFG.galaxy?.sim});
 const activeIsIllustris = () => activeSimKey() === "illustris" || isIllustris((GIX && GIX.byId.get(GAL)) || {id: GAL, sim: CFG.galaxy?.sim});
 const activeNoun = (cap = false) => { const n = galNoun((GIX && GIX.byId.get(GAL)) || {id: GAL, sim: CFG.galaxy?.sim}); return cap ? n : n.toLowerCase(); };
-let topSimEl = null;
+let topSimEl = null, simPopEl = null;
 if (GIX && new Set(GIX.list.map(e => e.simKey)).size > 1 && $("#grp-gal") && !$("#top-sim")) {
-  const presentSims = SIM_ORDER.filter(sk => GIX.list.some(e => e.simKey === sk));
-  topSimEl = document.createElement("select");
+  const simCounts = {};
+  for (const e of GIX.list) simCounts[e.simKey] = (simCounts[e.simKey] || 0) + 1;
+  const presentSims = SIM_ORDER.filter(sk => simCounts[sk] > 0);
+  const SIM_SUB = {
+    tng50: "AREPO moving mesh, z = 0",
+    fire2: "GIZMO MFM zoom-in halos",
+    simba: "GIZMO MFM 25 & 100 Mpc",
+    auriga: "AREPO MHD zoom-in halos",
+    tng100: "AREPO 110 Mpc box, z = 0",
+    tng300: "AREPO 302 Mpc box, z = 0",
+    illustris: "AREPO original Illustris-1",
+    agora: "AREPO CosmoRun Milky Way",
+    camels: "TNG, SIMBA, Astrid & EAGLE"
+  };
+  topSimEl = document.createElement("button");
+  topSimEl.type = "button";
   topSimEl.id = "top-sim";
+  topSimEl.className = "pbtn lq-metal";
+  topSimEl.setAttribute("aria-haspopup", "dialog");
+  topSimEl.setAttribute("aria-controls", "sim-pop");
+  topSimEl.setAttribute("aria-expanded", "false");
   topSimEl.setAttribute("aria-label", "Simulation");
   topSimEl.dataset.tip = "Switch simulation suite";
-  topSimEl.innerHTML = presentSims.map(sk => {
-    const m = SIM_META[sk] || {label: sk.toUpperCase()};
-    return `<option value="${sk}">${esc(m.label)}</option>`;
-  }).join("");
+  topSimEl.innerHTML = `<span class="sdot" aria-hidden="true"></span><span class="slab">TNG50</span><small class="scnt">${simCounts.tng50 || ""}</small><svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>`;
   const grpGal = $("#grp-gal"), gxyOpen = $("#gxy-open");
   if (gxyOpen) grpGal.insertBefore(topSimEl, gxyOpen); else grpGal.prepend(topSimEl);
-  topSimEl.addEventListener("change", ev => {
-    const sk = ev.target?.value;
+
+  simPopEl = document.createElement("div");
+  simPopEl.className = "pop";
+  simPopEl.id = "sim-pop";
+  simPopEl.setAttribute("role", "dialog");
+  simPopEl.setAttribute("aria-label", "Simulation suite");
+  simPopEl.hidden = true;
+  simPopEl.innerHTML = `<div class="sim-hd"><span>Simulation suite</span><b>${GIX.list.length} galaxies</b></div><div class="sim-grid" role="listbox" aria-label="Simulations">${presentSims.map(sk => {
+    const m = SIM_META[sk] || {label: sk.toUpperCase(), topTip: `Switch to ${sk} galaxies`};
+    const sub = SIM_SUB[sk] || "Cosmological simulation";
+    return `<button type="button" class="sim-opt" role="option" data-sim="${sk}" data-tip="${esc(m.topTip)}" aria-selected="false"><span class="so-top"><span class="sdot" aria-hidden="true"></span><span class="so-name">${esc(m.label)}</span><b class="so-cnt">${simCounts[sk]}</b></span><span class="so-sub">${esc(sub)}</span></button>`;
+  }).join("")}</div>`;
+  document.body.appendChild(simPopEl);
+
+  topSimEl.addEventListener("click", ev => {
+    ev.stopPropagation();
+    if (simPopEl.hidden) { sfx("open"); openPop(topSimEl, simPopEl); }
+    else { sfx("close"); closePops(); }
+  });
+  simPopEl.addEventListener("click", ev => {
+    const b = ev.target.closest(".sim-opt[data-sim]");
+    if (!b) return;
+    const sk = b.dataset.sim;
+    closePops();
+    topSimEl?.focus({preventScroll: true});
     if (!sk || sk === activeSimKey()) return;
     sfx("select");
     if (GPICK) GPICK.setSim(sk);
@@ -1112,7 +1150,20 @@ function galaxyUI() {
   if (ttl) ttl.textContent = meta.title;
   const cf = $("#credits-foot span");
   if (cf) cf.textContent = meta.credit;
-  if (topSimEl) topSimEl.value = sk;
+  if (topSimEl) {
+    const sl = topSimEl.querySelector(".slab"), sc = topSimEl.querySelector(".scnt");
+    if (sl) sl.textContent = meta.label;
+    if (sc && GIX) sc.textContent = String(GIX.list.filter(e => e.simKey === sk).length);
+    topSimEl.dataset.sim = sk;
+    topSimEl.setAttribute("aria-label", `Simulation: ${meta.label}. Switch simulation suite`);
+  }
+  if (simPopEl) {
+    for (const b of simPopEl.querySelectorAll(".sim-opt[data-sim]")) {
+      const on = b.dataset.sim === sk;
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      b.classList.toggle("on", on);
+    }
+  }
   const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
   const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");
   lab.textContent = String(GAL); lab.dataset.id = String(GAL);
@@ -1219,7 +1270,9 @@ async function switchGalaxy(id, {want = null, source = "picker"} = {}) {
   if (first) await select(first, true, "galaxy"); else { status(); draw(); }
   writeHash(); emit("tng:galaxy", {id, source, n: CAT.size});
   note(`${activeNoun()} ${id}: ${CAT.size} sightlines`); bcatFor = null;
-  if (source === "picker" && document.activeElement === document.body) $("#gxy-open")?.focus({preventScroll: true});   /* S4: keep keyboard focus */
+  if ((source === "picker" || source === "sim-switch") && document.activeElement === document.body) {
+    (source === "sim-switch" ? topSimEl : $("#gxy-open"))?.focus({preventScroll: true});   /* S4: keep keyboard focus */
+  }
   return true;
 }
 
