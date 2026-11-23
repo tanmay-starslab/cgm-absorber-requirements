@@ -31,8 +31,8 @@ VHW_MIN = 10
 SPECIES_GAS = ["nH", "T", "Z"]
 SPECIES_VEL = ["vlos", "vr", "vphi", "vmag", "sigmalos"]   # derived in the 3D shader from the stored (vx, vy, vz)
 
-N_GALAXIES = 221                 # the page's galaxy sample (docs/tng50 galaxies list; tests/js/chat_tools_sync.mjs checks it)
-N_SBI = 197                      # of them with THOR + CLOUDY FG11 spectra (SBI_CGM); the other is the default galaxy
+N_GALAXIES = 221                 # the page's TNG50+FIRE-2 galaxy sample (docs/tng50 galaxies list; tests/js/chat_tools_sync.mjs checks it)
+N_SBI = 334                      # of the registry galaxies with THOR + CLOUDY FG11 spectra (SBI_CGM)
 DEFAULT_GALAXY = 488530          # Trident HM2012 spectra
 TF_PRESETS = ["ramp", "thor", "nelson16", "iso", "clouds"]   # docs/tng50/js/tf.js PRESETS (viewer3d setTf)
 
