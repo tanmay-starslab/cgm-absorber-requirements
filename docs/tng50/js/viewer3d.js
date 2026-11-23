@@ -38,7 +38,8 @@
 import {initLiquidSeg} from "./liquidtabs.js";   /* CSS-only liquid drop behind the Field and Render mode rows */
 import {lut, cssGradient, NAMES as CMAPS, VEL_NAMES} from "./colormaps.js";
 import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, speciesList, MU_ZERO,
-  VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity} from "./vizdata.js";
+  VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity,
+  initFastVizWasm, wasm_cast_cube_ray, wasm_synthesize_voigt_12ions, wasm_decode_lut_volume} from "./vizdata.js";
 import {makeMaterial} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
 import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, NELSON16, TF_W, TF_H} from "./tf.js";
@@ -46,7 +47,8 @@ import {createTfEditor, histCodes, histWindow} from "./tfeditor.js";
 import {initTips} from "./tips.js";
 import {sfx} from "./uisound.js";
 
-export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList};
+export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList,
+  initFastVizWasm, wasm_cast_cube_ray, wasm_synthesize_voigt_12ions, wasm_decode_lut_volume};
 
 /* ---- ux4 pivot: the orbit centre (OrbitControls target), scene kpc. Default the galaxy centre; the user moves it by
    double-clicking the stage (densest sample of the current field along the ray), to the selected sightline (closest
@@ -511,6 +513,7 @@ export async function mountThumb(host, app, opts = {}) {
 }
 
 async function create(app, opts = {}) {
+  initFastVizWasm().catch(() => {});
   if (!document.getElementById("v3d-css")) { const st = document.createElement("style"); st.id = "v3d-css"; st.textContent = CSS; document.head.appendChild(st); }
   const cfg = app.config || {}, G = cfg.galaxy || {}, F0 = cfg.frame || {};
   const viz = opts.viz === undefined ? (cfg.viz ?? null) : opts.viz;

@@ -315,6 +315,15 @@ def _default_renderer(payload, fmt, **kw):
     return render_bytes(payload, fmt=fmt, **kw)
 
 
+def _resolve_default_generator(S: Settings):
+    """Use the compiled C++17/OpenMP sub-25ms HDF5 ray-caster (`server.fast_ray:FastRayGenerator`) when
+    `TNG_FAST_RAY=1` or when `yt`/`trident` are unavailable and `fast_ray` is available."""
+    import os
+    if os.environ.get("TNG_FAST_RAY") == "1":
+        return "server.fast_ray:FastRayGenerator"
+    return S.generator
+
+
 # ------------------------------------------------------------------------------ factory
 def _galaxy_hf_factory(S):
     """HFSync of a non-default galaxy's generated files: <dataset>/gal/<id>/generated/ (gal_hf_pattern's
@@ -355,7 +364,7 @@ def create_app(settings: Settings | None = None, generator=None, figure_renderer
     fig_pending = [0]                       # renders running or waiting on fig_lock
     sse_open: dict = {}                     # client ip -> open event streams
     sse_lock = threading.Lock()
-    local = LocalWorker(jobq, store, generator or S.generator, generator_kwargs(S), executor=S.local_executor,
+    local = LocalWorker(jobq, store, generator or _resolve_default_generator(S), generator_kwargs(S), executor=S.local_executor,
                         job_timeout_s=S.job_timeout_s, galaxies=hub, max_warm=S.galaxy_max_warm,
                         prepare_timeout_s=S.prepare_timeout_s) if S.local_worker else None
 

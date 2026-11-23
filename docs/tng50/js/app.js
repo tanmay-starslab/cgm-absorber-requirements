@@ -16,7 +16,7 @@ import {initLiquidTabs, initLiquidSeg, initLiquidButtons} from "./liquidtabs.js"
 import {initLiquidBg} from "./liquidbg.js";   /* liquid metal shader background (3D tab; Spectra only with SPECTRA_BG) */
 import {uiSound, sfx} from "./uisound.js";   /* optional UI sound effects (off by default; top-bar switch #sfx) */
 import {galaxyIndex, resolveGalaxy, parseGalaxy, galaxyHashPart, packFor, createGalaxyPicker, galaxyTip, unlistedGalaxy,
-  nearestSightline, defaultSightline, srcOf, galaxySummary, normId, isFire} from "./galaxies.js";
+  nearestSightline, defaultSightline, srcOf, galaxySummary, normId, isFire, isSimba, isAgora, isCamels, isAuriga, isTng100, isTng300, isIllustris, inferSim, inferSimKey, galNoun, SIM_META, SIM_ORDER} from "./galaxies.js";
 import {tier, tierReady} from "./tier.js";   /* perf R5: device tier (html[data-tier]) and its one-off WebGL probe */
 const {degradeV, decodeTNGS, seedFor, cacheKey, fitPanel, FIT_VERSION, FIT_PARAMS} = FITM;
 
@@ -649,7 +649,13 @@ async function castCubeRay(kind, body, fromBridge) {
   if (!vc || !vc.base) throw new Error("3D ion cubes are not configured for this galaxy");
   const jg = GAL;
   progress("queued", 0.5); geomsg(`Preparing 3D ion cubes for ${activeNoun()} ${GAL}`, "", "preparing");
-  const [VD, VL, Pk] = await Promise.all([import(modUrl("vizdata.js")), import(modUrl("vizload.js")), import(modUrl("picker.js"))]);
+  const [VD, VL, Pk, FW] = await Promise.all([
+    import(modUrl("vizdata.js")),
+    import(modUrl("vizload.js")),
+    import(modUrl("picker.js")),
+    import(modUrl("fast_viz_wasm.js")).catch(() => null)
+  ]);
+  if (FW) await FW.initFastVizWasm(modUrl("fast_viz.wasm")).catch(() => null);
   const mUrl = vc.manifest_override || vc.manifest || (vc.base.replace(/\/?$/, "/") + "manifest_v2.json");
   progress("load", 0.15);
   const manifest = await VD.loadManifestV2(mUrl, {fetchText: VL.fetchText});
@@ -700,84 +706,104 @@ async function castCubeRay(kind, body, fromBridge) {
   const rows = manifest.frame?.rows || [xhat, yhat, Lhat];
   const toDisk = p => [dot3(rows[0], p), dot3(rows[1], p), dot3(rows[2], p)];
   const p0d = toDisk(p0), p1d = toDisk(p1), nd = unit3([p1d[0] - p0d[0], p1d[1] - p0d[1], p1d[2] - p0d[2]]);
-  const needL1 = bKpc < 96 && !!manifest.levels?.L1, lvls = needL1 ? ["L0", "L1"] : ["L0"];
-  const fields = ["T", "vx", "vy", "vz", ...reg.KEYS].filter(k => manifest.gas?.fields?.[k]);
-  const cubes = {L0: {}, L1: {}};
-  let done = 0; const tot = fields.length * lvls.length;
+  const lvls = ["L0", "L1", "L2", "L3", "L4"].filter(L => {
+    const ml = manifest.levels?.[L];
+    if (!ml) return false;
+    return L === "L0" || bKpc < ml.half_kpc * 0.96;
+  });
+  if (!lvls.length) lvls.push("L0");
+  const fields = ["nH", "T", "Z", "vx", "vy", "vz", ...reg.KEYS].filter(k => manifest.gas?.fields?.[k]);
+  const cubes = {L0: {}, L1: {}, L2: {}, L3: {}, L4: {}};
+  let done = 0; const tot = Math.max(1, fields.length * lvls.length);
   progress("ray", 0.1); geomsg(`Tracing ray ${id} through 3D cubes`, "", "progress");
   for (const L of lvls) {
     await Promise.all(fields.map(async k => {
+      if (!manifest.gas?.fields?.[k]?.cubes?.[L]) { done++; return; }
       const c = await loader.load("gas", k, L, {prio: 0});
+      if (FW && c.data) FW.stageCubeInWasm(c.data);
       cubes[L][k] = {data: c.data, n: c.n, half: manifest.levels[L].half_kpc, vmin: manifest.gas.fields[k].vmin, vmax: manifest.gas.fields[k].vmax};
       done++; progress("spectra", done / tot * 0.85);
     }));
   }
-  const nSteps = 512, dlKpc = Math.hypot(p1d[0] - p0d[0], p1d[1] - p0d[1], p1d[2] - p0d[2]) / nSteps, dlCm = dlKpc * VD.CM_PER_KPC;
-  const sampleAt = (k, x, y, z) => {
-    const L = (needL1 && Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) < 96 && cubes.L1[k]) ? "L1" : "L0";
-    const C = cubes[L][k]; if (!C) return NaN;
-    const n = C.n, h = C.half;
-    if (Math.abs(x) >= h || Math.abs(y) >= h || Math.abs(z) >= h) return NaN;
-    const ix = Math.min(n - 1, Math.max(0, Math.floor((x / h * 0.5 + 0.5) * n)));
-    const iy = Math.min(n - 1, Math.max(0, Math.floor((y / h * 0.5 + 0.5) * n)));
-    const iz = Math.min(n - 1, Math.max(0, Math.floor((z / h * 0.5 + 0.5) * n)));
-    const q = C.data[ix + n * (iy + n * iz)];
-    return q === 0 ? NaN : C.vmin + (q - 1) * (C.vmax - C.vmin) / 254;
-  };
-  const vBins = Array.from({length: nSteps}, (_, s) => {
-    const t = (s + 0.5) / nSteps, x = p0d[0] + t * (p1d[0] - p0d[0]), y = p0d[1] + t * (p1d[1] - p0d[1]), z = p0d[2] + t * (p1d[2] - p0d[2]);
-    const lgT = sampleAt("T", x, y, z), T = Number.isFinite(lgT) ? 10 ** lgT : 2e4;
-    const vx = sampleAt("vx", x, y, z), vy = sampleAt("vy", x, y, z), vz = sampleAt("vz", x, y, z);
-    const vlos = (Number.isFinite(vx) ? vx : 0) * nd[0] + (Number.isFinite(vy) ? vy : 0) * nd[1] + (Number.isFinite(vz) ? vz : 0) * nd[2];
-    return {x, y, z, T, vlos: clamp(vlos, -1480, 1480)};
-  });
-  const vGrid = FITM.arange(-1500, 1501, 1), nGrid = vGrid.length;
-  const lines = {}, logNMap = {}, compRows = {}, aodMap = {};
-  for (const k of reg.KEYS) {
-    const atom = ION[k], mass = atom?.mass_amu || 12, bMin = atom?.fit?.b_min || 3;
-    const byV = new Map();
-    let totN = 0;
-    for (const st of vBins) {
-      const lgN = sampleAt(k, st.x, st.y, st.z);
-      if (!Number.isFinite(lgN)) continue;
-      const dN = (10 ** lgN) * dlCm;
-      if (!(dN > 0)) continue;
-      totN += dN;
-      const b2 = Math.max(bMin * bMin, 0.016629 * st.T / mass + 64);
-      const vb = Math.round(st.vlos / 2) * 2;
-      const cur = byV.get(vb);
-      if (cur) { cur.vN += st.vlos * dN; cur.b2N += b2 * dN; cur.N += dN; }
-      else byV.set(vb, {vN: st.vlos * dN, b2N: b2 * dN, N: dN});
+  const nSteps = 512;
+  let lines, logNMap, compRows, aodMap;
+  if (FW) {
+    const rayRes = FW.wasm_cast_cube_ray({cubes, manifest, p0d, p1d, nSteps, trilinear: true});
+    const voigtRes = FW.wasm_synthesize_voigt_12ions({
+      samples: rayRes.samples, vlos: rayRes.vlos, temp: rayRes.temp,
+      nSteps, dlCm: rayRes.dlCm, ions: ION, regKeys: reg.KEYS,
+      u0: -1500, du: 1, nGrid: 3001
+    });
+    ({lines, logNMap, compRows, aodMap} = voigtRes);
+  } else {
+    const needL1 = bKpc < 96 && !!manifest.levels?.L1;
+    const dlKpc = Math.hypot(p1d[0] - p0d[0], p1d[1] - p0d[1], p1d[2] - p0d[2]) / nSteps, dlCm = dlKpc * VD.CM_PER_KPC;
+    const sampleAt = (k, x, y, z) => {
+      const L = (needL1 && Math.max(Math.abs(x), Math.abs(y), Math.abs(z)) < 96 && cubes.L1[k]) ? "L1" : "L0";
+      const C = cubes[L][k]; if (!C) return NaN;
+      const n = C.n, h = C.half;
+      if (Math.abs(x) >= h || Math.abs(y) >= h || Math.abs(z) >= h) return NaN;
+      const ix = Math.min(n - 1, Math.max(0, Math.floor((x / h * 0.5 + 0.5) * n)));
+      const iy = Math.min(n - 1, Math.max(0, Math.floor((y / h * 0.5 + 0.5) * n)));
+      const iz = Math.min(n - 1, Math.max(0, Math.floor((z / h * 0.5 + 0.5) * n)));
+      const q = C.data[ix + n * (iy + n * iz)];
+      return q === 0 ? NaN : C.vmin + (q - 1) * (C.vmax - C.vmin) / 254;
+    };
+    const vBins = Array.from({length: nSteps}, (_, s) => {
+      const t = (s + 0.5) / nSteps, x = p0d[0] + t * (p1d[0] - p0d[0]), y = p0d[1] + t * (p1d[1] - p0d[1]), z = p0d[2] + t * (p1d[2] - p0d[2]);
+      const lgT = sampleAt("T", x, y, z), T = Number.isFinite(lgT) ? 10 ** lgT : 2e4;
+      const vx = sampleAt("vx", x, y, z), vy = sampleAt("vy", x, y, z), vz = sampleAt("vz", x, y, z);
+      const vlos = (Number.isFinite(vx) ? vx : 0) * nd[0] + (Number.isFinite(vy) ? vy : 0) * nd[1] + (Number.isFinite(vz) ? vz : 0) * nd[2];
+      return {x, y, z, T, vlos: clamp(vlos, -1480, 1480)};
+    });
+    const vGrid = FITM.arange(-1500, 1501, 1), nGrid = vGrid.length;
+    lines = {}; logNMap = {}; compRows = {}; aodMap = {};
+    for (const k of reg.KEYS) {
+      const atom = ION[k], mass = atom?.mass_amu || 12, bMin = atom?.fit?.b_min || 3;
+      const byV = new Map();
+      let totN = 0;
+      for (const st of vBins) {
+        const lgN = sampleAt(k, st.x, st.y, st.z);
+        if (!Number.isFinite(lgN)) continue;
+        const dN = (10 ** lgN) * dlCm;
+        if (!(dN > 0)) continue;
+        totN += dN;
+        const b2 = Math.max(bMin * bMin, 0.016629 * st.T / mass + 64);
+        const vb = Math.round(st.vlos / 2) * 2;
+        const cur = byV.get(vb);
+        if (cur) { cur.vN += st.vlos * dN; cur.b2N += b2 * dN; cur.N += dN; }
+        else byV.set(vb, {vN: st.vlos * dN, b2N: b2 * dN, N: dN});
+      }
+      const vComps = [];
+      for (const c of byV.values()) {
+        if (c.N > 1e8) vComps.push([c.vN / c.N, Math.log10(c.N), Math.min(180, Math.sqrt(c.b2N / c.N))]);
+      }
+      const tau = FITM.tauVoigt(atom, vComps, vGrid), flux = new Float64Array(nGrid);
+      for (let i = 0; i < nGrid; i++) flux[i] = Math.exp(-tau[i]);
+      lines[k] = {n: nGrid, u0: -1500, du: 1, rest: atom.lam0_A, flux};
+      const logN = totN > 0 ? Math.round(Math.log10(totN) * 100) / 100 : 10.0;
+      logNMap[k] = logN;
+      // Build seed components from top velocity clusters for in-browser Voigt fitting
+      const sortedC = [...vComps].sort((a, b) => b[1] - a[1]);
+      const seeds = [];
+      for (const c of sortedC) {
+        if (c[1] < 11.2) continue;
+        const hit = seeds.find(s => Math.abs(s[0] - c[0]) < Math.max(18, 1.2 * s[2]));
+        if (hit) {
+          const n1 = 10 ** hit[1], n2 = 10 ** c[1], ns = n1 + n2;
+          hit[0] = (hit[0] * n1 + c[0] * n2) / ns;
+          hit[1] = Math.log10(ns);
+          hit[2] = Math.min(180, Math.sqrt((hit[2] * hit[2] * n1 + c[2] * c[2] * n2) / ns));
+        } else if (seeds.length < 5) seeds.push([...c]);
+      }
+      seeds.sort((a, b) => a[0] - b[0]);
+      compRows[k] = seeds.map(s => [Math.round(s[0] * 10) / 10, 1.0, Math.round(s[1] * 100) / 100, 0.08, Math.round(s[2] * 10) / 10, 1.5, 0, 0, null]);
+      if (seeds.length) {
+        const vlo = Math.max(-1480, Math.floor(Math.min(...seeds.map(s => s[0] - 2.5 * s[2])) - 15));
+        const vhi = Math.min(1480, Math.ceil(Math.max(...seeds.map(s => s[0] + 2.5 * s[2])) + 15));
+        aodMap[k] = [logN, [[0, vlo, vhi, logN, 0]]];
+      } else aodMap[k] = [null, []];
     }
-    const vComps = [];
-    for (const c of byV.values()) {
-      if (c.N > 1e8) vComps.push([c.vN / c.N, Math.log10(c.N), Math.min(180, Math.sqrt(c.b2N / c.N))]);
-    }
-    const tau = FITM.tauVoigt(atom, vComps, vGrid), flux = new Float64Array(nGrid);
-    for (let i = 0; i < nGrid; i++) flux[i] = Math.exp(-tau[i]);
-    lines[k] = {n: nGrid, u0: -1500, du: 1, rest: atom.lam0_A, flux};
-    const logN = totN > 0 ? Math.round(Math.log10(totN) * 100) / 100 : 10.0;
-    logNMap[k] = logN;
-    // Build seed components from top velocity clusters for in-browser Voigt fitting
-    const sortedC = [...vComps].sort((a, b) => b[1] - a[1]);
-    const seeds = [];
-    for (const c of sortedC) {
-      if (c[1] < 11.2) continue;
-      const hit = seeds.find(s => Math.abs(s[0] - c[0]) < Math.max(18, 1.2 * s[2]));
-      if (hit) {
-        const n1 = 10 ** hit[1], n2 = 10 ** c[1], ns = n1 + n2;
-        hit[0] = (hit[0] * n1 + c[0] * n2) / ns;
-        hit[1] = Math.log10(ns);
-        hit[2] = Math.min(180, Math.sqrt((hit[2] * hit[2] * n1 + c[2] * c[2] * n2) / ns));
-      } else if (seeds.length < 5) seeds.push([...c]);
-    }
-    seeds.sort((a, b) => a[0] - b[0]);
-    compRows[k] = seeds.map(s => [Math.round(s[0] * 10) / 10, 1.0, Math.round(s[1] * 100) / 100, 0.08, Math.round(s[2] * 10) / 10, 1.5, 0, 0, null]);
-    if (seeds.length) {
-      const vlo = Math.max(-1480, Math.floor(Math.min(...seeds.map(s => s[0] - 2.5 * s[2])) - 15));
-      const vhi = Math.min(1480, Math.ceil(Math.max(...seeds.map(s => s[0] + 2.5 * s[2])) + 15));
-      aodMap[k] = [logN, [[0, vlo, vhi, logN, 0]]];
-    } else aodMap[k] = [null, []];
   }
   progress("fit", 0.92);
   const entry = {
@@ -816,7 +842,7 @@ async function submitJob(kind, body, fromBridge) {
   }
   busy = true; setGeoEnabled();
   try {
-    if (!activeIsFire()) {
+    if (activeSimKey() === "tng50") {
       if (!API) { geomsg("Contacting the sightline server", "", "contacting"); await discover(8000, true); }
       if (API && galSrv()) {
         geomsg("Submitting", "", "submitting");
@@ -912,7 +938,7 @@ function figureBody(fmtx) {
   return b;
 }
 async function download(fmtx) {
-  closePops(); if (!S.id) return; const name = `${activeIsFire() ? "fire2" : "tng50"}_${GAL}_${S.id}_${S.ions.join("-")}_sn${S.sn.join("-")}`;
+  closePops(); if (!S.id) return; const name = `${activeSimKey()}_${GAL}_${S.id}_${S.ions.join("-")}_sn${S.sn.join("-")}`;
   const e = CAT.get(S.id);
   const clientFallback = async reason => {
     try {
@@ -1036,46 +1062,53 @@ $("#v3d-mini").addEventListener("pointerenter", () => { if (thumbOk() && tier() 
 const GPICK = GIX ? createGalaxyPicker({pop: $("#gxy-pop"), cur: $("#gxy-cur"), search: $("#gxy-search"), filter: $("#gxy-filter"), head: $("#gxy-head"),
   list: $("#gxy-list"), count: $("#gxy-count")}, {index: GIX, current: () => GAL, onPick: id => { closePops(); sfx("select"); switchGalaxy(id, {source: "picker"}); }}) : null;
 if (GPICK && $("#gxy-sim")) initLiquidSeg($("#gxy-sim"));
-const LAST_BY_SIM = {tng50: GIX?.default ?? 488530, fire2: "m12i"};
+const LAST_BY_SIM = {tng50: GIX?.default ?? 488530, fire2: "m12i", simba: "simba25_g0", auriga: "Au6", tng100: "tng100_sub363736", tng300: "tng300_sub1338052", illustris: "illustris1_sub330938", agora: "agora_arepo_mw", camels: "camels_tng_mw25"};
+const activeSim = () => String((GIX && GIX.byId.get(GAL)?.sim) || CFG.galaxy?.sim || inferSim({id: GAL}));
+const activeSimKey = () => (GIX && GIX.byId.get(GAL)?.simKey) || inferSimKey({id: GAL, sim: CFG.galaxy?.sim});
+const activeIsFire = () => activeSimKey() === "fire2";
+const activeIsAuriga = () => activeSimKey() === "auriga" || isAuriga((GIX && GIX.byId.get(GAL)) || {id: GAL, sim: CFG.galaxy?.sim});
+const activeIsTng100 = () => activeSimKey() === "tng100" || isTng100((GIX && GIX.byId.get(GAL)) || {id: GAL, sim: CFG.galaxy?.sim});
+const activeIsTng300 = () => activeSimKey() === "tng300" || isTng300((GIX && GIX.byId.get(GAL)) || {id: GAL, sim: CFG.galaxy?.sim});
+const activeIsIllustris = () => activeSimKey() === "illustris" || isIllustris((GIX && GIX.byId.get(GAL)) || {id: GAL, sim: CFG.galaxy?.sim});
+const activeNoun = (cap = false) => { const n = galNoun((GIX && GIX.byId.get(GAL)) || {id: GAL, sim: CFG.galaxy?.sim}); return cap ? n : n.toLowerCase(); };
 let topSimEl = null;
 if (GIX && new Set(GIX.list.map(e => e.simKey)).size > 1 && $("#grp-gal") && !$("#top-sim")) {
+  const presentSims = SIM_ORDER.filter(sk => GIX.list.some(e => e.simKey === sk));
   topSimEl = document.createElement("div");
   topSimEl.id = "top-sim";
   topSimEl.className = "seg";
   topSimEl.setAttribute("role", "radiogroup");
   topSimEl.setAttribute("aria-label", "Simulation");
-  topSimEl.innerHTML = [
-    ["tng50", "TNG50", "Switch to IllustrisTNG TNG50-1 galaxies"],
-    ["fire2", "FIRE-2", "Switch to FIRE-2 zoom-in halos"]
-  ].map(([v, lab, tip], i) => `<label><input type="radio" name="top-sim" value="${v}" data-tip="${tip}"${i === 0 ? " checked" : ""}><span>${lab}</span></label>`).join("");
+  topSimEl.innerHTML = presentSims.map((sk, i) => {
+    const m = SIM_META[sk] || {label: sk.toUpperCase(), topTip: `Switch to ${sk} galaxies`};
+    return `<label><input type="radio" name="top-sim" value="${sk}" data-tip="${esc(m.topTip)}"${i === 0 ? " checked" : ""}><span>${esc(m.label)}</span></label>`;
+  }).join("");
   const grpGal = $("#grp-gal"), gxyOpen = $("#gxy-open");
   if (gxyOpen) grpGal.insertBefore(topSimEl, gxyOpen); else grpGal.prepend(topSimEl);
   initLiquidSeg(topSimEl);
   topSimEl.addEventListener("change", ev => {
     const sk = ev.target?.value;
-    if (!sk || (sk === "fire2") === activeIsFire()) return;
+    if (!sk || sk === activeSimKey()) return;
     sfx("select");
     if (GPICK) GPICK.setSim(sk);
     const target = (LAST_BY_SIM[sk] && GIX.byId.has(LAST_BY_SIM[sk])) ? LAST_BY_SIM[sk]
-      : (sk === "fire2" && GIX.byId.has("m12i") ? "m12i" : GIX.list.find(e => e.simKey === sk)?.id);
+      : GIX.list.find(e => e.simKey === sk)?.id;
     if (target != null && target !== GAL) switchGalaxy(target, {source: "sim-switch"});
   });
 }
-const activeSim = () => String((GIX && GIX.byId.get(GAL)?.sim) || CFG.galaxy?.sim || (isFire({id: GAL}) ? "FIRE-2" : "TNG50-1"));
-const activeIsFire = () => /^FIRE/i.test(activeSim());
-const activeNoun = (cap = false) => (activeIsFire() ? (cap ? "Halo" : "halo") : (cap ? "Subhalo" : "subhalo"));
 function galaxyUI() {
-  const fire = activeIsFire(), ttl = $("#title"), sk = fire ? "fire2" : "tng50";
+  const sk = activeSimKey(), meta = SIM_META[sk] || SIM_META.tng50, ttl = $("#title");
   if (GAL != null) LAST_BY_SIM[sk] = GAL;
-  if (ttl) ttl.textContent = fire ? "FIRE-2 sightlines" : "TNG50 sightlines";
+  if (ttl) ttl.textContent = meta.title;
   const cf = $("#credits-foot span");
-  if (cf) cf.textContent = fire ? "Simulation: FIRE-2 (FIRE Collaboration)" : "Simulation: IllustrisTNG TNG50-1 (TNG Collaboration)";
+  if (cf) cf.textContent = meta.credit;
   if (topSimEl) for (const r of topSimEl.querySelectorAll('input[name="top-sim"]')) r.checked = r.value === sk;
   const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
   const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");
   lab.textContent = String(GAL); lab.dataset.id = String(GAL);
-  b.dataset.tip = `${fire ? `FIRE-2 halo ${GAL}` : `Subhalo ${GAL}`}, ${e && e.n ? e.n + " sightlines" : "this galaxy"}; click to pick another`;
-  b.setAttribute("aria-label", `Galaxy: ${fire ? `FIRE-2 halo ${GAL}` : `subhalo ${GAL}`}. Pick another galaxy`);
+  const head = sk === "tng50" ? `Subhalo ${GAL}` : `${meta.label} ${activeNoun()} ${GAL}`;
+  b.dataset.tip = `${head}, ${e && e.n ? e.n + " sightlines" : "this galaxy"}; click to pick another`;
+  b.setAttribute("aria-label", `Galaxy: ${head}. Pick another galaxy`);
   document.body.dataset.galaxy = String(GAL);
   document.body.dataset.sim = sk;
 }
@@ -1088,7 +1121,8 @@ function sourceUI() {
     chip.setAttribute("aria-haspopup", "dialog"); chip.style.cssText = "flex:none;white-space:nowrap;cursor:pointer;background:none;font-family:inherit";
     chip.addEventListener("click", ev => { ev.stopPropagation(); const pop = $("#pop-methods"); if (pop) { if (pop.hidden) openPop(chip, pop); else closePops(); } });
     bar.insertBefore(chip, bar.firstChild); }
-  const sbi = srcOf(SRC) === "sbi", gid = GAL ?? CFG.galaxy?.subhalo_id, fire = activeIsFire(), noun = fire ? `FIRE-2 halo ${gid}` : `Subhalo ${gid}`;
+  const sbi = srcOf(SRC) === "sbi", gid = GAL ?? CFG.galaxy?.subhalo_id, sk = activeSimKey(), meta = SIM_META[sk] || SIM_META.tng50;
+  const noun = sk === "tng50" ? `Subhalo ${gid}` : `${meta.label} ${activeNoun()} ${gid}`;
   chip.textContent = `${GIX && gid != null ? gid + "  " : ""}${sbi ? "THOR" : "Trident"}${GFLAGS.gas_poor ? "  gas-poor" : ""}`;
   chip.dataset.tip = sbi ? `${noun}: THOR rays through the Voronoi mesh, CLOUDY FG11 ions; click for details`
     : `${noun}: Trident HM2012 spectra, ±R200c; click for details`;
@@ -1102,24 +1136,36 @@ function methodsText(sbi) {
     MEL.ions = $("#methods-ions"); MEL.atomic = $("#methods-atomic");
     MEL.lic = $("#lic-spectra"); MEL.lic2 = MEL.lic && MEL.lic.nextElementSibling;
     MEL.simTng = $("#lic-sim-tng"); MEL.simFire = $("#lic-sim-fire");
+    MEL.simSimba = $("#lic-sim-simba"); MEL.simAgora = $("#lic-sim-agora"); MEL.simCamels = $("#lic-sim-camels");
     const pv = document.createElement("p"); pv.id = "methods-source"; pv.hidden = true; ag.after(pv); MEL.src = pv; }
-  const fire = activeIsFire();
+  const sk = activeSimKey();
   const SBI_TXT = {
     tau: "Optical depths from a GPU Voigt renderer (fp64) at 0.5 km/s over ±1500 km/s, resampled by velocity; sightlines ±2 R200c long. Velocities are relative to the galaxy's systemic velocity.",
     ions: "Spectra: rays through the TNG50 Voronoi mesh traced by THOR (Byrohl & Nelson 2025, arXiv:2507.11603), ion fractions from CLOUDY (Ferland et al. 2017) with the FG11 UV background (Faucher-Giguère et al. 2009) and Rahmati et al. (2013) self-shielding for H I. 3D ion cubes: Trident HM2012 (H I from the TNG neutral fraction) within r ≤ 400 kpc, so a sightline drawn through a cube can differ from its spectrum by a few tenths of a dex.",
     atomic: "Atomic data: the profile components (H I Lyα Γ = 6.265 × 10⁸ s⁻¹, Wiese and Fuhr 2009); the catalogue fits and your in-browser refits use the same f and Γ. Saturated components are lower limits."};
-  const FIRE_IONS = "H I: FIRE-2 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked FIRE-2 element abundances.";
-  /* Data and credits: both simulation and spectra paragraphs are shown; the ones that apply to this galaxy lead with "This galaxy" */
-  for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi], [MEL.simTng, !fire], [MEL.simFire, fire]]) { if (!el) continue; let t = el.querySelector(".cur-l");
-    if (on && !t) { t = document.createElement("strong"); t.className = "cur-l"; t.textContent = "This galaxy: "; el.prepend(t); } else if (!on && t) t.remove(); }
+  const SIM_IONS = {
+    fire2: "H I: FIRE-2 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked FIRE-2 element abundances.",
+    simba: "H I: SIMBA neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked SIMBA element abundances.",
+    auriga: "H I: Auriga AREPO neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked element abundances.",
+    tng100: "H I: TNG100-1 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
+    tng300: "H I: TNG300-1 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
+    illustris: "H I: Illustris-1 neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
+    agora: "H I: AGORA AREPO neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table with tracked metallicity.",
+    camels: "H I: simulation neutral hydrogen fraction (self-shielding included); metal ions: Trident HM2012 table across CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE)."
+  };
+  /* Data and credits: simulation and spectra paragraphs are shown; the ones that apply to this galaxy lead with "This galaxy" */
+  for (const [el, on] of [[MEL.lic, !sbi], [MEL.lic2, sbi], [MEL.simTng, sk === "tng50"], [MEL.simFire, sk === "fire2"], [MEL.simSimba, sk === "simba"], [MEL.simAgora, sk === "agora"], [MEL.simCamels, sk === "camels"]]) {
+    if (!el) continue; let t = el.querySelector(".cur-l");
+    if (on && !t) { t = document.createElement("strong"); t.className = "cur-l"; t.textContent = "This galaxy: "; el.prepend(t); } else if (!on && t) t.remove();
+  }
   for (const k of ["tau", "ions", "atomic"]) { const el = MEL[k]; if (!el) continue; if (!(k in MTX)) MTX[k] = el.innerHTML;
-    if (sbi) el.textContent = SBI_TXT[k]; else if (k === "ions" && fire) el.textContent = FIRE_IONS; else el.innerHTML = MTX[k]; }
+    if (sbi) el.textContent = SBI_TXT[k]; else if (k === "ions" && SIM_IONS[sk]) el.textContent = SIM_IONS[sk]; else el.innerHTML = MTX[k]; }
   MEL.src.hidden = !sbi; MEL.src.textContent = sbi ? (SRC.text || "") : "";
 }
 function aboutText() {
   const g = CFG.galaxy || {}; if (!g.R200c_kpc) return;
-  const sim = g.sim || activeSim() || "TNG50-1", fire = /^FIRE/i.test(sim), gid = g.subhalo_id ?? GAL;
-  $("#about-gal").textContent = `Sightlines through the circumgalactic medium of one ${sim} galaxy (${fire ? "halo" : "subhalo"} ${gid} at z = ${g.redshift ?? 0}, R200c ${nf.format(Math.round(+g.R200c_kpc))} kpc${g.M200c_Msun ? `, M200c ${(+g.M200c_Msun / 1e12).toFixed(2)}e12 solar masses` : ""}), labelled by orientation, impact parameter b and azimuth from the projected major axis.`;
+  const sim = g.sim || activeSim() || "TNG50-1", noun = activeNoun(), gid = g.subhalo_id ?? GAL;
+  $("#about-gal").textContent = `Sightlines through the circumgalactic medium of one ${sim} galaxy (${noun} ${gid} at z = ${g.redshift ?? 0}, R200c ${nf.format(Math.round(+g.R200c_kpc))} kpc${g.M200c_Msun ? `, M200c ${(+g.M200c_Msun / 1e12).toFixed(2)}e12 solar masses` : ""}), labelled by orientation, impact parameter b and azimuth from the projected major axis.`;
 }
 /* the 3D engine is per galaxy (its cubes, frame and lines): dispose it and remount on demand (the tab, or the thumbnail
    where it was live). viewer.dispose() also removes its control column with the #picker-root it adopted: put one back */
@@ -1141,7 +1187,7 @@ async function switchGalaxy(id, {want = null, source = "picker"} = {}) {
   id = normId(id);
   if (!GIX || !GIX.byId.has(id)) return false; if (id === GAL) return true;
   if (JOB) { note("a sightline is being generated; switch galaxies when it is done", "bad"); return false; }
-  const tok = ++GTOK, pack = packFor(GIX, id, LEGACY), b = $("#gxy-open"), targetNoun = isFire(GIX.byId.get(id)) ? "halo" : "subhalo";
+  const tok = ++GTOK, pack = packFor(GIX, id, LEGACY), b = $("#gxy-open"), targetNoun = galNoun(GIX.byId.get(id)).toLowerCase();
   b.dataset.state = "loading"; note(`loading ${targetNoun} ${id}`);
   let cat, gj = null;
   try { const [r, g] = await Promise.all([fetch(pack.catalog_url), galaxyJson(pack)]); if (!r.ok) throw new Error("HTTP " + r.status); cat = await r.json(); gj = g; }
