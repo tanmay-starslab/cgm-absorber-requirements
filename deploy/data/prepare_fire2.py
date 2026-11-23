@@ -401,7 +401,7 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
     p0_chunks: dict[str, list[np.ndarray]] = {
         k: [] for k in ("Coordinates", "Masses", "Density", "Velocities", "InternalEnergy",
                         "ElectronAbundance", "NeutralHydrogenAbundance", "Metallicity",
-                        "StarFormationRate", "Potential")
+                        "StarFormationRate", "Potential", "SmoothingLength")
     }
     p4_chunks: dict[str, list[np.ndarray]] = {
         k: [] for k in ("Coordinates", "Masses", "Velocities", "Metallicity",
@@ -427,6 +427,8 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
                         p0_chunks[k].append(g0[k][:][idx0])
                     if "Potential" in g0:
                         p0_chunks["Potential"].append(g0["Potential"][:][idx0])
+                    if "SmoothingLength" in g0:
+                        p0_chunks["SmoothingLength"].append(g0["SmoothingLength"][:][idx0])
             if "PartType4" in f:
                 g4 = f["PartType4"]
                 x4_ckpch = g4["Coordinates"][:].astype(np.float64)
@@ -469,7 +471,10 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
     r0_kpc = np.linalg.norm(rel0_kpc, axis=1)
     m0_code = p0["Masses"].astype(np.float64)
     rho0_code = p0["Density"].astype(np.float64)
-    hsml0_kpc = 2.0 * (3.0 / (4.0 * math.pi) * m0_code / rho0_code) ** (1.0 / 3.0) / h
+    hsml0_sphere_kpc = 2.0 * (3.0 / (4.0 * math.pi) * m0_code / rho0_code) ** (1.0 / 3.0) / h
+    hsml0_kpc = (np.maximum(p0["SmoothingLength"].astype(np.float64) / h, hsml0_sphere_kpc)
+                 if "SmoothingLength" in p0 and len(p0["SmoothingLength"]) == len(m0_code)
+                 else hsml0_sphere_kpc)
     keep0 = (r0_kpc - hsml0_kpc) < R_EXTRACT_KPC
     for k in list(p0.keys()):
         p0[k] = p0[k][keep0]
@@ -565,7 +570,7 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
         "center_refinement": center_diag,
     }
 
-    # Compute PartType4 GFM_StellarPhotometrics (U, B, V, K, g, r, i, z) and 32-NN StellarHsml
+    # Compute PartType4 GFM_StellarPhotometrics (U, B, V, K, g, r, i, z) and 16-NN StellarHsml
     t_phot = time.time()
     met4 = p4["Metallicity"].astype(np.float32)
     gfm_z4 = met4[:, 0].copy()
@@ -573,8 +578,8 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
         pt4_m_msun, p4["StellarFormationTime"].astype(np.float64), gfm_z4,
         h, halo["omega_m"], halo["omega_l"],
     )
-    hsml4_ckpch = compute_stellar_hsml_ckpch(p4["Coordinates"], k_nn=32)
-    print(f"[prepare_fire2] {gid}: computed GFM_StellarPhotometrics {phot4.shape} & 32-NN StellarHsml "
+    hsml4_ckpch = compute_stellar_hsml_ckpch(p4["Coordinates"], k_nn=16)
+    print(f"[prepare_fire2] {gid}: computed GFM_StellarPhotometrics {phot4.shape} & 16-NN StellarHsml "
           f"in {time.time() - t_phot:.1f}s", flush=True)
 
     # Write cutout_slim_R400.hdf5 in exact TNG/Arepo conventions
@@ -622,6 +627,8 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
         g0_out.create_dataset("NeutralHydrogenAbundance", data=p0["NeutralHydrogenAbundance"].astype(np.float32))
         g0_out.create_dataset("GFM_Metallicity", data=gfm_z0)
         g0_out.create_dataset("GFM_Metals", data=gfm_metals0)
+        if "SmoothingLength" in p0:
+            g0_out.create_dataset("SmoothingLength", data=p0["SmoothingLength"].astype(np.float32))
 
         g4_out = o.create_group("PartType4")
         g4_out.create_dataset("Coordinates", data=p4["Coordinates"].astype(np.float64))
@@ -692,7 +699,7 @@ def prepare_galaxy(gal_id: str | None = None, index: int | None = None, *,
             "Rhalf_star": "3D stellar half-mass radius within max(0.15 R200c, 20 kpc)",
             "SFR": "instantaneous PartType0/StarFormationRate (or 100 Myr stellar mass formed)",
             "photometry": "Chabrier IMF SPS table colors.chabrier.dat -> (U, B, V, K, g, r, i, z) AB absolute magnitudes",
-            "StellarHsml": "32-NN cKDTree distance on PartType4/Coordinates",
+            "StellarHsml": "0.5x 16-NN cKDTree distance on PartType4/Coordinates (<= 10 ckpc/h)",
         },
         "source": {
             "kind": "fire2_public_core",
