@@ -302,7 +302,16 @@ def read_pt4(cutout, cache, lock=None, log=print) -> dict:
         with h5py.File(str(cutout), "r") as fh:
             g = fh["PartType4"]
             for f in PT4_FIELDS:                     # one field after the other: a sequential read
-                out[f] = g[f][()]
+                if f in g:
+                    out[f] = g[f][()]
+                elif f == "StellarHsml":
+                    from scipy.spatial import cKDTree
+                    coords = np.asarray(out["Coordinates"], dtype=np.float64)
+                    k_nn = min(32, max(1, len(coords)))
+                    d_nn, _ = cKDTree(coords).query(coords, k=k_nn)
+                    out[f] = np.asarray(d_nn[:, -1] if d_nn.ndim > 1 else d_nn, dtype=np.float32)
+                else:
+                    raise KeyError(f)
                 if log:
                     log(f"[pt4] {f} {out[f].shape} {out[f].dtype} {time.time() - t0:.1f}s")
     for f, a in out.items():
