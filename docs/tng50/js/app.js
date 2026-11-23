@@ -706,29 +706,42 @@ async function castCubeRay(kind, body, fromBridge) {
   const rows = manifest.frame?.rows || [xhat, yhat, Lhat];
   const toDisk = p => [dot3(rows[0], p), dot3(rows[1], p), dot3(rows[2], p)];
   const p0d = toDisk(p0), p1d = toDisk(p1), nd = unit3([p1d[0] - p0d[0], p1d[1] - p0d[1], p1d[2] - p0d[2]]);
+  const nSteps = 512;
+  const sampler = FW && typeof FW.createStreamingRaySampler === "function"
+    ? FW.createStreamingRaySampler({manifest, p0d, p1d, nSteps, trilinear: true})
+    : null;
   const lvls = ["L0", "L1", "L2", "L3", "L4"].filter(L => {
     const ml = manifest.levels?.[L];
     if (!ml) return false;
+    if (sampler) return sampler.levelNeedsLoading(L);
     return L === "L0" || bKpc < ml.half_kpc * 0.96;
   });
   if (!lvls.length) lvls.push("L0");
   const fields = ["nH", "T", "Z", "vx", "vy", "vz", ...reg.KEYS].filter(k => manifest.gas?.fields?.[k]);
-  const cubes = {L0: {}, L1: {}, L2: {}, L3: {}, L4: {}};
+  const cubes = sampler ? null : {L0: {}, L1: {}, L2: {}, L3: {}, L4: {}};
   let done = 0; const tot = Math.max(1, fields.length * lvls.length);
   progress("ray", 0.1); geomsg(`Tracing ray ${id} through 3D cubes`, "", "progress");
-  for (const L of lvls) {
-    await Promise.all(fields.map(async k => {
-      if (!manifest.gas?.fields?.[k]?.cubes?.[L]) { done++; return; }
-      const c = await loader.load("gas", k, L, {prio: 0});
-      if (FW && c.data) FW.stageCubeInWasm(c.data);
-      cubes[L][k] = {data: c.data, n: c.n, half: manifest.levels[L].half_kpc, vmin: manifest.gas.fields[k].vmin, vmax: manifest.gas.fields[k].vmax};
-      done++; progress("spectra", done / tot * 0.85);
-    }));
+  // Stream cubes in bounded chunks of 4 and sample ray points immediately without retaining 1.4 GiB of cubes in JS or WASM
+  const loadOrder = sampler ? [...lvls].reverse() : lvls;
+  for (const L of loadOrder) {
+    for (let i = 0; i < fields.length; i += 4) {
+      const batch = fields.slice(i, i + 4);
+      await Promise.all(batch.map(async k => {
+        if (!manifest.gas?.fields?.[k]?.cubes?.[L]) { done++; return; }
+        const c = await loader.load("gas", k, L, {prio: 0});
+        const meta = {n: c.n, half: manifest.levels[L].half_kpc, vmin: manifest.gas.fields[k].vmin, vmax: manifest.gas.fields[k].vmax};
+        if (sampler) {
+          sampler.ingestCube(L, k, c.data, meta);
+        } else {
+          cubes[L][k] = {data: c.data, ...meta};
+        }
+        done++; progress("spectra", done / tot * 0.85);
+      }));
+    }
   }
-  const nSteps = 512;
   let lines, logNMap, compRows, aodMap;
   if (FW) {
-    const rayRes = FW.wasm_cast_cube_ray({cubes, manifest, p0d, p1d, nSteps, trilinear: true});
+    const rayRes = sampler ? sampler.finish() : FW.wasm_cast_cube_ray({cubes, manifest, p0d, p1d, nSteps, trilinear: true});
     const voigtRes = FW.wasm_synthesize_voigt_12ions({
       samples: rayRes.samples, vlos: rayRes.vlos, temp: rayRes.temp,
       nSteps, dlCm: rayRes.dlCm, ions: ION, regKeys: reg.KEYS,
@@ -1061,7 +1074,6 @@ $("#v3d-mini").addEventListener("pointerenter", () => { if (thumbOk() && tier() 
 /* ---------------- galaxy sample: picker and switching (js/galaxies.js) ---------------- */
 const GPICK = GIX ? createGalaxyPicker({pop: $("#gxy-pop"), cur: $("#gxy-cur"), search: $("#gxy-search"), filter: $("#gxy-filter"), head: $("#gxy-head"),
   list: $("#gxy-list"), count: $("#gxy-count")}, {index: GIX, current: () => GAL, onPick: id => { closePops(); sfx("select"); switchGalaxy(id, {source: "picker"}); }}) : null;
-if (GPICK && $("#gxy-sim")) initLiquidSeg($("#gxy-sim"));
 const LAST_BY_SIM = {tng50: GIX?.default ?? 488530, fire2: "m12i", simba: "simba25_g0", auriga: "Au6", tng100: "tng100_sub363736", tng300: "tng300_sub1338052", illustris: "illustris1_sub330938", agora: "agora_arepo_mw", camels: "camels_tng_mw25"};
 const activeSim = () => String((GIX && GIX.byId.get(GAL)?.sim) || CFG.galaxy?.sim || inferSim({id: GAL}));
 const activeSimKey = () => (GIX && GIX.byId.get(GAL)?.simKey) || inferSimKey({id: GAL, sim: CFG.galaxy?.sim});
@@ -1074,18 +1086,16 @@ const activeNoun = (cap = false) => { const n = galNoun((GIX && GIX.byId.get(GAL
 let topSimEl = null;
 if (GIX && new Set(GIX.list.map(e => e.simKey)).size > 1 && $("#grp-gal") && !$("#top-sim")) {
   const presentSims = SIM_ORDER.filter(sk => GIX.list.some(e => e.simKey === sk));
-  topSimEl = document.createElement("div");
+  topSimEl = document.createElement("select");
   topSimEl.id = "top-sim";
-  topSimEl.className = "seg";
-  topSimEl.setAttribute("role", "radiogroup");
   topSimEl.setAttribute("aria-label", "Simulation");
-  topSimEl.innerHTML = presentSims.map((sk, i) => {
-    const m = SIM_META[sk] || {label: sk.toUpperCase(), topTip: `Switch to ${sk} galaxies`};
-    return `<label><input type="radio" name="top-sim" value="${sk}" data-tip="${esc(m.topTip)}"${i === 0 ? " checked" : ""}><span>${esc(m.label)}</span></label>`;
+  topSimEl.dataset.tip = "Switch simulation suite";
+  topSimEl.innerHTML = presentSims.map(sk => {
+    const m = SIM_META[sk] || {label: sk.toUpperCase()};
+    return `<option value="${sk}">${esc(m.label)}</option>`;
   }).join("");
   const grpGal = $("#grp-gal"), gxyOpen = $("#gxy-open");
   if (gxyOpen) grpGal.insertBefore(topSimEl, gxyOpen); else grpGal.prepend(topSimEl);
-  initLiquidSeg(topSimEl);
   topSimEl.addEventListener("change", ev => {
     const sk = ev.target?.value;
     if (!sk || sk === activeSimKey()) return;
@@ -1102,7 +1112,7 @@ function galaxyUI() {
   if (ttl) ttl.textContent = meta.title;
   const cf = $("#credits-foot span");
   if (cf) cf.textContent = meta.credit;
-  if (topSimEl) for (const r of topSimEl.querySelectorAll('input[name="top-sim"]')) r.checked = r.value === sk;
+  if (topSimEl) topSimEl.value = sk;
   const grp = $("#grp-gal"); if (!grp) return; grp.hidden = !GIX; if (!GIX) return;
   const e = GIX.byId.get(GAL), b = $("#gxy-open"), lab = b.querySelector(".glab");
   lab.textContent = String(GAL); lab.dataset.id = String(GAL);

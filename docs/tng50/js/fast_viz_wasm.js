@@ -38,12 +38,26 @@ let wasmExports = null;
 let wasmInitPromise = null;
 
 // Persistent arena state: CUBE_CACHE maps a JS Uint8Array cube to its pointer in WASM linear memory
-// so repeated ray-marches across the same loaded 3D cubes perform zero memory copies.
+// so repeated ray-marches across small/medium cached 3D cube sets perform zero memory copies.
+// Device-aware budget prevents duplicating huge (e.g. 1.4 GiB 5-level x 18-field 256^3) cube sets in WASM.
 let cubeCache = new WeakMap();
 let cubeSetCache = new WeakMap();
 let cubeCacheBytes = 0;
 let scratchBasePtr = 0;
-const MAX_CUBE_CACHE_BYTES = 768 * 1024 * 1024; // up to 768 MB of cached 3D cubes in WASM linear memory
+
+export function getMaxCubeCacheBytes() {
+  const nav = globalThis.navigator;
+  const memGb = Number(nav && nav.deviceMemory);
+  const isMob = !!(
+    (nav && nav.userAgentData && nav.userAgentData.mobile) ||
+    (typeof globalThis.matchMedia === "function" &&
+      globalThis.matchMedia("(max-width: 820px), (pointer: coarse)").matches)
+  );
+  if (isMob || (memGb > 0 && memGb <= 4)) return 32 * 1024 * 1024; // 32 MiB on mobile / <= 4 GB RAM devices
+  if (memGb > 0 && memGb <= 8) return 64 * 1024 * 1024; // 64 MiB on 8 GB devices
+  return 96 * 1024 * 1024; // 96 MiB cap on desktop/Node — never duplicate 1.4 GiB cube sets in WASM
+}
+const MAX_CUBE_CACHE_BYTES = getMaxCubeCacheBytes();
 
 export function wasmReady() {
   return !!wasmExports;
@@ -113,15 +127,19 @@ export function resetWasmCubeCache() {
   }
 }
 
-// Pre-stage a loaded u8 cube into WASM linear memory during network fetch so ray-marching is zero-copy
-export function stageCubeInWasm(u8) {
+// Pre-stage a loaded u8 cube into WASM linear memory when it fits within the device-aware cache budget.
+// If allowReset is false (when building an atomic multi-cube pointer table), never reset the arena mid-table;
+// return 0 on budget overflow so the caller can reset once or fall back to zero-duplication streaming ray sampling.
+export function stageCubeInWasm(u8, {allowReset = true} = {}) {
   if (!wasmExports || !(u8 instanceof Uint8Array) || u8.length === 0) return 0;
+  const maxBytes = getMaxCubeCacheBytes();
+  if (u8.length > maxBytes) return 0;
   const hit = cubeCache.get(u8);
   if (hit) return hit;
-  if (cubeCacheBytes + u8.length > MAX_CUBE_CACHE_BYTES) {
+  if (cubeCacheBytes + u8.length > maxBytes) {
+    if (!allowReset) return 0;
     resetWasmCubeCache();
   }
-  // If scratch buffers were allocated after the last persistent cube, rewind to scratchBasePtr before allocating cube
   const ptr = wasmExports.wasm_alloc(u8.length);
   if (!ptr) return 0;
   new Uint8Array(wasmExports.memory.buffer, ptr, u8.length).set(u8);
@@ -129,6 +147,196 @@ export function stageCubeInWasm(u8) {
   cubeCacheBytes += u8.length;
   scratchBasePtr = 0;
   return ptr;
+}
+
+// -----------------------------------------------------------------------------
+// Zero-duplication streaming 3D multi-level ray sampler:
+// Precomputes the 8-corner trilinear indices & weights once per (step, level)
+// and samples each (level, field) Uint8Array cube in-place as it arrives, so
+// callers never need to retain all 90 (1.41 GiB) cubes in JS or duplicate them in WASM.
+// -----------------------------------------------------------------------------
+export function createStreamingRaySampler({manifest = null, p0d = [0, 0, -200], p1d = [0, 0, 200], nSteps = 512, trilinear = true} = {}) {
+  const t0 = nowMs();
+  const numLevels = WASM_LEVEL_KEYS.length;
+  const numFields = WASM_FIELD_KEYS.length;
+  const dx = p1d[0] - p0d[0], dy = p1d[1] - p0d[1], dz = p1d[2] - p0d[2];
+  const rayLenKpc = Math.hypot(dx, dy, dz);
+  const dlKpc = rayLenKpc / nSteps;
+  const dlCm = dlKpc * CM_PER_KPC;
+  const nd = rayLenKpc > 1e-12 ? [dx / rayLenKpc, dy / rayLenKpc, dz / rayLenKpc] : [0, 0, 1];
+
+  const levelN = new Uint32Array(numLevels);
+  const levelHalf = new Float32Array(numLevels);
+  for (let l = 0; l < numLevels; l++) {
+    const L = WASM_LEVEL_KEYS[l];
+    const mLvl = manifest?.levels?.[L];
+    levelN[l] = mLvl?.n || 0;
+    levelHalf[l] = mLvl?.half_kpc || WASM_LEVEL_HALF_DEFAULT[l];
+  }
+
+  const vminArr = new Float32Array(numFields);
+  const vmaxArr = new Float32Array(numFields);
+  for (let f = 0; f < numFields; f++) {
+    const fKey = WASM_FIELD_KEYS[f];
+    const mf = manifest?.gas?.fields?.[fKey];
+    vminArr[f] = Number.isFinite(mf?.vmin) ? mf.vmin : -10.0;
+    vmaxArr[f] = Number.isFinite(mf?.vmax) ? mf.vmax : 10.0;
+  }
+
+  const stepX = new Float32Array(nSteps);
+  const stepY = new Float32Array(nSteps);
+  const stepZ = new Float32Array(nSteps);
+  const stepMaxAbs = new Float32Array(nSteps);
+  for (let s = 0; s < nSteps; s++) {
+    const t = (s + 0.5) / nSteps;
+    const x = p0d[0] + t * dx, y = p0d[1] + t * dy, z = p0d[2] + t * dz;
+    stepX[s] = x; stepY[s] = y; stepZ[s] = z;
+    stepMaxAbs[s] = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
+  }
+
+  const samples = new Float32Array(nSteps * numFields);
+  samples.fill(NaN);
+  // Tracks the finest level index l (0..4) that produced a valid non-zero sample for (step s, field f)
+  const sampleLevel = new Int8Array(nSteps * numFields);
+  sampleLevel.fill(-1);
+
+  // Cache precomputed per-level step tables Keyed by `${l}:${n}:${h}`
+  const levelStepTables = new Map();
+  function getLevelStepTable(l, n, h) {
+    const key = `${l}:${n}:${h}`;
+    let tab = levelStepTables.get(key);
+    if (tab) return tab;
+    const bound = l === 0 ? h : h * 0.96;
+    const activeSteps = [];
+    for (let s = 0; s < nSteps; s++) {
+      if (stepMaxAbs[s] < bound) activeSteps.push(s);
+    }
+    const count = activeSteps.length;
+    const steps = new Uint16Array(activeSteps);
+    if (!trilinear) {
+      const idx = new Uint32Array(count);
+      for (let i = 0; i < count; i++) {
+        const s = steps[i];
+        const ix = Math.min(n - 1, Math.max(0, Math.floor((stepX[s] / h * 0.5 + 0.5) * n)));
+        const iy = Math.min(n - 1, Math.max(0, Math.floor((stepY[s] / h * 0.5 + 0.5) * n)));
+        const iz = Math.min(n - 1, Math.max(0, Math.floor((stepZ[s] / h * 0.5 + 0.5) * n)));
+        idx[i] = ix + n * (iy + n * iz);
+      }
+      tab = {count, steps, idx, w: null};
+    } else {
+      const idx = new Uint32Array(count * 8);
+      const w = new Float32Array(count * 8);
+      const n2 = n * n;
+      for (let i = 0; i < count; i++) {
+        const s = steps[i];
+        const gx = (stepX[s] / h * 0.5 + 0.5) * n - 0.5;
+        const gy = (stepY[s] / h * 0.5 + 0.5) * n - 0.5;
+        const gz = (stepZ[s] / h * 0.5 + 0.5) * n - 0.5;
+        const ix0 = Math.floor(gx), iy0 = Math.floor(gy), iz0 = Math.floor(gz);
+        const fx = Math.min(1, Math.max(0, gx - ix0));
+        const fy = Math.min(1, Math.max(0, gy - iy0));
+        const fz = Math.min(1, Math.max(0, gz - iz0));
+        const x0 = Math.min(n - 1, Math.max(0, ix0)), x1 = Math.min(n - 1, Math.max(0, ix0 + 1));
+        const y0 = Math.min(n - 1, Math.max(0, iy0)) * n, y1 = Math.min(n - 1, Math.max(0, iy0 + 1)) * n;
+        const z0 = Math.min(n - 1, Math.max(0, iz0)) * n2, z1 = Math.min(n - 1, Math.max(0, iz0 + 1)) * n2;
+        const wx0 = 1 - fx, wy0 = 1 - fy, wz0 = 1 - fz;
+        const w00 = wx0 * wy0, w10 = fx * wy0, w01 = wx0 * fy, w11 = fx * fy;
+        const o = i * 8;
+        idx[o]     = x0 + y0 + z0; w[o]     = w00 * wz0;
+        idx[o + 1] = x1 + y0 + z0; w[o + 1] = w10 * wz0;
+        idx[o + 2] = x0 + y1 + z0; w[o + 2] = w01 * wz0;
+        idx[o + 3] = x1 + y1 + z0; w[o + 3] = w11 * wz0;
+        idx[o + 4] = x0 + y0 + z1; w[o + 4] = w00 * fz;
+        idx[o + 5] = x1 + y0 + z1; w[o + 5] = w10 * fz;
+        idx[o + 6] = x0 + y1 + z1; w[o + 6] = w01 * fz;
+        idx[o + 7] = x1 + y1 + z1; w[o + 7] = w11 * fz;
+      }
+      tab = {count, steps, idx, w};
+    }
+    levelStepTables.set(key, tab);
+    return tab;
+  }
+
+  function levelNeedsLoading(levelKey) {
+    const l = WASM_LEVEL_KEYS.indexOf(levelKey);
+    if (l < 0) return false;
+    const h = levelHalf[l] || WASM_LEVEL_HALF_DEFAULT[l];
+    const bound = l === 0 ? h : h * 0.96;
+    for (let s = 0; s < nSteps; s++) {
+      if (stepMaxAbs[s] < bound) return true;
+    }
+    return l === 0;
+  }
+
+  function ingestCube(levelKey, fieldKey, u8, meta = {}) {
+    const l = typeof levelKey === "number" ? levelKey : WASM_LEVEL_KEYS.indexOf(levelKey);
+    const f = typeof fieldKey === "number" ? fieldKey : WASM_FIELD_KEYS.indexOf(fieldKey);
+    if (l < 0 || f < 0 || !(u8 instanceof Uint8Array) || u8.length === 0) return;
+    const n = meta.n || levelN[l] || Math.round(Math.cbrt(u8.length));
+    const h = meta.half || levelHalf[l] || WASM_LEVEL_HALF_DEFAULT[l];
+    if (!n || !(h > 0)) return;
+    const lo = Number.isFinite(meta.vmin) ? meta.vmin : vminArr[f];
+    const hi = Number.isFinite(meta.vmax) ? meta.vmax : vmaxArr[f];
+    const scale = (hi - lo) / 254.0;
+    const tab = getLevelStepTable(l, n, h);
+    const {count, steps, idx, w} = tab;
+
+    if (!trilinear) {
+      for (let i = 0; i < count; i++) {
+        const s = steps[i];
+        const slot = s * numFields + f;
+        if (l <= sampleLevel[slot]) continue;
+        const q = u8[idx[i]];
+        if (q !== 0) {
+          samples[slot] = lo + (q - 1) * scale;
+          sampleLevel[slot] = l;
+        }
+      }
+    } else {
+      for (let i = 0; i < count; i++) {
+        const s = steps[i];
+        const slot = s * numFields + f;
+        if (l <= sampleLevel[slot]) continue;
+        const o = i * 8;
+        let wSum = 0.0, qSum = 0.0;
+        for (let k = 0; k < 8; k++) {
+          const q = u8[idx[o + k]];
+          if (q !== 0) {
+            const wk = w[o + k];
+            wSum += wk;
+            qSum += wk * (q - 1);
+          }
+        }
+        if (wSum > 1e-6) {
+          samples[slot] = lo + (qSum / wSum) * scale;
+          sampleLevel[slot] = l;
+        }
+      }
+    }
+  }
+
+  function finish() {
+    const vlos = new Float32Array(nSteps);
+    const temp = new Float32Array(nSteps);
+    for (let s = 0; s < nSteps; s++) {
+      const base = s * numFields;
+      const lgT = samples[base + 1];
+      temp[s] = Number.isFinite(lgT) ? 10 ** lgT : 2e4;
+      const vx = samples[base + 15];
+      const vy = samples[base + 16];
+      const vz = samples[base + 17];
+      const vl = (Number.isFinite(vx) ? vx : 0) * nd[0] +
+                 (Number.isFinite(vy) ? vy : 0) * nd[1] +
+                 (Number.isFinite(vz) ? vz : 0) * nd[2];
+      vlos[s] = Math.min(1480, Math.max(-1480, vl));
+    }
+    return {
+      samples, vlos, temp, nSteps, rayLenKpc, dlKpc, dlCm,
+      usedWasm: false, streamed: true, ms: nowMs() - t0
+    };
+  }
+
+  return {ingestCube, levelNeedsLoading, finish};
 }
 
 // -----------------------------------------------------------------------------
@@ -250,7 +458,10 @@ export function wasm_cast_cube_ray(...args) {
 
     let ptrTable = null;
     if (wasmExports) {
-      ptrTable = new Uint32Array(numLevels * numFields);
+      // Preflight total bytes required for this cube set before staging so we never reset the arena mid-set
+      let totalSetBytes = 0;
+      let uncachedSetBytes = 0;
+      const toStage = [];
       for (let l = 0; l < numLevels; l++) {
         const L = WASM_LEVEL_KEYS[l];
         const cLvl = cubes[L];
@@ -260,12 +471,23 @@ export function wasm_cast_cube_ray(...args) {
           const c = cLvl[fKey];
           const u8 = c?.data instanceof Uint8Array ? c.data : (c instanceof Uint8Array ? c : null);
           if (u8 && u8.length > 0) {
-            const ptr = stageCubeInWasm(u8);
-            if (!ptr) { ptrTable = null; break; }
-            ptrTable[l * numFields + f] = ptr;
+            totalSetBytes += u8.length;
+            if (!cubeCache.has(u8)) uncachedSetBytes += u8.length;
+            toStage.push({slot: l * numFields + f, u8});
           }
         }
-        if (!ptrTable) break;
+      }
+      const maxBytes = getMaxCubeCacheBytes();
+      if (totalSetBytes > 0 && totalSetBytes <= maxBytes) {
+        if (cubeCacheBytes + uncachedSetBytes > maxBytes) {
+          resetWasmCubeCache();
+        }
+        ptrTable = new Uint32Array(numLevels * numFields);
+        for (const item of toStage) {
+          const ptr = stageCubeInWasm(item.u8, {allowReset: false});
+          if (!ptr) { ptrTable = null; break; }
+          ptrTable[item.slot] = ptr;
+        }
       }
     }
     meta = {levelN, levelHalf, vminArr, vmaxArr, ptrTable};
@@ -335,81 +557,29 @@ export function wasm_cast_cube_ray(...args) {
     }
   }
 
-  // Pure-JS fallback
-  const samples = new Float32Array(nSteps * numFields);
-  samples.fill(NaN);
-  const vlos = new Float32Array(nSteps);
-  const temp = new Float32Array(nSteps);
-  const nd = rayLenKpc > 1e-12 ? [dx / rayLenKpc, dy / rayLenKpc, dz / rayLenKpc] : [0, 0, 1];
-
-  for (let s = 0; s < nSteps; s++) {
-    const t = (s + 0.5) / nSteps;
-    const x = p0d[0] + t * dx, y = p0d[1] + t * dy, z = p0d[2] + t * dz;
-    const maxAbs = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
+  // Zero-duplication streaming fallback (used when WASM is unavailable OR when the cube set exceeds the device-aware WASM cache cap)
+  const sampler = createStreamingRaySampler({manifest, p0d, p1d, nSteps, trilinear});
+  for (let l = numLevels - 1; l >= 0; l--) {
+    const L = WASM_LEVEL_KEYS[l];
+    const cLvl = cubes[L];
+    if (!cLvl) continue;
     for (let f = 0; f < numFields; f++) {
       const fKey = WASM_FIELD_KEYS[f];
-      const lo = vminArr[f], scale = (vmaxArr[f] - lo) / 254.0;
-      let val = NaN;
-      for (let l = numLevels - 1; l >= 0; l--) {
-        const L = WASM_LEVEL_KEYS[l];
-        const c = cubes[L]?.[fKey];
-        const u8 = c?.data instanceof Uint8Array ? c.data : (c instanceof Uint8Array ? c : null);
-        const n = levelN[l], h = levelHalf[l];
-        if (!u8 || !n || !(h > 0)) continue;
-        const bound = l === 0 ? h : h * 0.96;
-        if (maxAbs >= bound) continue;
-        if (!trilinear) {
-          const ix = Math.min(n - 1, Math.max(0, Math.floor((x / h * 0.5 + 0.5) * n)));
-          const iy = Math.min(n - 1, Math.max(0, Math.floor((y / h * 0.5 + 0.5) * n)));
-          const iz = Math.min(n - 1, Math.max(0, Math.floor((z / h * 0.5 + 0.5) * n)));
-          const q = u8[ix + n * (iy + n * iz)];
-          if (q !== 0) val = lo + (q - 1) * scale;
-        } else {
-          const gx = (x / h * 0.5 + 0.5) * n - 0.5;
-          const gy = (y / h * 0.5 + 0.5) * n - 0.5;
-          const gz = (z / h * 0.5 + 0.5) * n - 0.5;
-          const ix0 = Math.floor(gx), iy0 = Math.floor(gy), iz0 = Math.floor(gz);
-          const fx = Math.min(1, Math.max(0, gx - ix0));
-          const fy = Math.min(1, Math.max(0, gy - iy0));
-          const fz = Math.min(1, Math.max(0, gz - iz0));
-          const x0 = Math.min(n - 1, Math.max(0, ix0)), x1 = Math.min(n - 1, Math.max(0, ix0 + 1));
-          const y0 = Math.min(n - 1, Math.max(0, iy0)), y1 = Math.min(n - 1, Math.max(0, iy0 + 1));
-          const z0 = Math.min(n - 1, Math.max(0, iz0)), z1 = Math.min(n - 1, Math.max(0, iz0 + 1));
-          const wx = [1 - fx, fx], wy = [1 - fy, fy], wz = [1 - fz, fz];
-          const xs = [x0, x1], ys = [y0 * n, y1 * n], zs = [z0 * n * n, z1 * n * n];
-          let wSum = 0, qSum = 0;
-          for (let kz = 0; kz < 2; kz++) {
-            for (let ky = 0; ky < 2; ky++) {
-              for (let kx = 0; kx < 2; kx++) {
-                const q = u8[xs[kx] + ys[ky] + zs[kz]];
-                if (q !== 0) {
-                  const w = wx[kx] * wy[ky] * wz[kz];
-                  wSum += w;
-                  qSum += w * (q - 1);
-                }
-              }
-            }
-          }
-          if (wSum > 1e-6) val = lo + (qSum / wSum) * scale;
-        }
-        break;
+      const c = cLvl[fKey];
+      const u8 = c?.data instanceof Uint8Array ? c.data : (c instanceof Uint8Array ? c : null);
+      if (u8 && u8.length > 0) {
+        sampler.ingestCube(l, f, u8, {
+          n: c?.n || levelN[l],
+          half: c?.half || levelHalf[l],
+          vmin: Number.isFinite(c?.vmin) ? c.vmin : vminArr[f],
+          vmax: Number.isFinite(c?.vmax) ? c.vmax : vmaxArr[f]
+        });
       }
-      samples[s * numFields + f] = val;
     }
-    const lgT = samples[s * numFields + 1];
-    temp[s] = Number.isFinite(lgT) ? 10 ** lgT : 2e4;
-    const vx = samples[s * numFields + 15];
-    const vy = samples[s * numFields + 16];
-    const vz = samples[s * numFields + 17];
-    const vl = (Number.isFinite(vx) ? vx : 0) * nd[0] +
-               (Number.isFinite(vy) ? vy : 0) * nd[1] +
-               (Number.isFinite(vz) ? vz : 0) * nd[2];
-    vlos[s] = Math.min(1480, Math.max(-1480, vl));
   }
-  return {
-    samples, vlos, temp, nSteps, rayLenKpc, dlKpc, dlCm,
-    usedWasm: false, ms: nowMs() - t0
-  };
+  const res = sampler.finish();
+  res.ms = nowMs() - t0;
+  return res;
 }
 
 // -----------------------------------------------------------------------------

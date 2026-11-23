@@ -59,7 +59,7 @@ export const SIM_META = {
   tng300: {label: "TNG300", title: "TNG300 sightlines", groupTitle: "TNG300-1 galaxies", msg: "TNG300-1 z = 0 massive and group galaxies", tip: "Show only TNG300-1 galaxies", topTip: "Switch to IllustrisTNG TNG300-1 galaxies", tag: "TNG300", tagTip: "IllustrisTNG TNG300-1 cosmological simulation", credit: "Simulation: IllustrisTNG TNG300-1 (TNG Collaboration)"},
   illustris: {label: "Illustris", title: "Illustris sightlines", groupTitle: "Illustris-1 galaxies", msg: "Illustris-1 z = 0 Milky Way and L* galaxies", tip: "Show only Illustris-1 galaxies", topTip: "Switch to Illustris-1 galaxies", tag: "Illustris", tagTip: "Original Illustris-1 cosmological simulation", credit: "Simulation: Illustris-1 (Illustris Collaboration)"},
   agora:  {label: "AGORA",  title: "AGORA sightlines",  groupTitle: "AGORA CosmoRun zoom-in halo", msg: "AGORA z = 0 AREPO Milky Way zoom-in halo", tip: "Show only AGORA CosmoRun zoom-in halos", topTip: "Switch to AGORA CosmoRun zoom-in halo", tag: "AGORA", tagTip: "AGORA CosmoRun AREPO Milky Way zoom-in simulation", credit: "Simulation: AGORA CosmoRun AREPO (AGORA Collaboration)"},
-  camels: {label: "CAMELS/EAGLE", title: "CAMELS sightlines", groupTitle: "CAMELS and Swift-EAGLE Milky Way halos", msg: "CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE) z = 0 halos", tip: "Show only CAMELS and Swift-EAGLE galaxies", topTip: "Switch to CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE) halos", tag: "CAMELS", tagTip: "CAMELS project (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE)", credit: "Simulation: CAMELS & Swift-EAGLE (CAMELS Collaboration)"}
+  camels: {label: "CAMELS", title: "CAMELS sightlines", groupTitle: "CAMELS and Swift-EAGLE Milky Way halos", msg: "CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE) z = 0 halos", tip: "Show only CAMELS and Swift-EAGLE galaxies", topTip: "Switch to CAMELS (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE) halos", tag: "CAMELS", tagTip: "CAMELS project (IllustrisTNG, SIMBA, Astrid, Swift-EAGLE)", credit: "Simulation: CAMELS & Swift-EAGLE (CAMELS Collaboration)"}
 };
 export const SIM_ORDER = ["tng50", "fire2", "simba", "auriga", "tng100", "tng300", "illustris", "agora", "camels"];
 export const galNoun = e => {
@@ -342,19 +342,19 @@ export function createGalaxyPicker(els, opts) {
   const multiSim = sims.size > 1;
   let simBar = els.pop ? els.pop.querySelector("#gxy-sim") : null;
   if (multiSim && els.pop && !simBar) {
-    simBar = document.createElement("div");
+    simBar = document.createElement("select");
     simBar.id = "gxy-sim";
-    simBar.className = "seg";
-    simBar.setAttribute("role", "radiogroup");
     simBar.setAttribute("aria-label", "Simulation filter");
-    simBar.style.gridTemplateColumns = `repeat(${activeSimKeys.length + 1}, minmax(0, 1fr))`;
+    simBar.dataset.tip = "Filter galaxies by simulation suite";
     const items = [
-      ["all", `All (${allList.length})`, "Show all galaxies grouped by simulation"],
-      ...activeSimKeys.map(sk => [sk, `${SIM_META[sk].label} (${counts[sk]})`, SIM_META[sk].tip])
+      ["all", `all sims (${allList.length})`],
+      ...activeSimKeys.map(sk => [sk, `${SIM_META[sk].label} (${counts[sk]})`])
     ];
-    simBar.innerHTML = items.map(([v, lab, tip], i) => `<label><input type="radio" name="gxy-sim" value="${v}" data-tip="${esc(tip)}"${i === 0 ? " checked" : ""}><span>${lab}</span></label>`).join("");
-    const fl = els.pop.querySelector(".fl");
-    if (fl) els.pop.insertBefore(simBar, fl); else els.pop.prepend(simBar);
+    simBar.innerHTML = items.map(([v, lab]) => `<option value="${v}">${esc(lab)}</option>`).join("");
+    const fl = els.pop.querySelector(".fl"), filt = els.pop.querySelector("#gxy-filter");
+    if (fl && filt) fl.insertBefore(simBar, filt);
+    else if (fl) fl.appendChild(simBar);
+    else els.pop.prepend(simBar);
   }
   const msgEl = els.pop ? els.pop.querySelector(".galf .msg") : null;
   function updateMsg() {
@@ -370,9 +370,9 @@ export function createGalaxyPicker(els, opts) {
   }
   els.head.innerHTML = COLS.map(([k, lab, tip]) => `<button type="button" class="gxs" data-sort="${k}" data-tip="${esc(tip)}" aria-sort="none">${lab}<b aria-hidden="true"></b></button>`).join("") + "<span></span>";
   function row(e, i, cur) {
-    const idTxt = multiSim ? `${galNoun(e)} ${e.id}` : String(e.id);
+    const idHtml = multiSim ? `<i class="gxn">${esc(galNoun(e))} </i>${esc(e.id)}` : esc(e.id);
     return `<li role="option" id="gxy-opt-${i}" data-id="${esc(e.id)}" aria-selected="${e.id === cur}" aria-label="${esc(galaxyAria(e))}" data-tip="${esc(galaxyTip(e))}"${i === hl ? ' class="hl"' : ""}>` +
-      `<span class="gxid">${esc(idTxt)}</span><span class="num">${lg(e.Mstar)}</span><span class="num">${fmtSfr(e.SFR)}</span><span class="num">${lg(e.M200c)}</span><span class="gxt">${tags(e)}</span></li>`;
+      `<span class="gxid">${idHtml}</span><span class="num">${lg(e.Mstar)}</span><span class="num">${fmtSfr(e.SFR)}</span><span class="num">${lg(e.M200c)}</span><span class="gxt">${tags(e)}</span></li>`;
   }
   function render() {
     const f = els.filter.value, all = opts.index.list, cur = opts.current();
@@ -415,11 +415,11 @@ export function createGalaxyPicker(els, opts) {
   function setSim(s) {
     const k = s === "all" ? "all" : (normSimKey(s) || s);
     simFilter = (k === "all" || SIM_ORDER.includes(k)) ? k : "all";
-    if (simBar) for (const r of simBar.querySelectorAll('input[name="gxy-sim"]')) r.checked = r.value === simFilter;
+    if (simBar) simBar.value = simFilter;
     hl = -1; render();
   }
   function clear() { els.search.value = ""; els.filter.value = "all"; setSim("all"); els.search.focus(); }
-  if (simBar) simBar.addEventListener("change", ev => { if (ev.target && ev.target.name === "gxy-sim") setSim(ev.target.value); });
+  if (simBar) simBar.addEventListener("change", ev => { if (ev.target) setSim(ev.target.value); });
   els.head.addEventListener("click", ev => { const b = ev.target.closest("[data-sort]"); if (b) setSort(b.dataset.sort); });
   els.list.addEventListener("click", ev => { if (ev.target.closest('[data-act="clear"]')) { setTimeout(clear); return; }
     const li = ev.target.closest("li[data-id]"); if (li) opts.onPick(normId(li.dataset.id)); });
