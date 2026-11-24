@@ -1,0 +1,198 @@
+{
+  "source": "CLOUDY c17.03 (FG11 UVB, GASS10 solar abundances, temet hydrogen.uvbPhotoionAtten self-shielding)",
+  "redshift": 0.0,
+  "units": "log10(epsilon [erg s^-1 cm^-3])",
+  "sb_units": "log10(SB [erg s^-1 cm^-2 arcsec^-2])",
+  "sb_formula": "log10(SB) = log10(integral(epsilon * ds_cm)) - log10(4*pi*(1+z)^4 * 4.254517e10)",
+  "log10_4pi_arcsec2_per_sr": 11.7280614585,
+  "eps_min": -48.0,
+  "eps_max": -12.0,
+  "shape": [
+    12,
+    56,
+    6,
+    61
+  ],
+  "nH_min": -7.0,
+  "nH_max": 3.999999999999961,
+  "nH_len": 56,
+  "Z_min": -3.0,
+  "Z_max": 0.9999999999999991,
+  "Z_len": 6,
+  "T_min": 3.0,
+  "T_max": 8.999999999999979,
+  "T_len": 61,
+  "lines": [
+    {
+      "id": "Ha_6563",
+      "label": "H\u03b1 6563 \u00c5",
+      "short": "H\u03b1",
+      "wave_A": 6562.81,
+      "band": "Optical",
+      "keys": [
+        "H  1 6562.81A"
+      ],
+      "sb_range": [
+        -21.5,
+        -14.5
+      ]
+    },
+    {
+      "id": "Lya_1216",
+      "label": "Ly\u03b1 1216 \u00c5",
+      "short": "Ly\u03b1",
+      "wave_A": 1215.67,
+      "band": "FUV",
+      "keys": [
+        "H  1 1215.67A"
+      ],
+      "sb_range": [
+        -21.0,
+        -14.0
+      ]
+    },
+    {
+      "id": "OII_3727",
+      "label": "[O II] 3727/29 \u00c5",
+      "short": "[O II]",
+      "wave_A": 3727.42,
+      "band": "Optical",
+      "keys": [
+        "O  2 3726.03A",
+        "O  2 3728.81A"
+      ],
+      "sb_range": [
+        -22.0,
+        -15.0
+      ]
+    },
+    {
+      "id": "OIII_5007",
+      "label": "[O III] 5007 \u00c5",
+      "short": "[O III]",
+      "wave_A": 5006.84,
+      "band": "Optical",
+      "keys": [
+        "O  3 5006.84A"
+      ],
+      "sb_range": [
+        -22.0,
+        -15.0
+      ]
+    },
+    {
+      "id": "NII_6583",
+      "label": "[N II] 6583 \u00c5",
+      "short": "[N II]",
+      "wave_A": 6583.45,
+      "band": "Optical",
+      "keys": [
+        "N  2 6583.45A"
+      ],
+      "sb_range": [
+        -22.5,
+        -15.5
+      ]
+    },
+    {
+      "id": "MgII_2798",
+      "label": "Mg II 2796/03 \u00c5",
+      "short": "Mg II",
+      "wave_A": 2798.0,
+      "band": "NUV",
+      "keys": [
+        "Blnd 2798.00A"
+      ],
+      "sb_range": [
+        -22.5,
+        -15.5
+      ]
+    },
+    {
+      "id": "CIII_977",
+      "label": "C III 977 \u00c5",
+      "short": "C III",
+      "wave_A": 977.02,
+      "band": "FUV",
+      "keys": [
+        "C  3 977.020A"
+      ],
+      "sb_range": [
+        -22.5,
+        -16.0
+      ]
+    },
+    {
+      "id": "CIV_1548",
+      "label": "C IV 1548/51 \u00c5",
+      "short": "C IV",
+      "wave_A": 1549.06,
+      "band": "FUV",
+      "keys": [
+        "C  4 1548.19A",
+        "C  4 1550.78A"
+      ],
+      "sb_range": [
+        -23.0,
+        -16.5
+      ]
+    },
+    {
+      "id": "OVI_1032",
+      "label": "O VI 1032/38 \u00c5",
+      "short": "O VI",
+      "wave_A": 1033.82,
+      "band": "FUV",
+      "keys": [
+        "O  6 1031.91A",
+        "O  6 1037.62A"
+      ],
+      "sb_range": [
+        -23.0,
+        -16.5
+      ]
+    },
+    {
+      "id": "OVII_21.6",
+      "label": "O VII 21.6 \u00c5",
+      "short": "O VII",
+      "wave_A": 21.602,
+      "band": "X-ray",
+      "keys": [
+        "O  7 21.6020A"
+      ],
+      "sb_range": [
+        -24.0,
+        -17.5
+      ]
+    },
+    {
+      "id": "OVIII_18.97",
+      "label": "O VIII 18.97 \u00c5",
+      "short": "O VIII",
+      "wave_A": 18.971,
+      "band": "X-ray",
+      "keys": [
+        "O  8 18.9709A"
+      ],
+      "sb_range": [
+        -24.0,
+        -17.0
+      ]
+    },
+    {
+      "id": "FeXXV_1.85",
+      "label": "Fe XXV 1.85 \u00c5",
+      "short": "Fe XXV",
+      "wave_A": 1.8504,
+      "band": "X-ray",
+      "keys": [
+        "Fe25 1.85040A"
+      ],
+      "sb_range": [
+        -24.5,
+        -16.5
+      ]
+    }
+  ]
+}

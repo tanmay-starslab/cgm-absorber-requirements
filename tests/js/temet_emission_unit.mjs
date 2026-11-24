@@ -1,8 +1,10 @@
-// Unit tests for Zero-Storage TEMET Thermodynamic Fields (vizdata.js) and 3D Surface-Brightness Emission Mode (raymarch.js + viewer3d.js).
+// Unit tests for Zero-Storage TEMET Thermodynamic Fields (temet.js) and CLOUDY c17.03 Line Emissivity SB Mode (cloudy_emissivity.js + raymarch.js + viewer3d.js).
 import {readFileSync} from "node:fs";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
 import {TEMET_FIELDS, TEMET_KEYS, isTemetKey, temetList, temetFieldMeta, coolingLambda, computeTemetCube} from "../../docs/tng50/js/temet.js";
+import {CLOUDY_LINES, CLOUDY_DEFAULT_LINE, CLOUDY_EPS_MIN, CLOUDY_EPS_MAX, CLOUDY_EPS_REF,
+  cloudyLineMeta, cloudySbOffset, setCloudyLut, sampleCloudyLogEps, computeCloudyEmissivityCube} from "../../docs/tng50/js/cloudy_emissivity.js";
 import {decodeU8, encodeLinear} from "../../docs/tng50/js/vizdata.js";
 import {FRAG, applyEmissionMode} from "../../docs/tng50/js/raymarch.js";
 
@@ -113,25 +115,76 @@ const M = JSON.parse(readFileSync(join(ROOT, "docs/tng50/data/viz/manifest_v2.js
     `256^3 synthesis timing: Pth ${rP.ms.toFixed(1)} ms, tcool ${rT.ms.toFixed(1)} ms, Mach ${rM.ms.toFixed(1)} ms`);
 }
 
-/* ---- 5. 3D Emission Mode (uMode == 2) shader patch & viewer3d wiring ---- */
+/* ---- 5. CLOUDY c17.03 Line Emissivity LUT & Surface Brightness Physics ---- */
+{
+  const meta = JSON.parse(readFileSync(join(ROOT, "docs/tng50/data/cloudy_emissivity_meta.json"), "utf8"));
+  const lutBuf = new Uint8Array(readFileSync(join(ROOT, "docs/tng50/data/cloudy_emissivity_z0.bin")));
+  check(lutBuf.length === 245952, `cloudy_emissivity_z0.bin is exactly 245,952 bytes (${lutBuf.length})`);
+  check(CLOUDY_LINES.length === 12 && CLOUDY_DEFAULT_LINE === "Ha_6563" &&
+        CLOUDY_LINES.every((l, i) => l.id === meta.lines[i].id && l.label === meta.lines[i].label &&
+          l.sb_range[0] === meta.lines[i].sb_range[0] && l.sb_range[1] === meta.lines[i].sb_range[1]),
+    "CLOUDY_LINES matches all 12 lines and SB ranges in cloudy_emissivity_meta.json");
+  setCloudyLut(lutBuf);
+
+  // Physical checks: Hα peaks in warm 10^4 K gas; O VII peaks in hot 10^6.3 K X-ray halo gas
+  const epsHaWarm = sampleCloudyLogEps(lutBuf, "Ha_6563", -2.0, 0.0, 4.0);
+  const epsHaHot = sampleCloudyLogEps(lutBuf, "Ha_6563", -2.0, 0.0, 7.0);
+  check(epsHaWarm > -30.5 && epsHaWarm < -27 && epsHaWarm > epsHaHot + 2.0,
+    `Hα 6563 Å warm (10^4 K) eps = ${epsHaWarm.toFixed(2)} >> hot (10^7 K) ${epsHaHot.toFixed(2)}`);
+
+  const epsO7Hot = sampleCloudyLogEps(lutBuf, "OVII_21.6", -3.0, -0.5, 6.3);
+  const epsO7Warm = sampleCloudyLogEps(lutBuf, "OVII_21.6", -3.0, -0.5, 4.0);
+  check(epsO7Hot > -32 && epsO7Hot < -27 && epsO7Hot > epsO7Warm + 5.0,
+    `O VII 21.6 Å hot (10^6.3 K) eps = ${epsO7Hot.toFixed(2)} >> warm (10^4 K) ${epsO7Warm}`);
+
+  // Exact SB offset & (1+z)^-4 cosmological dimming
+  const off0 = cloudySbOffset(0.0), off1 = cloudySbOffset(1.0);
+  const expOff0 = CLOUDY_EPS_REF + 21.4893505383 - 11.7280614585;
+  check(Math.abs(off0 - expOff0) < 1e-6 && Math.abs((off1 - off0) + 4 * Math.log10(2)) < 1e-6,
+    `cloudySbOffset: z=0 -> ${off0.toFixed(4)}, z=1 -> ${off1.toFixed(4)} (dimming ${(off1 - off0).toFixed(4)} dex)`);
+
+  // Cube synthesis with Z and fallback without Z matches sampleCloudyLogEps
+  const rN = [-7, 2], rT = [3, 8], rZ = [-3, 1];
+  const logN = [NaN, -2.0, -3.0, -1.0], logT = [NaN, 4.0, 6.3, 5.5], logZ = [NaN, 0.0, -0.5, -0.2];
+  const rawWithZ = {nH: encLog(logN, ...rN), T: encLog(logT, ...rT), Z: encLog(logZ, ...rZ)};
+  const rawNoZ = {nH: encLog(logN, ...rN), T: encLog(logT, ...rT)};
+  const cHa = computeCloudyEmissivityCube("Ha_6563", rawWithZ, {nH: rN, T: rT, Z: rZ}, lutBuf);
+  const cHaD = decodeU8(cHa.data, CLOUDY_EPS_MIN, CLOUDY_EPS_MAX);
+  const expHa1 = sampleCloudyLogEps(lutBuf, "Ha_6563", logN[1], logZ[1], logT[1]);
+  check(cHa.data[0] === 0 && Math.abs(cHaD[1] - expHa1) < 0.25,
+    `computeCloudyEmissivityCube(Ha_6563, with Z): got ${cHaD[1].toFixed(2)} vs ${expHa1.toFixed(2)}`);
+
+  const cO7Fb = computeCloudyEmissivityCube("OVII_21.6", rawNoZ, {nH: rN, T: rT}, lutBuf);
+  const cO7FbD = decodeU8(cO7Fb.data, CLOUDY_EPS_MIN, CLOUDY_EPS_MAX);
+  check(cO7Fb.data[0] === 0 && Math.abs(cO7FbD[2] - epsO7Hot) < 0.25,
+    `computeCloudyEmissivityCube(OVII_21.6, fallback Z=-0.5): got ${cO7FbD[2].toFixed(2)} vs ${epsO7Hot.toFixed(2)}`);
+
+  // 256^3 synthesis speed
+  const N = 256 ** 3;
+  const qN = new Uint8Array(N).fill(120), qT = new Uint8Array(N).fill(140), qZ = new Uint8Array(N).fill(150);
+  const rC = computeCloudyEmissivityCube("Ha_6563", {nH: qN, T: qT, Z: qZ}, {nH: rN, T: rT, Z: rZ}, lutBuf);
+  check(rC.data.length === N && rC.ms < 2000, `256^3 CLOUDY Ha_6563 synthesis timing: ${rC.ms.toFixed(1)} ms`);
+}
+
+/* ---- 6. 3D Emission Mode (uMode == 2) shader patch & viewer3d wiring ---- */
 {
   const patched = applyEmissionMode(FRAG);
-  check(!FRAG.includes("uEmisKind") && !FRAG.includes("emisMode"), "raymarch.js base FRAG remains byte-clean (parity preserved)");
-  check(patched.includes("uniform int uMode, uKind, uEmisKind;") &&
+  check(!FRAG.includes("uEmisOffset") && !FRAG.includes("emisMode"), "raymarch.js base FRAG remains byte-clean (parity preserved)");
+  check(patched.includes("uniform int uMode, uKind; uniform float uEmisOffset;") &&
         patched.includes("bool emisMode = !velMode && uMode == 2;") &&
-        patched.includes("(weighted || tfW || emisMode)") &&
-        patched.includes("w * w * sqrt(max(v, 0.0)) * hw") &&
-        patched.includes("sumG += w * v * hw;"),
-    "applyEmissionMode(FRAG) injects uMode == 2 Emission SB branch cleanly");
+        patched.includes("} else if (emisMode) {\n          sumG += v * hw;") &&
+        patched.includes("emisMode ? (sumG > 0.0 ? log2(sumG) / LOG2_10 + uEmisOffset : -1e30)"),
+    "applyEmissionMode(FRAG) injects float32-safe uMode == 2 CLOUDY SB branch cleanly");
   const vsrc = readFileSync(join(ROOT, "docs/tng50/js/viewer3d.js"), "utf8");
   check(vsrc.includes('value="emission" data-testid="v3-mode-emission"') &&
+        vsrc.includes('id="v3-emis-line" data-testid="v3-emis-line"') &&
         vsrc.includes("applyEmissionMode(RM.material.fragmentShader)") &&
-        vsrc.includes("RM.uniforms.uEmisKind = {value: 0}") &&
-        vsrc.includes('mode === "emission" ? 2 : 0') &&
-        vsrc.includes('const emisOk = k => k === "nH" || k === "T" || k === "EM" || isIon(k);') &&
-        vsrc.includes('if (mode === "emission") parts.push("mode=emission");') &&
+        vsrc.includes("RM.uniforms.uEmisOffset = {value: cloudySbOffset(0)}") &&
+        vsrc.includes("CLOUDY c17.03") &&
+        vsrc.includes("log₁₀ SB [erg s⁻¹ cm⁻² arcsec⁻²]") &&
+        vsrc.includes('parts.push("mode=emission")') &&
         vsrc.includes('<span class="k">TEMET</span>'),
-    "viewer3d.js wires TEMET field group, Emission mode pill, emisOk restriction, mode=emission URL sync, and uMode == 2 uniform");
+    "viewer3d.js wires CLOUDY c17.03 emission line selector, SB colorbar, uEmisOffset, and URL sync");
 }
 
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nall checks passed");
