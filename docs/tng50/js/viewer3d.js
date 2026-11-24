@@ -40,14 +40,15 @@ import {lut, cssGradient, NAMES as CMAPS, VEL_NAMES} from "./colormaps.js";
 import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, speciesList, MU_ZERO,
   VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity,
   initFastVizWasm, wasm_cast_cube_ray, wasm_synthesize_voigt_12ions, wasm_decode_lut_volume} from "./vizdata.js";
-import {makeMaterial} from "./raymarch.js";
+import {TEMET_KEYS, isTemetKey, temetList, temetFieldMeta, computeTemetCube} from "./temet.js";
+import {makeMaterial, applyEmissionMode} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
 import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, NELSON16, TF_W, TF_H} from "./tf.js";
 import {createTfEditor, histCodes, histWindow} from "./tfeditor.js";
 import {initTips} from "./tips.js";
 import {sfx} from "./uisound.js";
 
-export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList,
+export {VOL_KEYS, decodeU8, gunzipIfNeeded, speciesList, velocityList, TEMET_KEYS, temetList, computeTemetCube,
   initFastVizWasm, wasm_cast_cube_ray, wasm_synthesize_voigt_12ions, wasm_decode_lut_volume};
 
 /* ---- ux4 pivot: the orbit centre (OrbitControls target), scene kpc. Default the galaxy centre; the user moves it by
@@ -150,9 +151,12 @@ export function createMovingGovernor({ladder = MOVING_LADDER, start = 3, targetM
   };
 }
 /* fix-ui V8: no literal underscores; COL_HTML is the colour-bar title with real subscripts (plain text elsewhere) */
-const COL_HTML = {nH: "N<sub>H</sub>", T: "⟨T⟩ (n<sub>H</sub>-weighted)", Z: "⟨Z⟩ (n<sub>H</sub>-weighted)"};
-const COL_TXT = {nH: "NH", T: "⟨T⟩ (nH-weighted)", Z: "⟨Z⟩ (nH-weighted)"};
-const VOL_HTML = {nH: "n<sub>H</sub>"};
+const COL_HTML = {nH: "N<sub>H</sub>", T: "⟨T⟩ (n<sub>H</sub>-weighted)", Z: "⟨Z⟩ (n<sub>H</sub>-weighted)",
+  Pth: "⟨P<sub>th</sub> / k<sub>B</sub>⟩ (n<sub>H</sub>-weighted)", K: "⟨K⟩ (n<sub>H</sub>-weighted)",
+  EM: "∫ n<sub>H</sub>² T<sup>1/2</sup> dl", tcool: "⟨t<sub>cool</sub>⟩ (n<sub>H</sub>-weighted)", Mach: "⟨Mach⟩ (n<sub>H</sub>-weighted)"};
+const COL_TXT = {nH: "NH", T: "⟨T⟩ (nH-weighted)", Z: "⟨Z⟩ (nH-weighted)",
+  Pth: "⟨Pth/kB⟩ (nH-weighted)", K: "⟨K⟩ (nH-weighted)", EM: "EM", tcool: "⟨tcool⟩ (nH-weighted)", Mach: "⟨Mach⟩ (nH-weighted)"};
+const VOL_HTML = {nH: "n<sub>H</sub>", Pth: "P<sub>th</sub> / k<sub>B</sub>", K: "K", EM: "n<sub>H</sub>² T<sup>1/2</sup>", tcool: "t<sub>cool</sub>", Mach: "Mach"};
 const isIon = k => ION_KEYS.includes(k);
 /* vel3d: the five velocity views (vizdata VEL_VIEWS). Default window ±VEL_W km/s (0..VEL_W for |v| and σ_los), the
    slider from VEL_WMIN to the encoding's V; the weight is n_H unless the Weight control names an ion */
@@ -461,7 +465,7 @@ body.v3d-noscroll{overflow:hidden}
   .v3d .v3c{background:#0c1016;backdrop-filter:none;-webkit-backdrop-filter:none}.v3d-tt span{background:rgba(8,10,18,.9);backdrop-filter:none;-webkit-backdrop-filter:none}}
 @media (prefers-contrast:more){.v3d{--s-edge:rgba(220,230,250,.5)}.v3c{--cg-edge:var(--mat-edge-hc,var(--muted,#98a0b8))}}`;
 
-const pretty = u => String(u || "").replace("cm^-3", "cm⁻³").replace("cm^-2", "cm⁻²").replace("Zsun", "Z☉");
+const pretty = u => String(u || "").replace("cm^-6", "cm⁻⁶").replace("cm^-5", "cm⁻⁵").replace("cm^-3", "cm⁻³").replace("cm^-2", "cm⁻²").replace("cm^2", "cm²").replace("K^1/2", "K¹ᐟ²").replace("Zsun", "Z☉");
 /* "mobile" = the constrained GPU profile (192 MB texture budget, pixel ratio 1, no stars, serial loads). Width alone missed
    large tablets (Galaxy Tab S8 Ultra, iPad Pro: desktop-width screens, mobile-browser GPU memory limits), which then lost the
    WebGL context. A touch-only device, a mobile/tablet browser, a reported device memory <= 4 GB, or a context loss earlier
@@ -539,7 +543,7 @@ async function create(app, opts = {}) {
   const mobile = isMobile(), lowTier = mobile && pageTier() === "low", deviceMemory = navigator.deviceMemory ?? 8;
 
   /* ---- DOM: the stage (el, moved between the full host and the thumbnail) and the control column (ctlBox) ---- */
-  const SPEC = [...speciesList(cfg.ions, manifest), ...velocityList(manifest)], specOf = k => SPEC.find(x => x.key === k);
+  const SPEC = [...speciesList(cfg.ions, manifest), ...temetList(manifest), ...velocityList(manifest)], specOf = k => SPEC.find(x => x.key === k);
   const VELI = velocityInfo(manifest);   // vel3d: null with an old manifest (the Velocity buttons are then disabled)
   { const vc = document.getElementById("methods-vcap"); if (vc && VELI?.V) vc.textContent = `±${Math.round(VELI.V)} km/s`; }   // the methods text names the clip from the manifest
   const el = document.createElement("div"); el.className = "v3d";
@@ -586,6 +590,16 @@ async function create(app, opts = {}) {
   /* tips: one line per field button; speciesUnits() adds what is drawn and its unit, a disabled button gives the reason */
   const GAS_TIP = {nH: "Hydrogen number density nH", T: "Gas temperature, nH-weighted", Z: "Gas metallicity, nH-weighted"};
   const GAS_COL = {nH: "Hydrogen column density N_H", T: "nH-weighted mean temperature along each ray", Z: "nH-weighted mean metallicity along each ray"};
+  const TEMET_TIP = {Pth: "Thermal pressure Pth / kB from nH and T",
+    K: "Adiabatic entropy K from T and electron density",
+    EM: "X-ray and cooling emission measure nH^2 T^(1/2)",
+    tcool: "Radiative cooling time from Wiersma cooling curve",
+    Mach: "Thermal Mach number |v| divided by sound speed"};
+  const TEMET_COL = {Pth: "nH-weighted mean thermal pressure along each ray",
+    K: "nH-weighted mean adiabatic entropy along each ray",
+    EM: "Projected X-ray and cooling emission measure along each ray",
+    tcool: "nH-weighted mean radiative cooling time along each ray",
+    Mach: "nH-weighted mean thermal Mach number along each ray"};
   const VEL_TIP = {vlos: "Velocity along the camera ray; positive recedes from you",
     vr: "Radial velocity about the galaxy centre; positive is outflow",
     vphi: "Rotation about the disk normal; positive co-rotates with the disk",
@@ -593,13 +607,19 @@ async function create(app, opts = {}) {
     sigmalos: "Velocity spread between voxels along the ray, no thermal motion"};
   const fieldTip = (x, m, u) => { if (!x.available) return x.reason || "not available";
     if (x.group === "vel") return VEL_TIP[x.key] || x.long;
+    if (x.group === "temet") {
+      if (!u) return TEMET_TIP[x.key] || x.long;
+      const nm = m === "integral" ? (TEMET_COL[x.key] || x.long) : m === "emission" ? `${x.spoken} surface brightness` : (TEMET_TIP[x.key] || x.long);
+      return u ? `${nm}, ${pretty(u)}` : nm; }
     const gas = x.group === "gas";
     if (!u) return gas ? GAS_TIP[x.key] || x.long : `${x.label} ions`;
-    const name = m === "integral" ? (gas ? GAS_COL[x.key] || x.long : `${x.label} column density`) : (gas ? GAS_TIP[x.key] || x.long : `${x.label} number density`);
+    const name = m === "integral" ? (gas ? GAS_COL[x.key] || x.long : `${x.label} column density`)
+      : m === "emission" ? (gas ? `${x.label} surface brightness` : `${x.label} emission surface brightness`)
+      : (gas ? GAS_TIP[x.key] || x.long : `${x.label} number density`);
     return `${name}, ${pretty(u)}`; };
   const radio = (x, name) => `<label${x.group === "ion" ? ` class="v3c-ion" style="--ic:${x.color};--icd:${x.color_dark}"` : ""}>` +
     `<input type="radio" name="${name}" value="${x.key}" data-testid="v3-species-${x.key}"${x.available ? "" : " disabled"} aria-label="${escH(x.spoken || x.label)}" data-tip="${escH(fieldTip(x))}">` +
-    `<span>${x.group === "ion" ? "<i></i>" : ""}${x.group === "vel" ? x.html : escH(x.label)}</span></label>`;   // vel html: our own constant (vizdata VEL_VIEWS)
+    `<span>${x.group === "ion" ? "<i></i>" : ""}${x.group === "vel" || x.group === "temet" ? x.html : escH(x.label)}</span></label>`;   // vel/temet html: our own constant (vizdata)
   const ctlBox = document.createElement("div"); ctlBox.className = "v3c"; ctlBox.id = "v3-ctl"; ctlBox.setAttribute("role", "group"); ctlBox.setAttribute("aria-label", "3D view settings");
   /* ux/3d-layout: fixed card places. Column A holds Field, View, Layers; column B holds Mode, Transfer function, Pick ray, so
      what opens with Volume sits below the clicked button. The page lays the columns out (page.css); data-tab names each
@@ -614,6 +634,7 @@ async function create(app, opts = {}) {
     <div class="v3c-body"><div class="v3c-col" data-col="a"><section class="v3c-card" data-group="field" data-tab="field"><h2>Field</h2>
       <div id="v3-species" role="radiogroup" aria-label="Field"><span class="k">Gas</span><div class="v3c-seg">${SPEC.filter(x => x.group === "gas").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Ions</span><div class="v3c-ions">${SPEC.filter(x => x.group === "ion").map(x => radio(x, "v3-species")).join("")}</div>
+        <span class="k">TEMET</span><div class="v3c-seg vel">${SPEC.filter(x => x.group === "temet").map(x => radio(x, "v3-species")).join("")}</div>
         <span class="k">Velocity</span><div class="v3c-seg vel">${SPEC.filter(x => x.group === "vel").map(x => radio(x, "v3-species")).join("")}</div></div>
       <div class="v3c-row" id="v3-lo-row"><label for="v3-lo">low</label><input id="v3-lo" type="range" step="0.1" data-tip="Bottom of the colour scale, log10 of the field"><output id="v3-lo-o" for="v3-lo"></output></div>
       <div class="v3c-row" id="v3-hi-row"><label for="v3-hi">high</label><input id="v3-hi" type="range" step="0.1" data-tip="Top of the colour scale, log10 of the field"><output id="v3-hi-o" for="v3-hi"></output></div>
@@ -640,7 +661,8 @@ async function create(app, opts = {}) {
       <div class="v3c-row"><label for="v3-lines">lines</label><select id="v3-lines" data-tip="Which sightlines to draw in 3D"><option value="selected">selected only</option><option value="showcase">highlights + your rays</option><option value="all">all</option><option value="none">none</option></select></div>
       <div class="v3c-sw"><label><input type="checkbox" id="v3-guides" data-tip="Draw the R200c ring and the disk normal">guides</label><label><input type="checkbox" id="v3-scale" checked data-tip="Show a length scale in kpc">scale bar</label></div></section></div>
     <div class="v3c-col" data-col="b"><section class="v3c-card" data-group="mode" data-tab="view"><h2>Mode</h2>
-      <div id="v3-mode" class="v3c-seg two" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
+      <div id="v3-mode" class="v3c-seg" role="radiogroup" aria-label="Render mode"><label><input type="radio" name="v3-mode" value="integral" data-testid="v3-mode-integral" data-tip="Projected map: column or weighted mean along each ray"><span>integral</span></label>
+        <label><input type="radio" name="v3-mode" value="emission" data-testid="v3-mode-emission" data-tip="Surface-brightness emission integral along each ray"><span>emission</span></label>
         <label><input type="radio" name="v3-mode" value="volume" data-testid="v3-mode-volume" data-tip="Ray-marched emission and absorption through a transfer function"><span>volume</span></label></div>
       <div class="v3c-row"><label for="v3-op">opacity</label><input id="v3-op" type="range" min="0" max="1" step="0.01" data-tip="Overall opacity of the volume rendering; volume mode only"><output id="v3-op-o" for="v3-op"></output></div></section>
     <section class="v3c-card" data-group="pick" data-tab="pick"><h2>Pick ray</h2><div class="v3c-pick"></div></section></div></div>
@@ -714,10 +736,11 @@ async function create(app, opts = {}) {
     pei:      {vec: [0.65, 0.84, 1.19], scat: 0.00, label: "FIRE Studio (Pei+92)"}
   };
   const RM = makeMaterial(T, {n: nCube}), U = RM.uniforms;
+  RM.uniforms.uEmisKind = {value: 0};
   RM.uniforms.uDust = {value: 1.0};
   RM.uniforms.uDustVec = {value: new T.Vector3(...DUST_LAWS.skirt.vec)};
   RM.uniforms.uDustScat = {value: DUST_LAWS.skirt.scat};
-  RM.material.fragmentShader = RM.material.fragmentShader
+  RM.material.fragmentShader = applyEmissionMode(RM.material.fragmentShader)
     .replace("in vec3 vPos;", "uniform float uDust, uDustScat; uniform vec3 uDustVec; in vec3 vPos;")
     .replace(`vec3 gradAt(vec3 p, int l) {
   vec3 t = p / (2.0 * hl(l)) + 0.5; float e = 1.0 / uN, s = 0.5 * (uGasRange.y - uGasRange.x) / 254.0;
@@ -897,17 +920,17 @@ vec3 starAt(vec3 p, int l) {`)
   let species = null, wanted = null, mode = "integral", loadTok = 0;
   const layer = {stars: !mobile && !!manifest?.stars, dust: true, dustLaw: "skirt", gasMix: 0.85, starMix: 0.9, Q: manifest?.stars?.display?.Q ?? 8, mu0: STAR_DEFAULT.mu0, sat: STAR_DEFAULT.sat,
     balance: manifest?.stars?.display?.balance ?? [1, 1, 1]};
-  const tf = {integral: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
+  const tf = {integral: {}, emission: {}, volume: {}};   // per mode, per species: {lo, hi, opacity, cmap}
   /* tf3d: transfer-function (TF) volume mode, THOR (Byrohl & Nelson 2025) sec. 3.5.3: per field a tf.js state; a field
      with no state, or one equal to the "ramp" preset, draws the fixed ramp exactly as before (uTFOn = 0) */
   const tfs = {};
   const stats = {};
-  const fld = k => manifest?.gas?.fields?.[k], lab = k => specOf(k)?.spoken || specOf(k)?.label || k;   // vel3d: velocity views by their spoken names
+  const fld = k => (isTemetKey(k) ? temetFieldMeta(k, manifest) : manifest?.gas?.fields?.[k]), lab = k => specOf(k)?.spoken || specOf(k)?.label || k;   // vel3d: velocity views by their spoken names
   const weighted = k => fld(k)?.kind === "mass_weighted" || fld(k)?.proj?.kind === "weighted_mean";
   /* vel3d: a velocity view is shown when the vector is in the manifest; velW = the weight field (a density: nH or an ion
      with cubes), shared by the five views; the velocity window per view and mode lives in tf like any field's */
   const velView = k => specOf(k)?.group === "vel" ? specOf(k) : null;
-  const canShow = k => !!fld(k) && fld(k).kind !== "velocity" || (isVel(k) && !!VELI);
+  const canShow = k => (isTemetKey(k) ? !!fld(k)?.cubes : !!fld(k) && fld(k).kind !== "velocity") || (isVel(k) && !!VELI);
   const WEIGHTS = ["nH", ...ION_KEYS].filter(k => fld(k)?.cubes && fld(k).kind === "density");
   let velW = WEIGHTS[0] || "nH";
   /* boundW = the weight whose cubes are bound and drawn (uW*, uWRange, uWWin, legend); velW = the one requested. A Weight
@@ -916,17 +939,26 @@ vec3 starAt(vec3 p, int l) {`)
      draw new-weight cubes under the old weight's window */
   let boundW = velW;
   /* the gas-field key whose cubes a view draws with: the view's own (nH, T, ..., ions) or, for a velocity view, its weight */
-  const wKey = k => (isVel(k) ? boundW : emisKey(k) || (weighted(k) ? "nH" : null));   // tf3d: the TF emissivity weight when set
+  const wKey = k => (isVel(k) ? boundW : mode === "emission" ? "nH" : emisKey(k) || (weighted(k) ? "nH" : null));   // tf3d: the TF emissivity weight when set; emission: nH
   function velTf(k, m = mode) { const v = velView(k), V = VELI?.V || 1000, W = Math.min(VEL_W, V);
     return tf[m][k] ||= {W, lo: v.signed ? -W : 0, hi: W, opacity: m === "volume" ? VOL.opacity : 0.5, cmap: v.signed ? VEL_NAMES.signed[0] : VEL_NAMES.unsigned[0]}; }
-  /* σ_los is a property of the whole ray (its moment 2), so it has no volume rendering: integral only */
-  const modeOk = (k, m) => !(k === "sigmalos" && m === "volume");
+  /* σ_los has no volume rendering; emission surface brightness applies only to fields with defined emissivity (nH, ions, T, EM) */
+  const emisOk = k => k === "nH" || k === "T" || k === "EM" || isIon(k);
+  const modeOk = (k, m) => !(k === "sigmalos" && m === "volume") && !(m === "emission" && !emisOk(k));
+  function emisWin(k, f) {
+    if (k === "T" || k === "EM") return [15.5, 22.5];
+    if (k === "nH") return [14.5, 21.5];
+    if (k === "HI") return [13.3, 20.0];
+    if (isIon(k)) { const d = WIN_DEFAULT[k] || {}; return [(d.lo ?? f.proj.vmin) - 4.0, (d.hi ?? f.proj.vmax) - 1.5]; }
+    return [f.proj.vmin + 17.5, f.proj.vmax + 20.5];
+  }
   function fieldTf(k, m = mode) { if (isVel(k)) return velTf(k, m);
     const f = fld(k), d = m === "integral" ? WIN_DEFAULT[k] || {} : {},
-      w = m === "integral" ? [d.lo ?? f.proj.vmin, d.hi ?? f.proj.vmax] : f.vol_window;
-    const cm = CMAP_DEFAULT[k] || f.cmap;
+      w = m === "integral" ? [d.lo ?? f.proj.vmin, d.hi ?? f.proj.vmax] : m === "emission" ? emisWin(k, f) : f.vol_window;
+    const cm = m === "emission" ? (k === "T" || k === "EM" ? "magma" : CMAP_DEFAULT[k] || f.cmap) : (CMAP_DEFAULT[k] || f.cmap);
     return tf[m][k] ||= {lo: w[0], hi: w[1], opacity: m === "volume" ? VOL.opacity : 0.5, cmap: CMAPS.includes(cm) ? cm : "tng_dusk"}; }
   function winRange(k, m = mode) { const f = fld(k); if (m === "volume") return [f.vmin, f.vmax];
+    if (m === "emission") { const [lo, hi] = emisWin(k, f); return [Math.floor(lo - 4), Math.ceil(hi + 4)]; }
     return [Math.floor(Math.min(f.proj.vmin, f.vmin + (weighted(k) ? 0 : 19)) - 2), Math.ceil(f.proj.vmax + 1.5)]; }
   /* tf3d: the preset context of a field (its encoding range and current volume window), its state (default: the ramp
      preset over that window), whether TF mode is on for it, and the emissivity weight field (a density with cubes) */
@@ -961,7 +993,7 @@ vec3 starAt(vec3 p, int l) {`)
       if (kind === "gas") { if (!k) continue;
         /* vel3d: a velocity view needs the packed velocity cube of the level ("vel||L") and its weight field */
         if (isVel(k)) { keys.push(keyOf("vel", "", L), keyOf("gas", velW, L)); continue; }
-        keys.push(keyOf("gas", k, L)); if (weighted(k) && mode === "integral") keys.push(keyOf("gas", "nH", L));
+        keys.push(keyOf("gas", k, L)); if ((weighted(k) && mode === "integral") || (mode === "emission" && k !== "nH")) keys.push(keyOf("gas", "nH", L));
         const ek = emisKey(k); if (ek && ek !== k) keys.push(keyOf("gas", ek, L)); }
       else if (manifest.stars?.cubes?.[L]) keys.push(keyOf("stars", "", L)); }
     let ks = keys.filter(x => { const [kind, kk, L] = x.split("|"); return kind === "stars" || (kind === "vel" ? VEL_COMP_KEYS.every(c => fld(c)?.cubes?.[L]) : fld(kk)?.cubes?.[L]); });
@@ -984,7 +1016,10 @@ vec3 starAt(vec3 p, int l) {`)
     const c = kind === "stars" ? manifest.stars?.cubes?.[L] : fld(kk)?.cubes?.[L]; return c?.raw_bytes ?? BYTES[kind]; }
   /* vel3d: the download size of a key (the three component cubes for "vel||L") */
   const dlBytes = key => { const [kind, kk, L] = key.split("|"), sum = c => c?.webp?.bytes?.reduce((a, b) => a + b, 0) ?? 0;
-    return kind === "vel" ? VEL_COMP_KEYS.reduce((a, c) => a + sum(fld(c)?.cubes?.[L]), 0) : sum(kind === "stars" ? manifest.stars?.cubes?.[L] : fld(kk)?.cubes?.[L]); };
+    if (kind === "vel") return VEL_COMP_KEYS.reduce((a, c) => a + sum(fld(c)?.cubes?.[L]), 0);
+    if (kind === "gas" && isTemetKey(kk)) { const f = fld(kk), deps = [...(f?.deps || []), ...(f?.optDeps || []).filter(d => manifest?.gas?.fields?.[d]?.cubes?.[L])];
+      return deps.reduce((a, d) => a + sum(manifest?.gas?.fields?.[d]?.cubes?.[L]), 0); }
+    return sum(kind === "stars" ? manifest.stars?.cubes?.[L] : fld(kk)?.cubes?.[L]); };
   function rtBytes() { const v = new T.Vector2(); renderer.getDrawingBufferSize(v); return v.x * v.y * ((accType === T.HalfFloatType ? 8 : 4) + (AA ? 4 : 1) * 8); }
   function half2(a, n) { const m = n >> 1, o = new Uint8Array(m * m * m); let j = 0;
     for (let z = 0; z < m; z++) for (let y = 0; y < m; y++) { const b = (2 * z * n + 2 * y) * n; for (let x = 0; x < m; x++) o[j++] = a[b + 2 * x]; }
@@ -1031,6 +1066,7 @@ vec3 starAt(vec3 p, int l) {`)
     if (TEX.has(key)) { TEX.get(key).used = performance.now(); return Promise.resolve(TEX.get(key)); }
     if (!PEND.has(key)) { const pend = (async () => { const [kind, k, L] = key.split("|");
       if (kind === "vel") return velTex(key, L, prio);
+      if (kind === "gas" && isTemetKey(k)) return temetTex(key, k, L, prio);
       const c = kind === "stars" ? manifest.stars.cubes[L] : fld(k).cubes[L], pr = {got: 0, total: c.webp.bytes.reduce((a, b) => a + b, 0)}; PROG.set(key, pr);
       const r = await loader.load(kind, k || null, L, {prio, onBytes: b => { pr.got += b; progressSoon(); }}).finally(() => { PROG.delete(key); progressSoon(); });
       const sk = kind === "stars" ? "stars" : k, np = smoothPasses(sk) ? smoothPasses(sk)[+L[1]] || 0 : 0;
@@ -1065,6 +1101,26 @@ vec3 starAt(vec3 p, int l) {`)
     const tex = makeTex(r); uploadTex3D(tex, r.data, r.n, true);
     const it = {tex, bytes: r.data.length, used: performance.now(), format: rs.map(x => x.format).join(","), ms: Math.max(...rs.map(x => x.ms))};
     TEX.set(key, it); stats.loads = (stats.loads || []).concat([{key, format: it.format, ms: Math.round(it.ms), decodeMs: 0, smoothed: 0}]);
+    evict(); return it;
+  }
+  /* Zero-storage TEMET derived cube: fetch hosted dependency cubes via loader (CacheStorage-backed), synthesize Uint8Array
+     in < 40 ms via LUTs, upload as a normal R8 3D texture, and cache in TEX LRU. */
+  async function temetTex(key, k, L, prio) {
+    const f = fld(k), F = manifest.gas.fields;
+    const deps = [...f.deps, ...(f.optDeps || []).filter(d => !!F[d]?.cubes?.[L])];
+    const pr = {got: 0, total: dlBytes(key)}; PROG.set(key, pr);
+    let rs;
+    try { rs = await Promise.all(deps.map(d => loader.load("gas", d, L, {prio, onBytes: b => { pr.got += b; progressSoon(); }}))); }
+    finally { PROG.delete(key); progressSoon(); }
+    const rawCubes = {}, ranges = {};
+    deps.forEach((d, i) => { rawCubes[d] = rs[i].data; if (F[d]) ranges[d] = [F[d].vmin, F[d].vmax]; });
+    if (VELI) ranges.velV = VELI.V;
+    const syn = computeTemetCube(k, rawCubes, ranges);
+    const n = rs[0].n, r = {n, kind: "gas", data: syn.data};
+    const tex = makeTex(r); uploadTex3D(tex, r.data, n, false);
+    const it = {tex, bytes: r.data.length, used: performance.now(), format: "derived", ms: Math.max(...rs.map(x => x.ms)) + syn.ms, decodeMs: syn.ms};
+    try { it.codes = histCodes(r.data, 3); if (L !== "L2") it.sub = half2(r.data, n); } catch { /* histogram only */ }
+    TEX.set(key, it); stats.loads = (stats.loads || []).concat([{key, format: "derived", ms: Math.round(it.ms), decodeMs: Math.round(syn.ms), smoothed: 0}]);
     evict(); return it;
   }
   /* vel3d: leaving the velocity views frees their packed cubes (4 bytes per voxel, the largest gas textures) */
@@ -1187,7 +1243,7 @@ vec3 starAt(vec3 p, int l) {`)
   async function ensure() {
     if (!manifest) return false;
     const k = wanted || species, {keys} = needed(k), first = keys.find(x => x.startsWith(isVel(k) ? "vel||" : `gas|${k}|`));
-    const wk = isVel(k) ? velW : weighted(k) && mode === "integral" ? "nH" : emisKey(k);
+    const wk = isVel(k) ? velW : (weighted(k) && mode === "integral") || mode === "emission" ? "nH" : emisKey(k);
     const firstKeys = first ? [first, ...(wk ? [keyOf("gas", wk, first.split("|")[2])] : [])].filter(x => keys.includes(x)) : [];
     for (const [key, ws] of [...waiters]) if (!keys.includes(key)) { waiters.delete(key); for (const w of ws) w[1](Object.assign(new Error("superseded by a newer view"), {cancelled: true})); }
     plan = keys; planFirst = new Set(firstKeys); failed.clear(); lodStatus(); pump();
@@ -1236,8 +1292,8 @@ vec3 starAt(vec3 p, int l) {`)
     if (species === k && (TEX.has(firstKey("L0")) || TEX.has(firstKey("L1"))) && (!vel || boundW === velW)) {
       if (wanted !== k) { loadTok++; wanted = k; progMsg = null; clearProg(); ensure().catch(() => {}); } markSpecies(k); thumbLabel(); return true; }
     const tok = ++loadTok; wanted = k; markSpecies(k); viewer.loadError = null;
-    /* σ_los has no volume rendering: choosing it switches to integral mode, said in the loading and shown messages */
-    const toInteg = !modeOk(k, mode) && setMode("integral"), modeNote = toInteg ? ", integral mode: the dispersion has no volume view" : "";
+    /* σ_los has no volume rendering; non-emissivity fields have no emission SB view: switch to integral mode if incompatible */
+    const toInteg = !modeOk(k, mode) && setMode("integral"), modeNote = toInteg ? (k === "sigmalos" ? ", integral mode: the dispersion has no volume view" : ", integral mode: this field has no emission view") : "";
     /* final: the first frame waits for L0 alone (the coarse, whole-halo level); L1 and the rest follow (ensure / pump) */
     const cubes = fld(vel ? "vx" : k).cubes, L1st = cubes.L0 ? "L0" : "L1";
     const k1 = firstKey(L1st), tot1 = dlBytes(k1);
@@ -1267,10 +1323,11 @@ vec3 starAt(vec3 p, int l) {`)
   /* fix-ui V8: the gas-field options carry the unit of what is drawn (a column in integral mode, a density in volume mode) */
   /* fix-ui V8 / Phase 3: each field button's tooltip names what is drawn and its unit (a column in integral mode) */
   function speciesUnits() { for (const i of ctlBox.querySelectorAll('input[name="v3-species"]')) { const f = fld(i.value), x = specOf(i.value); if (!f || !x) continue;
-    const u = mode === "integral" && !weighted(i.value) ? (f.proj?.units || "cm^-2") : f.units;
+    const u = mode === "emission" ? (i.value === "T" || i.value === "EM" ? "cm^-5 K^1/2" : "cm^-5")
+      : mode === "integral" && !weighted(i.value) ? (f.proj?.units || "cm^-2") : f.units;
     i.dataset.tip = fieldTip(x, mode, u); } }
-  function setMode(m) { if (!["integral", "volume"].includes(m)) return false; if (m === mode) return true;
-    if (!modeOk(wanted || species, m)) { markMode(mode); say("The line-of-sight dispersion is a property of the whole ray, so it has no volume view.", false, true); return false; }
+  function setMode(m) { if (!["integral", "emission", "volume"].includes(m)) return false; if (m === mode) return true;
+    if (!modeOk(wanted || species, m)) { markMode(mode); say(m === "emission" ? "Emission mode applies to nH, ions, T, and EM." : "The line-of-sight dispersion is a property of the whole ray, so it has no volume view.", false, true); return false; }
     mode = m; markMode(m); speciesUnits();
     if (species) { syncTfInputs(); applyTf(); ensure().catch(() => {}); bindAll(); } else { aria(); render(); } tfUrl(); return true; }
   function setStars(o = {}) {
@@ -1309,8 +1366,9 @@ vec3 starAt(vec3 p, int l) {`)
     if (cmapSet !== want) { const sel = q("#v3-cmap"); sel.textContent = ""; for (const c of names) { const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o); } cmapSet = want; }
     q("#v3-cmap").disabled = !manifest || names.length < 2; q("#v3-cmap-row").style.visibility = manifest && names.length < 2 ? "hidden" : "";   // a one-map list (signed views) is no choice: row hidden, its space kept
     for (const i of ctlBox.querySelectorAll('input[name="v3-mode"]')) { const off = !manifest || !modeOk(species, i.value); i.disabled = off;
-      i.dataset.tip = off && manifest ? "Integral only: the dispersion belongs to the whole ray"
+      i.dataset.tip = off && manifest ? (i.value === "emission" ? "Emission mode is for density and thermal fields" : "Integral only: the dispersion belongs to the whole ray")
         : i.value === "integral" ? (vs ? `Weighted ${species === "sigmalos" ? "spread" : "mean"} velocity along each ray` : "Projected map: column or weighted mean along each ray")
+        : i.value === "emission" ? "Surface-brightness emission integral along each ray"
         : vs ? "Colour from the velocity, opacity from the weight density" : "Ray-marched emission and absorption through a transfer function"; }
     if (!vs) return;
     const s = fieldTf(species), r = q("#v3-vw"); r.min = VEL_WMIN; r.max = Math.max(VEL_WMIN, Math.round(VELI.V)); r.value = s.W;
@@ -1328,7 +1386,8 @@ vec3 starAt(vec3 p, int l) {`)
     q("#v3-op").disabled = mode !== "volume"; fillRanges(); syncTfCard(); }
   let lastCmap = null;
   function applyTf() { if (!manifest || !species) return; const s = fieldTf(species);
-    U.uWin.value.set(s.lo, s.hi); U.uOpacity.value = +s.opacity; U.uMode.value = mode === "volume" ? 1 : 0; U.uKind.value = weighted(species) ? 1 : 0;
+    U.uWin.value.set(s.lo, s.hi); U.uOpacity.value = +s.opacity; U.uMode.value = mode === "volume" ? 1 : mode === "emission" ? 2 : 0; U.uKind.value = weighted(species) ? 1 : 0;
+    if (U.uEmisKind) U.uEmisKind.value = species === "T" ? 1 : species === "EM" ? 2 : 0;
     U.uFadeDex.value = fadeDex(species); U.uVolK.value = VOL.k; U.uVolGain.value = VOL.gain;
     /* vel3d: the view, and the weight's log window: its column floor (the field's own integral low) in integral mode, its
        volume window in volume mode; the soft floor fades like the weight field's own map */
@@ -1414,11 +1473,12 @@ vec3 starAt(vec3 p, int l) {`)
     const was = emisKey(); tfs[species] = tfPreset(name, tfCtx(species)); tfCardKey = "";
     syncTfCard(); applyTfMode(); legend(); aria(); render(); if (emisKey() !== was) { ensure().catch(() => {}); bindAll(); }
     tfUrl(); announce(tfWords()); return true; }
-  /* URL: ?tf=<field>~<tf.js encodeTF> while volume mode is on (the search part: the page's own hash writes keep it) */
+  /* URL: ?tf=<field>~<tf.js encodeTF> while volume mode is on, and ?mode=emission in emission mode */
   function tfUrl() { try {
     const on = !!species && mode === "volume" && (tfOk(species) || isVel(species)), val = on ? species + "~" + (tfOk(species) ? encodeTF(tfState(species), tfCtx(species)) : "") : "";
-    const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !x.startsWith("tf="));
+    const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !x.startsWith("tf=") && !x.startsWith("mode="));
     if (val) parts.push("tf=" + val.replace(/~$/, ""));
+    if (mode === "emission") parts.push("mode=emission");
     const search = parts.length ? "?" + parts.join("&") : "";
     if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash); } catch { /* sandboxed */ } }
   const tfBoot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("tf="));
@@ -1470,9 +1530,17 @@ vec3 starAt(vec3 p, int l) {`)
     if (isVel(species)) { L.hidden = false; velLegend(L); legendTail(L); return; }
     L.querySelector(".ends").hidden = true;
     const f = fld(species), s = fieldTf(species); L.hidden = false;
-    const integ = mode === "integral", units = integ ? (weighted(species) ? f.units : (f.proj.units || "cm^-2")) : f.units;
+    const integ = mode === "integral", emis = mode === "emission";
+    const units = emis ? (species === "T" || species === "EM" ? "cm^-5 K^1/2" : "cm^-5") : integ ? (weighted(species) ? f.units : (f.proj.units || "cm^-2")) : f.units;
     const esc = t => String(t).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"})[c]);
-    L.querySelector(".ttl").innerHTML = integ ? `log₁₀ ${COL_HTML[species] || esc(COL_TXT[species] || `N(${lab(species)})`)} [${esc(pretty(units))}]` : `log₁₀ ${VOL_HTML[species] || esc(isIon(species) ? `n(${lab(species)})` : lab(species))} [${esc(pretty(units))}], volume`;
+    const uStr = units ? ` [${esc(pretty(units))}]` : "";
+    const emisHtml = species === "T" || species === "EM" ? "∫ n<sub>H</sub>² T<sup>1/2</sup> dl"
+      : species === "nH" ? "∫ n<sub>H</sub>² dl"
+      : isIon(species) ? `∫ n<sub>H</sub> n(${esc(lab(species))}) dl`
+      : `∫ n<sub>H</sub> ${VOL_HTML[species] || esc(lab(species))} dl`;
+    L.querySelector(".ttl").innerHTML = emis ? `log₁₀ ${emisHtml}${uStr}, emission`
+      : integ ? `log₁₀ ${COL_HTML[species] || esc(COL_TXT[species] || `N(${lab(species)})`)}${uStr}`
+      : `log₁₀ ${VOL_HTML[species] || esc(isIon(species) ? `n(${lab(species)})` : lab(species))}${uStr}, volume`;
     L.querySelector(".bar").style.background = cssGradient(s.cmap);
     /* tf3d: in TF mode the bar is the transfer function itself (colour at its opacity over the stage) over the TF window */
     let lo = s.lo, hi = s.hi;
@@ -1494,7 +1562,7 @@ vec3 starAt(vec3 p, int l) {`)
     const fin = GAS_L.filter(L => lv.gas[L] === "bound").pop(), sfin = STAR_L.filter(S => lv.stars[S] === "bound").pop();
     const v = manifest && species ? velView(species) : null;
     const what = v ? `: ${v.long}, ${wName(boundW)}-weighted, window ${Math.round(s.lo)} to ${Math.round(s.hi)} km/s${v.words ? ` (${v.words[0]} to ${v.words[1]})` : ""}`
-      : f ? `: ${lab(species)}, window ${s.lo.toFixed(1)} to ${s.hi.toFixed(1)} log ${pretty(mode === "integral" && !weighted(species) ? "cm^-2" : f.units)}${tfOn() ? `; ${tfWords()}` : ""}` : "";
+      : f ? `: ${lab(species)}, window ${s.lo.toFixed(1)} to ${s.hi.toFixed(1)} log ${pretty(mode === "emission" ? (species === "T" || species === "EM" ? "cm^-5 K^1/2" : "cm^-5") : mode === "integral" && !weighted(species) ? (f.proj?.units || "cm^-2") : f.units)}${tfOn() ? `; ${tfWords()}` : ""}` : "";
     const al = `3D view, ${mode} mode${what}` +
       `; stars ${layer.stars ? "on" : "off"}; finest level ${fin || "none"}${layer.stars ? `, stars ${sfin || "none"}` : ""}` +
       `; ${LINE_IDS.length} sightlines drawn${nNoEnds ? ` (${nNoEnds} more have no stored endpoints)` : ""}${selId ? `; selected ${selId}${hasEnds(app.entry(selId)) ? "" : " (not drawn: no stored endpoints)"}` : ""}.` +
@@ -1539,7 +1607,7 @@ vec3 starAt(vec3 p, int l) {`)
     selUniforms();
     renderer.getDrawingBufferSize(accSize); U.uPxAng.value = 2 * Math.tan(camera.fov * Math.PI / 360) / Math.max(accSize.y, 1);
     U.uLodC.value.set(species ? lodField(species) : LOD_C.gas, LOD_C.stars);
-    const dT = camera.position.distanceTo(controls.target), nearD = U.uMode.value === 0 ? 0 : Math.min(dT * 0.12, 12.0);
+    const dT = camera.position.distanceTo(controls.target), nearD = U.uMode.value !== 1 ? 0 : Math.min(dT * 0.12, 12.0);
     U.uNear.value.set(0.35 * nearD, nearD);
     if (exact) {
       if (accRT.width !== accSize.x || accRT.height !== accSize.y) { accRT.setSize(accSize.x, accSize.y); accK = 0; }
@@ -1864,7 +1932,7 @@ vec3 starAt(vec3 p, int l) {`)
     else if ((k === "F" || k === "f") && ev.shiftKey) toggleFullscreen();
     else if (k === "f" || k === "F") { sfx("snap"); setPreset("face-on"); } else if (k === "e" || k === "E") { sfx("snap"); setPreset("edge-on"); }
     else if (k === "r" || k === "R") { sfx("snap"); setPreset("reset"); } else if (k === "a" || k === "A") { sfx("snap"); setPreset("sightline"); }
-    else if (k === "m" || k === "M") setMode(mode === "integral" ? "volume" : "integral");
+    else if (k === "m" || k === "M") setMode(mode === "integral" ? (modeOk(species, "emission") ? "emission" : "volume") : mode === "emission" ? "volume" : "integral");
     else if (k === "s" || k === "S") setStars({on: !layer.stars});
     else if (k === "g" || k === "G") setGuides({ring: !guides.visible});
     else if (k === "p" || k === "P") viewer.hooks.togglePick?.();
@@ -1968,7 +2036,7 @@ vec3 starAt(vec3 p, int l) {`)
   async function applySceneSnapshot(snap = {}) {
     if (!snap || typeof snap !== "object") return false;
     if (snap.species && canShow(snap.species)) await setSpecies(snap.species);
-    if (snap.mode && ["integral", "volume"].includes(snap.mode)) setMode(snap.mode);
+    if (snap.mode && ["integral", "emission", "volume"].includes(snap.mode)) setMode(snap.mode);
     if (snap.weight) setWeight(snap.weight);
     if (snap.transfer && typeof snap.transfer === "object") setTransfer(snap.transfer);
     if (snap.tf) setTf(snap.tf);
@@ -1998,10 +2066,11 @@ vec3 starAt(vec3 p, int l) {`)
     const tfOnNow = !!species && mode === "volume" && (tfOk(species) || isVel(species));
     const tfVal = tfOnNow ? (species + "~" + (tfOk(species) ? encodeTF(tfState(species), tfCtx(species)) : "")).replace(/~$/, "") : "";
     try {
-      const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !/^(cam|pv|tf)=/.test(x));
+      const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !/^(cam|pv|tf|mode)=/.test(x));
       if (camVal) parts.push("cam=" + camVal);
       if (pvVal) parts.push("pv=" + pvVal);
       if (tfVal) parts.push("tf=" + tfVal);
+      if (mode === "emission") parts.push("mode=emission");
       const search = parts.length ? "?" + parts.join("&") : "";
       if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash);
     } catch { /* sandboxed */ }
@@ -2199,9 +2268,12 @@ vec3 starAt(vec3 p, int l) {`)
     return started ||= (async () => {
       if (!manifest && hostDown) { hostMessage(new HostError(manErr || "no answer", hostDown)); return false; }
       if (!manifest) { say(viz ? `3D data not available${manErr ? ` (${manErr})` : ""}. Sightlines, ray picking and the spectra still work.` : "3D data not published for this build. Sightlines, ray picking and the spectra still work."); return false; }
+      const modeBoot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("mode="));
+        const v = raw ? decodeURIComponent(raw.slice(5)) : ""; return ["integral", "emission", "volume"].includes(v) ? v : null; } catch { return null; } })();
       /* tf3d: ?tf=<field>~<state> restores volume mode with that field's transfer function */
       if (tfBoot && canShow(tfBoot.k) && modeOk(tfBoot.k, "volume")) { k = tfBoot.k; mode = "volume"; markMode("volume"); speciesUnits();
         if (tfOk(k) && tfBoot.enc) { const st = decodeTF(tfBoot.enc, tfCtx(k)); if (st) tfs[k] = {...st, preset: st.preset || "custom"}; } }
+      else if (modeBoot && modeOk(k || "nH", modeBoot)) { mode = modeBoot; markMode(modeBoot); speciesUnits(); }
       return setSpecies(k && canShow(k) ? k : fld("nH") ? "nH" : Object.keys(manifest.gas.fields)[0]);
     })();
   }
