@@ -449,3 +449,26 @@ export function makeStoryMaterial(T, opts = {}) {
   mat.blendAlpha = 1;
   return {...base, material: mat};
 }
+
+export function applyEmissionMode(frag) {
+  return frag
+    .replace("uniform int uMode, uKind;", "uniform int uMode, uKind, uEmisKind;")
+    .replace("bool weighted = !velMode && uKind == 1 && uMode == 0;",
+      "bool weighted = !velMode && uKind == 1 && uMode == 0;\n  bool emisMode = !velMode && uMode == 2;")
+    .replace("int lg = gasOn ? pick(gHave, pm, 3) : -1, lw = (weighted || tfW) ? pick(uWHave, pm, 3) : -1, ls = starOn ? pick(uStarHave, pm, 3) : -1;",
+      "int lg = gasOn ? pick(gHave, pm, 3) : -1, lw = (weighted || tfW || emisMode) ? pick(uWHave, pm, 3) : -1, ls = starOn ? pick(uStarHave, pm, 3) : -1;")
+    .replace(
+      `        if (uMode == 0) {
+          if (weighted) { float w = lw >= 0 ? wVal(p, lw) : 0.0; if (lw >= 0 && cw >= 0) w = mix(wVal(p, cw), w, mw); num += w * v * hw; den += w * hw; }
+          else sumG += v * hw;
+        } else if (tfMode) {`,
+      `        if (uMode == 0) {
+          if (weighted) { float w = lw >= 0 ? wVal(p, lw) : 0.0; if (lw >= 0 && cw >= 0) w = mix(wVal(p, cw), w, mw); num += w * v * hw; den += w * hw; }
+          else sumG += v * hw;
+        } else if (emisMode) {
+          float w = lw >= 0 ? wVal(p, lw) : 0.0; if (lw >= 0 && cw >= 0) w = mix(wVal(p, cw), w, mw);
+          if (uEmisKind == 1) sumG += w * w * sqrt(max(v, 0.0)) * hw;
+          else if (uEmisKind == 2) sumG += v * hw;
+          else sumG += w * v * hw;
+        } else if (tfMode) {`);
+}

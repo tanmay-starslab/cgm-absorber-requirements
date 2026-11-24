@@ -86,6 +86,72 @@ export function velocityList(manifest) {
   const ok = !!velocityInfo(manifest), reason = ok ? "" : !manifest ? "no 3D data in this build" : "the velocity cubes are not built yet";
   return VEL_VIEWS.map(x => ({...x, group: "vel", color: null, color_dark: null, available: ok, reason}));
 }
+export const TEMET_FIELDS = [
+  ["Pth", "thermal pressure", "P<sub>th</sub>", "K cm^-3", "mass_weighted", -3, 8, "inferno", [1, 5.5], ["nH", "T"]],
+  ["K", "adiabatic entropy", "K", "keV cm^2", "mass_weighted", -4, 5, "viridis", [0, 3], ["nH", "T"]],
+  ["EM", "emission measure", "EM", "cm^-6 K^1/2", "density", -12, 6, "magma", [-6, 1], ["nH", "T"], [15.5, 22.5, "cm^-5 K^1/2"]],
+  ["tcool", "radiative cooling time", "t<sub>cool</sub>", "Gyr", "mass_weighted", -6, 4, "cividis", [-2, 2], ["nH", "T"], null, ["Z"]],
+  ["Mach", "thermal Mach number", "Mach", "", "mass_weighted", -2.5, 2.5, "inferno", [-1, 1.2], ["T", "vx", "vy", "vz"]],
+].map(([k, sp, html, u, kind, vmin, vmax, cmap, vw, deps, pr, optDeps]) => ({
+  key: k, label: k, spoken: sp, html, long: sp, units: u, kind, vmin, vmax, cmap,
+  proj: {kind: kind === "density" ? "column" : "weighted_mean", vmin: pr ? pr[0] : vw[0], vmax: pr ? pr[1] : vw[1], units: pr ? pr[2] : u},
+  vol_window: vw, deps, ...(optDeps ? {optDeps} : {})
+}));
+export const TEMET_KEYS = TEMET_FIELDS.map(x => x.key);
+export const isTemetKey = k => TEMET_KEYS.includes(k);
+const temetOk = (f, m) => !!m && f.deps.every(d => !!m.gas?.fields?.[d]?.cubes) && (!f.deps.includes("vx") || !!velocityInfo(m));
+export function temetFieldMeta(key, m = null) {
+  const f = TEMET_FIELDS.find(x => x.key === key); if (!f) return null;
+  if (!temetOk(f, m)) return {...f, cubes: null};
+  const F = m.gas.fields, cubes = {};
+  for (const L of Object.keys(F[f.deps[0]].cubes)) if (f.deps.every(d => !!F[d]?.cubes?.[L])) cubes[L] = F[f.deps[0]].cubes[L];
+  return {...f, cubes: Object.keys(cubes).length ? cubes : null};
+}
+export function temetList(m) {
+  const F = m?.gas?.fields || {};
+  return TEMET_FIELDS.map(x => {
+    const ok = temetOk(x, m);
+    return {...x, group: "temet", color: null, color_dark: null, available: ok,
+      reason: ok ? "" : !m ? "no 3D data in this build" : x.deps.includes("vx") && !velocityInfo(m) ? "the velocity cubes are not built yet" : `requires ${x.deps.filter(d => !F[d]?.cubes).join(" and ")} cubes`};
+  });
+}
+export function coolingLambda(t, z = 0.3) {
+  const c = t < 4 ? 10 ** Math.max(-18, 6 * (t - 4)) : 1, g = (u, s) => Math.exp(-(((t - u) / s) ** 2));
+  return Math.max(1e-28, (1.6e-22 * g(4.22, 0.16) + 6.5e-23 * g(4.92, 0.22) + 2.2e-27 * 10 ** (0.5 * t)) * c + Math.max(0, z) * ((6e-22 * g(5.25, 0.42) + 1.4e-22 * g(6.1, 0.35)) * c + 3e-24 * g(3.7, 0.7)));
+}
+const L23 = Math.log10(2.3), LK = Math.log10(8.617333262e-8) - (2 / 3) * Math.log10(1.16), LTC = Math.log10(3.45 * 1.380649e-16 / 3.15576e16), LCS = Math.log10(15.1);
+export function computeTemetCube(key, r, rg) {
+  const f = TEMET_FIELDS.find(x => x.key === key); if (!f) throw new Error(`unknown ${key}`);
+  const t0 = performance.now(), {vmin, vmax} = f, inv = 254 / (vmax - vmin), cq = q => (q < 1 ? 1 : q > 255 ? 255 : q);
+  const lut1 = ([a, b]) => { const o = new Float32Array(256), s = (b - a) / 254; o[0] = NaN; for (let i = 1; i < 256; i++) o[i] = a + (i - 1) * s; return o; };
+  const qT = r.T, N = qT.length, out = new Uint8Array(N), lT = lut1(rg.T);
+  if (key === "Mach") {
+    const qx = r.vx, qy = r.vy, qz = r.vz, V = rg.velV, lV2 = new Float32Array(256), csO = new Float32Array(256), sv = (2 * V) / 254;
+    for (let i = 1; i < 256; i++) { const vv = -V + (i - 1) * sv; lV2[i] = vv * vv; csO[i] = (LCS + 0.5 * (lT[i] - 4) + vmin) * inv - 1.5; }
+    const f32 = new Float32Array(1), u32 = new Uint32Array(f32.buffer), k2 = 0.5 * Math.LOG10E * Math.LN2 * inv, mL = new Float32Array(1024);
+    for (let m = 0; m < 1024; m++) mL[m] = Math.log2(1 + (m + 0.5) / 1024) * k2;
+    for (let i = 0; i < N; i++) {
+      const qt = qT[i], ax = qx[i], ay = qy[i], az = qz[i]; if (!(qt && ax && ay && az)) continue;
+      const v2 = lV2[ax] + lV2[ay] + lV2[az]; if (v2 <= 1e-12) { out[i] = 1; continue; }
+      f32[0] = v2; const b = u32[0]; out[i] = cq(((((b >>> 23) & 0xff) - 127) * k2 + mL[(b >>> 13) & 1023] - csO[qt]) | 0);
+    }
+  } else {
+    const qN = r.nH, lN = lut1(rg.nH);
+    if (key === "tcool") {
+      const qZ = r.Z, zL = new Float32Array(256).fill(0.3), nO = new Float32Array(256), bTZ = new Float32Array(65536);
+      if (qZ && rg.Z) { const lZ = lut1(rg.Z); for (let i = 1; i < 256; i++) zL[i] = 10 ** lZ[i]; }
+      for (let i = 1; i < 256; i++) nO[i] = (lN[i] + vmin) * inv - 1.5;
+      for (let i = 1; i < 256; i++) for (let j = 0; j < 256; j++) bTZ[(i << 8) | j] = (LTC + lT[i] - Math.log10(coolingLambda(lT[i], zL[j]))) * inv;
+      for (let i = 0; i < N; i++) { const qn = qN[i], qt = qT[i]; if (qn && qt) out[i] = cq((bTZ[(qt << 8) | (qZ ? qZ[i] : 0)] - nO[qn]) | 0); }
+    } else {
+      const tbl = new Uint8Array(65536);
+      for (let i = 1; i < 256; i++) for (let j = 1; j < 256; j++)
+        tbl[(i << 8) | j] = cq(Math.round(((key === "Pth" ? L23 + lN[i] + lT[j] : key === "K" ? lT[j] - (2 / 3) * lN[i] + LK : 2 * lN[i] + 0.5 * lT[j]) - vmin) * inv) + 1);
+      for (let i = 0; i < N; i++) out[i] = tbl[(qN[i] << 8) | qT[i]];
+    }
+  }
+  return {data: out, vmin, vmax, ms: performance.now() - t0};
+}
 /* linear u8 decoding (encoding "linear"): q = 0 empty (NaN), else v = vmin + (q − 1)(vmax − vmin)/254, so q = 128 is 0 for vmin = −vmax */
 export function decodeLinear(q, vmin, vmax) {
   if (wasmReady() && q instanceof Uint8Array && q.length >= 64) {
