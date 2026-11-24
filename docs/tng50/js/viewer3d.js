@@ -39,8 +39,8 @@ import {initLiquidSeg} from "./liquidtabs.js";   /* CSS-only liquid drop behind 
 import {lut, cssGradient, NAMES as CMAPS, VEL_NAMES} from "./colormaps.js";
 import {VOL_KEYS, ION_KEYS, decodeU8, gunzipIfNeeded, loadManifestV2, viewPlan, speciesList, MU_ZERO,
   VEL_KEYS, VEL_COMP_KEYS, velocityInfo, velocityList, packVelocity,
-  TEMET_KEYS, isTemetKey, temetList, temetFieldMeta, computeTemetCube,
   initFastVizWasm, wasm_cast_cube_ray, wasm_synthesize_voigt_12ions, wasm_decode_lut_volume} from "./vizdata.js";
+import {TEMET_KEYS, isTemetKey, temetList, temetFieldMeta, computeTemetCube} from "./temet.js";
 import {makeMaterial, applyEmissionMode} from "./raymarch.js";
 import {makeLoader, HostError, fetchText} from "./vizload.js";
 import {preset as tfPreset, encodeTF, decodeTF, buildTF, tfUniforms, defaultWRef, histogram2D, GMAX_DEFAULT, THOR, NELSON16, TF_W, TF_H} from "./tf.js";
@@ -942,8 +942,9 @@ vec3 starAt(vec3 p, int l) {`)
   const wKey = k => (isVel(k) ? boundW : mode === "emission" ? "nH" : emisKey(k) || (weighted(k) ? "nH" : null));   // tf3d: the TF emissivity weight when set; emission: nH
   function velTf(k, m = mode) { const v = velView(k), V = VELI?.V || 1000, W = Math.min(VEL_W, V);
     return tf[m][k] ||= {W, lo: v.signed ? -W : 0, hi: W, opacity: m === "volume" ? VOL.opacity : 0.5, cmap: v.signed ? VEL_NAMES.signed[0] : VEL_NAMES.unsigned[0]}; }
-  /* σ_los is a property of the whole ray (its moment 2), so it has no volume rendering; velocity views have no emission SB mode */
-  const modeOk = (k, m) => !(k === "sigmalos" && m === "volume") && !(isVel(k) && m === "emission");
+  /* σ_los has no volume rendering; emission surface brightness applies only to fields with defined emissivity (nH, ions, T, EM) */
+  const emisOk = k => k === "nH" || k === "T" || k === "EM" || isIon(k);
+  const modeOk = (k, m) => !(k === "sigmalos" && m === "volume") && !(m === "emission" && !emisOk(k));
   function emisWin(k, f) {
     if (k === "T" || k === "EM") return [15.5, 22.5];
     if (k === "nH") return [14.5, 21.5];
@@ -1291,8 +1292,8 @@ vec3 starAt(vec3 p, int l) {`)
     if (species === k && (TEX.has(firstKey("L0")) || TEX.has(firstKey("L1"))) && (!vel || boundW === velW)) {
       if (wanted !== k) { loadTok++; wanted = k; progMsg = null; clearProg(); ensure().catch(() => {}); } markSpecies(k); thumbLabel(); return true; }
     const tok = ++loadTok; wanted = k; markSpecies(k); viewer.loadError = null;
-    /* σ_los has no volume rendering and velocity views have no emission SB view: switch to integral mode if incompatible */
-    const toInteg = !modeOk(k, mode) && setMode("integral"), modeNote = toInteg ? (k === "sigmalos" ? ", integral mode: the dispersion has no volume view" : ", integral mode: velocity has no emission view") : "";
+    /* σ_los has no volume rendering; non-emissivity fields have no emission SB view: switch to integral mode if incompatible */
+    const toInteg = !modeOk(k, mode) && setMode("integral"), modeNote = toInteg ? (k === "sigmalos" ? ", integral mode: the dispersion has no volume view" : ", integral mode: this field has no emission view") : "";
     /* final: the first frame waits for L0 alone (the coarse, whole-halo level); L1 and the rest follow (ensure / pump) */
     const cubes = fld(vel ? "vx" : k).cubes, L1st = cubes.L0 ? "L0" : "L1";
     const k1 = firstKey(L1st), tot1 = dlBytes(k1);
@@ -1326,7 +1327,7 @@ vec3 starAt(vec3 p, int l) {`)
       : mode === "integral" && !weighted(i.value) ? (f.proj?.units || "cm^-2") : f.units;
     i.dataset.tip = fieldTip(x, mode, u); } }
   function setMode(m) { if (!["integral", "emission", "volume"].includes(m)) return false; if (m === mode) return true;
-    if (!modeOk(wanted || species, m)) { markMode(mode); say(m === "emission" ? "Velocity views do not have a surface-brightness emission mode." : "The line-of-sight dispersion is a property of the whole ray, so it has no volume view.", false, true); return false; }
+    if (!modeOk(wanted || species, m)) { markMode(mode); say(m === "emission" ? "Emission mode applies to nH, ions, T, and EM." : "The line-of-sight dispersion is a property of the whole ray, so it has no volume view.", false, true); return false; }
     mode = m; markMode(m); speciesUnits();
     if (species) { syncTfInputs(); applyTf(); ensure().catch(() => {}); bindAll(); } else { aria(); render(); } tfUrl(); return true; }
   function setStars(o = {}) {
@@ -1472,11 +1473,12 @@ vec3 starAt(vec3 p, int l) {`)
     const was = emisKey(); tfs[species] = tfPreset(name, tfCtx(species)); tfCardKey = "";
     syncTfCard(); applyTfMode(); legend(); aria(); render(); if (emisKey() !== was) { ensure().catch(() => {}); bindAll(); }
     tfUrl(); announce(tfWords()); return true; }
-  /* URL: ?tf=<field>~<tf.js encodeTF> while volume mode is on (the search part: the page's own hash writes keep it) */
+  /* URL: ?tf=<field>~<tf.js encodeTF> while volume mode is on, and ?mode=emission in emission mode */
   function tfUrl() { try {
     const on = !!species && mode === "volume" && (tfOk(species) || isVel(species)), val = on ? species + "~" + (tfOk(species) ? encodeTF(tfState(species), tfCtx(species)) : "") : "";
-    const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !x.startsWith("tf="));
+    const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !x.startsWith("tf=") && !x.startsWith("mode="));
     if (val) parts.push("tf=" + val.replace(/~$/, ""));
+    if (mode === "emission") parts.push("mode=emission");
     const search = parts.length ? "?" + parts.join("&") : "";
     if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash); } catch { /* sandboxed */ } }
   const tfBoot = (() => { try { const raw = location.search.replace(/^\?/, "").split("&").find(x => x.startsWith("tf="));
@@ -2064,10 +2066,11 @@ vec3 starAt(vec3 p, int l) {`)
     const tfOnNow = !!species && mode === "volume" && (tfOk(species) || isVel(species));
     const tfVal = tfOnNow ? (species + "~" + (tfOk(species) ? encodeTF(tfState(species), tfCtx(species)) : "")).replace(/~$/, "") : "";
     try {
-      const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !/^(cam|pv|tf)=/.test(x));
+      const parts = location.search.replace(/^\?/, "").split("&").filter(x => x && !/^(cam|pv|tf|mode)=/.test(x));
       if (camVal) parts.push("cam=" + camVal);
       if (pvVal) parts.push("pv=" + pvVal);
       if (tfVal) parts.push("tf=" + tfVal);
+      if (mode === "emission") parts.push("mode=emission");
       const search = parts.length ? "?" + parts.join("&") : "";
       if (search !== location.search) history.replaceState(history.state, "", location.pathname + search + location.hash);
     } catch { /* sandboxed */ }

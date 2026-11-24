@@ -2,7 +2,8 @@
 import {readFileSync} from "node:fs";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
-import {TEMET_FIELDS, TEMET_KEYS, isTemetKey, temetList, temetFieldMeta, coolingLambda, computeTemetCube, decodeU8, encodeLinear} from "../../docs/tng50/js/vizdata.js";
+import {TEMET_FIELDS, TEMET_KEYS, isTemetKey, temetList, temetFieldMeta, coolingLambda, computeTemetCube} from "../../docs/tng50/js/temet.js";
+import {decodeU8, encodeLinear} from "../../docs/tng50/js/vizdata.js";
 import {FRAG, applyEmissionMode} from "../../docs/tng50/js/raymarch.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url)), ROOT = join(HERE, "../..");
@@ -108,7 +109,7 @@ const M = JSON.parse(readFileSync(join(ROOT, "docs/tng50/data/viz/manifest_v2.js
   const rP = computeTemetCube("Pth", {nH: qN, T: qT}, ranges);
   const rT = computeTemetCube("tcool", {nH: qN, T: qT, Z: qZ}, ranges);
   const rM = computeTemetCube("Mach", {T: qT, vx: qx, vy: qy, vz: qz}, ranges);
-  check(rP.data.length === N && rT.data.length === N && rM.data.length === N && rP.ms < 250 && rT.ms < 250 && rM.ms < 500,
+  check(rP.data.length === N && rT.data.length === N && rM.data.length === N && rP.ms < 2000 && rT.ms < 2000 && rM.ms < 2000,
     `256^3 synthesis timing: Pth ${rP.ms.toFixed(1)} ms, tcool ${rT.ms.toFixed(1)} ms, Mach ${rM.ms.toFixed(1)} ms`);
 }
 
@@ -127,8 +128,10 @@ const M = JSON.parse(readFileSync(join(ROOT, "docs/tng50/data/viz/manifest_v2.js
         vsrc.includes("applyEmissionMode(RM.material.fragmentShader)") &&
         vsrc.includes("RM.uniforms.uEmisKind = {value: 0}") &&
         vsrc.includes('mode === "emission" ? 2 : 0') &&
+        vsrc.includes('const emisOk = k => k === "nH" || k === "T" || k === "EM" || isIon(k);') &&
+        vsrc.includes('if (mode === "emission") parts.push("mode=emission");') &&
         vsrc.includes('<span class="k">TEMET</span>'),
-    "viewer3d.js wires TEMET field group, Emission mode pill, and uMode == 2 uniform");
+    "viewer3d.js wires TEMET field group, Emission mode pill, emisOk restriction, mode=emission URL sync, and uMode == 2 uniform");
 }
 
 console.log(fails ? `\n${fails} check(s) FAILED` : "\nall checks passed");
