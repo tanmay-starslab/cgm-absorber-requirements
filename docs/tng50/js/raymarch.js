@@ -452,11 +452,9 @@ export function makeStoryMaterial(T, opts = {}) {
 
 export function applyEmissionMode(frag) {
   return frag
-    .replace("uniform int uMode, uKind;", "uniform int uMode, uKind, uEmisKind;")
+    .replace("uniform int uMode, uKind;", "uniform int uMode, uKind; uniform float uEmisOffset;")
     .replace("bool weighted = !velMode && uKind == 1 && uMode == 0;",
       "bool weighted = !velMode && uKind == 1 && uMode == 0;\n  bool emisMode = !velMode && uMode == 2;")
-    .replace("int lg = gasOn ? pick(gHave, pm, 3) : -1, lw = (weighted || tfW) ? pick(uWHave, pm, 3) : -1, ls = starOn ? pick(uStarHave, pm, 3) : -1;",
-      "int lg = gasOn ? pick(gHave, pm, 3) : -1, lw = (weighted || tfW || emisMode) ? pick(uWHave, pm, 3) : -1, ls = starOn ? pick(uStarHave, pm, 3) : -1;")
     .replace(
       `        if (uMode == 0) {
           if (weighted) { float w = lw >= 0 ? wVal(p, lw) : 0.0; if (lw >= 0 && cw >= 0) w = mix(wVal(p, cw), w, mw); num += w * v * hw; den += w * hw; }
@@ -466,9 +464,9 @@ export function applyEmissionMode(frag) {
           if (weighted) { float w = lw >= 0 ? wVal(p, lw) : 0.0; if (lw >= 0 && cw >= 0) w = mix(wVal(p, cw), w, mw); num += w * v * hw; den += w * hw; }
           else sumG += v * hw;
         } else if (emisMode) {
-          float w = lw >= 0 ? wVal(p, lw) : 0.0; if (lw >= 0 && cw >= 0) w = mix(wVal(p, cw), w, mw);
-          if (uEmisKind == 1) sumG += w * w * sqrt(max(v, 0.0)) * hw;
-          else if (uEmisKind == 2) sumG += v * hw;
-          else sumG += w * v * hw;
-        } else if (tfMode) {`);
+          sumG += v * hw;
+        } else if (tfMode) {`)
+    .replace(
+      "float lv = weighted ? (den > 0.0 && num > 0.0 ? log2(num / den) / LOG2_10 : -1e30) : (sumG > 0.0 ? log2(sumG) / LOG2_10 + LOG10_CM_PER_KPC : -1e30);",
+      "float lv = emisMode ? (sumG > 0.0 ? log2(sumG) / LOG2_10 + uEmisOffset : -1e30) : weighted ? (den > 0.0 && num > 0.0 ? log2(num / den) / LOG2_10 : -1e30) : (sumG > 0.0 ? log2(sumG) / LOG2_10 + LOG10_CM_PER_KPC : -1e30);");
 }
